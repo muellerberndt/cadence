@@ -39,6 +39,7 @@ from .learning import (
     seam_report,
 )
 from .lives import Lives
+from .longterm import LongTermMemory, LongTermRead
 from .memory import SynapticMemory
 from .neuron import Adaptation, NeuronModel
 from .plasticity import ActorCritic, ActorCriticConfig, Maturity
@@ -84,6 +85,8 @@ __all__ = [
     "LearnedCode",
     "FastSynapses",
     "SynapticMemory",
+    "LongTermMemory",
+    "LongTermRead",
     "NeuronModel",
     "GraphHolder",
     "Learner",
@@ -115,4 +118,4 @@ __all__ = [
     "save",
 ]
 
-__version__ = "0.96.0"
+__version__ = "0.97.0"

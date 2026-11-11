@@ -1,0 +1,373 @@
+"""``Brain.compose(longterm=records)`` (cadence#288): the brain keys its records on its own held
+message at a turn, writes the moment after the turn only where it says more than the record the
+key finds, reads its records before the settle onto regions the association reads, and keeps
+them across episodes. Without it a brain is the brain without the option."""
+
+from __future__ import annotations
+
+import numpy as np
+import pytest
+
+import cadence as cd
+from cadence.longterm import LongTermRecords
+
+INPUTS = 15  # agents 0-5, verbs 6-9, patients 10-13, the turn 14
+TURN = 14
+
+
+def moment(*on: int, streams: int = 1) -> np.ndarray:
+    x = np.zeros((streams, INPUTS))
+    x[:, list(on)] = 1.0
+    return x
+
+
+def brain(**settings):
+    return cd.Brain.compose(
+        INPUTS, 4, modules=(32,), seed=0, backend="cpu", message=70, message_boundary=TURN,
+        message_boundary_holds=True, **settings,
+    )
+
+
+def tell(b, agent: int, verb: int, patient: int) -> None:
+    b.reset()
+    for x in (moment(agent), moment(6 + verb), moment(TURN), moment(10 + patient)):
+        b.act(x, greedy=True)
+
+
+def ask(b, agent: int, verb: int) -> int:
+    b.reset()
+    for x in (moment(agent), moment(6 + verb), moment(TURN)):
+        b.act(x, greedy=True)
+    return int(np.asarray(b.act(np.zeros((1, INPUTS)), greedy=True)).ravel()[0])
+
+
+def test_without_the_option_the_brain_is_the_brain_without_it():
+    plain = brain()
+    named = brain(longterm=None)
+    assert plain.longterm is None and named.longterm is None
+    assert "longterm" not in plain.memories and "longterm" not in plain.connectome.populations
+    assert plain.connectome.n == named.connectome.n
+    np.testing.assert_array_equal(plain.connectome.pre, named.connectome.pre)
+    for b in (plain, named):
+        b.reset()
+    for x in (moment(0), moment(6), moment(TURN), moment(10), np.zeros((1, INPUTS))):
+        a, c = plain.act(x, greedy=True), named.act(x, greedy=True)
+        np.testing.assert_array_equal(a, c)
+    np.testing.assert_array_equal(plain.basal_ganglia.state.activation,
+                                  named.basal_ganglia.state.activation)
+
+
+def test_the_option_adds_one_region_per_head_and_its_projection_last():
+    plain, held = brain(), brain(longterm=32, longterm_heads=2)
+    populations = held.connectome.populations
+    width = held.message.inputs
+    assert list(populations)[-2:] == ["longterm", "longterm_1"]
+    assert len(populations["longterm"]) == len(populations["longterm_1"]) == width
+    assert held.connectome.n == plain.connectome.n + 2 * width
+    names = list(held.memories)
+    assert names.index("longterm") == names.index("message") + 1  # read after the message
+    kept = held.longterm
+    assert isinstance(kept, LongTermRecords) and kept.capacity == 32 and kept.heads == 2
+    assert (kept.match, kept.revise, kept.amplitude) == (0.75, 0.999, 3.0)
+
+
+def test_the_option_is_refused_without_a_held_message_from_a_turn():
+    with pytest.raises(ValueError, match="message=units"):
+        cd.Brain.compose(INPUTS, 4, seed=0, backend="cpu", longterm=16)
+    with pytest.raises(ValueError, match="message_boundary"):
+        cd.Brain.compose(INPUTS, 4, seed=0, backend="cpu", message=70, longterm=16)
+    with pytest.raises(ValueError, match="needs long-term records"):
+        cd.Brain.compose(INPUTS, 4, seed=0, backend="cpu", longterm_heads=2)
+    with pytest.raises(TypeError, match="unknown longterm setting"):
+        brain(longterm=8, longterm_width=3)
+    with pytest.raises(ValueError, match="cosine"):
+        brain(longterm=8, longterm_match=1.5)
+    b = brain(longterm=8)
+    with pytest.raises(ValueError):
+        b.retune(longterm_match=0.5)
+
+
+def test_a_fact_is_written_once_told_again_agreed_and_a_change_revised():
+    b = brain(longterm=16)
+    kept = b.longterm
+    tell(b, 0, 0, 2)
+    store = kept.stores[0]
+    assert store.count == 1 and kept.counts["writes"] == 1
+    key = b.message.key()[0]
+    np.testing.assert_array_equal(store.keys[0], key)  # the message at the turn
+    np.testing.assert_array_equal(store.values[0], moment(12)[0])  # the moment after it
+    tell(b, 0, 0, 2)
+    assert store.count == 1 and kept.counts["agreed"] == 1 and kept.counts["writes"] == 1
+    tell(b, 0, 0, 3)
+    assert store.count == 1 and kept.counts["revisions"] == 1
+    np.testing.assert_array_equal(store.values[0], moment(13)[0])
+    tell(b, 1, 0, 3)  # another agent: another key, another record
+    assert store.count == 2
+    ask(b, 0, 0)  # a question writes nothing: the moment after its turn is silent
+    assert store.count == 2 and kept.counts["writes"] == 3
+
+
+def test_the_read_holds_the_record_its_key_finds_after_the_turn_and_silence_before():
+    b = brain(longterm=16)
+    tell(b, 0, 1, 2)
+    tell(b, 3, 2, 1)
+    b.reset()
+    columns = b.connectome.populations["longterm"]
+    for x in (moment(3), moment(8)):
+        drive = b.stimulus(x)
+        assert not drive[0, columns].any()  # no turn yet: the region is silent
+        b.act(x, greedy=True)
+    b.act(moment(TURN), greedy=True)
+    drive = b.stimulus(np.zeros((1, INPUTS)))
+    np.testing.assert_allclose(drive[0, columns], 3.0 * moment(11)[0])
+    assert b.longterm.read_slots[0, 0] == 1
+    b.reset()
+    for x in (moment(5), moment(9), moment(TURN)):  # a key no record holds
+        b.act(x, greedy=True)
+    assert not b.stimulus(np.zeros((1, INPUTS)))[0, columns].any()
+
+
+def test_records_survive_reset_and_each_stream_keeps_its_own():
+    b = brain(longterm=16)
+    b.reset()
+    tells = [moment(0, streams=2), moment(6, streams=2), moment(TURN, streams=2)]
+    patient = np.zeros((2, INPUTS))
+    patient[0, 10] = patient[1, 13] = 1.0
+    for x in (*tells, patient):
+        b.act(x, greedy=True)
+    stores = b.longterm.stores
+    assert [s.count for s in stores] == [1, 1]
+    np.testing.assert_array_equal(stores[0].values[0], patient[0])
+    np.testing.assert_array_equal(stores[1].values[0], patient[1])
+    b.reset()
+    assert [s.count for s in b.longterm.stores] == [1, 1]
+    b.longterm.clear()
+    assert b.longterm.stores == []
+
+
+def test_heads_read_in_turn_onto_their_own_regions():
+    b = brain(longterm=16, longterm_heads=2, longterm_match=0.0)
+    tell(b, 0, 0, 1)
+    tell(b, 0, 1, 2)
+    b.reset()
+    for x in (moment(0), moment(6), moment(TURN)):
+        b.act(x, greedy=True)
+    drive = b.stimulus(np.zeros((1, INPUTS)))
+    first = drive[0, b.connectome.populations["longterm"]]
+    second = drive[0, b.connectome.populations["longterm_1"]]
+    np.testing.assert_allclose(first, 3.0 * moment(11)[0])  # the fact itself
+    np.testing.assert_allclose(second, 3.0 * moment(12)[0])  # the next record, the other
+    assert len(set(b.longterm.read_slots[0].tolist())) == 2
+
+
+def test_an_imagined_branch_reads_the_records_and_writes_none():
+    b = brain(longterm=16)
+    tell(b, 0, 0, 1)
+    before = (b.longterm.stores[0].count, dict(b.longterm.counts),
+              b.longterm.stores[0].deep.copy())
+    b.reset()
+    b.imagine([moment(2), moment(7), moment(TURN), moment(12)])
+    assert b.longterm.stores[0].count == before[0] and b.longterm.counts == before[1]
+    np.testing.assert_array_equal(b.longterm.stores[0].deep, before[2])
+
+
+def nursery(b, rng: np.random.Generator, rounds: int) -> None:
+    """Facts about the pairs of an even sum, each told and then a told one asked and taught."""
+    pairs = [(a, v) for a in range(6) for v in range(4) if (a + v) % 2 == 0]
+    truth: dict[tuple[int, int], int] = {}
+    for _ in range(rounds):
+        a, v = pairs[int(rng.integers(len(pairs)))]
+        truth[(a, v)] = int(rng.integers(4))
+        tell(b, a, v, truth[(a, v)])
+        a, v = list(truth)[int(rng.integers(len(truth)))]
+        b.reset()
+        for x in (moment(a), moment(6 + v), moment(TURN)):
+            b.act(x, greedy=True)
+        b.lesson(np.zeros((1, INPUTS)), [truth[(a, v)]])
+        b.act(np.zeros((1, INPUTS)), greedy=True)
+
+
+def fresh(b, rng: np.random.Generator) -> float:
+    """Facts about the pairs no lesson asked (an odd sum), told once, then asked."""
+    truth = {(a, v): int(rng.integers(4)) for a in range(6) for v in range(4) if (a + v) % 2}
+    for (a, v), p in truth.items():
+        tell(b, a, v, p)
+    return float(np.mean([ask(b, a, v) == p for (a, v), p in truth.items()]))
+
+
+def test_a_brain_answers_from_its_own_records_on_facts_no_lesson_asked():
+    held, plain = brain(longterm=64), brain()
+    for b in (held, plain):
+        nursery(b, np.random.default_rng(0), 300)
+    right = fresh(held, np.random.default_rng(1))
+    assert right >= 0.85
+    assert fresh(plain, np.random.default_rng(1)) <= 0.5  # the answer is nowhere to be read
+
+
+def _format(path) -> str:
+    import json
+
+    with np.load(path, allow_pickle=False) as archive:
+        return str(json.loads(str(archive["brain"]))["format"])
+
+
+def test_a_saved_brain_with_records_continues_as_the_one_it_was_saved_from(tmp_path):
+    first = brain(longterm=32, longterm_heads=2)
+    rng = np.random.default_rng(3)
+    for _ in range(6):
+        tell(first, int(rng.integers(6)), int(rng.integers(4)), int(rng.integers(4)))
+    first.reset()
+    for x in (moment(1), moment(7), moment(TURN)):  # saved in the middle of a question
+        first.act(x, greedy=True)
+    path = first.save(tmp_path / "records.npz")
+    assert _format(path) == "cadence-brain/4"
+    second = cd.Brain.load(path)
+    kept, taken = first.longterm, second.longterm
+    assert taken is not None and taken.message is second.message
+    assert taken.to_dict() == kept.to_dict()
+    np.testing.assert_array_equal(taken.since, kept.since)
+    for a, b in zip(kept.stores, taken.stores, strict=True):
+        for name, value in a.arrays().items():
+            np.testing.assert_array_equal(value, b.arrays()[name], err_msg=name)
+    for x in (np.zeros((1, INPUTS)), moment(2), moment(8), moment(TURN), moment(11)):
+        np.testing.assert_array_equal(first.act(x, greedy=True), second.act(x, greedy=True))
+        np.testing.assert_array_equal(first.longterm.read_slots, second.longterm.read_slots)
+    assert first.longterm.counts == second.longterm.counts
+    for a, b in zip(first.longterm.stores, second.longterm.stores, strict=True):
+        for name, value in a.arrays().items():
+            np.testing.assert_array_equal(value, b.arrays()[name], err_msg=name)
+
+
+def test_a_brain_without_records_keeps_its_format_and_a_named_file_needs_its_records(tmp_path):
+    import json
+
+    plain = brain()
+    for x in (moment(0), moment(6), moment(TURN), moment(10)):
+        plain.act(x, greedy=True)
+    assert _format(plain.save(tmp_path / "plain.npz")) == "cadence-brain/1"
+    held = brain(longterm=8)
+    tell(held, 0, 0, 1)
+    path = held.save(tmp_path / "held.npz", compressed=False)
+    with np.load(path, allow_pickle=False) as archive:
+        data = {name: archive[name] for name in archive}
+    saved = json.loads(str(data["brain"]))
+    saved["format"] = "cadence-brain/1"  # a records file under another name is refused
+    data["brain"] = np.array(json.dumps(saved))
+    np.savez(tmp_path / "renamed.npz", **data)
+    with pytest.raises(ValueError, match="cadence-brain/4"):
+        cd.Brain.load(tmp_path / "renamed.npz")
+    saved["format"] = "cadence-brain/4"
+    del data["memories/longterm/store/0/keys"]
+    data["brain"] = np.array(json.dumps(saved))
+    np.savez(tmp_path / "torn.npz", **data)
+    with pytest.raises(ValueError, match="missing saved long-term records"):
+        cd.Brain.load(tmp_path / "torn.npz")
+
+
+def _lived(batched: bool, streams: int, capacity: int, heads: int):
+    """A brain of ``streams`` streams that tells, revises and asks facts past its capacity, its
+    records read, written and faded as one bank or store by store."""
+    b = brain(longterm=capacity, longterm_heads=heads)
+    b.longterm.BATCHED = batched  # this brain's records alone
+    rng = np.random.default_rng(7)
+    acts, reads = [], []
+    for episode in range(40):
+        b.reset()
+        agent, verb = rng.integers(6, size=streams), rng.integers(4, size=streams)
+        patient = rng.integers(4, size=streams)
+        asking = episode % 3 == 2
+        for t in range(4):
+            x = np.zeros((streams, INPUTS))
+            rows = np.arange(streams)
+            if t == 0:
+                x[rows, agent] = 1.0
+            elif t == 1:
+                x[rows, 6 + verb] = 1.0
+            elif t == 2:
+                x[:, TURN] = 1.0
+            elif not asking:
+                x[rows, 10 + patient] = 1.0
+            acts.append(np.asarray(b.act(x, greedy=True)))
+            reads.append(b.longterm.read_slots.copy())
+    return b, acts, reads
+
+
+def test_the_bank_reads_writes_and_fades_as_the_stores_one_by_one():
+    one, acts_one, reads_one = _lived(False, 3, 6, 2)
+    bank, acts_bank, reads_bank = _lived(True, 3, 6, 2)
+    assert bank.longterm.batched and not one.longterm.batched
+    for a, b in zip(acts_one, acts_bank, strict=True):
+        np.testing.assert_array_equal(a, b)
+    for a, b in zip(reads_one, reads_bank, strict=True):
+        np.testing.assert_array_equal(a, b)
+    assert one.longterm.counts == bank.longterm.counts
+    assert one.longterm.counts["revisions"] > 0 and all(
+        s.count == 6 for s in bank.longterm.stores)  # past the capacity: slots replaced
+    for a, b in zip(one.longterm.stores, bank.longterm.stores, strict=True):
+        n = a.count
+        assert n == b.count and a.writes == b.writes
+        for name in ("keys", "values", "deep", "recent", "faded"):
+            np.testing.assert_array_equal(getattr(a, name)[:n], getattr(b, name)[:n],
+                                          err_msg=name)
+
+
+def test_the_bank_follows_the_stores_through_save_load_keep_and_clear(tmp_path):
+    first, _, _ = _lived(True, 2, 8, 1)
+    path = first.save(tmp_path / "bank.npz")
+    second = cd.Brain.load(path)
+    kept = second.longterm
+    assert kept.batched
+    for s, store in enumerate(kept.stores):
+        assert np.shares_memory(store.deep, kept._deep)
+        held = store.keys[: store.count].T.astype(np.uint8)
+        np.testing.assert_array_equal(kept._index[s, :, : store.count], held)
+    for on in (1, 7, TURN, 12):
+        x = np.zeros((2, INPUTS))
+        x[:, on] = 1.0
+        np.testing.assert_array_equal(first.act(x, greedy=True), second.act(x, greedy=True))
+    for a, b in zip(first.longterm.stores, second.longterm.stores, strict=True):
+        np.testing.assert_array_equal(a.deep[: a.count], b.deep[: b.count])
+    second.longterm.keep(np.array([1]))
+    assert len(second.longterm.stores) == 1 and second.longterm._index.shape[0] == 1
+    second.longterm.clear()
+    assert second.longterm.stores == [] and second.longterm._deep.shape == (0, 8)
+
+
+def test_a_write_reads_its_store_once():
+    from cadence.longterm import LongTermMemory
+
+    b = brain(longterm=16)
+    tell(b, 0, 0, 1)
+    calls = {"read": 0}
+    original = LongTermMemory.read
+
+    def counted(self, *args, **kwargs):
+        calls["read"] += 1
+        return original(self, *args, **kwargs)
+
+    LongTermMemory.read = counted
+    try:
+        tell(b, 0, 0, 2)  # a revision: the read before the settle is the write's recognition
+        tell(b, 1, 1, 3)  # a new fact
+    finally:
+        LongTermMemory.read = original
+    assert calls["read"] == 0  # the bank reads; no store reads one by one
+    assert b.longterm.counts["revisions"] == 1 and b.longterm.stores[0].count == 2
+
+
+def test_the_records_read_a_contained_key_s_own_record_as_a_bank_and_one_by_one():
+    picks = []
+    for batched in (True, False):
+        kept = brain(longterm=8).longterm
+        kept.BATCHED = batched
+        kept._streams(1)
+        small, large = np.zeros(kept.width), np.zeros(kept.width)
+        small[:4], large[:6] = 1.0, 1.0
+        kept.record(0, large, moment(10)[0])
+        kept.record(0, small, moment(11)[0])
+        assert kept.stores[0].count == 2 and kept.batched == batched
+        if batched:
+            picks.append(int(kept._choices(np.array([0]), small[None, :], 1)[0, 0]))
+        else:
+            picks.append(kept.stores[0].read(small, credit=False).first())
+    assert picks == [1, 1]  # by cosine; the dot product ties them and reads slot 0

@@ -1,0 +1,50 @@
+{
+ "founders": [
+  2880,
+  2881,
+  2882,
+  2883,
+  2884,
+  2885
+ ],
+ "n": [
+  128,
+  1000,
+  10000,
+  100000
+ ],
+ "rounds": 1500,
+ "questions": 400,
+ "arms": [
+  "default",
+  {
+   "name": "content",
+   "options": {
+    "recall_position": 0,
+    "recall_temperature": 0.05
+   }
+  },
+  {
+   "name": "bank",
+   "options": {
+    "recall": false
+   },
+   "bank": {
+    "temperature": 0.0,
+    "expansion": 8192,
+    "winners": 64,
+    "candidates": 256
+   }
+  },
+  {
+   "name": "bank+notebook",
+   "options": {},
+   "bank": {
+    "temperature": 0.0,
+    "expansion": 8192,
+    "winners": 64,
+    "candidates": 256
+   }
+  }
+ ]
+}

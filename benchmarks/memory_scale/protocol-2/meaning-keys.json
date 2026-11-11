@@ -1,0 +1,46 @@
+{
+ "founders": [
+  2890,
+  2891,
+  2892,
+  2893,
+  2894,
+  2895
+ ],
+ "n": [
+  1000,
+  10000,
+  100000
+ ],
+ "trials": 1000,
+ "head_trials": 200,
+ "codes": [
+  {
+   "units": 280
+  },
+  {
+   "units": 70
+  },
+  {
+   "units": 280,
+   "fan_in": 16
+  }
+ ],
+ "arms": [
+  "exact",
+  "memory",
+  {
+   "name": "memory-same",
+   "settings": {
+    "revise": 0.999
+   }
+  },
+  {
+   "name": "memory-direct",
+   "min_n": 100000,
+   "settings": {
+    "direct": "all"
+   }
+  }
+ ]
+}

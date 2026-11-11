@@ -1,0 +1,37 @@
+{
+ "founders": [
+  2886,
+  2887,
+  2888
+ ],
+ "n": [
+  128,
+  1000,
+  10000,
+  100000
+ ],
+ "widths": [
+  64
+ ],
+ "acts": 200,
+ "reads": 500,
+ "arms": [
+  "moment",
+  "exact",
+  "floor",
+  "floor32",
+  {
+   "name": "memory",
+   "settings": {
+    "direct": null
+   }
+  },
+  {
+   "name": "memory-float32",
+   "settings": {
+    "direct": null,
+    "dtype": "float32"
+   }
+  }
+ ]
+}

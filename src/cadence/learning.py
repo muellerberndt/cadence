@@ -340,12 +340,15 @@ _PHASE_KEYS = (
 
 
 def _rows(state: BrainState, rows: np.ndarray, drive: Any = None) -> BrainState:
-    """The host copy of a batched state restricted to the rows of a boolean mask; a state a launch
-    made stays on the MLX device, and ``drive`` is those rows' own there."""
-    change = state.activity_change
+    """A batched state restricted to the rows of a boolean mask: a state a launch made stays on
+    the MLX device, and ``drive`` is those rows' own there; a state resting on a torch device
+    stays there; any other comes to the host."""
     handle = state.device
+    unread: Any = None
+    if handle is not None and not isinstance(handle, _MlxState) and _resident(handle.get("s")):
+        return BrainState(unread, unread, unread, state.steps, device=_torch_rows(handle, rows))
+    change = state.activity_change
     if isinstance(handle, _MlxState):
-        unread: Any = None
         return BrainState(
             unread, unread, unread, state.steps,
             activity_change=None if change is None else np.asarray(change)[rows],
@@ -356,6 +359,22 @@ def _rows(state: BrainState, rows: np.ndarray, drive: Any = None) -> BrainState:
         np.asarray(state.adaptation)[rows], state.steps,
         activity_change=None if change is None else np.asarray(change)[rows],
     )
+
+
+def _torch_rows(handle: dict[str, Any], rows: np.ndarray) -> dict[str, Any]:
+    """A torch-resident state's handle restricted to the rows of a boolean mask, taken on the
+    device: of a lesson that teaches some rows only the mask goes to the device."""
+    import torch
+
+    index = torch.as_tensor(np.flatnonzero(rows), dtype=torch.long, device=handle["s"].device)
+    tensors = {key: handle[key].index_select(0, index) for key in ("v", "a", "s")}
+    change = handle.get("change")
+
+    def fetch(key: str) -> np.ndarray:  # the host copy, made when something reads it
+        return np.asarray(tensors[key].cpu().double().numpy())
+
+    return {**handle, **tensors, "fetch": fetch,
+            "change": None if change is None else change.index_select(0, index)}
 
 
 def _taken_rows(drive: Any, taught: np.ndarray) -> Any:
@@ -524,8 +543,10 @@ class Learner:
             sizes = [int(k) for k in self.slots]
             if not sizes or min(sizes) < 1 or sum(sizes) != len(self.output_index):
                 raise ValueError("slot sizes must be positive and add up to the output neurons")
-        self.slot_sizes = np.asarray(sizes, dtype=np.int64)
-        self.slot_offsets = np.concatenate([[0], np.cumsum(self.slot_sizes)[:-1]]).astype(np.int64)
+        # The platform's index type: a 32-bit NumPy (a browser's Python) refuses int64 counts and
+        # offsets in ``np.repeat`` and ``reduceat``; on a 64-bit platform it is int64.
+        self.slot_sizes = np.asarray(sizes, dtype=np.intp)
+        self.slot_offsets = np.concatenate([[0], np.cumsum(self.slot_sizes)[:-1]]).astype(np.intp)
         self.slot_count = len(sizes)  # ``slots`` keeps what was asked for
         self.slot_size = int(self.slot_sizes[0]) if len(set(sizes)) == 1 else 0  # equal, or not
         self.output_groups: np.ndarray | None = None

@@ -753,10 +753,10 @@ class Brain:
             post = connectome.post
             if connectome.synapses:
                 change = np.flatnonzero(np.diff(post)) + 1
-                starts = np.concatenate([[0], change]).astype(np.int64)
+                starts = np.concatenate([[0], change]).astype(np.intp)  # reduceat's index type
                 segments = (starts, post[starts])
             else:
-                segments = (np.zeros(0, np.int64), np.zeros(0, np.int64))
+                segments = (np.zeros(0, np.intp), np.zeros(0, np.int64))
             connectome.__dict__["_segments"] = segments
         self._starts: np.ndarray = segments[0]
         self._neurons_with_synaptic_input: np.ndarray = segments[1]
@@ -2020,7 +2020,7 @@ def _row_groups(
     candidate = np.flatnonzero((cur == prev + 1) & (length[cur] == length[prev]))
     same = np.zeros(len(cur), dtype=bool)
     if len(candidate):
-        width = length[cur[candidate]]
+        width = length[cur[candidate]].astype(np.intp)  # np.repeat's count type on every platform
         first = np.cumsum(width) - width
         offs = np.repeat(starts[cur[candidate]], width) + (
             np.arange(int(width.sum())) - np.repeat(first, width)
@@ -2762,11 +2762,19 @@ class _Workspaces:
 # Triton is optional and CUDA-only: its language module is bound to ``tl`` and the kernel
 # compiled on first use (``_triton_transport``); ``CADENCE_TRITON=0`` keeps every group on
 # cuBLAS products.
+#
+# A program's product is ``tl.dot`` where the installed Triton compiles it at the tile's shape.
+# Some versions (Triton 3.3 among them) refuse a dot with any side below 16, which a float64 tile
+# of 8 rows and a batch below 16 always have; at such a shape the product is the same sum of
+# products as an elementwise multiply reduced over the presynaptic axis (``DOT`` False), chosen
+# once per tile shape at its first launch (``_dot_shapes``).
 
 # Per precision, double first: output rows per program and presynaptic neurons per step of it.
 _TRITON_TILE = {True: (8, 16), False: (16, 32)}
 tl: Any = None  # triton.language, once bound
 _TRITON_KERNEL: Any = None
+# per tile shape (rows, presynaptic neurons, batch rows, float64): whether ``tl.dot`` compiles there
+_DOT_SHAPES: dict[tuple[int, int, int, bool], bool] = {}
 
 
 def _tile_batch(batch: int, double: bool) -> int:
@@ -2796,6 +2804,7 @@ def _launch_rule(bucket: _Bucket, batch: int, precision: str) -> bool:
 def _small_group_tiles(  # type: ignore[no-untyped-def]  # Triton reads the annotations
     w_ptr, s_ptr, out_ptr, meta_ptr, col_ptr, row_ptr, batch,
     ROWS: tl.constexpr, COLS: tl.constexpr, BATCH: tl.constexpr, DOUBLE: tl.constexpr,
+    DOT: tl.constexpr,
 ):
     p = tl.program_id(0)
     tile = tl.program_id(1)
@@ -2825,10 +2834,13 @@ def _small_group_tiles(  # type: ignore[no-untyped-def]  # Triton reads the anno
             w_ptr + w_off + offs_r[:, None] * cols + at[None, :],
             mask=in_rows[:, None] & in_cols[None, :], other=0.0,
         )
-        if DOUBLE:
-            acc += tl.dot(w, x, allow_tf32=False, out_dtype=tl.float64)
-        else:
-            acc += tl.dot(w, x, allow_tf32=False)
+        if DOT:
+            if DOUBLE:
+                acc += tl.dot(w, x, allow_tf32=False, out_dtype=tl.float64)
+            else:
+                acc += tl.dot(w, x, allow_tf32=False)
+        else:  # the same products, summed over the presynaptic axis
+            acc += tl.sum(w[:, :, None] * x[None, :, :], axis=1)
     row = tl.load(row_ptr + r_off + offs_r, mask=in_rows, other=0)
     tl.store(
         out_ptr + row[:, None] * batch + offs_b[None, :], acc,
@@ -3111,11 +3123,27 @@ class _SmallGroups:
         batch, double = s.shape[1], values.element_size() == 8
         tallest, width = _TRITON_TILE[double]
         block = _tile_batch(batch, double)
+        kernel = _triton_transport()
         for height, meta in self.tiles(tallest):
             grid = (meta.shape[0] // 5, -(-batch // block))
-            _triton_transport()[grid](
+            shape = (height, width, block, double)
+            dot = _DOT_SHAPES.get(shape)
+            if dot is None:  # the first launch at this shape: a dot where Triton compiles one
+                try:
+                    kernel[grid](
+                        values, s, out, meta, self.cols, self.rows, batch,
+                        ROWS=height, COLS=width, BATCH=block, DOUBLE=double, DOT=True,
+                    )
+                except Exception as error:  # nothing ran: compiling refused the shape
+                    if type(error).__name__ != "CompilationError":
+                        raise
+                    _DOT_SHAPES[shape] = False
+                else:
+                    _DOT_SHAPES[shape] = True
+                    continue
+            kernel[grid](
                 values, s, out, meta, self.cols, self.rows, batch,
-                ROWS=height, COLS=width, BATCH=block, DOUBLE=double,
+                ROWS=height, COLS=width, BATCH=block, DOUBLE=double, DOT=_DOT_SHAPES[shape],
             )
 
 

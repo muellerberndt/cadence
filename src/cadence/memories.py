@@ -3,7 +3,7 @@
 A composed brain's memories are the members of ``brain.memories``: an ordered, read-only
 mapping from a name to the memory, present memories only, in the order the brain reads and
 writes them (``working_memory``, ``efference``, ``history``, ``recall``, ``message``,
-``hippocampus``, ``episodic``). Every member keeps one contract (``Memory``):
+``longterm``, ``hippocampus``, ``episodic``). Every member keeps one contract (``Memory``):
 
 - ``stimulus(drive, moment)``: the drive of a moment before the settle with what the memory
   adds to it; a memory that adds nothing returns the drive. ``Moment`` gives the moment's
@@ -76,7 +76,8 @@ class Memories(Mapping[str, Any]):
     """The present memories of a brain by name, in the order the brain reads them."""
 
     ORDER = (
-        "working_memory", "efference", "history", "recall", "message", "hippocampus", "episodic"
+        "working_memory", "efference", "history", "recall", "message", "longterm", "hippocampus",
+        "episodic",
     )
 
     def __init__(self, members: Mapping[str, Any]) -> None:
