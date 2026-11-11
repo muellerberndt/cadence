@@ -85,6 +85,10 @@ ARMS: dict[str, dict[str, Any]] = {
     "slow_episodic_held": {**SLOW, "memory_choice": True, "actor_hold": 1.0},
     "slow_held_far": {**SLOW, "actor_hold": 1.0, "actor_gamma": 0.99},
     "slower_held": {"actor_eta": 0.03, "actor_eta_bias": 0.003, "actor_hold": 1.0},
+    # the policy's entropy beside the hold (cadence#296's actor_entropy)
+    "slow_held_entropy": {**SLOW, "actor_hold": 1.0, "actor_entropy": 0.1},
+    "slow_episodic_held_entropy": {**SLOW, "memory_choice": True, "actor_hold": 1.0,
+                                   "actor_entropy": 0.1},
 }
 
 
