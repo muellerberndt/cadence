@@ -144,6 +144,33 @@ def test_the_baseline_counts_its_parameters_and_learns_a_lesson():
     assert net.frames == 32
 
 
+def test_the_tied_arm_shares_the_pool_rows_and_every_life_counts_its_work():
+    pytest.importorskip("torch")
+    cn = _load("convnet")
+    shape = ch.SHAPES["grey84"]
+    plain = px.compose("fields", shape, 0, "lesson")
+    tied = px.compose("fields_tied", shape, 0, "lesson")
+    rows = 3 * 64  # one pool row: three pool columns of 64 fields
+    assert plain.connectome.synapses == tied.connectome.synapses
+    assert plain.parameters() - tied.parameters() == 2 * rows * 64
+    assert tied.describe()["layout"]["tied"][0]["blocks"] == [3, 1]
+    assert cn.hidden_for(shape, ch.ACTIONS, tied.parameters(), 1) == 5
+    spec = {"founder": 0, "condition": "lesson", "budgets": [16], "rows": 8, "panel": 8}
+    out = px.life({"arm": "fields_tied", **spec})
+    assert out["parameters"] == tied.parameters()
+    assert set(out["readings"][-1]["panels"]) == set(ch.PANELS)
+    fields = tied.fields.macs()
+    assert out["macs"]["lesson"] > fields["code"] + fields["learn"]
+    assert fields["code"] < out["macs"]["read"] < out["macs"]["lesson"]
+    assert out["macs"]["lessons"] == 16 * out["macs"]["lesson"]
+    control = px.life({"arm": "conv_matched_tied", **spec})
+    forward = cn.macs(shape, ch.ACTIONS, 5)
+    assert control["macs"] == {"lesson": 3.0 * forward, "read": float(forward),
+                               "lessons": 48.0 * forward}
+    assert abs(control["parameters"] - out["parameters"]) < 1300
+    assert px.life({"arm": "pooled", **spec, "condition": "reward"})["macs"] is None
+
+
 @pytest.mark.parametrize("arm,condition", [("pooled", "lesson"), ("pooled", "reward")])
 def test_a_short_life_reads_every_panel(arm, condition):
     out = px.life({"arm": arm, "founder": 0, "condition": condition, "budgets": [16],
