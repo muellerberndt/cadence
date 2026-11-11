@@ -16,9 +16,9 @@ _spec.loader.exec_module(recipe)
 
 def test_the_recipe_trains_reads_adapts_and_streams(tmp_path, capsys):
     out = tmp_path / "report.json"
-    report = recipe.main(["--synthetic", "--utterances", "16", "--held", "6", "--passes", "2",
-                          "--batch", "4", "--align-every", "2", "--fields", "4", "--width", "16",
-                          "--out", str(out)])
+    report = recipe.main(["--synthetic", "--utterances", "16", "--held", "6", "--adapt", "4",
+                          "--passes", "2", "--batch", "4", "--align-every", "2", "--fields", "4",
+                          "--width", "16", "--out", str(out)])
     assert out.exists() and report["parameters"] > 0
     assert [r["pass"] for r in report["passes"]] == [1, 2]
     for r in report["passes"]:
@@ -37,6 +37,7 @@ def test_the_synthetic_corpus_and_the_reading():
     corpus = recipe.synthetic(6, seed=0)
     assert all(set(u["text"]) <= set("agnot ") for u in corpus)
     assert {u["speaker"] for u in corpus} == {"s0", "s1", "s2"}
+    assert {u["speaker"] for u in recipe.synthetic(2, seed=1, speakers=1, first=3)} == {"s3"}
     assert recipe.edits(list("abc"), list("abd")) == 1
     assert recipe.score(["go no"], ["go no"]) == {"characters": 1.0, "words": 1.0}
     assert np.isclose(recipe.score(["go"], ["go no"])["words"], 0.5)

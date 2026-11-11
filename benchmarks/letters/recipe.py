@@ -14,9 +14,10 @@ corrections and runs it on a stream:
    (``speech.align``), the first batches on an even split;
 4. **read:** held-out utterances, the letter decoder (``collapse``) and, with a word list, the
    beam over the list (``WordBeam``): characters and words;
-5. **adapt:** one held-out speaker's utterances as corrections heard beside three training
-   utterances at weight .25 (``speech.correct.Rehearsal``), the speaker's other utterances and
-   the other held-out speakers read before and after;
+5. **adapt:** half of a new speaker's utterances as corrections heard beside three training
+   utterances at weight .25 (``speech.correct.Rehearsal``), the speaker's other half and the
+   held-out speakers read before and after (on LibriSpeech the dev-clean speaker with the most
+   utterances, kept apart from the held-out ones);
 6. **stream:** one held-out utterance heard 100 ms at a time (``speech.stream.StreamReader``),
    the text as it arrives and the seconds per step.
 
@@ -52,20 +53,29 @@ RATE = 16000
 # ------------------------------------------------------------------------------- the corpus
 
 
-def librispeech(root: Path, split: str, listed: set[str] | None, limit: int,
-                longest: float = 12.0, seed: int | None = None) -> list[dict[str, Any]]:
-    """Up to ``limit`` utterances of a split: audio, transcript and speaker; on the list where
-    one is given; a seeded draw where ``seed`` is given, else the corpus's order."""
-    import soundfile
-
+def catalogue(root: Path, split: str, listed: set[str] | None) -> list[tuple[str, Path, str]]:
+    """(identity, audio path, transcript) of a split's utterances, on the list where one is
+    given, in the corpus's order."""
     found = []
     for listing in sorted((root / "LibriSpeech" / split).rglob("*.trans.txt")):
         for line in listing.read_text().splitlines():
             identity, _, text = line.partition(" ")
-            words = text.lower().split()
-            if listed is not None and not all(w in listed for w in words):
+            if listed is not None and not all(w in listed for w in text.lower().split()):
                 continue
             found.append((identity, listing.parent / f"{identity}.flac", text))
+    return found
+
+
+def librispeech(root: Path, split: str, listed: set[str] | None, limit: int,
+                longest: float = 12.0, seed: int | None = None,
+                speaker: str | None = None) -> list[dict[str, Any]]:
+    """Up to ``limit`` utterances of a split: audio, transcript and speaker; on the list where
+    one is given; one speaker's where ``speaker`` is given; a seeded draw where ``seed`` is
+    given, else the corpus's order; at most ``longest`` seconds."""
+    import soundfile
+
+    found = [f for f in catalogue(root, split, listed)
+             if speaker is None or f[0].split("-")[0] == speaker]
     if seed is not None:
         found = [found[int(k)] for k in np.random.default_rng(seed).permutation(len(found))]
     out = []
@@ -74,7 +84,7 @@ def librispeech(root: Path, split: str, listed: set[str] | None, limit: int,
         if rate != RATE or len(audio) > longest * RATE:
             continue
         out.append({"audio": np.asarray(audio, dtype=np.float64), "text": text.lower(),
-                    "speaker": identity.split("-")[0]})
+                    "speaker": identity.split("-")[0], "identity": identity})
         if len(out) == limit:
             break
     return out
@@ -84,13 +94,13 @@ TONES = {"a": 500.0, "g": 900.0, "n": 1300.0, "o": 1700.0, "t": 2300.0}
 SYNTHETIC_WORDS = ("go", "no", "on", "to", "at", "tag")
 
 
-def synthetic(count: int, seed: int, speakers: int = 3) -> list[dict[str, Any]]:
+def synthetic(count: int, seed: int, speakers: int = 3, first: int = 0) -> list[dict[str, Any]]:
     """Utterances of one to three tone words: each letter 80 ms of its tone, a speaker shifting
-    every tone, 120 ms of quiet between words."""
+    every tone, 120 ms of quiet between words; speakers ``first`` onwards."""
     rng = np.random.default_rng(seed)
     out = []
     for k in range(count):
-        speaker = k % speakers
+        speaker = first + k % speakers
         shift = 1.0 + 0.05 * speaker
         words = [SYNTHETIC_WORDS[int(i)] for i in rng.integers(len(SYNTHETIC_WORDS),
                                                                size=int(rng.integers(1, 4)))]
@@ -182,28 +192,37 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if args.synthetic:
         train = synthetic(args.utterances, args.seed)
         held = synthetic(args.held, args.seed + 1)
+        adapt = synthetic(args.adapt, args.seed + 2, speakers=1, first=3)  # a speaker unheard
         if words is None:
             words = WordBeam(list(SYNTHETIC_WORDS))
     else:
         root = Path(args.librispeech)
         train = librispeech(root, "train-clean-100", listed, args.utterances)
         held = librispeech(root, "dev-clean", listed, args.held, seed=args.seed)
+        # the corrected speaker: the dev-clean speaker with the most such utterances, apart
+        counts: dict[str, int] = {}
+        for identity, _, _ in catalogue(root, "dev-clean", listed):
+            counts[identity.split("-")[0]] = counts.get(identity.split("-")[0], 0) + 1
+        speaker = max(sorted(counts), key=lambda s: counts[s])
+        held = [u for u in held if u["speaker"] != speaker]
+        adapt = librispeech(root, "dev-clean", listed, args.adapt, speaker=speaker)
 
     # 1. hear
-    for u in train + held:
+    for u in train + held + adapt:
         u["frames"] = log_mel(u["audio"])
         u["symbols"] = alphabet.encode(u["text"])
     hearing = Hearing.fit([u["frames"] for u in train])
-    for u in train + held:
+    for u in train + held + adapt:
         u["rows"] = hearing.steps(u["frames"])
     def fits(u: dict[str, Any]) -> bool:
         repeats = int(np.sum(u["symbols"][1:] == u["symbols"][:-1]))
         return len(u["symbols"]) > 0 and len(u["rows"]) >= len(u["symbols"]) + repeats
 
     train, held = [u for u in train if fits(u)], [u for u in held if fits(u)]
+    adapt = [u for u in adapt if fits(u)]
     audio_seconds = sum(len(u["audio"]) for u in train) / RATE
-    print(json.dumps({"train": len(train), "held": len(held), "hours": audio_seconds / 3600}),
-          flush=True)
+    print(json.dumps({"train": len(train), "held": len(held), "adapt": len(adapt),
+                      "hours": audio_seconds / 3600}), flush=True)
 
     # 2. compose
     brain = Brain.compose(hearing.shape, alphabet.size, seed=args.seed, backend="cpu",
@@ -252,13 +271,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         report["passes"].append(reading)
         print(json.dumps(reading), flush=True)
 
-    # 5. adapt: one held-out speaker's utterances as corrections beside training utterances
-    speakers: dict[str, list[int]] = {}
-    for k, u in enumerate(held):
-        speakers.setdefault(u["speaker"], []).append(k)
-    speaker, own = max(speakers.items(), key=lambda kv: len(kv[1]))
-    corrections, readings = own[: len(own) // 2], own[len(own) // 2 :]
-    others = [k for k in range(len(held)) if held[k]["speaker"] != speaker]
+    # 5. adapt: a new speaker's utterances as corrections beside training utterances
+    corrections, readings = adapt[: len(adapt) // 2], adapt[len(adapt) // 2 :]
     if corrections and readings:
         bank = Rehearsal(rows=3, weight=0.25, seed=args.seed)
         copy = frozen(brain, folder)
@@ -267,20 +281,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                            strict=True):
             bank.remember(train[int(i)]["rows"], forced_path(logp, train[int(i)]["symbols"]))
 
-        def reading_of(group: list[int]) -> float:
-            if not group:
-                return float("nan")
-            said_ = transcribe(brain, [held[k]["rows"] for k in group], alphabet, None,
-                               args.batch, folder)[0]
-            return score(said_, [held[k]["text"] for k in group])["characters"]
+        def reading_of(group: list[dict[str, Any]]) -> float:
+            said_ = transcribe(brain, [u["rows"] for u in group], alphabet, None, args.batch,
+                               folder)[0]
+            return score(said_, [u["text"] for u in group])["characters"]
 
-        before = {"speaker": reading_of(readings), "others": reading_of(others)}
-        for k in corrections:
+        before = {"speaker": reading_of(readings), "others": reading_of(held)}
+        for u in corrections:
             copy = frozen(brain, folder)
-            logp = log_beliefs(copy, [held[k]["rows"]])[0]
-            bank.correct(brain, held[k]["rows"], forced_path(logp, held[k]["symbols"]))
-        after = {"speaker": reading_of(readings), "others": reading_of(others)}
-        report["adapt"] = {"speaker": speaker, "corrections": len(corrections),
+            logp = log_beliefs(copy, [u["rows"]])[0]
+            bank.correct(brain, u["rows"], forced_path(logp, u["symbols"]))
+        after = {"speaker": reading_of(readings), "others": reading_of(held)}
+        report["adapt"] = {"speaker": adapt[0]["speaker"], "corrections": len(corrections),
                            "characters_before": before, "characters_after": after}
         print(json.dumps(report["adapt"]), flush=True)
 
@@ -308,6 +320,8 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     parser.add_argument("--words", help="a word list, one word (and its count) a line")
     parser.add_argument("--utterances", type=int, default=400, help="training utterances")
     parser.add_argument("--held", type=int, default=60, help="held-out utterances")
+    parser.add_argument("--adapt", type=int, default=24,
+                        help="utterances of a new speaker: half corrections, half read")
     parser.add_argument("--passes", type=int, default=3)
     parser.add_argument("--batch", type=int, default=32, help="utterances side by side")
     parser.add_argument("--align-every", type=int, default=8, help="batches between alignments")
