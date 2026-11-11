@@ -61,7 +61,11 @@ assert not eyes.observation_code(np.full((1, 84, 84), 0.7)).any()  # a uniform s
 The pools are laid out by pool row, then pool column, then field, so the sensory region is
 three equal blocks, one per pool row. `tied={("sensory", "association"): (3, 1)}` reads the
 three rows through one set of synapses ([tied projections](tune.md#tied-projections-opt-in)):
-a field's response in a column drives the association alike in whichever row it lies.
+a field's response in a column drives the association alike in whichever row it lies. On twelve
+fresh founders of the pixel chamber that brain answers the untrained band at .977 against .947
+at the same .965 on fresh frames, every founder's band within .05 against 9 of 12, with 23,236
+parameters against 47,812. The lighting panel reads .781 against .818
+([the third run](../benchmarks/pixels/README.md#the-third-run-the-pool-rows-tied)).
 
 ### What the fields are for
 

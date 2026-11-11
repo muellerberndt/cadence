@@ -19,7 +19,12 @@
   path (no compiled moment, no device-resident MLX update); `Lives` and `graft` refuse it, and
   `grow` adds no neurons to a region a tie cuts into blocks. With the option unset every brain,
   its file and its description are unchanged to the bit on `backend="cpu"`; a composed tied
-  brain's file is refused by 0.97.0 (docs/tune.md, tied projections; docs/anatomy.md).
+  brain's file is refused by 0.97.0 (docs/tune.md, tied projections; docs/anatomy.md). On the
+  pixel chamber (#284, protocol 3, twelve fresh founders) the fields' three pool rows read
+  through one tied set of synapses answer the untrained band at .977 against .947 at the same
+  .965 on fresh frames, the band within .05 on 12 of 12 founders against 9 of 12 and all three
+  untrained panels within .05 on 10 of 12 against 8 of 12, at 23,236 parameters against 47,812;
+  the lighting panel reads .781 against .818 (benchmarks/pixels, the third run).
 
 ## 0.97.0 — 2026-11-10
 
