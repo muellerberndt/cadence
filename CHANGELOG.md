@@ -44,6 +44,26 @@ to the bit.
   size, and a second head chains from what the first record is about.
 - The conversation chamber, `benchmarks/dialogue/`, with bAbI adapters and matched controls.
 
+### The encyclopedia: facts read once (opt-in, #311)
+
+A brain reads a corpus of facts once, writing its own records, and answers questions about them
+from those records. Every option is off by default; without them a brain with records reads as
+before.
+
+- **Records kept as lists.** With `longterm_distinct` each stream keeps each record's entries and
+  each entry's records, so the records and the codebook grow to a hundred thousand records and
+  more. A checkpoint keeps the entries as rows of (stream, slot, entry).
+- **The record that holds the most** (`longterm_best=True`): the read takes the record holding the
+  largest share of the cue's weight, the latest among equals, so a question that names a subject
+  and a relation reads the record of both, and a fact told again is read from its latest telling.
+- **What the question asks beyond the first record** (`longterm_rest=True`, two heads): head 1 is
+  cued by the first record's value and the question's entries that record does not hold, so a
+  question of two facts reads the second fact; a question of one fact leaves head 1 empty.
+- The encyclopedia chamber, `benchmarks/encyclopedia/`: facts from Wikidata (CC0), questions in
+  trained and held-out wordings, revisions, questions of two facts, and matched controls (a
+  closed-book LSTM and transformer, a transformer with the facts in its window, and BM25
+  retrieval read by a transformer).
+
 ## 0.97.0 — 2026-11-10
 
 A new brain hears the moment before (`history_decays=(0.0,)`), its store averages the outcomes it

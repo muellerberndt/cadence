@@ -1816,9 +1816,34 @@ instead.
   the words around them) cues the latest other record holding it. "Where is the football?" reads
   "john picked up the football" and then where john went.
 
+A stream's records are kept as lists: each record's entries, and for each entry the records
+that hold it. A read touches only the records that hold the cue's entries, so the records and the
+codebook grow to a hundred thousand records and more.
+
+**The record that holds the most (`longterm_best=True`).** A question that names a subject and a
+relation ("what is the capital of italy ?") shares its subject with every fact about the subject
+and its relation with every fact of the relation. The latest record above the match may hold only
+one of them. With `longterm_best=True` the read takes the record that holds the largest share of
+the cue's weight, at least `longterm_match`, and the latest among records holding the same share.
+The record of both the subject and the relation is read, and a fact told again is read from its
+latest telling, which holds the same share as the earlier one.
+
+**What the question asks beyond the first record (`longterm_rest=True`, with
+`longterm_heads=2`).** A question of two facts ("what is the capital of the citizenship of ada
+lovelace ?") is answered by two records: the first names the country, the second holds the
+country's capital. With `longterm_rest=True` head 1 is cued by the first record's entries outside
+the question (its value, the country) together with the question's entries the first record does
+not hold and that weigh at least `longterm_distinct` of the question's heaviest ("capital"). Where
+the first record holds every such entry, the question asks one fact and head 1 holds nothing.
+
 | Setting | Founder | Changed by | What it sets |
 | --- | --- | --- | --- |
 | `longterm_distinct` | `None`, off | construction | A cue keeps its entries of at least this share of its heaviest weight |
+| `longterm_best` | `False` | construction | The read takes the record holding the most of the cue's weight; needs `longterm_distinct` |
+| `longterm_rest` | `False` | construction | Head 1 reads what the question asks beyond head 0's record; needs `longterm_distinct` and two heads |
+
+The [encyclopedia chamber](../benchmarks/encyclopedia/README.md) reads these settings on facts
+from Wikidata.
 
 ## How strongly a carried region is heard
 
