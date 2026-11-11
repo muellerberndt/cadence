@@ -1,7 +1,8 @@
 """Corrections heard beside earlier utterances at a weight.
 
 A correction teaches a brain one utterance it got wrong: the utterance's rows (one observation
-per step) with a label per step, for a recogniser the letter targets of a forced alignment. Taught
+per step) with a label per step, for a recogniser the letter targets of a forced alignment, or a
+distribution over the actions per step (``targets``) for a brain taught soft targets. Taught
 alone, a correction moves the brain toward the corrected speaker and away from the speakers it
 knew before. ``Rehearsal`` hears the correction as one stream beside ``rows`` earlier utterances,
 each its own stream, and teaches those at lesson weight ``weight`` (``Brain.lesson(weights=)``):
