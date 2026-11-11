@@ -151,8 +151,34 @@ frame of its path. The path is computed outside the brain. Six fresh founders (3
   stream as said, nothing merged, inserts more than one character per character. The words come
   from the CTC reading, as they do for the CTC learners.
 
+## Step 3: read speech, a measured target
+
+Declared in [`protocol-speech.json`](protocol-speech.json) before its first life; adapter
+[`speech.py`](speech.py). The data is LibriSpeech (CC BY 4.0): 4,000 utterances of
+train-clean-100 (765,752 steps of 40 ms, about 8.5 hours) and 300 held-out utterances of dev-clean.
+A step is 40 ms of 40 log-mel bands. The teacher knows each utterance's text and not its timing.
+It starts on the even split of an utterance's steps among its characters, and every 250
+utterances it re-aligns the next 250 by CTC's forced alignment through a frozen copy's beliefs.
+Three fresh founders (304300 to 304302).
+
+| Learner | Parameters | Training | Characters | Deleted per character | Words | Letter from the sound | Emission given the letter | Milliseconds per training step |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Brain, the forced alignment | 116,092 | one life | .209 (.19-.22) | .671 | -.04 | .18 | 1.00 | 6.19 |
+| LSTM, CTC | 116,735 | one pass / offline (30 epochs) | .401 / .491 | .282 / .194 | -.04 / .02 | .41 / .50 | .86 / .93 | .03 |
+| Transformer, CTC | 113,909 | one pass / offline (30 epochs) | .376 / .500 | .304 / .214 | -.07 / .01 | .36 / .49 | .87 / .93 | .03 |
+
+- No learner forms words at this size and exposure; the CTC learners say about half the
+  characters offline.
+- **The term located: the letter from the sound.** On the reference's forced path through its
+  own beliefs, the brain prefers the right letter on .18 of characters, where the CTC learners
+  prefer it on .36 to .50. Once it prefers the letter, it says it (1.00).
+- With beliefs that do not tell letters apart, the teacher's path has nothing to follow. It
+  moves .83 to .85 of steps from the even split and the lessons drift toward blank. The brain
+  says one or two letters with spaces (`h a a a a`) and deletes .67 of characters.
+- The brain's milliseconds per step include the teacher's alignment passes and the readings, on
+  one core; the gradient learners process a whole utterance in one call.
+
 ## What this does and does not establish
 
 The chamber measures composed brains on one synthetic world with supplied sound timing and one
-sound per letter. It shows nothing about read speech, where letters and sounds do not map one to
-one; that reading is a later step under its own protocol.
+sound per letter; Step 3 reads speech at one size and exposure, where no learner forms words.

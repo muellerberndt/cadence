@@ -27,8 +27,14 @@
     6 of 6, beside the supplied alignment (.983) and the CTC LSTM (.99). Candidate (b), taught
     until its sampled act says a letter, failed in development because the same sound frame took
     a letter's lesson and blank's.
-  - The read-speech adapter (`speech.py`): LibriSpeech heard as 40 ms steps of log-mel, taught by
-    CTC's forced alignment through the brain's beliefs, read by the same CTC reading.
+  - The read-speech adapter (`speech.py`, Step 3): LibriSpeech heard as 40 ms steps of log-mel,
+    taught by CTC's forced alignment through the brain's beliefs, read by the same CTC reading.
+    On 4,000 utterances and three fresh founders the default (116,092 parameters) reads
+    characters .21 and no words, where CTC learners at its size read .38 to .50 and no words. The
+    term located is the letter from the sound (.18 against .36 to .50).
+  - `vocabulary.py`: the most frequent words of LibriSpeech's training transcripts, utterances
+    whose every word is on the list, and words read against the open lexicon and matched to the
+    list.
 
 ## 0.97.0 — 2026-11-10
 
