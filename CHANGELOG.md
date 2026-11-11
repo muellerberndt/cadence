@@ -32,7 +32,8 @@ before.
 
 - **Records kept as lists.** With `longterm_distinct` each stream keeps each record's entries and
   each entry's records, so the records and the codebook grow to a hundred thousand records and
-  more. A checkpoint keeps the entries as rows of (stream, slot, entry).
+  more. A checkpoint keeps the entries as rows of (stream, slot, entry); a 0.97.1 file, which
+  keeps them as tables, loads.
 - **The record that holds the most** (`longterm_best=True`): the read takes the record holding the
   largest share of the cue's weight, the latest among equals, so a question that names a subject
   and a relation reads the record of both, and a fact told again is read from its latest telling.

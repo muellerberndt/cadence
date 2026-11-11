@@ -35,8 +35,8 @@ pass at twice the forward; BM25's read one accumulate per posting a query reache
 the parameters at 4 bytes, with the index and the told sentences' text for ``retrieval`` and the
 window's keys and values for ``context_transformer``.
 
-    PYTHONPATH=src python benchmarks/encyclopedia/controls.py --plan plan.json --out rows.jsonl \\
-        --data facts.tsv --workers 8
+    PYTHONPATH=src python benchmarks/encyclopedia/encyclopedia_controls.py --plan plan.json \\
+        --out rows.jsonl --data facts.tsv --workers 8
 """
 
 from __future__ import annotations
@@ -58,8 +58,8 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
-import chamber as ch  # noqa: E402
-import facts as fx  # noqa: E402
+import encyclopedia_chamber as ch  # noqa: E402
+import encyclopedia_facts as fx  # noqa: E402
 
 MODELS = ("closed_lstm", "closed_transformer", "context_transformer", "retrieval")
 WINDOW, K = 1024, 3

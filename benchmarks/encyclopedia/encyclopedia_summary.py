@@ -1,7 +1,8 @@
 """The encyclopedia's tables (cadence#311): the gates read on the brain's rows and the controls'
 rows, said and found apart, and each learner's costs.
 
-    python benchmarks/encyclopedia/summarize.py --brain rows.jsonl --controls controls.jsonl
+    python benchmarks/encyclopedia/encyclopedia_summary.py --brain rows.jsonl \
+        --controls controls.jsonl
 """
 
 from __future__ import annotations

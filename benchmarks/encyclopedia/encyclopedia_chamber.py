@@ -32,7 +32,8 @@ of two facts without it). Work is
 counted as seconds and multiply-accumulates: every synapse once a sweep and row of a moment's
 settle, and the records' read, one accumulate per record each of the cue's entries reaches.
 
-    PYTHONPATH=src python benchmarks/encyclopedia/chamber.py --plan plan.json --out rows.jsonl
+    PYTHONPATH=src python benchmarks/encyclopedia/encyclopedia_chamber.py \
+        --plan plan.json --out rows.jsonl
 """
 
 from __future__ import annotations
@@ -53,7 +54,7 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
-import facts as fx  # noqa: E402
+import encyclopedia_facts as fx  # noqa: E402
 
 ARMS = ("records", "distinct", "previous_word")
 UNITS = 280
