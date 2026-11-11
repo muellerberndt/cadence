@@ -2703,9 +2703,10 @@ winners=256, candidates=4096`, beside the scan that scores every record):
 | A chain of three facts from an exact cue | .998 to 1.000 | 1.000 |
 | Records a read scores; bytes a record (codes of 128) | 4,096; 1,783 | 1,000,000; 772 |
 
-A read at 1,000,000 records scores 4,096 of them where the scan scores every one; on a box
-shared with other work it took 6 to 18 ms against the scan's 69 to 93 ms (codes of 128). At
-100,000 records the store's own address of units is the cheaper read.
+On one core a read at 1,000,000 records takes 3.4 ms through the address of pairs (4.6 ms
+without Numba), 5.0 ms through the address of units and 48 ms for the scan (codes of 128); from
+100,000 to 1,000,000 records the pairs' read grows 1.3 to 1.5 times, the units' about 7 times.
+At 100,000 records the address of units is the cheaper read (.7 ms against 2.5 ms).
 
 #### Keys held apart (opt-in)
 

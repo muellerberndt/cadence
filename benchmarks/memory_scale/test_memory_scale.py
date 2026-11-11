@@ -924,6 +924,20 @@ def test_the_fourth_declaration_s_receipts_hold_the_verdicts_the_readme_states(c
                  "C5 (chains at 100,000: two hops .95, three .90, exact and noisy): 12 of 12 "
                  "founders: passes"):
         assert line in out
+    timing = sm.load(results, "fourth-timing")
+    assert len(timing) == 384 and {r["founder"] for r in timing} == {3136, 3137, 3138}
+    sm.timing(timing)
+    shared = sm.load(results, "fourth-shared")
+    assert {r["founder"] for r in shared if r["arm"] == "pairs-apart"} == set(range(3124, 3136))
+    sm.shared(shared)
+    out = capsys.readouterr().out
+    for line in ("(pairs: 1,000,000 over 100,000 under 3, both gate forms, 3 of 3): "
+                 "6 of 6 readings: passes",
+                 "(pairs-numpy: 1,000,000 over 100,000 under 3, both gate forms, 3 of 3): "
+                 "6 of 6 readings: passes",
+                 "C2 (found over all facts .99 on every founder, with apart): "
+                 "12 of 12 founders: passes"):
+        assert line in out
     readme = (HERE / "README.md").read_text()
     for cell in ("| `hashed-280` | 1,000,000 | `pairs` | 1.000 | .999 to 1.000 | .973 to .986 |",
                  "| C4b | 1,000,000 facts: four parts, a head each | .90 | 1.000, 12 of 12: "

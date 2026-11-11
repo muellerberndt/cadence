@@ -672,7 +672,7 @@ each is read beside its control.
 | --- | --- | --- | --- |
 | C1 | pairs at 1,000,000, codes of 128 and the hashed form: exact; noisy and partial | .99; .95 | exact 1.000; codes .997 to 1.000 and .996 to 1.000; hashed .999 to 1.000 and .973 to .986; 12 of 12: **passes** |
 | C3a | pairs against the scan at 1,000,000 on the same cues | within .01 | largest gap .004 (codes) and .010 (hashed, partial), 12 of 12: **passes** |
-| C3b | ms per read at 1,000,000 over 100,000, one core, compiled and through NumPy | under 3 | pending: the timing cells run on the idle box |
+| C3b | ms per read at 1,000,000 over 100,000, one core, compiled and through NumPy | under 3 | compiled 1.29 to 1.42, NumPy 1.38 to 1.50, 3 of 3 on both forms: **passes** |
 | C2 | 1,000,000 facts, 4 in 100 sharing their key: found over all facts, with `apart` | .99, 12 of 12 | 1.000, 12 of 12: **passes** |
 | C4a | 1,000,000 facts: the subject by 2, 4, 8 heads | .95 each | 1.000; 1.000; .994 to 1.000, 12 of 12: **passes** |
 | C4b | 1,000,000 facts: four parts, a head each | .90 | 1.000, 12 of 12: **passes** |
@@ -744,6 +744,70 @@ each is read beside its control.
   float32), its sums (32 bytes) and, through the address of pairs, 960 bytes of table: 120 pairs at
   8 entries a cell of 64 bytes. The table is sized to the capacity and drops the entries a full
   cell does not take: 1.3% of them at 1,000,000 hashed keys and 2.3% at 1,000,000 codes of 128.
+
+### Several records, questions of parts, chains
+
+`facts.py`, founders 3112 to 3123. N / 8 entities and 64 relations, each a unit code of 64
+coordinates; every entity is the subject of 8 facts with 8 different relations, and a fact's
+value is its object's code, so what a read holds can be the next cue's subject. The key of parts
+is the subject's code beside the relation's (128 coordinates); the control key is their unit sum
+(64 coordinates). Each cell is the range over the twelve founders.
+
+| Key | Facts | Arm | one fact, exact; noisy | the subject by 2; 4; 8 heads | parts, a head each, 2; 4; 8 | parts summed into one cue, 2; 4; 8 | chain from an exact cue, 2 and 3 hops | from a noisy cue |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| parts | 100,000 | `pairs` | 1.000; .998 to 1.000 | 1.000; 1.000; 1.000 | 1.000; 1.000; 1.000 | .830 to .896; .014 to .028; .000 | 1.000 | .998 to 1.000 |
+| parts | 100,000 | `scan` | 1.000; 1.000 | 1.000; 1.000; 1.000 | 1.000; 1.000; 1.000 | .814 to .870; .014 to .030; .000 | 1.000 | .998 to 1.000 |
+| parts | 1,000,000 | `pairs` | 1.000; .980 to .992 | 1.000; 1.000; .994 to 1.000 | 1.000; 1.000; 1.000 | .806 to .862; .000 to .006; .000 | .998 to 1.000 | .978 to 1.000 |
+| parts | 1,000,000 | `scan` | 1.000; .996 to 1.000 | 1.000; 1.000; 1.000 | 1.000; 1.000; 1.000 | .818 to .870; .000 to .010; .000 | 1.000 | .998 to 1.000 |
+| summed | 100,000 | `pairs` | 1.000; .946 to .978 | 1.000; 1.000; .986 to 1.000 | 1.000; 1.000; 1.000 | .832 to .884; .000 to .002; .000 | 1.000 | .948 to .972 |
+| summed | 100,000 | `scan` | 1.000; .946 to .978 | 1.000; 1.000; .990 to 1.000 | 1.000; 1.000; 1.000 | .836 to .884; .000 to .002; .000 | 1.000 | .950 to .972 |
+| summed | 1,000,000 | `pairs` | .998 to 1.000; .862 to .892 | 1.000; 1.000; .946 to .968 | .998 to 1.000; .996 to 1.000; .994 to 1.000 | .700 to .752; .000; .000 | .996 to 1.000 | .848 to .892 |
+| summed | 1,000,000 | `scan` | 1.000; .868 to .902 | 1.000; 1.000; .976 to .996 | 1.000; 1.000; 1.000 | .726 to .784; .000; .000 | 1.000 | .860 to .910 |
+
+A chain of three hops reads as its two hops do: the miss is the first, noisy hop, and every later
+hop's cue holds a value read whole.
+
+- **Several facts through one cue bind.** Two parts summed are found at .81 to .90 and four at .00
+  to .03, for the scan as well: one address holds few superposed codes, the first declaration's
+  located term. A head per part finds every part to eight parts.
+- **The key of parts carries the noise.** With the subject and the relation summed on one set of
+  coordinates a noisy cue among 1,000,000 facts finds its fact at .86 to .90, the scan too; with
+  the parts side by side, .980 to .992 (the scan .996 to 1.000).
+- **The address against the scan** at 1,000,000 lies within .02 on every reading of the key of
+  parts. The widest gap is the noisy single fact: 8 facts share each subject and about 15,600
+  each relation, half a key apiece, and they crowd the candidates.
+
+### The read's cost on one core
+
+The declared timing cells: founders 3136 to 3138, three processes on a box that runs nothing
+else, from 21:57 UTC; 300 timed reads of each cue kind, each read with its value. `pairs` counts
+its slots in the compiled loop (Numba), `pairs-numpy` through NumPy, over the same records. Each
+cell is the range over the three founders of the mean over the three cue kinds.
+
+| Form | Arm | 100,000 | 1,000,000 | 1,000,000 over 100,000 |
+| --- | --- | --- | --- | --- |
+| `code-128` | `pairs` | 2.481 to 2.610 | 3.406 to 3.450 | 1.31 to 1.37 |
+| `code-128` | `pairs-numpy` | 3.168 to 3.261 | 4.643 to 4.758 | 1.43 to 1.50 |
+| `code-128` | `scan` | 1.892 to 2.489 | 48.029 to 48.149 | 19.31 to 25.44 |
+| `code-128` | `units` | .664 to .671 | 4.982 to 5.021 | 7.42 to 7.57 |
+| `hashed-280` | `pairs` | 3.122 to 3.182 | 4.107 to 4.434 | 1.29 to 1.42 |
+| `hashed-280` | `pairs-numpy` | 3.791 to 3.891 | 5.275 to 5.377 | 1.38 to 1.40 |
+| `hashed-280` | `scan` | 8.692 to 9.068 | 106.250 to 108.879 | 11.72 to 12.53 |
+| `hashed-280` | `units` | .868 to .889 | 5.766 to 6.522 | 6.49 to 7.34 |
+
+- **C3b passes**: the address of pairs reads 1,000,000 records in 3.4 ms (codes of 128) and 4.1 to
+  4.4 ms (the hashed form), 1.29 to 1.42 times its time at 100,000; through NumPy 4.6 to 5.4 ms,
+  1.38 to 1.50 times. The address of units grows 6.5 to 7.6 times and the scan 12 to 25 times
+  over the same tenfold.
+- **Where each read is cheapest.** The address of pairs reads 522,240 table entries whatever the
+  records, so at 100,000 the address of units is about four times cheaper (.66 to .89 ms against
+  2.5 to 3.2 ms); at 1,000,000 the pairs are the cheaper read (3.4 against 5.0 ms, codes of 128).
+  The scan takes 48 ms (codes of 128) and 106 to 109 ms (hashed) at 1,000,000.
+- **Writes.** `fill` writes 1,000,000 records in 119 s (codes of 128) and 146 s (hashed) on the
+  address of pairs, and 167 s and 327 s on the address of units.
+
+The capacity cells above ran on a box shared with about forty other processes: their reads took
+6 to 18 ms through the address of pairs at 1,000,000 (codes of 128).
 
 ### Several records, questions of parts, chains
 

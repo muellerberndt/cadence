@@ -186,7 +186,7 @@ Read on the declared founders; tables in the
 | --- | --- | --- | --- |
 | C1 | pairs at 1,000,000: exact; noisy and partial, codes of 128 and the hashed form | .99; .95 | exact 1.000; codes .997 to 1.000 and .996 to 1.000; hashed .999 to 1.000 and .973 to .986; 12 of 12: **passes** |
 | C3a | pairs against the scan at 1,000,000 | within .01 | largest gap .004 (codes) and .010 (hashed, partial), 12 of 12: **passes** |
-| C3b | ms per read, 1,000,000 over 100,000, one core | under 3, 3 of 3 | pending: the timing cells run on the idle box |
+| C3b | ms per read, 1,000,000 over 100,000, one core | under 3, 3 of 3 | compiled 1.29 to 1.42, NumPy 1.38 to 1.50, both forms, 3 of 3: **passes** |
 | C2 | 1,000,000 facts, 4 in 100 sharing their key, with `apart`: found over all facts | .99, 12 of 12 | 1.000, 12 of 12: **passes** |
 | C4a | subject by 2, 4, 8 heads at 1,000,000 | .95 each | 1.000; 1.000; .994 to 1.000, 12 of 12: **passes** |
 | C4b | four parts, a head each, at 1,000,000 | .90 | 1.000, 12 of 12: **passes** |
