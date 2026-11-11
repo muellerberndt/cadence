@@ -44,10 +44,12 @@ ph = _load("phrases")
 sp = _load("spoken")
 
 
-def measure(name: str, data: str, phrases: int, founder: int = 0) -> dict[str, Any]:
+def measure(
+    name: str, data: str, phrases: int, founder: int = 0, match: str = "fields"
+) -> dict[str, Any]:
     test = ph.Phrases(Path(data) / "base_test.npz")
     hearing = ch.Hearing.measured(ph.Phrases(Path(data) / "base_train.npz"))
-    learner = sp.learner_of(name, founder, "fields", None)
+    learner = sp.learner_of(name, founder, match, None)
     rows = np.arange(min(phrases, len(test)))
     steps, corrections = [], []
     for r in rows:
@@ -94,6 +96,7 @@ def main() -> None:
     parser.add_argument("--data", default=None)
     parser.add_argument("--learners", nargs="+", default=["fields", "transformer_ctc"])
     parser.add_argument("--phrases", type=int, default=24)
+    parser.add_argument("--match", default="fields", help="the brain arm a baseline matches")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
     try:
@@ -109,7 +112,7 @@ def main() -> None:
             data = scratch
         with open(args.out, "a") as handle:
             for name in args.learners:
-                handle.write(json.dumps(measure(name, data, args.phrases)) + "\n")
+                handle.write(json.dumps(measure(name, data, args.phrases, match=args.match)) + "\n")
                 handle.flush()
 
 
