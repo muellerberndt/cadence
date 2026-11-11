@@ -1,0 +1,24 @@
+{
+ "schema": "letters-speech/1",
+ "issue": "https://github.com/muellerberndt/cadence/issues/304",
+ "stage": "Step 3, declared before its first life: read speech as a measured target, the teacher's forced alignment through the brain's beliefs, beside CTC baselines at the brain's parameter count.",
+ "data": {
+  "corpus": "LibriSpeech (CC BY 4.0, https://www.openslr.org/12), from the openslr.elda.org mirror",
+  "md5": {"train-clean-100.tar.gz": "2a93770f6d5c6c964bc36631d331a522", "dev-clean.tar.gz": "42e2234ba48799c1f50f24a7926300a1"},
+  "train": "4,000 utterances of train-clean-100 of at most 12 seconds, drawn with seed 0 (765,752 steps of 40 ms)",
+  "held": "300 utterances of dev-clean of at most 12 seconds, drawn with seed 0 (45,347 steps); no speaker on both sides",
+  "steps": "40 ms: four 25 ms frames every 10 ms of 40 log-mel bands, 160 values, normalized per band on the training steps (speech.py prepare)"
+ },
+ "founders": [304300, 304301, 304302],
+ "align_every": 250,
+ "probe_every": 1000,
+ "brain": {
+  "genes": {"actor_eta": 0.0, "actor_eta_bias": 0.0, "actor_eta_critic": 0.0},
+  "note": "Brain.compose(160, 29, backend='cpu', seed=s, **genes): the 0.97.0 default composition, 116,092 parameters. Each utterance from rest (reset), one Brain.step(step, teacher=symbol) a step."
+ },
+ "teacher": "The first 250 utterances in the seeded order are taught on the even split of their steps among their characters (spaces included). Every 250 utterances a frozen copy answers the next 250 greedily, and each one's steps go to its characters by CTC's forced alignment through the copy's log beliefs (ctc_path: blank may fill any step and parts a letter from the same letter after it); each step is taught the symbol on its path.",
+ "controls": {"parameters": 116092, "learners": ["lstm ctc", "transformer ctc"], "modes": ["online: one pass over the 4,000 utterances in the brain's order, one Adam step each (rate 0.003)", "offline: shuffled epochs to the stopping rule (rate 0.001, patience 3, at most 30)"]},
+ "readings": "On the 300 held-out utterances by the CTC reading: characters, inserted, deleted and substituted characters per character, words, the insertion and deletion shares of word errors, exact transcripts, words lost on spacing alone, and the located terms (speech.locate): the letter from the sound, its emission given the letter, the word given its letters. Seconds per step and per utterance on both sides.",
+ "gate": "None: a measured target. The term that loses words is reported for every learner.",
+ "stop": "One life per process; every life kept and reported."
+}

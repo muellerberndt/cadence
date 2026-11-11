@@ -20,6 +20,45 @@
   `grow` adds no neurons to a region a tie cuts into blocks. With the option unset every brain,
   its file and its description are unchanged to the bit on `backend="cpu"`; a composed tied
   brain's file is refused by 0.97.0 (docs/tune.md, tied projections; docs/anatomy.md).
+### Benchmarks
+
+- **The letters chamber** ([`benchmarks/letters/`](benchmarks/letters/README.md), #304). Letters
+  heard as sounds of one to four frames, said one symbol a frame, read the same for every learner:
+  the stream as said, the CTC reading, held-out words, each letter's said steps and the stages.
+  Matched controls by gradient: an LSTM and a transformer by CTC, and LSTMs on the brains'
+  per-frame targets. No library change.
+  - Step 0 (development founders): taught a letter at its sound's first frame, the 0.97.0 default
+    says each letter once (.96 of sounds, .003 inserted per character, characters .968 on 18,000
+    words) and loses words at the emission of a letter after a letter pair no trained word holds
+    (missed .286 against .006), while its state holds the letter there at .99. Taught at a step
+    the sound does not mark (letters spread evenly over the word), it holds letters and misses
+    half.
+  - Step 1 ([`PROTOCOL_1.md`](benchmarks/letters/PROTOCOL_1.md), six fresh founders): two motor
+    slots, the symbol heard and whether to say it, fail the emission gate (3 of 6) and the words
+    gate (held-out words .40, 0 of 6), where the default reads .47 and passes emission on 6 of 6.
+    Learners taught when to say a letter by a per-frame lesson read held-out words at .40 to .67;
+    the CTC learners, which choose their own timing, at .85 to .94.
+  - Step 2 ([`PROTOCOL_2.md`](benchmarks/letters/PROTOCOL_2.md), six fresh founders): a teacher
+    that knows each word's letters and frames re-aligns them every 500 words by the monotonic best
+    path through a frozen copy's beliefs, and teaches each letter on every frame of its path. On
+    the CTC reading the 0.97.0 default reads characters .999 and held-out words .994, both gates on
+    6 of 6, beside the supplied alignment (.983) and the CTC LSTM (.99). Candidate (b), taught
+    until its sampled act says a letter, failed in development because the same sound frame took
+    a letter's lesson and blank's.
+  - The read-speech adapter (`speech.py`, Step 3): LibriSpeech heard as 40 ms steps of log-mel,
+    taught by CTC's forced alignment through the brain's beliefs, read by the same CTC reading.
+    On 4,000 utterances and three fresh founders the default (116,092 parameters) reads
+    characters .21 and no words, where CTC learners at its size read .38 to .50 and no words. The
+    term located is the letter from the sound (.18 against .36 to .50).
+  - `vocabulary.py`: the most frequent words of LibriSpeech's training transcripts, utterances
+    whose every word is on the list, and words read against the open lexicon and matched to the
+    list.
+  - Round 3 on #307's corpus (2,100 utterances whose every word is on the list, 2.5 hours):
+    through `learned_fields` the letter from the sound reads .35 at associations of 256 and 512
+    (.18 on raw log-mel); every row taught with `fields_motor=1.0` lifts the emission given the
+    letter from .42 to .78 and characters from .26 to .33, beside CTC learners at .33 to .44. No
+    learner forms words at this exposure.
+
 ### A pathway from the pools of learned fields to the motor region (opt-in, #303)
 
 `Brain.compose(..., learned_fields=features, fields_motor=scale)` adds one plastic projection
