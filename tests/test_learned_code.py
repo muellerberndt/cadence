@@ -147,6 +147,8 @@ def taught(brain: cd.Brain) -> list[int]:
 # which stepped this lesson, and with recall_address=0.0 the two commits read one digest.
 # Re-recorded at 0.95.2, where a lesson's free phase starts from the stream's activity the act
 # settles from: new checkpoint digests, the acts as recorded (efficacies move by at most 0.0006).
+# The taught life's checkpoint was re-recorded at 0.97.1, whose saved lesson report adds
+# demonstration_agreed_slots (#309): without that key the file reads the recorded digest.
 FOUNDERS: dict[str, dict] = {
     "stepped": {
         "build": (4, 2, {"modules": (8,), "seed": 3}),
@@ -190,7 +192,7 @@ FOUNDERS: dict[str, dict] = {
         "acts": [4, 7, 1, 0, 0, 4, 4, 4, 0, 4, 4, 4, 0, 0, 7, 3, 0, 0, 7, 4, 0, 0, 7, 4, 1, 0, 0, 4, 3, 0, 0, 1, 0, 6, 0, 5, 0, 0, 0, 1],
         "format": "cadence-brain/1",
         "names": "0aab0d179b44428d742d358f48b22b0571e9fd78c4cefa76ad52551d9920c16e",
-        "checkpoint": "1a034e0970a01cb3980c381e1c8db0f7d0a425f8fe16aca8d3a8b2503e512fad",
+        "checkpoint": "d3cf1770f4c76ddefadde955f2eca97d1a5706079fbc41d79c6602e8e4d7e976",
         "describe": "cc8ab01bf4d13f18c5a4053a6e5ad23b0affb3679b08ec32f05a96df72703f5a",
     },
     "wide": {

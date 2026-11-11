@@ -201,6 +201,8 @@ def _taught(brain):
 # Re-recorded at 0.95.2, where a lesson's free phase starts from the stream's activity the act
 # settles from: the lives that teach after an act read new checkpoint digests (their efficacies
 # move by at most 0.0021).
+# The taught life's checkpoint was re-recorded at 0.97.1, whose saved lesson report adds
+# demonstration_agreed_slots (#309): without that key the file reads the recorded digest.
 FOUNDERS = {
     "stepped": {
         "build": (4, 2, {"modules": (8,), "seed": 3, "recall": False}),
@@ -242,7 +244,7 @@ FOUNDERS = {
                  4, 0, 6, 4, 4, 0, 0, 4],
         "format": "cadence-brain/1",
         "names": "22097597c1a2febccbca3fd13f4eb304480cee327bc4ff19339470e9ea42b49d",
-        "checkpoint": "eed3b31b120451fa8afd5c1c693c6c4d068f184018b71fd17068a2d39dcb7475",
+        "checkpoint": "06a663f950ff29e7d06b5f7722f96979ee52919cd15deb703a11574712ebc474",
     },
 }
 
