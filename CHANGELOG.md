@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### A store of settled activity (#308)
+
+- **`message_settled`** (`Brain.compose(message=width, message_settled=True)`), off by default: a
+  block of the message region holds the association's own settled activity of the latest moment
+  that joined it, in place of the fixed sparse code, one unit per association neuron. With
+  `message_roles` the block read's turn is one term per role, shared by the role's blocks.
+  Without the setting every bit is as on 0.97.0.
+- **The sentence instrument** (`benchmarks/grammar/SENTENCE_PROTOCOL.md`): sentences heard as
+  concepts and as words and said back, the settled state probed after the last heard moment, and
+  the chamber's LSTM and transformer taught and probed the same way.
+
 ### A word said by its parts (#302)
 
 - **The chamber's motor by parts** (`benchmarks/grammar/MEANING_PROTOCOL_7.md`, no library

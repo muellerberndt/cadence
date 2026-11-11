@@ -1603,6 +1603,7 @@ assert not speaker.message.state.any()                    # a new stream starts 
 | `message_boundary` | `None` | construction | An input channel; a heard moment with it on empties the message and begins it again |
 | `message_boundary_holds` | `False` | construction | At the boundary the message keeps what it heard and nothing after joins, until the episode ends |
 | `message_roles` | `()`, off | construction | Groups of input channels: a moment's role chooses its blocks, below |
+| `message_settled` | `False` | construction | A block holds the association's own settled activity of the latest moment that joined it, in place of the fixed code; `message` is then the association's width |
 | `message_read` | `False` | construction | The read of one block at a time, below |
 
 **A read of one block (`message_read=True`).** A port of `units` neurons holds one block of the
