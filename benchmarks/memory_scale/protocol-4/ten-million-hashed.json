@@ -1,0 +1,30 @@
+{
+ "founders": [
+  3100
+ ],
+ "n": [
+  10000000
+ ],
+ "forms": [
+  {
+   "form": "hashed"
+  }
+ ],
+ "trials": 1000,
+ "head_trials": 100,
+ "timed": 100,
+ "arms": [
+  {
+   "name": "pairs",
+   "settings": {
+    "pairs": 16,
+    "expansion": 32768,
+    "winners": 512,
+    "candidates": 8192
+   }
+  },
+  {
+   "name": "scan"
+  }
+ ]
+}

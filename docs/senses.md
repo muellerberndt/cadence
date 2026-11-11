@@ -206,6 +206,12 @@ width.
 the stage a new brain holds the recall memory: its key is `features * 9` wide (576 at 64
 fields), where an 84 by 84 frame's own 7,056 coordinates are refused.
 
+The fields read on the host, whatever the brain's backend. A moment reads the same frames
+more than once (the outcome before it, its lesson and its act); the fields keep the codes of
+the latest two frames they read (`LearnedFields.KEPT`) and return a kept code for frames and
+tables equal to the ones it was read from, the same array to the bit, so a training step reads
+the frames' code once where it read it three times.
+
 A checkpoint saves the fields' settings and work counts under `learned_fields` and their
 tables as `learned_fields/dictionary` and `learned_fields/thresholds`; `describe()` reports
 them, the code's kind as `"fields"`, and `parameters()` counts both tables

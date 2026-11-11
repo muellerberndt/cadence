@@ -136,6 +136,27 @@ def note(text: str, started: float) -> None:
     print(f"[{time.process_time() - started:8.0f} s] {text}", file=sys.stderr, flush=True)
 
 
+REHEARSED = 256  # base training phrases the rehearsal's bank remembers
+
+
+def bank_of(train: Any, hearing: Any, founder: int, soft: float = 0.0) -> Any:
+    """The library's correction (``cadence.speech.correct.Rehearsal``, three phrases at weight
+    .25) with ``REHEARSED`` base training phrases and their per-step targets in its bank, soft
+    at ``soft`` where the life was taught soft targets."""
+    from cadence.speech.correct import Rehearsal
+
+    bank = Rehearsal(rows=3, weight=0.25, seed=founder)
+    rows = sample(len(train), REHEARSED, f"rehearsal-{founder}")
+    for r in rows:
+        x = ch.stream(train, np.array([r]), hearing)[0]
+        labels = train.target[r : r + 1, : len(x)]
+        if soft:
+            bank.remember(x, targets=ch.soft_targets(labels, soft)[0])
+        else:
+            bank.remember(x, labels[0])
+    return bank
+
+
 def loaded(learner: Any, path: Path) -> Any:
     """The learner a life saved at ``path`` (``.npz`` a brain, ``.pt`` a baseline)."""
     if learner.kind == "brain":
@@ -224,11 +245,14 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
                     retention_rows,
                     hearing,
                     spec.get("minutes", [0, 1, 2, 5]),
-                    replay=train if mode != "plain" else None,
+                    replay=train if mode not in ("plain", "rehearsal") else None,
                     replays=int(spec.get("replays", 3)),
                     rate=float(rate),
                     seed=founder,
                     held=HELD.get(mode),
+                    rehearsal=bank_of(train, hearing, founder, getattr(learner, "soft", 0.0))
+                    if mode == "rehearsal"
+                    else None,
                 )
                 adaptation.append({"speaker": speaker, "mode": mode, "rate": rate, "curve": curve})
                 said = " ".join(f"{c['own']['word_accuracy']:.3f}" for c in curve)

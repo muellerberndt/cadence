@@ -523,7 +523,7 @@ associative store: [memory](memory.md#associative-store-the-hippocampus).
 ```text
 LongTermMemory(width, value_width, capacity, temperature=0.0, candidates=256, expansion=8192,
                winners=64, depth=2.0, idle=None, hold=None, revise=0.9, fade=True, seed=0,
-               direct=None, dtype=float64)
+               direct=None, dtype=float64, cosine=False, pairs=0, apart=0)
 LongTermRead(slots, weights)
 ```
 
@@ -551,18 +551,39 @@ nonpositive `depth`, `idle` or `hold` of one moment or less, `winners` above `ex
 entry.
 [A long-term memory of records](memory.md#a-long-term-memory-of-records).
 
+`pairs=units` (0: off) files a record under every pair of its `pairs` most driven units in a
+table of cells (`cells`, `fills`; `dropped` counts the entries a full cell did not take), and a
+cue's `winners` name the pairs a read looks under; the `candidates` slots found under the most
+pairs are scored. `fill(keys, values, sources=None)` writes rows of records told once into empty
+slots and returns their slots. `read_each(cues, credit=True)` reads `cues[h]` with head `h`, and
+`chain(cue, links, at=0, credit=True)` returns the reads of a chain, each value added to the next
+link on coordinates `at : at + value_width`. `apart=width` (0: off) keeps a signature of each
+write's `source` (`write(key, value, source=row)`, `signs`): a held key is revised only where the
+signatures agree, and `read(cue, source=row)` takes its own among records that tie.
+`LongTermMemory.COMPILED = False` reads the pairs through NumPy where Numba is installed. It
+raises `ValueError` for `pairs` of 1 or above `winners`, a negative `apart`, a `source` without
+`apart` or of another shape, a `fill` past the empty slots, and `cues` or `links` of another
+shape. [A million records](memory.md#a-million-records-opt-in).
+
 `Brain.compose(..., longterm=records)` builds a `LongTermRecords` (in `cadence.longterm`) as
 `brain.longterm`: one `LongTermMemory` of `records` slots per stream (`stores`), keyed by the
 brain's held message from a turn; it needs `message=units`, `message_boundary` and
 `message_boundary_holds=True`. `longterm_heads` (1), `longterm_amplitude` (3.0), `longterm_match`
 (0.75), `longterm_revise` (0.999), `longterm_turn` (None) and `longterm_rare` (0.03) are
-construction settings; with `longterm_turn=channel` every moment with that input channel on is a
+construction settings, as are `longterm_pairs` (0), `longterm_expansion`, `longterm_winners`,
+`longterm_candidates` (None: the store's own) and `longterm_fade` (True), which build each
+stream's store (`address()` names those that differ from the store's founders); with `longterm_turn=channel` every moment with that input channel on is a
 turn, a turn's key is the rare units of the message's codes heard since the last value
 (`content(window)`), and `window`, `key`, `heard` and `moments` hold the streams' windows, their
 keys and the units' counts. `longterm_distinct=share` (with `longterm_turn`) reads by codebook
 entries weighted by their rarity among the stream's records (`codebook`, `sets`, `stamps`,
-`weights(row)`, `entry(code)`), the latest record holding `longterm_match` of the cue's weight,
-and a second head chains from what the first record is about. `read_slots` holds each head's
+`weights(row)`, `entry(code)`, `entries`), the latest record holding `longterm_match` of the
+cue's weight, and a second head chains from what the first record is about; each stream's records
+are kept as lists, and `sets`, `wset` and `cue` build the tables of entries from them.
+`longterm_best=True` reads the record holding the most of the cue's weight, the latest among
+equals, and `longterm_rest=True` cues a second read with the first record's entries outside the
+cue and the cue's entries the first record does not hold, the regions holding the chain from its
+end (the answering record on `longterm`). `read_slots` holds each head's
 record at the latest read (-1 for none), `counts` the writes, revisions, statements agreed and
 reads, and `clear()` empties every stream's records. `LongTermRecords.ports(heads)` names the
 regions (`longterm`, `longterm_1`, ...). The streams' records are read, written and faded as one
@@ -630,6 +651,35 @@ nothing past it (`clamp=False`). `code(readings)` takes `(readings,)` or `(rows,
 below its high, `per` under 2, a `floor` outside `[0, 1)`, a `clamp` that is no bool, and readings of another width or not
 finite. It learns nothing and is not part of a checkpoint. Guide:
 [continuous readings](senses.md#continuous-readings-a-population-code).
+
+## Corrections and streaming (`cadence.speech.correct`, `cadence.speech.stream`)
+
+Opt-in: `import cadence` loads neither. Guide: [speech](speech.md).
+
+```text
+Rehearsal(rows=3, weight=0.25, budget=64 * 2**20, seed=0)
+StreamReader(brain, hearing, *, alphabet=None, words=None, temperature=None)
+```
+
+`Rehearsal` keeps earlier utterances in a bank: `remember(rows, labels)` adds one (`rows` a finite
+`(steps, inputs)` array, one nonnegative integer label a step); when the bank would pass `budget`
+bytes, utterances chosen at random (seeded) leave it; `len()` and `nbytes` report it.
+`correct(brain, rows, labels)` resets the brain and hears the utterance as one stream beside
+`rows` banked utterances (those of its length first, then the nearest), each step a
+`lesson(..., weights=)` before a greedy `act`: the correction at weight one, the banked utterances
+at `weight`, every stream past its own last row at zero. It leaves the brain at rest and returns
+the streams, the steps, the lessons a learning phase refused and the actions taken on the
+correction. Refused with `ValueError`: negative `rows` or `weight`, a budget of no bytes, an
+utterance larger than the budget, labels not one a step, banked rows of another width.
+
+`StreamReader` runs one stream of `brain` on audio heard through a `frontend.Hearing`.
+`push(samples)` takes the next 16 kHz samples in blocks of any size and returns the text its
+answers add (repeats and blanks collapsed); `text()` is the transcript so far, `finish()` the
+transcript read by `words` (a `decode.WordBeam`) where one is given; `actions` and `beliefs` hold
+each step's answer and log beliefs; `latency()` the median and 95th-percentile seconds per step
+and the seconds per second of audio; `reset()` begins a new utterance. Its rows are those of
+`hearing.steps(log_mel(audio))` for the whole recording. Refused with `ValueError`: a brain whose
+motor neurons do not match the alphabet, samples not finite.
 
 ## Learning (`cadence.learning`)
 

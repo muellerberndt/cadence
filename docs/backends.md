@@ -8,7 +8,7 @@ NumPy float64 unless you pick another. Start from the NumPy-only
 [installation](../README.md#get-started) and add an extra:
 
 ```bash
-python -m pip install "cadence-net[fast]==0.97.1"
+python -m pip install "cadence-net[fast]==0.98.0"
 ```
 
 `[fast]` installs Numba and SciPy, `[accel]` PyTorch and `[apple]` MLX (0.21.1 or later); from a checkout, use
@@ -382,6 +382,24 @@ brain on the CPU under the sizes where a device passes one core.
 
 The load moves these readings: above a load of 4 an MLX act
 at the speech size has read twice its quiet time.
+
+### The read-speech recipe on a device
+
+The read-speech recipe's brain, `Brain.compose((40, 24), 29, learned_fields=64, modules=(256,),
+fields_motor=1.0, learning_surprise=False)`, trains on CUDA float32 and on MLX with 32 and 128
+utterances heard side by side as streams, its lessons within the settle's tolerance of the CPU's
+and its saves loading on every backend to the same parameters
+([on a device](../benchmarks/letters/README.md#on-a-device-issue-314-r3)). Seconds of training
+per hour of audio, a lesson and the alignment's greedy act per step:
+
+| Where | 32 streams | 128 streams |
+| --- | ---: | ---: |
+| NVIDIA A10G, CUDA float32 | 187 | 126 |
+| One CPU core of the same machine | 770 | 691 |
+| Apple M4, MLX, shared (load 20 to 37) | 456 to 1,083 | 251 to 501 |
+
+Its learned fields read and learn on the host whatever the backend; on the A10G at 128 streams
+they take about 60% of a lesson step.
 
 Cap BLAS and Numba threads for parallel workers. To compare two implementations, use identical
 dtype, steps and tolerances over several seeds, warm up, alternate the order, synchronize

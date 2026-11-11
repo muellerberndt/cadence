@@ -1,0 +1,59 @@
+{
+ "founders": [
+  3100,
+  3101,
+  3102,
+  3103,
+  3104,
+  3105,
+  3106,
+  3107,
+  3108,
+  3109,
+  3110,
+  3111
+ ],
+ "n": [
+  100000,
+  1000000
+ ],
+ "forms": [
+  {
+   "form": "code",
+   "width": 128
+  },
+  {
+   "form": "hashed"
+  },
+  {
+   "form": "code",
+   "width": 256
+  },
+  {
+   "form": "code",
+   "width": 64
+  }
+ ],
+ "trials": 1000,
+ "head_trials": 200,
+ "timed": 100,
+ "arms": [
+  {
+   "name": "scan"
+  },
+  {
+   "name": "pairs",
+   "settings": {
+    "pairs": 16,
+    "expansion": 16384,
+    "winners": 256,
+    "candidates": 4096
+   }
+  },
+  {
+   "name": "units",
+   "settings": {},
+   "max_n": 1000000
+  }
+ ]
+}

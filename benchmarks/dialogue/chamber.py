@@ -87,7 +87,7 @@ def read_work(brain: Any, batch: int) -> float:
     reading = kept.since >= 0 if kept.turn is None else kept.since == 0
     rows = [int(r) for r in np.flatnonzero(reading) if int(r) < len(kept.stores)]
     if kept.distinct is not None:  # the weights over the records' entries, then each head's
-        entries = len(kept.codebook)
+        entries = kept.entries
         return float(sum(kept.stores[r].count * entries * (1 + kept.heads) for r in rows))
     return float(sum(keys[r].sum() * kept.stores[r].count for r in rows))
 
