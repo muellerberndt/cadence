@@ -225,3 +225,33 @@ says the right word at .510 (the bar met). Paired over speakers, the arm's two-m
 the transformer with CTC's by .039 on new speakers and .085 on the dialect, with retention change
 higher by .045 and .019. One stream on one c7i core: 2.37 ms per 0.49 s step, 4.84 ms per second of
 audio; 0.249 s per correction.
+
+### Round 3: past the association, and corrections that keep retention (development founders 0 and 1)
+
+Round 2's arm (`fields_motor=1.0`, soft targets .5, 1,296,996 parameters). `readout.py` reads a
+saved brain at the word steps of 600 test phrases:
+
+| Reading at word steps | Right | Silence |
+| --- | --- | --- |
+| what the brain says | .543 | .105 |
+| the same, pools-to-motor pathway cut | .425 | .114 |
+| the same, association-to-motor pair cut | .291 | .071 |
+| ridge readout of the association, from rest | .577 | |
+| the motor input from the association alone, the pools alone, both (from rest) | .464, .287, .530 | |
+
+The pathways add up; the brain's confusions are its association's (`tree` and `three`, `go` and
+`no`), and the motor read loses .03 of the association and says silence at .105 of the word steps.
+
+Corrections (`--modes`): `held` hears three training phrases beside the corrected one and teaches
+them at weight zero (the efficacies change as by the corrected phrase alone; the fields and
+memories hear all four), `held25` at weight .25. On 6 development new speakers and 7 dialect
+speakers, at 2 minutes:
+
+| Correction | Parameters | New speakers: gain / retention change | Dialect: gain / retention change |
+| --- | --- | --- | --- |
+| plain | 1,296,996 | +.073 / -.017 | +.121 / -.044 |
+| held | 1,296,996 | +.075 / -.004 | +.096 / -.022 |
+| held25 | 1,296,996 | +.069 / +.016 | +.107 / +.018 |
+| replay | 1,296,996 | +.056 / +.026 | +.077 / +.033 |
+| transformer with CTC, plain | 1,281,498 | +.079 / -.052 | +.096 / -.029 |
+| transformer with CTC, replay | 1,281,498 | +.098 / +.020 | +.084 / +.025 |
