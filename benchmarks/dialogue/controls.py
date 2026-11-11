@@ -167,8 +167,11 @@ class Learner:
             return np.asarray(self.net(torch.from_numpy(x)).argmax(-1))
 
 
-def lessons(spec: dict[str, Any]) -> tuple[wd.Lexicon, list[list[wd.Conversation]],
-                                            list[tuple[dict[str, Any], list[list[wd.Conversation]]]]]:
+Batches = list[list[wd.Conversation]]
+
+
+def lessons(spec: dict[str, Any]) -> tuple[wd.Lexicon, Batches,
+                                            list[tuple[dict[str, Any], Batches]]]:
     """The lesson batches and each reading's batches the brain's life hears (the same draws)."""
     founder = int(spec["founder"])
     if "task" in spec:
@@ -182,7 +185,8 @@ def lessons(spec: dict[str, Any]) -> tuple[wd.Lexicon, list[list[wd.Conversation
                  for i in rng.permutation(len(train))]
         size = ch.STREAMS
         taught = [[train[i] for i in order[k:k + size]] for k in range(0, len(order), size)]
-        readings = [(r, [test[k:k + size] for k in range(0, int(r.get("stories", len(test))), size)])
+        readings = [(r, [test[k:k + size]
+                         for k in range(0, int(r.get("stories", len(test))), size)])
                     for r in spec.get("readings", [{}])]
         return lexicon, taught, readings
     world = wd.World(founder, int(spec.get("people", 12)), int(spec.get("places", 8)))
@@ -195,7 +199,8 @@ def lessons(spec: dict[str, Any]) -> tuple[wd.Lexicon, list[list[wd.Conversation
         read_rng = np.random.default_rng(np.random.SeedSequence([founder, 305, 3]))
         readings.append((reading, [world.conversations(
             read_rng, ch.STREAMS, int(reading.get("sessions", sessions)), facts, lesson=False,
-            wording=reading.get("wording", "trained")) for _ in range(int(reading.get("batches", 8)))]))
+            wording=reading.get("wording", "trained"))
+            for _ in range(int(reading.get("batches", 8)))]))
     return world.lexicon, taught, readings
 
 

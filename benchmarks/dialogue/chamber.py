@@ -151,7 +151,8 @@ def synthetic_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
              scores=nursery if r >= rounds - max(rounds // 10, 1) else None)
     base = {"founder": founder, "arm": arm, "chamber": "synthetic",
             "parameters": int(brain.parameters()), "neurons": int(brain.connectome.n),
-            "nursery": summarise(nursery)["all"], "nursery_seconds": round(time.perf_counter() - t0)}
+            "nursery": summarise(nursery)["all"],
+            "nursery_seconds": round(time.perf_counter() - t0)}
     out = []
     for reading in spec.get("readings", [{}]):
         reader = copy.deepcopy(brain)
@@ -189,7 +190,8 @@ def babi_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
                  scores=nursery if e == epochs - 1 else None)
     base = {"founder": founder, "arm": arm, "chamber": f"babi-{task}",
             "parameters": int(brain.parameters()), "neurons": int(brain.connectome.n),
-            "nursery": summarise(nursery)["all"], "nursery_seconds": round(time.perf_counter() - t0)}
+            "nursery": summarise(nursery)["all"],
+            "nursery_seconds": round(time.perf_counter() - t0)}
     out = []
     for reading in spec.get("readings", [{}]):
         reader = copy.deepcopy(brain)
