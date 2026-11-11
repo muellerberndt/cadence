@@ -2340,6 +2340,12 @@ class Brain:
     ``next`` regions of a custom anatomy). A memory keyed on the code numbers its key
     coordinates from zero (``pre``) and is never read from the drive; the code is its
     separation, so the episodic stores take no separator of their own.
+
+    ``tied`` (opt-in) maps two populations ``(pre, post)`` to ``(blocks of pre, blocks of
+    post)``: the populations are cut into that many equal blocks, the synapses from ``pre`` to
+    ``post`` at one place in their blocks are one tie group of the learner, stepped by the mean
+    of its members' steps, and the blocks start as copies of one block
+    (``Projection(tied=...)``). ``Brain.compose(tied=...)`` builds such a projection.
     """
 
     def __deepcopy__(self, memo: dict[int, Any]) -> Brain:
@@ -7353,16 +7359,16 @@ def _grow(brain: Brain, settings: Mapping[str, Any]) -> Brain:
 
     changes = _grow_parts(brain, settings)
     inputs, actions, composed = _composed_again(brain)
-    # a region that grows: its blocks would change under a tied projection
+    # a region that grows: the blocks a tied projection cuts it into would change
     larger = {"motor"} if "slots" in changes else set()
     if "history_decays" in changes and brain.history is not None:
         larger.add("history")
-    for ends in brain.tied:
-        for name in ends:
-            if name.partition("/")[0] in larger:
+    for ends, blocks in brain.tied.items():
+        for name, count in zip(ends, blocks, strict=True):
+            if count > 1 and name.partition("/")[0] in larger:
                 raise ValueError(
                     f"grow adds no neurons to {name.partition('/')[0]!r}: a tied projection cuts "
-                    "it in equal blocks that share their synapses"
+                    "it into equal blocks that share their synapses"
                 )
     grown = int(sum(changes["slots"])) if "slots" in changes else actions
     template = type(brain).compose(inputs, grown, backend="cpu", **{**composed, **changes})

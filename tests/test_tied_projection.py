@@ -365,6 +365,12 @@ def test_grow_adds_no_neurons_to_a_tied_region():
     with pytest.raises(ValueError, match="grow adds no neurons to 'history'"):
         heard.grow(history_decays=(0.5, 0.8, 0.9))
     assert _copies_equal(heard.grow(efference_amplitude=1.0))
+    # the whole side of a tie takes new neurons: their synapses start at zero in every block
+    read = _brain({("association", "motor"): (4, 1)})
+    _live(read)
+    wider = read.grow(slots=(3, 2))
+    assert _copies_equal(wider) and wider.connectome.synapses > read.connectome.synapses
+    assert (wider.learner._member_count == 8).all()  # four blocks, each pair both ways
     with pytest.raises(ValueError, match="tied is a construction choice"):
         _brain().grow(tied=READ)
     with pytest.raises(ValueError, match="construction setting"):
