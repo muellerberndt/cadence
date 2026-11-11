@@ -13,6 +13,7 @@ keyword.
 | [The graph](#neuralgraph-cadence) | `NeuralGraph`, `BrainState`, `Equilibrium`, `Nudge`, `Connectome`, `NeuronModel`, `Adaptation`, blocks, `Certificate`, the neuron-by-neuron reference |
 | [Wiring and instruments](#regions-and-genome-cadenceregions-cadencegenome) | `Region`, `regions`, `Projection`, `Genome`, `develop`, `evolve`, `genes`, `Receipt` |
 | [Recording](#record-every-settling-step) | `record_settlements` |
+| [Population code](#population-code-cadencetuning) | `PopulationCode` |
 
 `cadence.__version__` is the installed release string.
 
@@ -584,6 +585,21 @@ action or outcome restores the previous code step; attempted-work diagnostics ma
 `LearnedCode.founders()` and `LearnedCode.setting(name, value)` give and validate the one
 setting, `fields`, which `GENES` names. Guide:
 [the learned code](senses.md#the-learned-code).
+
+## Population code (`cadence.tuning`)
+
+```text
+PopulationCode(ranges, per=16, floor=0.05)
+```
+
+A fixed code of continuous readings for a brain's senses: each reading's `(low, high)` range is
+tiled by `per` inputs with Gaussian tuning curves one spacing wide, and a response under `floor`
+reads zero. `code(readings)` takes `(readings,)` or `(rows, readings)` finite values and returns
+`(rows, inputs)` rows; `inputs` is `per` times the number of readings, and `preferred` and
+`spacing` hold the tuning. It refuses an empty or non-finite range, a range whose low is not
+below its high, `per` under 2, a `floor` outside `[0, 1)`, and readings of another width or not
+finite. It learns nothing and is not part of a checkpoint. Guide:
+[continuous readings](senses.md#continuous-readings-a-population-code).
 
 ## Learning (`cadence.learning`)
 

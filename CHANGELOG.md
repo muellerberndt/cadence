@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **`PopulationCode`** (`cadence.tuning`): a fixed code of continuous readings for a brain's
+  senses, each reading spread over tuned inputs that stay at zero away from its value. On the new
+  cart-pole chamber it raises the starts a watched brain balances for 500 steps from 0 of 32 with
+  the raw readings to 1 to 22 of 32 over three founders ([continuous
+  readings](docs/senses.md#continuous-readings-a-population-code)).
+- **The cart-pole chamber** (`benchmarks/coaching`): CartPole-v1's dynamics in NumPy with a
+  demonstrator, measuring the raw readings against the population code, a dense constant block
+  beside the code, teaching on the brain's own path alone and mixed with watched episodes, and the
+  efference copy under it. The teaching guide's section on the brain's own path states the order to
+  teach and act in, the early-failure collapse and its remedy, from its readings.
+
 ## 0.97.0 — 2026-11-10
 
 A new brain hears the moment before (`history_decays=(0.0,)`), its store averages the outcomes it

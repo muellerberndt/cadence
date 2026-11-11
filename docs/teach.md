@@ -366,7 +366,25 @@ assert (pupil.predict(observe(cells)) == demonstrator(cells)).all()
 ```
 
 Watching alone, the pupil copies the two cells the demonstrator visits and answers the others
-wrongly; on its own path it reaches those cells and learns them. Take the labels from the
+wrongly; on its own path it reaches those cells and learns them.
+
+Teach before acting on the same observation, as `step(..., teacher=labels)` orders them: an act
+writes its moment to the recall memory, and a lesson after it reads that moment with its successor
+still empty. With surprise lessons (a new brain's default) a row the brain already answers right is
+judged and skipped, so the lesson itself corrects only where the brain would go wrong. The pupil
+above has no recall memory, so its order does not matter.
+
+**A brain that fails early forgets on its own path.** Its episodes end soon, so its lessons come from
+the moments just before a failure, and the ordinary moments it had learned by watching go untaught.
+On the [cart-pole chamber](../benchmarks/coaching/README.md) (three founders, 32 held-out starts,
+16 episodes a round) the first round on the brain's own path drops every founder to 0 starts of 32,
+10 to 76 steps on average, from 1 to 22 starts after watching; two of the three recover to 32 of 32
+by the fourth round. Following each of its own episodes with a watched one keeps the ordinary
+moments in the lessons: after the first round 7 to 14 starts and 385 to 459 steps, no founder below
+259 steps in any round. Compose such a brain without the efference copy: on the same chamber a
+brain with `efference_amplitude=1.0` left one founder of three at 0 of 32 through all four rounds,
+a latch on its own last command of the kind [#296](https://github.com/muellerberndt/cadence/issues/296)
+reports on a Doom body. Take the labels from the
 demonstrator the brain watched: corrections from a different policy after a bootstrap by watching
 lower the agreement with the watched demonstrator
 ([issue 215](https://github.com/muellerberndt/cadence/issues/215)). Teach many rows at once at the
