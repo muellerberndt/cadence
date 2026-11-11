@@ -178,8 +178,15 @@ def main(argv: list[str] | None = None) -> None:
     specs = [{"cache": args.cache, "brain": brain, "speaker": s, "rows": rows, "mode": mode,
               "rate": args.rate, "bank": args.bank, "batch": args.batch, "seed": args.seed}
              for brain in args.brains for s, rows in chosen.items() for mode in MODES]
+    done = set()
+    if Path(args.out).exists():  # a stopped run continues: the episodes read are kept
+        for line in Path(args.out).read_text().splitlines():
+            record = json.loads(line)
+            if "error" not in record:
+                done.add((record["brain"], record["speaker"], record["mode"]))
+    specs = [s for s in specs if (s["brain"], s["speaker"], s["mode"]) not in done]
     print(json.dumps({"speakers": {s: len(r) for s, r in chosen.items()},
-                      "episodes": len(specs)}), flush=True)
+                      "episodes": len(specs), "read_before": len(done)}), flush=True)
     with open(args.out, "a") as handle:
         if args.workers > 1:
             with get_context("spawn").Pool(args.workers) as pool:
