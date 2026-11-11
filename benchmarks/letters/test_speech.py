@@ -44,6 +44,18 @@ def test_the_reading_counts_characters_and_words() -> None:
     assert out["words"] < 1.0 and out["words_lost_on_spacing_alone"] == 1.0
 
 
+def test_the_located_terms_read_one_utterance() -> None:
+    text = sp.encode("ab")
+    logp = np.log(np.full((4, sp.SYMBOLS), 0.01))
+    for t, symbol in enumerate([1, 1, 2, 0]):
+        logp[t, symbol] = 0.0
+    said = sp.locate([np.array([1, 1, 2, 0])], [logp], [(np.zeros((4, 1)), text)])
+    assert said["letter_from_sound"] == 1.0 and said["emission_given_letter"] == 1.0
+    assert said["word_given_letters"] == 1.0
+    silent = sp.locate([np.zeros(4, dtype=np.int64)], [logp], [(np.zeros((4, 1)), text)])
+    assert silent["letter_from_sound"] == 1.0 and silent["emission_given_letter"] == 0.0
+
+
 ROOT = os.environ.get("LIBRISPEECH_ROOT")
 
 

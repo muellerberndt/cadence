@@ -209,6 +209,45 @@ def read(actions: list[np.ndarray], held: list[tuple[np.ndarray, np.ndarray]]) -
     }
 
 
+def locate(actions: list[np.ndarray], logps: list[np.ndarray],
+           held: list[tuple[np.ndarray, np.ndarray]]) -> dict[str, float]:
+    """Each held-out character's steps by CTC's forced alignment of the reference through the
+    learner's own beliefs, and on them: the letter from the sound (the symbol it prefers over
+    the others but blank is the character, on one of its steps), its emission given the letter
+    (said on one of its steps), and the word given its letters (a word whose every character
+    was said, said whole by the CTC reading)."""
+    identified = said = known_words = whole_given_known = 0
+    characters = 0
+    for a, logp, (_, text) in zip(actions, logps, held, strict=True):
+        if len(logp) < len(text):
+            continue
+        states = lt.ctc_path(logp, text, states_out=True)
+        preferred = np.argmax(logp[:, 1:], axis=1) + 1
+        ok = np.zeros(len(text), dtype=bool)
+        for k, symbol in enumerate(text.tolist()):
+            steps = states == 2 * k + 1
+            found = bool(np.any(preferred[steps] == symbol))
+            spoken = bool(np.any(a[steps] == symbol))
+            identified += found
+            said += found and spoken
+            ok[k] = spoken
+            characters += 1
+        reference, hypothesis = decode(text.tolist()), decode(lt.collapse(a))
+        matched = lt.edits(reference.split(), hypothesis.split())["matched"]
+        start = 0
+        for w, word in enumerate(reference.split()):
+            if ok[start : start + len(word)].all():
+                known_words += 1
+                whole_given_known += int(matched[w])
+            start += len(word) + 1
+    return {
+        "letter_from_sound": identified / max(characters, 1),
+        "emission_given_letter": said / max(identified, 1),
+        "word_given_letters": whole_given_known / max(known_words, 1),
+        "words_with_every_letter_said": known_words,
+    }
+
+
 # ----------------------------------------------------------------------------------- brain
 
 
@@ -265,8 +304,9 @@ def life(cache: Path, protocol: dict[str, Any], seed: int, out: Path,
         if (n + 1) % probe_every == 0 or n + 1 == len(order):
             path = brain.save(out / f"speech-{seed}-u{n + 1}.npz")
             copy = cd.Brain.load(path)
-            actions = [beliefs(copy, x_)[0] for x_, _ in held]
-            result = read(actions, held)
+            answered = [beliefs(copy, x_) for x_, _ in held]
+            actions = [a for a, _ in answered]
+            result = {**read(actions, held), **locate(actions, [b for _, b in answered], held)}
             record["probes"].append({"utterances": n + 1, "steps": steps,
                                      "seconds": time.monotonic() - started, "score": result,
                                      "sample": [decode(lt.collapse(a)) for a in actions[:3]]})
@@ -298,13 +338,14 @@ def control(cache: Path, model: str, mode: str, seed: int, parameters: int,
                               "parameters": ct.count(learner.net), "probes": []}
 
     def reading(n: int) -> None:
-        actions = []
+        actions, logps = [], []
         with torch.no_grad():
             for x, _ in held:
-                logits = learner.net(torch.from_numpy(x[None]))[0].numpy()
-                actions.append(np.argmax(logits, -1))
+                logits = learner.net(torch.from_numpy(x[None]))[0]
+                actions.append(np.argmax(logits.numpy(), -1))
+                logps.append(torch.log_softmax(logits, -1).numpy().astype(np.float64))
         record["probes"].append({"utterances": n, "work": dict(learner.work),
-                                 "score": read(actions, held)})
+                                 "score": {**read(actions, held), **locate(actions, logps, held)}})
 
     passes = 1 if mode == "online" else epochs
     best, waited = float("inf"), 0

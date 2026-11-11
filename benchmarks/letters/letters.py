@@ -290,10 +290,12 @@ def forced_path(scores: np.ndarray) -> np.ndarray:
     return path
 
 
-def ctc_path(scores: np.ndarray, sequence: np.ndarray) -> np.ndarray:
+def ctc_path(scores: np.ndarray, sequence: np.ndarray, *, states_out: bool = False) -> np.ndarray:
     """CTC's forced alignment without a backward pass: the symbol at each frame on the best path
     of ``sequence`` through ``scores`` (frames, symbols), the log beliefs, where blank (0) may
-    fill any frame between symbols and must part a symbol from the same symbol after it."""
+    fill any frame between symbols and must part a symbol from the same symbol after it. With
+    ``states_out`` the path's state at each frame instead: ``2k + 1`` for the sequence's k-th
+    symbol, even for a blank."""
     frames = len(scores)
     states = np.zeros(2 * len(sequence) + 1, dtype=np.int64)
     states[1::2] = sequence
@@ -315,7 +317,7 @@ def ctc_path(scores: np.ndarray, sequence: np.ndarray) -> np.ndarray:
     k = n - 1 if n == 1 or best[-1, n - 1] >= best[-1, n - 2] else n - 2
     path = np.zeros(frames, dtype=np.int64)
     for t in range(frames - 1, -1, -1):
-        path[t] = states[k]
+        path[t] = k if states_out else states[k]
         k -= int(back[t, k])
     return path
 
