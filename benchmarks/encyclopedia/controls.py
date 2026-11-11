@@ -670,7 +670,7 @@ def run_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
     t0 = time.perf_counter()
     founder, model, size = int(spec["founder"]), spec["model"], int(spec["size"])
     assert model in MODELS, model
-    corpus = fx.Corpus(Path(spec["data"]))
+    corpus = fx.Corpus(Path(spec["data"]), keep=size)
     lexicon = corpus.lexicon
     reading = corpus.corpus(size)
     target = spec.get("target")

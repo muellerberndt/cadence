@@ -981,14 +981,15 @@ class LongTermRecords:
     alone; a fact told again holds the same share as its earlier telling, so the latest
     telling is read.
 
-    **What the question asks beyond the first record (``rest=True``, with ``distinct`` and two
-    heads).** Head 1 is cued by the first record's entries outside the cue together with the
+    **What the question asks beyond the first record (``rest=True``, with ``distinct``).** The
+    second read is cued by the first record's entries outside the cue together with the
     cue's entries that the first record does not hold and that weigh at least ``distinct`` of
     the cue's heaviest. A question of two facts ("the capital of the country of a city") reads
     the city's country first, then the record that holds that country and "capital". The regions
     hold the chain from its end: the record that answers on head 0's region (``longterm``), the
-    record before it on head 1's, so an answer is read from one region however many facts it
-    takes. Where the first record holds every such entry, head 1 holds nothing.
+    record before it on head 1's where there is one, so an answer is read from one region however
+    many facts it takes; with one head, the region holds the answering record alone. Where the
+    first record holds every such entry, the question asks one fact and the chain is that record.
     """
 
     # the store's settings that the brain does not name: the library store's founders, a first
@@ -1038,8 +1039,6 @@ class LongTermRecords:
         if (best or rest) and distinct is None:
             raise ValueError("longterm_best and longterm_rest read records by what tells them "
                              "apart: they need longterm_distinct")
-        if rest and int(heads) < 2:
-            raise ValueError("longterm_rest cues the second head: it needs longterm_heads >= 2")
         self.distinct = None if distinct is None else float(distinct)
         self.best, self.rest = bool(best), bool(rest)
         self.message = message
@@ -1296,12 +1295,13 @@ class LongTermRecords:
             for row in rows:
                 store, cue = self.stores[int(row)], self._cues[int(row)]
                 slots = [self._read_distinct(int(row), cue)]
-                for _ in range(1, self.heads):  # each head chains from the record before
+                # each head chains from the record before; with ``rest`` at least two reads
+                for _ in range(1, max(self.heads, 2 if self.rest else 1)):
                     slots.append(self._rest(int(row), slots, cue) if self.rest
                                  else self._chain(int(row), slots, cue))
                 if self.rest:  # the chain from its end: the record that answers on head 0's
                     chain = [slot for slot in slots if slot >= 0][::-1]
-                    slots = chain + [-1] * (len(slots) - len(chain))
+                    slots = (chain + [-1] * len(slots))[: self.heads]
                 for head, (slot, columns) in enumerate(zip(slots, self.columns, strict=True)):
                     if slot >= 0:
                         out[row, columns] = self.amplitude * store.values[slot]

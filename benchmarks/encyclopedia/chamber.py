@@ -145,7 +145,7 @@ def summarise(scores: dict[str, list[float]]) -> dict[str, Any]:
 
 def run_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
     founder, arm, size = int(spec["founder"]), spec["arm"], int(spec["size"])
-    corpus = fx.Corpus(Path(spec["data"]))
+    corpus = fx.Corpus(Path(spec["data"]), keep=size)
     lexicon = corpus.lexicon
     reading = corpus.corpus(size)
     sessions = int(spec.get("sessions", 1000))
@@ -195,7 +195,8 @@ def run_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
             scores["stale"].append(float(said == lexicon.action.get(stale, -1)))
         found = life.found(turn)
         if found is not None:
-            scores[f"found {groups[0]}"].append(found)
+            for g in groups:
+                scores[f"found {g}"].append(found)
         for k in ("moments", "macs", "read_macs", "seconds"):
             work[k] += life.work[k]
         work["answers"] += 1

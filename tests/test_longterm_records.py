@@ -540,8 +540,6 @@ def test_best_and_rest_need_distinct_and_name_their_settings():
     assert b.describe()["genes"].get("longterm_best") is True
     with pytest.raises(ValueError, match="longterm_distinct"):
         turns_brain(longterm_best=True)
-    with pytest.raises(ValueError, match="longterm_heads"):
-        turns_brain(longterm_distinct=0.1, longterm_rest=True)
     with pytest.raises(ValueError, match="boolean"):
         turns_brain(longterm_distinct=0.1, longterm_best=1)
 
@@ -679,3 +677,19 @@ def test_the_store_settings_are_named_checked_and_off_by_default():
         brain(longterm=16, longterm_winners=0)
     with pytest.raises(ValueError, match="needs long-term records"):
         cd.Brain.compose(INPUTS, 4, seed=0, backend="cpu", longterm_pairs=8)
+
+
+def test_rest_with_one_head_holds_the_answering_record_alone():
+    b = turns_brain(longterm_distinct=0.1, longterm_match=0.5, longterm_best=True,
+                    longterm_rest=True)
+    assert b.longterm.heads == 1 and "longterm_1" not in b.connectome.populations
+    b.reset()
+    say(b, 0, 6, TURN, 10, 1, 6, TURN, 11, 10, 7, TURN, 12, 11, 7, TURN, 13)
+    say(b, 0, 6, 7, TURN)    # relation 7 of relation 6 of agent 0
+    drive = b.stimulus(np.zeros((1, INPUTS)))
+    assert b.longterm.read_slots[0, 0] == 2
+    assert np.allclose(drive[0, b.connectome.populations["longterm"]], 3.0 * moment(12)[0])
+    say(b, ())
+    say(b, 1, 6, TURN)       # one fact
+    b.stimulus(np.zeros((1, INPUTS)))
+    assert b.longterm.read_slots[0, 0] == 1

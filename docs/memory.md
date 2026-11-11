@@ -1833,22 +1833,22 @@ the cue's weight, at least `longterm_match`, and the latest among records holdin
 The record of both the subject and the relation is read, and a fact told again is read from its
 latest telling, which holds the same share as the earlier one.
 
-**What the question asks beyond the first record (`longterm_rest=True`, with
-`longterm_heads=2`).** A question of two facts ("what is the capital of the citizenship of ada
-lovelace ?") is answered by two records: the first names the country, the second holds the
-country's capital. With `longterm_rest=True` head 1 is cued by the first record's entries outside
-the question (its value, the country) together with the question's entries the first record does
-not hold and that weigh at least `longterm_distinct` of the question's heaviest ("capital"). The
-regions hold the chain from its end: the record that answers (the capital) on `longterm`, the
-first record (the country) on `longterm_1`, so the brain says an answer from one region whether
-the question asks one fact or two. Where the first record holds every such entry, the question
-asks one fact and head 1 holds nothing.
+**What the question asks beyond the first record (`longterm_rest=True`).** A question of two
+facts ("what is the capital of the citizenship of ada lovelace ?") is answered by two records: the
+first names the country, the second holds the country's capital. With `longterm_rest=True` a
+second read is cued by the first record's entries outside the question (its value, the country)
+together with the question's entries the first record does not hold and that weigh at least
+`longterm_distinct` of the question's heaviest ("capital"). The regions hold the chain from its
+end: the record that answers (the capital) on `longterm`, and with `longterm_heads=2` the first
+record (the country) on `longterm_1`, so the brain says an answer from one region whether the
+question asks one fact or two. Where the first record holds every such entry, the question asks
+one fact and that record is the chain.
 
 | Setting | Founder | Changed by | What it sets |
 | --- | --- | --- | --- |
 | `longterm_distinct` | `None`, off | construction | A cue keeps its entries of at least this share of its heaviest weight |
 | `longterm_best` | `False` | construction | The read takes the record holding the most of the cue's weight; needs `longterm_distinct` |
-| `longterm_rest` | `False` | construction | Head 1 reads what the question asks beyond head 0's record; needs `longterm_distinct` and two heads |
+| `longterm_rest` | `False` | construction | A second read takes what the question asks beyond the first record; the answering record on `longterm`; needs `longterm_distinct` |
 
 The [encyclopedia chamber](../benchmarks/encyclopedia/README.md) reads these settings on facts
 from Wikidata.
