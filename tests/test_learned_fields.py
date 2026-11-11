@@ -245,3 +245,40 @@ def test_the_colour_controls_and_other_channel_counts():
         LearnedFields(16, 16, 3, 8, colour="grey")
     with pytest.raises(ValueError, match="at least 3 fields"):
         LearnedFields(16, 16, 3, 2, colour="channels")
+
+
+def test_fields_motor_adds_a_plastic_pathway_from_the_pools_to_the_motor_region():
+    plain = Brain.compose(inputs=(16, 16), actions=3, seed=0, learned_fields=4, recall=False,
+                          backend="cpu")
+    direct = Brain.compose(inputs=(16, 16), actions=3, seed=0, learned_fields=4, recall=False,
+                           backend="cpu", fields_motor=1.0)
+    c = direct.connectome
+    pools = np.asarray(c.populations["sensory"])
+    motor = np.asarray(c.populations["motor"])
+    reaches = np.isin(c.pre, pools) & np.isin(c.post, motor)
+    assert reaches.sum() == len(pools) * len(motor)
+    assert not (np.isin(c.post, pools) & np.isin(c.pre, motor)).any()
+    assert direct.parameters() == plain.parameters() + len(pools) * len(motor)
+    assert direct.describe()["layout"]["composition"]["fields_motor"] == 1.0
+    assert "fields_motor" not in plain.describe()["layout"]["composition"]
+    frame = np.random.default_rng(0).random((2, 256))
+    before = np.asarray(direct.brain.efficacy)[reaches].copy()
+    direct.lesson(frame, [0, 2])
+    assert not np.array_equal(before, np.asarray(direct.brain.efficacy)[reaches])
+    for bad in (-1.0, float("nan"), True):
+        with pytest.raises(ValueError):
+            Brain.compose(inputs=(16, 16), actions=3, learned_fields=4, recall=False,
+                          fields_motor=bad)
+    with pytest.raises(ValueError):
+        Brain.compose(inputs=256, actions=3, recall=False, fields_motor=1.0)
+
+
+def test_a_brain_with_fields_motor_saves_and_loads_to_the_bit(tmp_path):
+    brain = Brain.compose(inputs=(16, 16), actions=3, seed=1, learned_fields=4, recall=False,
+                          backend="cpu", fields_motor=0.5)
+    brain.lesson(np.random.default_rng(1).random((2, 256)), [1, 2])
+    brain.save(tmp_path / "b.npz")
+    again = Brain.load(tmp_path / "b.npz")
+    frame = np.random.default_rng(2).random((3, 256))
+    assert np.array_equal(brain.predict(frame), again.predict(frame))
+    assert again.describe()["layout"]["composition"]["fields_motor"] == 0.5

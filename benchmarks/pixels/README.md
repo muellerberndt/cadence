@@ -41,8 +41,10 @@ founder. Invariance on a factor is its panel within .05 of `held_out`.
 | --- | --- |
 | `fields` | `Brain.compose(inputs=(84, 84), actions=3, learned_fields=64, recall=False, teaching="normalized")`: [learned receptive fields](../../docs/senses.md#learned-receptive-fields) |
 | `fields_drawn` | the same brain with its fields held at their draw from birth |
+| `fields_tied` | the `fields` brain with `tied={("sensory", "association"): (3, 1)}`: its three pool rows read through one set of synapses ([tied projections](../../docs/tune.md#tied-projections-opt-in)) |
 | `visual`, `pixels`, `pooled`, `random_code`, `learned_code` | the visual cortex, the raw pixels, 4 by 4 block means, `code=1024`, `learned_code=128` (Step 0) |
 | `conv_matched`, `conv` | two convolutions as in the Atari network, a hidden layer at the `fields` brain's parameter count or at 256 units, policy and value heads, trained online by Adam on the same batches (`convnet.py`) |
+| `conv_matched_tied` | the same baseline at the `fields_tied` brain's parameter count (5 hidden units) |
 
 Controls, on any brain arm (`--control`): `blank` (the background alone, labels as drawn),
 `shuffled` (each batch's labels permuted among its frames), `frozen` (no learning); uniform
@@ -52,13 +54,19 @@ Two conditions: `lesson` (each batch of 8 frames one `lesson`, the baseline one 
 step) and `reward` (8 streams through `step`, reward 1 for the right action and 0 otherwise,
 each frame an episode; the baseline a one-step actor-critic). Panels are read by `predict` at
 each budget, on the life without changing it. `--probe` adds ridge readouts of the representation
-the cortex reads and of the association, fitted on 2,048 training-range frames: readings that
-locate a failure, never part of a life.
+the cortex reads and of the association, and for a brain with learned fields of its pools summed
+over the pool rows, fitted on 2,048 training-range frames: readings that locate a failure, never
+part of a life. Every life under lessons reports its parameters and its analytic
+multiply-accumulates per lesson frame and per read frame: a brain's phases' row sweeps of its
+synapses and the fields' reading and learning of the frame, the baseline's forward pass and a
+backward pass at twice the forward.
 
 ```sh
 PYTHONPATH=src python benchmarks/pixels/pixels.py --arms fields conv_matched \
     --founders 0 1 --budgets 4096 16384 65536 --out results/lesson.jsonl --workers 2
 python benchmarks/pixels/summary.py results/*.jsonl
+python benchmarks/pixels/summary.py results/*.jsonl --panel 2048 --founders 10 \
+    --brain fields_tied --baseline conv_matched_tied --against fields
 PYTHONPATH=src python benchmarks/pixels/timing.py --backend cpu --out results/timing.jsonl
 ```
 
@@ -164,6 +172,49 @@ object in the band spreads its pools' energy over the three pool rows (.22, .56,
 one founder) where an object at a trained place puts .66 to .69 into its outer row and .31 to
 .34 into the middle one: the middle row is taught by the edges of trained objects alone, and
 the brain's read of it is the term that trails.
+
+### The third run: the pool rows tied
+
+(cadence#284, protocol 3: fresh founders 2858 to 2869, 65,536 frames of lessons, bars on 10 of
+12 founders, panels of 2,048 frames.) `fields_tied` is the `fields` brain with
+`tied={("sensory", "association"): (3, 1)}`: the association reads the three pool rows through
+one set of 192 by 64 synapses, each stepped by the mean of its three copies' steps. No constant
+was selected.
+
+| Arm | Parameters | Multiply-accumulates per lesson frame | Per read frame | Fresh frames (range) | Band | Scale | Lighting | Distractor | At .90 | Band within .05 | Band, scale and distractor within .05 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `fields_tied` | 23,236 | 2.73e7 | 1.26e7 | .965 (.914 to .990) | .977 | .976 | .781 | .946 | 12 of 12 | 12 of 12 | 10 of 12 |
+| `fields` | 47,812 | 2.71e7 | 1.22e7 | .965 (.913 to .989) | .947 | .977 | .818 | .955 | 12 of 12 | 9 of 12 | 8 of 12 |
+| `conv_matched_tied` | 22,253 | 3.26e6 | 1.09e6 | .893 (.356 to 1.000) | .186 | .895 | .665 | .895 | 10 of 12 | 2 of 12 | 2 of 12 |
+| `conv_matched` | 50,820 | 3.34e6 | 1.11e6 | 1.000 (.999 to 1.000) | .163 | 1.000 | .926 | .998 | 12 of 12 | 0 of 12 | 0 of 12 |
+| `conv` | 674,100 | 5.21e6 | 1.74e6 | 1.000 (.999 to 1.000) | .192 | 1.000 | .887 | .999 | 12 of 12 | 0 of 12 | 0 of 12 |
+
+(Of a brain's lesson frame the fields' reading and learning are 2.49e7; the rest is the phases'
+row sweeps of its 41,344 synapses, which the tie leaves in place.)
+
+| Gate | Reading | |
+| --- | --- | --- |
+| T1, the band within .05 of fresh frames with fresh frames at .90, on 10 of 12 | 12 of 12; every founder reads the band at or above its fresh frames | met |
+| T2, band, scale and distractor each within .05, on 10 of 12 | 10 of 12; founders 2862 and 2864 read the distractor panel .062 and .086 under fresh frames | met |
+| T3, the band gap of `fields` minus that of `fields_tied`, paired, above zero by two standard errors | +.029, standard error .011 | met |
+| T4, fresh frames at .90 on 10 of 12; `conv_matched_tied` minus `fields_tied` at most .05; `fields_tied` at most .02 under `fields` | 12 of 12; -.072; +.001 (standard error .009) | met |
+
+On the 256-frame panels: T1 12 of 12, T2 10 of 12, T3 +.023 (standard error .011).
+
+The tie moves the band, from .947 to .977 at the same fresh frames. The association's probe
+reads the band at .992 with the tie and .964 without; the pools read it at .989 and their sum
+over the rows at .999 in both arms. It costs elsewhere: the lighting panel, outside the gates,
+reads .781 against .818 (its gap .038 wider, standard error .010), and the distractor panel .946
+against .955 (.010 wider, standard error .005). On the two founders outside .05 the pools read
+the distractor panel at .986 and .993, their sum over the rows at .975 and .991, the association
+at .931 and .890 and the brain at .928 and .863: the term is the brain's read of its code beside
+an untrained distractor. The untied brain reads those two founders' distractor panels at .959 and
+.930. The baseline at the tied brain's parameter count reads fresh frames at .998 or above on
+ten founders and at .356 and .370 on two.
+
+Development on opened founders 2846 to 2849, 2853 and 2855, which selected nothing:
+`fields_tied` read the band at .969 against .920, and all three panels within .05 on 6 of 6
+founders against 4 of 6.
 
 ### Seconds per frame (`timing.py`, the `fields` brain, median of 32 moments)
 

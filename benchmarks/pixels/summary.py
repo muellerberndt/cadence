@@ -4,7 +4,9 @@
 
 Per founder at the last budget: held-out accuracy, each invariance panel's gap below it, the
 brain against the matched baseline and against the blank-screen control under reward.
-Standard errors are binomial over a panel's frames.
+Standard errors are binomial over a panel's frames. ``--against ARM`` reads ``--brain`` beside
+another brain arm on the founders both lived: each panel's gap below held-out, founder by
+founder, and the paired difference with its standard error over the founders.
 """
 
 from __future__ import annotations
@@ -59,6 +61,8 @@ def main() -> None:
     parser.add_argument("--baseline", default="conv_matched")
     parser.add_argument("--blank", default=None,
                         help="the arm whose blank-screen lives are the control (the brain)")
+    parser.add_argument("--against", default=None,
+                        help="a brain arm the brain is read beside, paired by founder")
     args = parser.parse_args()
     global PANELS
     if args.declared:
@@ -67,9 +71,10 @@ def main() -> None:
     groups: dict[tuple[str, str, str, str], dict[int, dict[str, Any]]] = defaultdict(dict)
     for life in load(args.paths):
         groups[key(life)][int(life["founder"])] = life
-    print("| condition | frame | arm | control | parameters | frames | held_out | positions | "
+    print("| condition | frame | arm | control | parameters | MACs per lesson frame | "
+          "MACs per read frame | frames | held_out | positions | "
           "scales | lighting | distractor | invariant (of founders) |")
-    print("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
+    print("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
     for k in sorted(groups):
         lives = groups[k]
         panels = [last(life) for life in lives.values()]
@@ -78,7 +83,12 @@ def main() -> None:
             all(p["held_out"] - p[n] <= GATE["gap"] for n in INVARIANCE) for p in panels
         )
         any_life = next(iter(lives.values()))
-        print(f"| {k[0]} | {k[1]} | {k[2]} | {k[3]} | {any_life['parameters']:,} | "
+        work = [life["macs"] for life in lives.values() if life.get("macs")]
+        macs = " | ".join(
+            f"{float(np.mean([w[name] for w in work])):.3g}" if work else "-"
+            for name in ("lesson", "read")
+        )
+        print(f"| {k[0]} | {k[1]} | {k[2]} | {k[3]} | {any_life['parameters']:,} | {macs} | "
               f"{any_life['readings'][-1]['frames']:,} | "
               + " | ".join(f"{mean[n]:.3f}" for n in
                            ("held_out", "positions", "scales", "lighting", "distractor"))
@@ -106,6 +116,30 @@ def main() -> None:
               f"({'met' if invariant >= GATE['founders'] else 'not met'})")
         print(f"G4 baseline minus brain, mean held-out: {shortfall:+.3f} "
               f"({'met' if shortfall <= GATE['baseline'] else 'not met'})")
+        for name in INVARIANCE:
+            within = sum(r[2][name] <= GATE["gap"] for r in rows)
+            print(f"{name} alone within .05 of held-out: {within} of {len(rows)}")
+    other = groups.get(("lesson", "84x84x1", args.against, "-"), {}) if args.against else {}
+    paired = sorted(set(brain) & set(other))
+    if paired:
+        print()
+        print(f"{args.brain} beside {args.against}, {len(paired)} founders (gap: held-out "
+              "minus the panel; difference: the gap the brain closes)")
+        for name in ("held_out", *INVARIANCE):
+            mine = np.array([last(brain[f])[name] for f in paired])
+            theirs = np.array([last(other[f])[name] for f in paired])
+            if name == "held_out":
+                difference = mine - theirs
+                label = "held_out, brain minus the other"
+            else:
+                held = np.array([last(brain[f])["held_out"] for f in paired])
+                held_other = np.array([last(other[f])["held_out"] for f in paired])
+                difference = (held_other - theirs) - (held - mine)
+                label = f"{name} gap, the other minus the brain"
+            error = float(np.std(difference, ddof=1) / np.sqrt(len(paired))) if len(
+                paired) > 1 else float("nan")
+            print(f"{label}: {float(np.mean(difference)):+.4f} (standard error {error:.4f}; "
+                  f"{float(np.mean(mine)):.3f} against {float(np.mean(theirs)):.3f})")
     reward = groups.get(("reward", "84x84x1", args.brain, "-"), {})
     blank = groups.get(("reward", "84x84x1", args.blank or args.brain, "blank"), {})
     if reward and blank:

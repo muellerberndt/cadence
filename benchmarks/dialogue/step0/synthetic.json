@@ -1,0 +1,14 @@
+{
+ "founders": [0, 1, 2],
+ "rounds": 400,
+ "sessions": 4,
+ "facts": 2,
+ "arms": [{"arm": "previous_word"}, {"arm": "message"}, {"arm": "records"}, {"arm": "records_session"}],
+ "readings": [
+  {"wording": "trained", "sessions": 12},
+  {"wording": "held", "sessions": 12},
+  {"wording": "prefix", "sessions": 12},
+  {"wording": "trained", "sessions": 12, "erase": "records"},
+  {"wording": "trained", "sessions": 12, "erase": "message"}
+ ]
+}

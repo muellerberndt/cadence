@@ -1,0 +1,33 @@
+{
+ "founders": [
+  0,
+  1,
+  2
+ ],
+ "rounds": 400,
+ "sessions": 4,
+ "facts": 2,
+ "models": [
+  "lstm",
+  "transformer"
+ ],
+ "modes": [
+  "online",
+  "offline"
+ ],
+ "target_arm": "records",
+ "readings": [
+  {
+   "wording": "trained",
+   "sessions": 12
+  },
+  {
+   "wording": "held",
+   "sessions": 12
+  },
+  {
+   "wording": "prefix",
+   "sessions": 12
+  }
+ ]
+}

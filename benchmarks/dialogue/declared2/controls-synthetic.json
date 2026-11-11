@@ -1,0 +1,51 @@
+{
+ "founders": [
+  3056,
+  3057,
+  3058,
+  3059,
+  3060,
+  3061
+ ],
+ "people": 24,
+ "places": 8,
+ "rounds": 400,
+ "sessions": 4,
+ "facts": 2,
+ "models": [
+  "lstm",
+  "transformer"
+ ],
+ "modes": [
+  "online",
+  "offline"
+ ],
+ "target_arm": "distinct",
+ "readings": [
+  {
+   "name": "R1",
+   "wording": "trained",
+   "sessions": 6,
+   "gap": 1
+  },
+  {
+   "name": "R2",
+   "wording": "trained",
+   "sessions": 21,
+   "gap": 10
+  },
+  {
+   "name": "R3",
+   "wording": "held",
+   "sessions": 21,
+   "gap": 10
+  },
+  {
+   "name": "R4",
+   "wording": "trained",
+   "sessions": 101,
+   "gap": 100,
+   "batches": 2
+  }
+ ]
+}

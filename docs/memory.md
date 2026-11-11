@@ -1532,7 +1532,11 @@ Use it to alternate or sequence the brain's own actions under identical input: i
 efference_decay=0.0`) alternation reads 0.97 and 0.93 against 0.50 and 0.40 with the trace
 alone and 0.50 for uniform random. Leave it off for delayed credit: in the
 [key-door chamber](../benchmarks/keydoor/README.md) a copy at amplitude 0.3 feeds less at every
-delay, and at 3.0 the creature does not feed.
+delay, and at 3.0 the creature does not feed. Taught on its own path, a brain with the copy learns
+more slowly at first: on the [cart-pole chamber's ablation](../benchmarks/coaching/README.md#which-opt-ins-a-coached-brain-needs)
+its first round balanced 23, 4 and 0 starts of 32 against 32, 13 and 21 without the copy, and both
+balanced 32 of 32 by the third. On a default brain with the copy (the chamber's `coach+efference`
+arm) one founder of three stays at 0 of 32 through four rounds.
 
 ## Heard history
 
@@ -1602,6 +1606,7 @@ assert not speaker.message.state.any()                    # a new stream starts 
 | `message_gains` | `1` | construction | Learned gains per block under `carried_gain`: one per `units / gains` neurons |
 | `message_boundary` | `None` | construction | An input channel; a heard moment with it on empties the message and begins it again |
 | `message_boundary_holds` | `False` | construction | At the boundary the message keeps what it heard and nothing after joins, until the episode ends |
+| `message_roles` | `()`, off | construction | Groups of input channels: a moment's role chooses its blocks, below |
 | `message_read` | `False` | construction | The read of one block at a time, below |
 
 **A read of one block (`message_read=True`).** A port of `units` neurons holds one block of the
@@ -1747,6 +1752,69 @@ found at 10,000 records reads 1.000 on every founder over the facts whose key is
 .9875 to 1.000 over all facts: two facts whose key is one key are one record. On one core a
 moment with 10,000 records a stream costs 1.3 times a moment without them over one stream and 1.7
 times over 16 streams; on a GPU, with the stores read one by one, 1.7 times over one stream.
+
+### Turns in a conversation (opt-in)
+
+In a conversation one episode tells many facts, and a question shares few words with the
+statement it asks about: "mary went to the kitchen" and "where is mary ?" share "mary" alone.
+`longterm_turn=channel` keys the records for that. Every heard moment with the input channel on
+is a turn, and an episode holds as many turns as it hears.
+
+- **The key is what the turn is about.** A turn's key is made of the moments heard since the
+  last value: their codes under the message's code, kept only on the units that are rare. A
+  unit counts as rare when it has been on in at most `longterm_rare` (3%) of the moments the
+  brain has heard. The frequent words ("the", "is", "where") drive units that drop out, so a
+  statement and a question about one person share the person's units.
+- **Every turn writes.** The moment after a turn is its value, written under the turn's key
+  as any record is: the same key with another value revises the record. The next key starts
+  after the value. No reset is needed between facts, so the recall memory keeps the episode.
+- **The read** happens at the moment after a turn: the answer's moment after a question, or
+  a fact's value. Lessons at that moment see the record on its region, so the association
+  learns to answer from it.
+
+The message needs no boundary here; it is held over the episode as without records.
+
+```python
+TURN = 14                                  # agents 0-5, verbs 6-9, patients 10-13, the turn 14
+talker = Brain.compose(inputs=15, actions=4, modules=(32,), seed=0, message=70, longterm=64,
+                       longterm_turn=TURN, longterm_rare=1.0)    # every unit counts as content
+for on in (0, 6, TURN, 12, 1, 7, TURN, 13):                     # two facts in one episode
+    talker.act(seen(on), greedy=True)
+assert talker.longterm.stores[0].count == 2                     # a record at each turn
+for on in (0, 6, TURN):                                         # the first fact asked again
+    talker.act(seen(on), greedy=True)
+drive = talker.stimulus(np.zeros((1, 15)))
+assert np.allclose(drive[0, talker.connectome.populations["longterm"]], 3.0 * seen(12)[0])
+```
+
+| Setting | Founder | Changed by | What it sets |
+| --- | --- | --- | --- |
+| `longterm_turn` | `None`, off | construction | The input channel that marks a turn; several turns in an episode |
+| `longterm_rare` | `0.03` | construction | The share of the moments heard at or below which a code unit is content for a key |
+
+`save` keeps the turns' windows and keys and the units' counts.
+
+**Records read by what tells them apart (`longterm_distinct`).** A bar on how often a unit is on
+depends on the lexicon: with four people, a name is as frequent as the bar and drops out.
+`longterm_distinct=share` (with `longterm_turn`) reads by what tells the stream's records apart
+instead.
+
+- Each distinct heard moment is one entry of a codebook, so two words whose codes share units
+  stay two entries. A record holds the whole statement: its window's entries and its value's.
+- An entry weighs `log((n + 1) / (records holding it + 1))` among the stream's `n` records: an
+  entry every record holds ("the", ".") weighs nothing, one that only a person's records hold
+  weighs most. An entry no record holds ("where", "?") weighs nothing.
+- A question's cue keeps its entries of at least `share` times its heaviest weight, and the read
+  takes the latest record holding at least `longterm_match` of the cue's weight. Every value is a
+  record of its own, so a fact told again is read from its latest telling.
+- With `longterm_heads=2` the second head chains: of the first record's entries outside the cue,
+  the one the most records hold (what the record is about: a person recurs in more records than
+  the words around them) cues the latest other record holding it. "Where is the football?" reads
+  "john picked up the football" and then where john went.
+
+| Setting | Founder | Changed by | What it sets |
+| --- | --- | --- | --- |
+| `longterm_distinct` | `None`, off | construction | A cue keeps its entries of at least this share of its heaviest weight |
 
 ## How strongly a carried region is heard
 
@@ -2654,6 +2722,20 @@ one slot per moment. It stands alone: it has no neurons and reads no brain.
 - **A boundary.** `boundary=channel` names an input channel: a moment with it on empties the
   message and begins it again, or with `boundary_holds=True` the message keeps what came before
   and nothing from that moment on joins.
+- **Blocks by role.** `roles=groups` names groups of input channels, one group a role. A moment
+  with a channel of group `r` on joins that group's blocks, the `k`-th moment of the role block
+  `k mod phases`; a moment of no group joins the last group's. The state holds
+  `(len(groups) + 1) * phases` blocks, so an agent lies in the agent's blocks wherever in the
+  episode it was heard.
+
+```python
+roles = ((0,), (1, 2))                    # two roles; a moment of neither joins a third group
+keyed = cd.Message(inputs=6, phases=2, units=24, winners=3, seed=0, roles=roles)
+for moment in np.eye(6)[[3, 0, 1]]:       # none, role 0, role 1
+    keyed.hear(moment[None])
+assert keyed.blocks == 6 and keyed.counts.tolist() == [[1, 1, 1]]
+assert np.array_equal(keyed.state.reshape(6, 24)[0], keyed.code(np.eye(6)[[0]])[0])
+```
 
 ```python
 message = cd.Message(inputs=6, phases=4, units=24, winners=3, seed=0)

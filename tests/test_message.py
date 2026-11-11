@@ -326,3 +326,56 @@ def test_the_messages_drive_is_retuned_and_its_layout_is_fixed():
 def test_message_refusals(settings, error):
     with pytest.raises(error):
         _brain(**settings)
+
+
+def test_a_moments_role_chooses_its_blocks_wherever_it_was_heard():
+    roles = ((0,), (1, 2))  # two roles; a moment of neither joins the last group
+    message = cd.Message(12, phases=2, units=8, winners=2, seed=3, roles=roles)
+    assert message.groups == 3 and message.blocks == 6 and message.width == 48
+    x = np.zeros((5, 12))
+    x[0, [0, 5]] = 1.0   # role 0
+    x[1, [7, 8]] = 1.0   # none
+    x[2, [2, 9]] = 1.0   # role 1
+    x[3, [0, 6]] = 1.0   # role 0 again: its second block
+    x[4, [1, 10]] = 1.0  # role 1 again
+    for moment in x:
+        message.hear(moment[None])
+    held = message.state.reshape(6, 8)
+    code = message.code(x)
+    for k, block in ((0, 0), (1, 4), (2, 2), (3, 1), (4, 3)):
+        assert np.array_equal(held[block], code[k])
+    assert message.counts.tolist() == [[2, 2, 1]] and message.told.tolist() == [5]
+    # the same moments in another order: the agent's block holds the agent
+    again = cd.Message(12, phases=2, units=8, winners=2, seed=3, roles=roles)
+    for moment in x[[1, 0, 2]]:
+        again.hear(moment[None])
+    assert np.array_equal(again.state.reshape(6, 8)[0], code[0])
+    assert set(message.arrays()) == {"trace", "told", "held", "counts"}
+    rebuilt = cd.Message(**message.to_dict())
+    assert rebuilt.roles == roles
+    with pytest.raises(ValueError):
+        cd.Message(12, roles=((12,),))
+    with pytest.raises(ValueError):
+        cd.Message(12, roles=((1, 1),))
+
+
+def test_a_brain_keys_its_message_by_role_and_keeps_it_in_a_checkpoint(tmp_path):
+    roles = ((0, 1), (2,))
+    brain = _brain(message=8, message_winners=2, message_roles=roles, message_phases=2)
+    alone = cd.Message(12, phases=2, units=8, winners=2, seed=5, roles=roles)
+    stream = _stream(np.random.default_rng(8), 5)
+    for moment in stream:
+        brain.lesson(moment, [0, 1, 2])
+        brain.act(moment, greedy=True)
+        alone.hear(moment)
+    assert np.array_equal(brain.message.state, alone.state)
+    assert np.array_equal(brain.message.counts, alone.counts)
+    assert len(brain.connectome.populations["message"]) == 3 * 2 * 8
+    assert {f"message_{k}" for k in range(6)} <= set(brain.carried_gains)
+    assert brain.describe()["genes"]["message_roles"] == [[0, 1], [2]]
+    loaded = cd.Brain.load(brain.save(tmp_path / "roles"))
+    assert loaded.message.roles == roles
+    assert np.array_equal(loaded.message.counts, brain.message.counts)
+    assert np.array_equal(loaded.act(stream[0], greedy=True), brain.act(stream[0], greedy=True))
+    with pytest.raises(ValueError):
+        _brain(message=8, message_roles=((12,),))

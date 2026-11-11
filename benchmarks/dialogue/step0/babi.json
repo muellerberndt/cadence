@@ -1,0 +1,8 @@
+{
+ "founders": [0, 1, 2],
+ "tasks": [1, 2, 6],
+ "data": "en",
+ "epochs": 5,
+ "arms": [{"arm": "previous_word"}, {"arm": "message"}, {"arm": "records"}, {"arm": "records_session"}],
+ "readings": [{}, {"erase": "records"}, {"erase": "message"}]
+}

@@ -1,0 +1,68 @@
+{
+ "schema": "letters-speech/1",
+ "issue": "https://github.com/muellerberndt/cadence/issues/304",
+ "stage": "Round 4, part 1, declared before its first life: exposure. The round 3 arm fields256_p heard for 30 passes, the offline controls' own epoch count in round 3, read after every pass, beside CTC controls at its parameter count read after every pass, on twelve fresh founders.",
+ "data": {
+  "corpus": "LibriSpeech (CC BY 4.0), openslr.elda.org mirror; md5 train-clean-100 2a93770f6d5c6c964bc36631d331a522, train-clean-360 c0e676e450a7ff2f54aeade5171606fa, dev-clean 42e2234ba48799c1f50f24a7926300a1",
+  "list": "words-2000.txt (md5 c3653e7a4315440a0088e2a3d0576081): the 2,000 most frequent words of the train-clean-100 and train-clean-360 transcripts with their counts (speech.py words)",
+  "train": "every utterance of train-clean-100 and train-clean-360 whose every word is on the list, at most 12 seconds, in the corpus's order: 2,100 utterances, 223,960 steps, 8,990.6 seconds (train.npz md5 f0b91a336f9beeeed359967fba454d9b)",
+  "held": "every such utterance of dev-clean that fits (at most 300, seed 0): 274 utterances, 23,378 steps, 939.2 seconds, no speaker on both sides (held.npz md5 ec4c2c1ae7689b3b0d198e27c1f0aa0c)",
+  "steps": "40 ms; a step hears its 24 latest 10 ms frames of 40 log-mel bands as a 40 by 24 image, less the window's mean, standardized per band on the training windows, clipped at 3 and scaled by 0.3 (speech.py prepare-listed)"
+ },
+ "founders": [
+  304500,
+  304501,
+  304502,
+  304503,
+  304504,
+  304505,
+  304506,
+  304507,
+  304508,
+  304509,
+  304510,
+  304511
+ ],
+ "batch": 32,
+ "passes": 30,
+ "align_every": 8,
+ "probe_every": 66,
+ "read_each_pass": true,
+ "transcripts": true,
+ "offline_epochs": 60,
+ "word_list": "words-2000.txt",
+ "brain": {
+  "genes": {
+   "actor_eta": 0.0,
+   "actor_eta_bias": 0.0,
+   "actor_eta_critic": 0.0,
+   "learned_fields": 64,
+   "modules": [
+    256
+   ],
+   "fields_motor": 1.0,
+   "learning_surprise": false
+  },
+  "note": "Brain.compose((40, 24), 29, backend='cpu', seed=s, learned_fields=64, modules=(256,), fields_motor=1.0, learning_surprise=False, **actor rates at zero): 1,285,724 parameters, the round 3 amendment's arm unchanged. 32 utterances heard side by side as streams, each batch from rest; 66 batches a pass, 1,980 batches a life. A reading after every pass (probe_every 66). The brain is saved at rest at every re-alignment and a stopped life continues from that save (speech.save_slot); Numba's threads per life are the box's to set (the library's rows give the same bits at any count)."
+ },
+ "teacher": "The first 8 batches on the even split of each utterance's steps among its characters; every 8 batches a frozen copy answers the next 8 batches greedily and each utterance's steps go to its characters by CTC's forced alignment through the copy's log beliefs (ctc_path); each step taught the symbol on its path. Thirty passes over the training utterances, each pass in its own seeded order.",
+ "controls": {
+  "parameters": 1285724,
+  "learners": [
+   "lstm ctc (1,284,410)",
+   "transformer ctc (1,289,333)"
+  ],
+  "modes": [
+   "online: 30 passes in the brain's orders, one Adam step per utterance (rate 0.003), read after every pass",
+   "offline: shuffled epochs (rate 0.001), read after every epoch, to the stopping rule (patience 3) or 60 epochs; its reading after epoch 30 is the matched-exposure reading, its last reading the ceiling"
+  ]
+ },
+ "readings": "After every pass, on the 274 held-out utterances by the CTC reading, for every learner: characters; inserted, deleted and substituted characters per character; the letter from the sound, its emission given the letter, the word given its letters (speech.locate); words and exact transcripts against the open lexicon and matched to the list (each said word replaced by the nearest list word: vocabulary.Matcher); every held-out transcript and the 28 by 28 letter confusions (speech.confusions); seconds of training, re-alignment and reading.",
+ "gates": {
+  "G1_characters": "For each of the twelve founders, d = the brain's characters after pass 30 minus the offline CTC transformer's characters of the same founder after its epoch 30 (after its last epoch where its stopping rule ended it sooner). G1 holds when the mean of d over the twelve founders is at or above -.03 and d is at or above -.03 on at least 10 of the 12.",
+  "G2_letter_from_sound": "The same pairing on the letter from the sound, with -.05 in both places.",
+  "located_negative": "Where a gate fails: for each of the four terms (the letter from the sound, emission given the letter, deleted characters per character, characters) and each learner, the earliest pass whose mean over founders is within .01 of that learner's mean at pass 30 (the pass it stops climbing at), and the brain's gap to the offline transformer at passes 1, 2, 5, 10, 20 and 30.",
+  "words": "List-matched words are read for every learner at every pass, ungated. If any learner's mean characters at its last reading clear .60, a second decoding is read for every learner from the saved transcripts: the said letters with their spaces dropped, cut into list words by the fewest edits."
+ },
+ "stop": "One life per process; every life kept and reported; a life a lost machine stops continues from its last saved re-alignment, a control from its last whole pass. No setting changes after a life is read."
+}

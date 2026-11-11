@@ -569,6 +569,13 @@ class Message:
     ``boundary_holds`` the message keeps what it heard before the boundary and neither that
     moment nor any after it joins, until the episode ends.
 
+    With ``roles``, groups of input channels, a moment's role chooses its blocks: a moment
+    with a channel of group ``r`` on (the first such group) joins block ``count_r mod phases``
+    of that group's ``phases`` blocks, ``count_r`` the moments of role ``r`` the episode heard
+    before it, and a moment of no group joins the last group's blocks by the same rule. The
+    state is ``(len(roles) + 1) * phases`` blocks, so a role's moments lie in its own blocks
+    wherever in the episode they were heard.
+
     The class stands alone: it holds no neurons and reads no brain. ``hear`` takes the
     observations one moment at a time, one row per stream; ``reset`` begins streams afresh.
     """
@@ -581,9 +588,11 @@ class Message:
     seed: int = 0
     boundary: int | None = None
     boundary_holds: bool = False
+    roles: tuple[tuple[int, ...], ...] = ()
     trace: np.ndarray = field(init=False, repr=False)
     told: np.ndarray = field(init=False, repr=False)
     held: np.ndarray = field(init=False, repr=False)
+    counts: np.ndarray = field(init=False, repr=False)
     separator: PatternSeparator = field(init=False, repr=False)
 
     COVER = 2  # code neurons that read each channel at least
@@ -611,6 +620,7 @@ class Message:
         if not isinstance(self.boundary_holds, (bool, np.bool_)):
             raise ValueError("boundary_holds must be boolean")
         self.boundary_holds = bool(self.boundary_holds)
+        self.roles = _roles(self.roles, int(self.inputs))
         channels = 2 * int(self.inputs)
         cover = min(self.COVER, int(self.units))
         # every channel read by ``cover`` units: a fan-in too small for that is raised to it
@@ -623,14 +633,32 @@ class Message:
         self.reset(0)
 
     @property
+    def groups(self) -> int:
+        """The groups of blocks: one per role and one for the moments of none, or one."""
+        return len(self.roles) + 1 if self.roles else 1
+
+    @property
+    def blocks(self) -> int:
+        """The blocks the state holds: ``groups * phases``."""
+        return self.groups * int(self.phases)
+
+    @property
     def width(self) -> int:
-        """The neurons the state takes: ``phases * units``."""
-        return int(self.phases) * int(self.units)
+        """The neurons the state takes: ``blocks * units``."""
+        return self.blocks * int(self.units)
 
     @property
     def state(self) -> np.ndarray:
-        """The held message, ``(streams, phases * units)``."""
+        """The held message, ``(streams, blocks * units)``."""
         return self.trace
+
+    def role(self, observations: np.ndarray) -> np.ndarray:
+        """Each row's group: the first role with a channel on, or the last group."""
+        x = np.atleast_2d(np.asarray(observations, dtype=float))
+        out = np.full(len(x), self.groups - 1, dtype=np.int64)
+        for r in range(len(self.roles) - 1, -1, -1):
+            out = np.where((x[:, list(self.roles[r])] > 0.0).any(axis=1), r, out)
+        return out
 
     def code(self, observations: np.ndarray) -> np.ndarray:
         """The sparse code of ``(streams, inputs)`` observations: one at each row's winners,
@@ -644,14 +672,17 @@ class Message:
             self.trace = np.zeros((batch, self.width))
             self.told = np.zeros(batch, dtype=np.int64)
             self.held = np.zeros(batch, dtype=bool)
+            self.counts = np.zeros((batch, self.groups), dtype=np.int64)
         else:
             self.trace[rows] = 0.0
             self.told[rows] = 0
             self.held[rows] = False
+            self.counts[rows] = 0
 
     def keep(self, rows: np.ndarray) -> None:
         """Keep the messages of ``rows`` only (streams that ended are dropped)."""
         self.trace, self.told, self.held = self.trace[rows], self.told[rows], self.held[rows]
+        self.counts = self.counts[rows]
 
     def hear(self, observations: np.ndarray) -> None:
         """One heard moment per stream joins its phase's union; another batch size begins the
@@ -670,29 +701,39 @@ class Message:
             else:
                 self.trace[at] = 0.0  # emptied; the boundary moment begins the message again
                 self.told[at] = 0
+                self.counts[at] = 0
         code = self.code(x)
-        held = self.trace.reshape(len(x), int(self.phases), int(self.units))
+        held = self.trace.reshape(len(x), self.blocks, int(self.units))
         rows = np.flatnonzero(~self.held)
-        phase = self.told[rows] % int(self.phases)
-        held[rows, phase] = np.maximum(held[rows, phase], code[rows])
+        if self.roles:  # the role's own blocks, by the moments of that role heard before
+            group = self.role(x[rows])
+            block = group * int(self.phases) + self.counts[rows, group] % int(self.phases)
+            self.counts[rows, group] += 1
+        else:
+            block = self.told[rows] % int(self.phases)
+        held[rows, block] = np.maximum(held[rows, block], code[rows])
         self.told[rows] += 1
 
     def key(self) -> np.ndarray:
-        """The union over the phases, ``(streams, units)``: what the episode held, whatever the
+        """The union over the blocks, ``(streams, units)``: what the episode held, whatever the
         order it was heard in."""
-        held = self.trace.reshape(len(self.trace), int(self.phases), int(self.units))
+        held = self.trace.reshape(len(self.trace), self.blocks, int(self.units))
         return np.asarray(held.max(axis=1))
 
     def branch(self) -> Message:
         """A private copy, its arrays its own."""
         branch = copy(self)
         branch.trace, branch.told = self.trace.copy(), self.told.copy()
-        branch.held = self.held.copy()
+        branch.held, branch.counts = self.held.copy(), self.counts.copy()
         return branch
 
     def arrays(self) -> dict[str, np.ndarray]:
-        """The arrays a checkpoint keeps: the code is drawn again from the seed."""
-        return {"trace": self.trace, "told": self.told, "held": self.held}
+        """The arrays a checkpoint keeps: the code is drawn again from the seed; with
+        ``roles`` the moments each role heard (``counts``) as well."""
+        out = {"trace": self.trace, "told": self.told, "held": self.held}
+        if self.roles:
+            out["counts"] = self.counts
+        return out
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -704,7 +745,27 @@ class Message:
             "seed": int(self.seed),
             "boundary": None if self.boundary is None else int(self.boundary),
             "boundary_holds": bool(self.boundary_holds),
+            **({"roles": [list(group) for group in self.roles]} if self.roles else {}),
         }
+
+
+def _roles(roles: Any, inputs: int) -> tuple[tuple[int, ...], ...]:
+    """``roles`` as a tuple of groups of distinct input channels; refused otherwise."""
+    if roles is None:
+        return ()
+    try:
+        groups = tuple(tuple(group) for group in roles)
+    except TypeError as exc:
+        raise ValueError("roles are groups of input channels") from exc
+    out = []
+    for group in groups:
+        if not group or len(set(group)) != len(group) or any(
+            isinstance(c, (bool, np.bool_)) or not isinstance(c, (int, np.integer))
+            or not 0 <= c < inputs for c in group
+        ):
+            raise ValueError("each role is a nonempty group of distinct input channels")
+        out.append(tuple(int(c) for c in group))
+    return tuple(out)
 
 
 @dataclass
@@ -777,10 +838,10 @@ class HeldMessage(Message):
         if len(self.glow) != self.width:
             raise ValueError(
                 f"the {self.target} population holds {len(self.glow)} neurons, where the "
-                f"message holds {self.width} (phases * units)"
+                f"message holds {self.width} (blocks * units)"
             )
         self._glow_columns = columns(self.glow)
-        self.hearing = np.ones(int(self.phases) * self.gains)
+        self.hearing = np.ones(self.blocks * self.gains)
         # whether the association reads the whole message: a message composed silent beside
         # its read holds no synapse of its own
         self.direct = bool(np.isin(np.asarray(connectome.pre), self.glow).any())
@@ -805,7 +866,7 @@ class HeldMessage(Message):
             # the content address over a block's units and the turn per block
             self.maps = [
                 (np.zeros((inputs, outputs)), np.zeros((wide, outputs)), np.zeros(outputs))
-                for outputs in (int(self.units), int(self.phases))
+                for outputs in (int(self.units), self.blocks)
             ]
 
     # -- the streams
@@ -837,8 +898,11 @@ class HeldMessage(Message):
 
     def streams(self) -> dict[str, np.ndarray]:
         """What the streams hold, the learned maps apart."""
-        return {"trace": self.trace, "told": self.told, "held": self.held,
-                "previous": self.previous}
+        out = {"trace": self.trace, "told": self.told, "held": self.held,
+               "previous": self.previous}
+        if self.roles:
+            out["counts"] = self.counts
+        return out
 
     # -- the read
 
@@ -873,7 +937,7 @@ class HeldMessage(Message):
             if x is None or len(x) != len(out):
                 out[:, self._port_columns] = 0.0
             else:
-                blocks = self.trace.reshape(len(out), int(self.phases), int(self.units))
+                blocks = self.trace.reshape(len(out), self.blocks, int(self.units))
                 c = self.previous
                 p = self.attention(x, c, blocks)
                 out[:, self._port_columns] = self.read_amplitude * _einsum(
