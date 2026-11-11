@@ -269,7 +269,9 @@ def life(cache: Path, protocol: dict[str, Any], seed: int, out: Path,
          limit: int | None = None) -> dict[str, Any]:
     """One brain hears the training utterances in a seeded order, one step a moment, each from
     rest; its lessons follow the teacher's alignment; a saved copy reads the held-out
-    utterances every ``probe_every`` utterances."""
+    utterances every ``probe_every`` utterances. The brain saved at each reading and the record
+    so far let a stopped life continue from its last reading, the teacher re-aligning the next
+    utterances on it as it would have."""
     import cadence as cd
 
     train, held = load(cache, "train"), load(cache, "held")
@@ -280,8 +282,18 @@ def life(cache: Path, protocol: dict[str, Any], seed: int, out: Path,
     record: dict[str, Any] = {"seed": seed, "parameters": brain.parameters(), "probes": [],
                               "alignments": [], "describe": brain.describe()}
     paths = {int(i): even_path(len(train[i][0]), train[i][1]) for i in order[:every]}
-    started, steps = time.monotonic(), 0
+    started, steps, begin = time.monotonic(), 0, 0
+    partial = out / f"speech-brain-{seed}.partial.json.gz"
+    if partial.exists():  # a life a lost machine stopped continues from its last reading
+        record = lt.read_record(partial)
+        begin = int(record["probes"][-1]["utterances"])
+        steps = int(record["probes"][-1]["steps"])
+        started -= float(record["probes"][-1]["seconds"])
+        brain = cd.Brain.load(out / f"speech-{seed}-u{begin}.npz")
+        record.setdefault("resumed", []).append(begin)
     for n, i in enumerate(order):
+        if n < begin:
+            continue
         i = int(i)
         if n and n % every == 0:  # the teacher re-aligns the next utterances on a frozen copy
             copy = cd.Brain.load(brain.save(out / f"speech-{seed}-align.npz"))
@@ -310,6 +322,7 @@ def life(cache: Path, protocol: dict[str, Any], seed: int, out: Path,
             record["probes"].append({"utterances": n + 1, "steps": steps,
                                      "seconds": time.monotonic() - started, "score": result,
                                      "sample": [decode(lt.collapse(a)) for a in actions[:3]]})
+            lt.write_record(partial, record)
             print(json.dumps({"seed": seed, "utterances": n + 1,
                               "characters": round(result["characters"], 3),
                               "words": round(result["words"], 3),
