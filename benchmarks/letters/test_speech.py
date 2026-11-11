@@ -114,3 +114,34 @@ def test_a_batched_life_hears_utterances_side_by_side_and_resumes(tmp_path: Path
     again = sp.life_batched(cache, protocol, 1, out)
     assert again["resumed"] == [2]
     assert again["probes"][-1]["score"]["characters"] == full["probes"][-1]["score"]["characters"]
+
+
+def test_two_passes_resume_between_re_alignments(tmp_path: Path) -> None:
+    """An utterance heard in both passes takes a path in each; a life resumed between two
+    re-alignments takes its batches' paths from the copy of the last one."""
+    import json
+
+    rng = np.random.default_rng(1)
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (cache / "meta.json").write_text(json.dumps(
+        {"mels": 8, "window": 8, "mean": [0.0] * 8, "std": [1.0] * 8}))
+    for name, n in (("train", 6), ("held", 2)):
+        lengths = rng.integers(40, 60, size=n)
+        texts = rng.integers(3, 5, size=n)
+        np.savez(cache / f"{name}.npz", frames=rng.normal(size=(lengths.sum(), 8)),
+                 lengths=lengths, text=rng.integers(1, 29, size=texts.sum()),
+                 text_lengths=texts, identities=np.arange(n))
+    protocol = {"batch": 2, "passes": 2, "align_every": 2, "probe_every": 3,
+                "brain": {"genes": {"actor_eta": 0.0, "actor_eta_bias": 0.0,
+                                    "actor_eta_critic": 0.0, "learned_fields": 4}}}
+    out = tmp_path / "out"
+    out.mkdir()
+    full = sp.life_batched(cache, protocol, 2, out)
+    assert [p["batches"] for p in full["probes"]] == [3, 6]
+    record = sp.lt.read_record(out / "speech-brain-2.partial.json.gz")
+    record["probes"] = record["probes"][:1]
+    sp.lt.write_record(out / "speech-brain-2.partial.json.gz", record)
+    again = sp.life_batched(cache, protocol, 2, out)
+    assert again["resumed"] == [3] and again["probes"][-1]["batches"] == 6
+    assert again["resumed_alignment"][0]["batches"] == 3

@@ -523,10 +523,24 @@ def life_batched(cache: Path, protocol: dict[str, Any], seed: int, out: Path) ->
     clock = {"training": 0.0, "reading": 0.0}
     record: dict[str, Any] = {"seed": seed, "parameters": brain.parameters(), "probes": [],
                               "alignments": [], "describe": brain.describe(), "batch": size}
-    paths: dict[int, np.ndarray] = {}
-    for g in groups[:every]:
-        for i in g:
-            paths[int(i)] = even_path(len(train[i][0]), train[i][1])
+    # each batch's paths, by the batch: an utterance heard in two passes takes a path in each
+    paths: dict[int, list[np.ndarray]] = {
+        m: [even_path(len(train[int(i)][0]), train[int(i)][1]) for i in groups[m]]
+        for m in range(min(every, len(groups)))
+    }
+
+    def realign(copy: Any, first: int, last: int) -> list[float]:
+        moved = []
+        for m in range(first, min(last, len(groups))):
+            g = groups[m]
+            paths[m] = []
+            for i, (_, logp) in zip(g, batch_beliefs(copy, [train[int(i)][0] for i in g]),
+                                    strict=True):
+                new = lt.ctc_path(logp, train[int(i)][1])
+                moved.append(float(np.mean(new != even_path(len(new), train[int(i)][1]))))
+                paths[m].append(new)
+        return moved
+
     steps, begin = 0, 0
     partial = out / f"speech-brain-{seed}.partial.json.gz"
     if partial.exists():
@@ -536,31 +550,32 @@ def life_batched(cache: Path, protocol: dict[str, Any], seed: int, out: Path) ->
         steps = int(record["probes"][-1]["steps"])
         brain = cd.Brain.load(out / f"speech-{seed}-b{begin}.npz")
         record.setdefault("resumed", []).append(begin)
+        if begin % every:  # the batches up to the next re-alignment, on the copy they had
+            aligned = out / f"speech-{seed}-align.npz"
+            last = begin - begin % every
+            source = "the copy of its re-alignment"
+            if not aligned.exists() or last < every:
+                aligned, source = out / f"speech-{seed}-b{begin}.npz", "the brain at the reading"
+            realign(cd.Brain.load(aligned), begin, last + every)
+            record.setdefault("resumed_alignment", []).append({"batches": begin, "on": source})
     for n, group in enumerate(groups):
         if n < begin:
             continue
         if n and n % every == 0:
             copy = cd.Brain.load(brain.save(out / f"speech-{seed}-align.npz"))
-            moved = []
-            for g in groups[n : n + every]:
-                for i, (_, logp) in zip(g, batch_beliefs(copy, [train[int(i)][0] for i in g]),
-                                        strict=True):
-                    new = lt.ctc_path(logp, train[int(i)][1])
-                    moved.append(float(np.mean(new != even_path(len(new), train[int(i)][1]))))
-                    paths[int(i)] = new
+            moved = realign(copy, n, n + every)
             record["alignments"].append({"batches": n, "moved_from_even": float(np.mean(moved))})
         x, mask = padded([train[int(i)][0] for i in group])
         labels = np.zeros(mask.shape, dtype=np.int64)
-        for r, i in enumerate(group):
-            labels[: len(paths[int(i)]), r] = paths[int(i)]
+        for r, path_r in enumerate(paths[n]):
+            labels[: len(path_r), r] = path_r
         ticked = time.monotonic()
         brain.reset()
         for t in range(len(x)):
             brain.step(x[t], teacher=labels[t])
         clock["training"] += time.monotonic() - ticked
         steps += int(mask.sum())
-        for i in group:
-            paths.pop(int(i), None)
+        paths.pop(n, None)
         if (n + 1) % probe_every == 0 or n + 1 == len(groups):
             path = brain.save(out / f"speech-{seed}-b{n + 1}.npz")
             copy = cd.Brain.load(path)
