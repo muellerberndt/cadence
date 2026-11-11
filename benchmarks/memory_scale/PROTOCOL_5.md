@@ -55,3 +55,14 @@ current 1.000, stale .000; 10.8 ms per told moment on a loaded box; 5,365,407 pa
 lexicon of 256 stems and 256 verbs some agents' or verbs' codes are one code, as the third
 declaration located (1.2% and 2.4% of facts at two founders of six there). C6a and C6b are
 expected to hold, with found over all facts between .97 and 1.00.
+
+## Amendment 1: the instrument's own-key count by parts (declared 11 November 2026, before the run again)
+
+The first life of founders 3140 to 3151 started at 18:10 UTC and was stopped at 19:38 UTC. After
+every founder's 100,000 facts and their revisions were told, and before any question was asked,
+`own_keys` (which counts the facts whose key another fact has, a diagnostic) coded all 100,000
+facts' moments at once, about 40 GB a founder; the kernel ended three workers and the run was
+stopped. No score was computed.
+
+The instrument codes those keys by parts of 2,000 facts (`brain_records.PART`); a contract test
+holds the parts to the whole. The same plan, founders and gates run again, from the start.

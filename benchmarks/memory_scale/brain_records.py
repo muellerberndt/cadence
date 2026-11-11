@@ -73,6 +73,7 @@ ROUNDS = 1500
 QUESTIONS = 25  # per stream and kind
 REVISED = 0.1  # the share of the read facts told again with another patient
 UNITS = 280
+PART = 2000  # the facts ``own_keys`` codes at once
 
 
 class World:
@@ -162,11 +163,15 @@ def own_keys(brain: Any, world: World, about: np.ndarray) -> np.ndarray:
 
     fields = ("inputs", "phases", "units", "winners", "fan_in", "seed")
     coder = cd.Message(**{k: brain.message.to_dict()[k] for k in fields})
-    moments = world.episode(about, None)
-    coder.reset(len(about))
-    coder.hear(moments[0])
-    coder.hear(moments[1])
-    keys = np.asarray(coder.key()).astype(np.uint8)
+    parts = []
+    for start in range(0, len(about), PART):  # by parts: a reading of 100,000 facts at once
+        some = about[start : start + PART]    # holds tens of gigabytes
+        moments = world.episode(some, None)
+        coder.reset(len(some))
+        coder.hear(moments[0])
+        coder.hear(moments[1])
+        parts.append(np.asarray(coder.key()).astype(np.uint8))
+    keys = np.concatenate(parts)
     _, inverse, counts = np.unique(keys, axis=0, return_inverse=True, return_counts=True)
     return np.asarray(counts[np.ravel(inverse)] == 1)
 

@@ -904,3 +904,38 @@ def test_the_fifth_declaration_s_plan_parses_on_its_founders():
     assert world.inputs == 1284 and world.fan_in() == 587 and len(world.pool) >= 100_000
     assert todo[0]["store"] == {"pairs": 16, "expansion": 16384, "winners": 256,
                                 "candidates": 4096, "fade": False}
+
+
+def test_the_fourth_declaration_s_receipts_hold_the_verdicts_the_readme_states(capsys):
+    sm = _load("summarize_million")
+    results = HERE / "results"
+    capacity = sm.load(results, "fourth-capacity")
+    assert len(capacity) == 3024 and {r["founder"] for r in capacity} == set(range(3100, 3112))
+    sm.gates_capacity(capacity)
+    facts = sm.load(results, "fourth-facts")
+    assert len(facts) == 1440 and {r["founder"] for r in facts} == set(range(3112, 3124))
+    sm.facts(facts)
+    out = capsys.readouterr().out
+    for line in ("C1 (pairs at 1,000,000: exact .99, noisy and partial .95, both gate forms): "
+                 "12 of 12 founders: passes",
+                 "C3a (pairs within .01 of the scan at 1,000,000): 12 of 12 founders: passes",
+                 "C4a (subject by 2, 4, 8 heads at 1,000,000: .95): 12 of 12 founders: passes",
+                 "C4b (four parts, each by a head, at 1,000,000: .90): 12 of 12 founders: passes",
+                 "C5 (chains at 100,000: two hops .95, three .90, exact and noisy): 12 of 12 "
+                 "founders: passes"):
+        assert line in out
+    readme = (HERE / "README.md").read_text()
+    for cell in ("| `hashed-280` | 1,000,000 | `pairs` | 1.000 | .999 to 1.000 | .973 to .986 |",
+                 "| C4b | 1,000,000 facts: four parts, a head each | .90 | 1.000, 12 of 12: "
+                 "**passes** |"):
+        assert cell in readme
+
+
+def test_own_keys_by_parts_are_the_keys_of_the_whole_reading(monkeypatch):
+    br = _load("brain_records")
+    world = br.World(0)
+    brain = br.make_brain(world, 0, 16)
+    about = world.pool[:50]
+    whole = br.own_keys(brain, world, about)
+    monkeypatch.setattr(br, "PART", 7)
+    np.testing.assert_array_equal(br.own_keys(brain, world, about), whole)
