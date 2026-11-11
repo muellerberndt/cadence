@@ -1,90 +1,80 @@
 # Changelog
 
-## Unreleased
+## 0.98.0 - 2026-11-12
 
-### Speech: a recogniser from recordings and transcripts (`cadence.speech`, opt-in, #314)
+A recogniser trained from recordings and their transcripts (`cadence.speech`), the read-speech
+recipe on a device, a long-term memory of a million records, and an encyclopedia of facts read
+once. No default changes: every new piece is opt-in, and with every new option unset a brain acts,
+learns, saves and describes to the bit as on 0.97.1 on `backend="cpu"`.
 
-`cadence.speech` is imported by name; `import cadence` loads none of it. The guide is
+```bash
+python -m pip install cadence-net==0.98.0
+```
+
+### Speech (#314)
+
+`cadence.speech` is imported by name, and `import cadence` loads none of it. The guide is
 [docs/speech.md](docs/speech.md).
 
-- **`correct.Rehearsal`**: a correction heard as one stream beside earlier utterances of a bank,
-  taught at a lesson weight (`Brain.lesson(weights=)`; 3 utterances at .25 by default), labels or
-  soft targets, the bank kept under a byte budget. Read through it, at a tenth of the lives' rates:
-  on the spoken-phrase chamber (issue 303) the earlier speakers held (+.005 and -.002) at nearly a
-  plain correction's gain (+.072 and +.080 against +.080 and +.096); on read speech (issue 304's
-  twelve lives, 13 speakers each) the other speakers rose +.010 against +.003 at the same gain.
-- **`stream.StreamReader`**: one stream of a trained brain on live audio; samples in blocks of any
-  size, text out as each 40 ms step is answered, the transcript read against a word list at
-  `finish()`, seconds per step in `latency()`. It hears what the front end makes of the whole
-  recording; one idle core answers a step of the recipe's brain in 1.05 ms.
-- **`benchmarks/letters/recipe.py`**: the recipe end to end on LibriSpeech (or tone words with no
-  download): hear, compose, train from transcripts, read, adapt at a tenth of the rates, stream;
-  `--timing` reads the reader's step. On issue 304's 2.5-hour set it reads .31 characters after two
-  passes. `benchmarks/letters/corrections.py` reads corrections of read speech, plain against
-  `Rehearsal`.
+- **`frontend.log_mel`, `frontend.Hearing`**: 16 kHz audio as 40-band log-mel frames every 10 ms,
+  heard by a brain with `learned_fields` as an image every 40 ms.
+- **`align.Alignments`, `align.log_beliefs`**: a teacher that knows each recording's text
+  re-aligns its letters by the best path through the brain's own beliefs, and teaches each step.
+- **`decode.collapse`, `decode.WordBeam`**: text from the brain's beliefs, plain or through a beam
+  over a word list.
+- **`correct.Rehearsal`**: a correction heard beside earlier utterances at a lesson weight (three
+  at .25 by default). On the spoken-phrase chamber the earlier speakers hold (+.005 and -.002)
+  at nearly a plain correction's gain (+.072 and +.080 against +.080 and +.096); on read speech
+  the other speakers rise +.010 against +.003 at the same gain.
+- **`stream.StreamReader`**: one stream of a trained brain on live audio, text out as each 40 ms
+  step is answered; one idle core answers a step of the recipe's brain in 1.05 ms.
+- **The recipe** (`benchmarks/letters/recipe.py`): hear, compose, train from transcripts, read,
+  adapt and stream, on LibriSpeech or on tone words with no download. On the 2.5 hours of #307's
+  set it reads .31 characters after two passes.
+- **On a device** (`benchmarks/letters/device.py`, R3): the recipe's composition trains on an
+  NVIDIA A10G at 126 seconds per hour of audio with 128 streams and 187 with 32, its lessons
+  within the settle's tolerance of the CPU's and its saves loading on every backend.
+
+### A long-term memory of a million records (#310)
+
+- **`cd.LongTermMemory(..., pairs=units)`**, and `Brain.compose(longterm=records,
+  longterm_pairs=, longterm_expansion=, longterm_winners=, longterm_candidates=, longterm_fade=)`
+  for a brain's own records: a record filed under the pairs of its most driven address units.
+  C1: among 1,000,000 records an exact cue finds its record at 1.000, a noisy one at .997 to
+  1.000; C3a: within .004 of a scan of every record (.010 on one founder's partial hashed cue),
+  12 of 12 founders.
+- **`apart=width`**: two facts whose keys are one key hold two records. C2: 1,000,000 facts, 4 in
+  100 sharing their key, found at 1.000 on 12 of 12 (.978 to .980 without it).
+- **`read_each(cues)` and `chain(cue, links)`**: heads that read in turn, and a read's value laid
+  on the next cue. C4: among 1,000,000 facts the subject read by 2, 4 and 8 heads at 1.000, 1.000
+  and .994 to 1.000, a question of four parts at 1.000; C5: chains of two and three hops among
+  100,000 facts at 1.000 from an exact cue, 12 of 12.
+- **`fill(keys, values)`** writes many records in one pass (1,000,000 in 190 to 210 s).
+- C6: a brain of 2,403,231 parameters hears 100,000 facts once each, writes its own records and
+  answers .960 to 1.000 of them (1.000 where a fact's key is its own), revised facts current at
+  .995 to 1.000 and never stale, 12 of 12.
+
+### The encyclopedia: facts read once (#311)
+
+- **`longterm_best=True`**: the read takes the record holding the most of the cue's weight, the
+  latest among equals; **`longterm_rest=True`**: a second read for what the question asks beyond
+  that record. With `longterm_distinct` the records and their entries are kept as lists, which
+  grow past a hundred thousand records; a 0.97.1 file loads.
+- `benchmarks/encyclopedia/`: Wikidata facts (CC0) read once, twelve fresh founders, 741,542
+  parameters. At 10,000 facts E1, E3, E4 and E5 pass: trained wordings .977 to .998, held-out
+  wordings .957 to .996, a fact told again current at .947 to .993, two facts .750 to .963, above
+  every control at the brain's size (closed-book LSTM .757 to .825 trained, .047 to .210 held out).
+  At 100,000 facts the trained wordings read .980 to .999, and E2's held-out wordings fail at .652
+  to .698: one held-out wording ("name the ... ?") falls, because a few subjects' names hold the
+  word "name", which the read weighs as the question's rarest word.
+
 ### Changed
 
-- **Learned fields keep the codes of the frames they read** (#314, R3). A training step of a
-  brain with `learned_fields` reads the same frames' code three times (the outcome before it, the
-  lesson and the act); `LearnedFields.code` keeps its latest two codes with the frames and tables
-  they were read from and returns a kept code for equal frames and tables, compared in full. The
-  code is the same array to the bit, the work counts count every read, and a brain, its file and
-  its description are unchanged on every backend. On an NVIDIA A10G the read-speech recipe's
-  composition trains at 187 seconds per hour of audio at 32 streams and 126 at 128, from 210 and
-  149 (`benchmarks/letters/device.py`).
-
-### Added
-
-- **The read-speech recipe on a device** (#314, R3). `benchmarks/letters/device.py` runs the
-  recipe's composition (`learned_fields=64`, `modules=(256,)`, `fields_motor=1.0`, every row
-  taught) on each backend against the CPU, carries saves between backends and reads seconds per
-  hour of audio. CUDA float32 and MLX train it with 32 and 128 streams, their lessons within
-  the settle's tolerance of the CPU's (the float64 device sits at the same distance) and their
-  saves loading on every backend to the saved parameters (benchmarks/letters, on a device;
-  docs/backends.md).
-### A long-term memory of a million records (opt-in, #310)
-
-`cd.LongTermMemory` reads a million records through an address whose work grows far slower than
-the records. Every option is off by default; without them the store and a brain with records are
-those of 0.97.0, to the bit.
-
-- **An address of pairs** (`pairs=units`). A record is filed under every pair of its most driven
-  address units, in a table of cells sized to the capacity. A cue's winners name the pairs it
-  reads, and the slots found under the most pairs go to the read's competition. A key is centred
-  before it drives the units, so a key of zeros and ones and a dense key are filed alike.
-- **`fill(keys, values)`** writes many records told once in one pass.
-- **`read_each(cues)`**: heads reading in turn, each with a cue of its own, for a question of
-  several parts. **`chain(cue, links)`**: a read's value laid on the next cue.
-- **Keys held apart** (`apart=width`): a write keeps a signature of the fact's `source`, so two
-  facts whose keys are one key hold two records, and a read that carries its source takes its own.
-- **A brain's own records** take the address through `Brain.compose(longterm=records,
-  longterm_pairs=, longterm_expansion=, longterm_winners=, longterm_candidates=, longterm_fade=)`.
-- With the `fast` extra (Numba) the count over the pairs runs in one compiled loop; NumPy gives
-  the same slots without it.
-- Instruments `benchmarks/memory_scale/million.py` and `facts.py`, declared in
-  [`PROTOCOL_4.md`](benchmarks/memory_scale/PROTOCOL_4.md).
-
-### The encyclopedia: facts read once (opt-in, #311)
-
-A brain reads a corpus of facts once, writing its own records, and answers questions about them
-from those records. Every option is off by default; without them a brain with records reads as
-before.
-
-- **Records kept as lists.** With `longterm_distinct` each stream keeps each record's entries and
-  each entry's records, so the records and the codebook grow to a hundred thousand records and
-  more. A checkpoint keeps the entries as rows of (stream, slot, entry); a 0.97.1 file, which
-  keeps them as tables, loads.
-- **The record that holds the most** (`longterm_best=True`): the read takes the record holding the
-  largest share of the cue's weight, the latest among equals, so a question that names a subject
-  and a relation reads the record of both, and a fact told again is read from its latest telling.
-- **What the question asks beyond the first record** (`longterm_rest=True`): a second read is
-  cued by the first record's value and the question's entries that record does not hold, so a
-  question of two facts reads the second fact. The regions hold the chain from its end, the
-  answering record on `longterm`, the first record on `longterm_1` where the brain has two heads.
-- The encyclopedia chamber, `benchmarks/encyclopedia/`: facts from Wikidata (CC0), questions in
-  trained and held-out wordings, revisions, questions of two facts, and matched controls (a
-  closed-book LSTM and transformer, a transformer with the facts in its window, and BM25
-  retrieval read by a transformer).
+- **Learned fields keep the codes of the frames they read** (#314, R3): a training step reads the
+  same frames' code three times, and `LearnedFields.code` returns a kept code for equal frames and
+  tables. The code is the same array to the bit, and a brain, its file and its description are
+  unchanged on every backend. On the A10G the recipe trains at 187 and 126 seconds per audio hour
+  at 32 and 128 streams, from 210 and 149.
 
 ## 0.97.1 - 2026-11-11
 
