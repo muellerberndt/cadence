@@ -75,6 +75,7 @@ testpaths = [
     "benchmarks/vocabulary",
     "benchmarks/long_context",
     "benchmarks/memory_scale",
+    "benchmarks/encyclopedia",
     "benchmarks/device",
     "benchmarks/doom",
     "benchmarks/pixels",

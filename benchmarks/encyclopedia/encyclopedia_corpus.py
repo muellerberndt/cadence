@@ -21,8 +21,8 @@ facts:
 - **Order.** Subjects by their articles, most first, so each size's facts are the best-known
   subjects' (the 10,000 facts are the first 10,000).
 
-    python benchmarks/encyclopedia/corpus.py fetch --out raw
-    python benchmarks/encyclopedia/corpus.py build --raw raw --out facts.tsv
+    python benchmarks/encyclopedia/encyclopedia_corpus.py fetch --out raw
+    python benchmarks/encyclopedia/encyclopedia_corpus.py build --raw raw --out facts.tsv
 """
 
 from __future__ import annotations

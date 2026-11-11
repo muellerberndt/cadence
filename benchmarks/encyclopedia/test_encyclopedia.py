@@ -14,10 +14,10 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
-import chamber as ch  # noqa: E402
-import corpus as cp  # noqa: E402
-import facts as fx  # noqa: E402
-from test_controls import tiny  # noqa: E402
+import encyclopedia_chamber as ch  # noqa: E402
+import encyclopedia_corpus as cp  # noqa: E402
+import encyclopedia_facts as fx  # noqa: E402
+from test_encyclopedia_controls import tiny  # noqa: E402
 
 
 def test_the_corpus_folds_names_drops_shared_ones_and_keeps_answers(tmp_path: Path) -> None:

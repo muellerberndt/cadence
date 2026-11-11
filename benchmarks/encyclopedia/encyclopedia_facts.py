@@ -6,7 +6,7 @@ from a hash of the word (an instrument's stand-in for a word's heard form, hand-
 channel ``WIDTH`` marks a turn (``TURN``). A told fact is "the {relation} of {subject} is
 {object} .", the turn marked before the object; a question is its words, the turn, then a silent
 moment at which the answer is said. The answers are the corpus's closed answer vocabulary
-(``corpus.py``), one action each, an instrument's choice.
+(``encyclopedia_corpus.py``), one action each, an instrument's choice.
 
 **Two sets of facts.** A subject belongs to the lessons where a hash of its item number falls
 under ``LESSON``; every other subject's facts are the reading corpus, in the corpus's order, so
@@ -130,7 +130,8 @@ def lesson_subject(subject: str) -> bool:
 
 
 class Corpus:
-    """The facts of ``path`` (``corpus.py``'s table): the lesson facts and the reading corpus.
+    """The facts of ``path`` (``encyclopedia_corpus.py``'s table): the lesson facts and the
+    reading corpus.
     ``keep`` keeps the first ``keep`` facts of the reading corpus (every fact where None); the
     answers and each relation's answers are read from every fact either way."""
 

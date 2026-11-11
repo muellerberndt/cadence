@@ -14,7 +14,7 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
-import facts as fx  # noqa: E402
+import encyclopedia_facts as fx  # noqa: E402
 
 COUNTRIES = ("arlo", "bevin", "corra", "dunmar", "estel", "farrow", "gilde", "harn")
 CITIES = ("ashby", "brill", "cobb", "dale", "eske", "fenn", "gorm", "hythe")
@@ -42,7 +42,7 @@ def tiny(folder: Path) -> Path:
 
 def test_the_moments_are_the_lexicon_s(tmp_path: Path) -> None:
     pytest.importorskip("torch")
-    import controls as co
+    import encyclopedia_controls as co
 
     corpus = fx.Corpus(tiny(tmp_path))
     assert corpus.lessons and corpus.reading
@@ -62,7 +62,7 @@ def test_the_moments_are_the_lexicon_s(tmp_path: Path) -> None:
 def test_the_index_reads_bm25_okapi_s_scores(tmp_path: Path) -> None:
     pytest.importorskip("torch")
     rank_bm25 = pytest.importorskip("rank_bm25")
-    import controls as co
+    import encyclopedia_controls as co
 
     corpus = fx.Corpus(tiny(tmp_path))
     sentences = [fx.tell(f).said for f in corpus.reading]
@@ -82,7 +82,7 @@ def test_a_small_cell_of_each_model_reads_the_chamber_s_groups(tmp_path: Path,
     pytest.importorskip("torch")
     if model == "retrieval":
         pytest.importorskip("rank_bm25")
-    import controls as co
+    import encyclopedia_controls as co
 
     spec = {"data": str(tiny(tmp_path)), "founder": 0, "model": model, "size": 40,
             "target": 20000, "sessions": 4, "facts": 3, "questions": 5, "small": 3,

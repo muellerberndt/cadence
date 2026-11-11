@@ -1,8 +1,8 @@
 # The encyclopedia: facts read once, answered from the brain's own records
 
-Issue: [#311](https://github.com/muellerberndt/cadence/issues/311). Instruments: `corpus.py` (the
-facts, from Wikidata), `facts.py` (sentences, questions, wordings, lessons), `chamber.py` (the
-brain's lives), `controls.py` (the matched controls); plans in [`declared/`](declared). This file
+Issue: [#311](https://github.com/muellerberndt/cadence/issues/311). Instruments: `encyclopedia_corpus.py` (the
+facts, from Wikidata), `encyclopedia_facts.py` (sentences, questions, wordings, lessons), `encyclopedia_chamber.py` (the
+brain's lives), `encyclopedia_controls.py` (the matched controls); plans in [`declared/`](declared). This file
 records the corpus as fetched, the development readings, and the declared run, posted on the issue
 before its first life.
 
@@ -13,7 +13,7 @@ before its first life.
 | Source | Wikidata, through the public SPARQL endpoint `https://qlever.dev/api/wikidata` |
 | Dump | 2026-08-07T23:15:45Z (the endpoint's `wikibase:Dump` dates) |
 | Licence | CC0 1.0 (Wikidata's structured data; the dump's `cc:license`) |
-| Queries | `corpus.query(relation)`, eleven, one a relation, kept with their answers |
+| Queries | `encyclopedia_corpus.query(relation)`, eleven, one a relation, kept with their answers |
 | Table | `facts.tsv`, 127,617,289 bytes, SHA-256 `362eb279ef8eca459ba65ee61225de07d4afcc646a84a391f98027903f28c5cf` |
 
 | Relation | Subjects | Property | Rows fetched | SHA-256 of the answer (first 16) | Facts kept |
@@ -31,12 +31,12 @@ before its first life.
 | country | cities, 4 or more articles | P17 (a sovereign state) | 6,562 | `e7fbaccfef71fbeb` | 6,250 |
 
 Each answer is kept gzipped with its full SHA-256 in `manifest.json` in the lane's S3 bucket; none
-of the data is in git. `corpus.build` makes the table:
+of the data is in git. `encyclopedia_corpus.build` makes the table:
 
 - **Names.** A subject's English label folded to lower-case ASCII words; a name two subjects share
   is dropped with both. A subject that is an answer ("italy") is said as that answer's one word.
 - **The closed answer vocabulary** (an instrument's choice): each relation's most named objects
-  (`corpus.TOP`: 250 states, 200 birthplaces, 100 occupations, 40 native languages, 40 sports, 25
+  (`encyclopedia_corpus.TOP`: 250 states, 200 birthplaces, 100 occupations, 40 native languages, 40 sports, 25
   instruments, 10 each of continents, currencies and languages), each named by at least 4 facts,
   608 answers in all. A fact whose object is outside them is dropped, so a capital is kept where it
   is a birthplace answer as well (67 capitals).
@@ -44,7 +44,7 @@ of the data is in git. `corpus.build` makes the table:
   most, then the lowest item number.
 - **Order.** Subjects by their articles, most first: 2,317,143 facts of 983,271 subjects.
 
-**Lessons and reading.** A subject whose item number hashes under .2 (`facts.lesson_subject`)
+**Lessons and reading.** A subject whose item number hashes under .2 (`encyclopedia_facts.lesson_subject`)
 belongs to the lessons; every other subject's facts form the reading corpus in the table's order,
 so the corpus of 10,000 facts is the first 10,000 of them and the corpus of 100,000 holds it. No
 lesson tells or asks a fact of the reading corpus.
@@ -56,13 +56,13 @@ lesson tells or asks a fact of the reading corpus.
 - **A fact** is "the {relation} of {subject} is {object} .", the turn marked before the object. A
   question is its words, the turn, and a silent moment at which the brain says the answer as one
   action of the 608.
-- **Wordings** (`facts.py`, frozen before any life): trained ("what is the capital of italy ?",
+- **Wordings** (`encyclopedia_facts.py`, frozen before any life): trained ("what is the capital of italy ?",
   "the capital of italy is what ?"); held out ("which capital does italy have ?", "italy 's
   capital is which ?", "name the capital of italy ?"); synonym, the relation said by another word
   ("what is the seat of italy ?"); two facts ("what is the capital of the citizenship of ada
   lovelace ?", citizenship or birthplace then the country's capital, continent, currency,
   language or the city's country).
-- **The life** (`chamber.py`), one stream, every told fact and every question its own episode:
+- **The life** (`encyclopedia_chamber.py`), one stream, every told fact and every question its own episode:
   1. the nursery, lesson sessions of 6 lesson facts drawn answer first (every answer taught about
      as often, an instrument's choice), a tenth told again with another object, a fifth of the
      questions of two facts;
@@ -73,7 +73,7 @@ lesson tells or asks a fact of the reading corpus.
 - **Said and found.** Every answer is said greedily and scored exactly (`said`). `found` reads
   whether the record on head 0's region holds the answer: the read apart from the readout.
 
-## The controls (`controls.py`)
+## The controls (`encyclopedia_controls.py`)
 
 Each at the parameters of the declared brain, on the same founders, lessons and questions, hearing
 the same moments through a linear input layer and saying one of the 608 answers:

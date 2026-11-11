@@ -24,12 +24,12 @@ and checksum are in `PROTOCOL.md`. The data is kept in the lane's S3 bucket, non
 
 | File | What it holds |
 | --- | --- |
-| `corpus.py` | The SPARQL queries, the fetch and the table of facts (`facts.tsv`, in the lane's bucket) |
-| `facts.py` | Words as heard moments, the sentences, the wordings, the lessons and the revisions |
-| `chamber.py` | The brain's lives: the nursery, the reading, the questions; `said` and `found` |
-| `controls.py` | Closed-book LSTM and transformer, a transformer with the facts in its window, BM25 retrieval read by a transformer |
-| `summarize.py` | The gates, the parity table and every learner's costs |
-| `test_encyclopedia.py`, `test_controls.py` | Contracts on a tiny corpus, with no download |
+| `encyclopedia_corpus.py` | The SPARQL queries, the fetch and the table of facts (`facts.tsv`, in the lane's bucket) |
+| `encyclopedia_facts.py` | Words as heard moments, the sentences, the wordings, the lessons and the revisions |
+| `encyclopedia_chamber.py` | The brain's lives: the nursery, the reading, the questions; `said` and `found` |
+| `encyclopedia_controls.py` | Closed-book LSTM and transformer, a transformer with the facts in its window, BM25 retrieval read by a transformer |
+| `encyclopedia_summary.py` | The gates, the parity table and every learner's costs |
+| `test_encyclopedia.py`, `test_encyclopedia_controls.py` | Contracts on a tiny corpus, with no download |
 
 ## The brain
 
@@ -52,10 +52,10 @@ vocabulary, one action an answer, and the lessons drawn answer first.
 
 ## Run
 
-    python benchmarks/encyclopedia/corpus.py fetch --out raw
-    python benchmarks/encyclopedia/corpus.py build --raw raw --out facts.tsv
-    PYTHONPATH=src python benchmarks/encyclopedia/chamber.py --plan declared/brain.json \
+    python benchmarks/encyclopedia/encyclopedia_corpus.py fetch --out raw
+    python benchmarks/encyclopedia/encyclopedia_corpus.py build --raw raw --out facts.tsv
+    PYTHONPATH=src python benchmarks/encyclopedia/encyclopedia_chamber.py --plan declared/brain.json \
         --data facts.tsv --out brain.jsonl --workers 24
-    PYTHONPATH=src python benchmarks/encyclopedia/controls.py --plan declared/controls.json \
+    PYTHONPATH=src python benchmarks/encyclopedia/encyclopedia_controls.py --plan declared/controls.json \
         --data facts.tsv --out controls.jsonl --workers 40
-    python benchmarks/encyclopedia/summarize.py --brain brain.jsonl --controls controls.jsonl
+    python benchmarks/encyclopedia/encyclopedia_summary.py --brain brain.jsonl --controls controls.jsonl
