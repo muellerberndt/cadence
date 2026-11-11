@@ -107,7 +107,10 @@ def live(brain: Any, lexicon: wd.Lexicon, batch: list[wd.Conversation], arm: str
         before = read_work(brain, n) if work is not None else 0.0
         said = brain.act(x, greedy=True)
         if work is not None:
-            work["macs"] += before + float(brain.last_settlement["row_sweeps"]) * size
+            report = brain.last_settlement
+            # a settle that reports no sweeps per row swept every row its steps
+            sweeps = report.get("row_sweeps", int(report.get("steps", 0)) * n)
+            work["macs"] += before + float(sweeps) * size
         return said
 
     for s in range(len(batch[0])):

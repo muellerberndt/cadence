@@ -140,3 +140,10 @@ questions, and the records emptied at each answer; reported without a bar.
 
 **Total work.** 18 synthetic lives and 36 bAbI lives of the brain; 24 synthetic and 48 bAbI lives
 of the controls; one spot CPU box.
+
+**Departure from the plan of the run.** The first launch at `74894445` stopped on the brain's side:
+the counter of multiply-accumulates read `row_sweeps` from a settlement report that holds `steps`
+alone, and the synthetic world's lives and part of bAbI's ended with an error before any of their
+readings was written. The counter reads `steps` times the rows there, and the brain's lives were
+launched again whole, on the same plans and founders; the controls' receipts of the first launch
+stand. No instrument of a reading, plan or bar changed.
