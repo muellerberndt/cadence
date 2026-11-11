@@ -15,7 +15,7 @@ under the same neuron model.
 from __future__ import annotations
 
 import functools
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -42,6 +42,10 @@ class Projection:
     scale: float = 1.0  # magnitude, fan-scaled
     count: float = 1.0
     reciprocal: bool = True  # also the reverse synapses, with the same weights: reciprocal pairs
+    # equal blocks of ``pre`` and of ``post`` that share one set of synapses (``tied_blocks``):
+    # (k, 1) every block of pre onto the whole of post, (1, k) the whole of pre onto every block
+    # of post, (k, k) block i of pre onto block i of post; (1, 1) ties nothing
+    tied: tuple[int, int] = (1, 1)
 
     def __post_init__(self) -> None:
         if not self.pre or not self.post:
@@ -50,6 +54,28 @@ class Projection:
             raise ValueError("density must lie in [0, 1] and sign in [-1, 1]")
         if not np.isfinite([self.scale, self.count]).all() or min(self.scale, self.count) < 0:
             raise ValueError("projection scale and count must be finite and nonnegative")
+        object.__setattr__(self, "tied", tied_blocks(self.tied))
+
+
+def tied_blocks(value: Any) -> tuple[int, int]:
+    """A tie's blocks, validated: ``(blocks of pre, blocks of post)``, positive integers, one of
+    them 1 or the two equal."""
+    refusal = (
+        "tied is (blocks of pre, blocks of post), two positive integers: one of them 1, or the "
+        "two equal for block i onto block i"
+    )
+    if isinstance(value, (str, bytes)) or not isinstance(value, (Sequence, np.ndarray)):
+        raise ValueError(refusal)
+    blocks = tuple(value)
+    if len(blocks) != 2 or any(
+        isinstance(k, (bool, np.bool_)) or not isinstance(k, (int, np.integer)) or k < 1
+        for k in blocks
+    ):
+        raise ValueError(refusal)
+    pre, post = int(blocks[0]), int(blocks[1])
+    if pre != post and min(pre, post) != 1:
+        raise ValueError(refusal)
+    return pre, post
 
 
 @dataclass(frozen=True)
@@ -69,6 +95,48 @@ class Genome:
                     raise ValueError(f"unknown projection region: {name!r}")
                 region = self.region(name)
                 region.neurons(population or getattr(region, side))
+        joined: dict[frozenset[str], bool] = {}  # two ends, and whether a tie joins them
+        for projection in self.projections:
+            shared = projection.tied != (1, 1)
+            for endpoint, side, blocks in (
+                (projection.pre, "outputs", projection.tied[0]),
+                (projection.post, "inputs", projection.tied[1]),
+            ):
+                name, _, population = endpoint.partition("/")
+                region = self.region(name)
+                size = len(region.neurons(population or getattr(region, side)))
+                if size % blocks:
+                    raise ValueError(
+                        f"a tied projection needs equal blocks: {endpoint!r} holds {size} "
+                        f"neurons, which {blocks} blocks do not divide"
+                    )
+            pair = frozenset(
+                (self._end(projection.pre, "outputs"), self._end(projection.post, "inputs"))
+            )
+            if pair in joined and (shared or joined[pair]):
+                raise ValueError(
+                    "a tied projection is the one projection between its two ends: "
+                    f"{projection.pre!r} and {projection.post!r} are joined twice"
+                )
+            joined[pair] = shared or joined.get(pair, False)
+
+    def _end(self, endpoint: str, side: str) -> str:
+        """The connectome population a projection end names: the region's ``outputs`` or
+        ``inputs`` population where it has one, else the region or the population named."""
+        name, _, population = endpoint.partition("/")
+        population = population or (getattr(self.region(name), side) or "")
+        return f"{name}/{population}" if population else name
+
+    @property
+    def tied(self) -> dict[tuple[str, str], tuple[int, int]]:
+        """The tied projections, each by the two populations of the developed connectome it
+        joins, with its blocks: what ``Brain.compose(connectome=develop(genome), tied=...)``
+        takes."""
+        return {
+            (self._end(p.pre, "outputs"), self._end(p.post, "inputs")): p.tied
+            for p in self.projections
+            if p.tied != (1, 1)
+        }
 
     @classmethod
     def composed(cls, inputs: Any, actions: int, **settings: Any) -> Genome:
@@ -85,7 +153,7 @@ class Genome:
 
         keywords = (
             "modules", "observers", "lateral", "scales", "features", "field", "code",
-            "learned_code", "seed", "slots", "learned_fields", "ports",
+            "learned_code", "seed", "slots", "learned_fields", "ports", "tied",
         )
         layout = {name: settings.pop(name) for name in keywords if name in settings}
         return _layout(inputs, actions, settings, **layout)[0]
@@ -114,7 +182,12 @@ class Genome:
     def to_dict(self) -> dict[str, Any]:
         return {
             "regions": [r.to_dict() for r in self.regions],
-            "projections": [vars(p) for p in self.projections],
+            # a tie is recorded where a projection has one: every other record reads as before
+            "projections": [
+                {k: list(v) if k == "tied" else v for k, v in vars(p).items()
+                 if k != "tied" or v != (1, 1)}
+                for p in self.projections
+            ],
             "label": self.label,
         }
 
@@ -193,6 +266,8 @@ def develop(genome: Genome, seed: int = 0) -> Connectome:
         i, j = np.nonzero(mask)
         magnitude = rng.uniform(0.0, 1.0, size=len(i)) * np.sqrt(6.0 / (len(a) + len(b))) * p.scale
         signs = np.where(rng.random(len(i)) < (1.0 + p.sign) / 2.0, 1.0, -1.0) * magnitude
+        if p.tied != (1, 1):
+            i, j, signs = _tied_copies(i, j, signs, len(a), len(b), p.tied)
         pre.append(a[i])
         post.append(b[j])
         count.append(np.full(len(i), p.count))
@@ -217,6 +292,88 @@ def develop(genome: Genome, seed: int = 0) -> Connectome:
     )
 
 
+def _tied_copies(
+    i: np.ndarray, j: np.ndarray, signs: np.ndarray, pre: int, post: int, tied: tuple[int, int]
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """A tied projection's synapses from the draw of the untied one: the synapses of the first
+    block of ``pre`` onto the first block of ``post``, repeated for every block. The draws are
+    the untied projection's, so every later projection is developed as beside the untied one.
+    Block i onto block i reads one block of ``pre`` where the untied projection reads them
+    all, and its magnitudes are scaled to that fan."""
+    blocks_pre, blocks_post = tied
+    size_pre, size_post = pre // blocks_pre, post // blocks_post
+    first = (i < size_pre) & (j < size_post)
+    i, j, signs = i[first], j[first], signs[first]
+    if blocks_pre == blocks_post:
+        signs = signs * np.sqrt((pre + post) / (size_pre + size_post))
+    copies = np.arange(max(blocks_pre, blocks_post), dtype=np.int64)[:, None]
+    return (
+        (i[None, :] + (copies * size_pre if blocks_pre > 1 else 0 * copies)).ravel(),
+        (j[None, :] + (copies * size_post if blocks_post > 1 else 0 * copies)).ravel(),
+        np.tile(signs, len(copies)),
+    )
+
+
+def tie_groups(
+    connectome: Connectome, tied: Mapping[tuple[str, str], Any]
+) -> np.ndarray | None:
+    """Each synapse's tie group under ``tied`` (-1: untied), for ``Learner(tie_groups=...)``;
+    None where ``tied`` is empty.
+
+    ``tied`` maps a pair of the connectome's populations ``(pre, post)`` to
+    ``(blocks of pre, blocks of post)`` (``Projection.tied``; ``Genome.tied`` gives the map of a
+    genome's tied projections). The populations are cut in that many equal blocks, in the order
+    the connectome holds their neurons, and the synapses from ``pre`` to ``post`` that lie at
+    one place in their blocks are one group. A learner ties a synapse's reciprocal partner to it,
+    so the reverse synapses of a reciprocal projection join the groups there. Refused: a
+    population the connectome lacks or that the blocks do not divide, a synapse between two
+    blocks that block i onto block i does not join, blocks that do not hold the same synapses,
+    and a synapse two ties name."""
+    groups = np.full(connectome.synapses, -1, dtype=np.intp)
+    populations = connectome.populations
+    taken = 0
+    for (pre, post), value in tied.items():
+        blocks_pre, blocks_post = tied_blocks(value)
+        if (blocks_pre, blocks_post) == (1, 1):
+            continue
+        place = []
+        for name, blocks in ((pre, blocks_pre), (post, blocks_post)):
+            if name not in populations:
+                raise ValueError(f"tied names a population the connectome lacks: {name!r}")
+            members = np.asarray(populations[name], dtype=np.int64)
+            if not len(members) or len(members) % blocks:
+                raise ValueError(
+                    f"a tied projection needs equal blocks: {name!r} holds {len(members)} "
+                    f"neurons, which {blocks} blocks do not divide"
+                )
+            where = np.full(connectome.n, -1, dtype=np.int64)
+            where[members] = np.arange(len(members))
+            place.append((where, len(members) // blocks))
+        (where_pre, size_pre), (where_post, size_post) = place
+        at_pre, at_post = where_pre[connectome.pre], where_post[connectome.post]
+        synapses = np.flatnonzero((at_pre >= 0) & (at_post >= 0))
+        at_pre, at_post = at_pre[synapses], at_post[synapses]
+        if blocks_pre == blocks_post and (at_pre // size_pre != at_post // size_post).any():
+            raise ValueError(
+                f"the tied projection {pre!r} to {post!r} joins block i to block i: the "
+                "connectome holds a synapse between two different blocks"
+            )
+        shared, inverse = np.unique(
+            (at_pre % size_pre) * size_post + at_post % size_post, return_inverse=True
+        )
+        copies = max(blocks_pre, blocks_post)
+        if len(synapses) != copies * len(shared) or (np.bincount(inverse) != copies).any():
+            raise ValueError(
+                f"the blocks of the tied projection {pre!r} to {post!r} hold different "
+                "synapses: develop it with Projection(tied=...)"
+            )
+        if (groups[synapses] >= 0).any():
+            raise ValueError(f"two ties name one synapse: {pre!r} to {post!r}")
+        groups[synapses] = taken + inverse
+        taken += len(shared)
+    return groups if taken else None
+
+
 def mutate(
     genome: Genome,
     rng: np.random.Generator,
@@ -228,14 +385,21 @@ def mutate(
     """One offspring: every blank region not in ``fixed`` may change size by about ``size_step`` of
     itself, every projection may change density, sign and scale a little; nothing is added or
     removed. A pair in ``tied`` keeps the second region the size of the first (a context
-    range with one neuron per hidden neuron)."""
+    range with one neuron per hidden neuron). A region that a tied projection cuts in blocks
+    (``Projection.tied``) keeps its size."""
     if not np.isfinite(size_step) or size_step < 0:
         raise ValueError("size_step must be finite and nonnegative")
     for name in (*fixed, *(name for pair in tied for name in pair)):
         genome.region(name)
+    blocked = {
+        endpoint.partition("/")[0]
+        for p in genome.projections
+        for endpoint, blocks in ((p.pre, p.tied[0]), (p.post, p.tied[1]))
+        if blocks > 1
+    }
     regions = tuple(
         r
-        if r.name in fixed or r.circuit is not None
+        if r.name in fixed or r.name in blocked or r.circuit is not None
         else replace(r, size=max(1, int(round(r.size * float(np.exp(rng.normal(0.0, size_step)))))))
         for r in genome.regions
     )
