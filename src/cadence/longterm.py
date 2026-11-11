@@ -70,6 +70,7 @@ the one whose signature it shares.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from copy import copy
 from dataclasses import dataclass, field
@@ -82,6 +83,50 @@ from .stream import PatternSeparator, _left, _share
 from .stream import columns as _columns
 
 __all__ = ["LongTermMemory", "LongTermRead", "LongTermRecords"]
+
+try:
+    import numba
+
+    _njit: Any = numba.njit
+except ImportError:  # pragma: no cover
+    _njit = None
+
+
+def _count_pairs(units: Any, flat: Any, depth: Any, expansion: Any, bits: Any, capacity: Any,
+                 hits: Any, touched: Any) -> int:
+    """The pair address's coarse stage in one compiled loop: every pair of the cue's sorted
+    ``units`` reads its cell (``depth`` entries of ``flat``, the cells row after row), and each
+    slot found under the pair's tag counts one in ``hits``; the slots found are
+    ``touched[:n]``. The same integers as ``LongTermMemory._pair_cells`` and the NumPy read
+    make, pair by pair. The cells are read by offset: a row taken as an array of its own would
+    count a reference per pair."""
+    many = np.uint64(len(flat) // depth)
+    mask = np.uint64((1 << (32 - bits)) - 1)
+    mix = np.uint64(0x9E3779B97F4A7C15)
+    shift, low, up = np.uint64(32), np.uint64(24), np.uint64(bits)
+    wide = np.uint64(expansion)
+    n = 0
+    for i in range(len(units) - 1):
+        base = np.uint64(units[i]) * wide
+        for j in range(i + 1, len(units)):
+            mixed = (base + np.uint64(units[j])) * mix
+            at = np.int64(((mixed >> shift) * many) >> shift) * depth
+            tag = np.uint32(((mixed >> low) & mask) << up)
+            for d in range(depth):
+                slot = flat[at + d] ^ tag
+                if slot < capacity:
+                    if hits[slot] == 0:
+                        touched[n] = slot
+                        n += 1
+                    if hits[slot] < 65535:
+                        hits[slot] += 1
+    return n
+
+
+# the compiled coarse stage where Numba is installed (``CADENCE_FUSED=0`` forces the NumPy read)
+_COUNT_PAIRS: Any = None
+if _njit is not None and os.environ.get("CADENCE_FUSED", "1") != "0":
+    _COUNT_PAIRS = _njit(cache=True)(_count_pairs)
 
 
 def _norms(keys: np.ndarray) -> np.ndarray:
@@ -168,6 +213,9 @@ class LongTermMemory:
     SIGNS = 1024
     SAME = 5
     TIE = 1e-6
+    # whether the pair address's coarse stage runs compiled where Numba is installed; False
+    # reads through NumPy, the reference the compiled loop equals
+    COMPILED: ClassVar[bool] = True
     # the settings a description holds, and the arrays a memory keeps
     SETTINGS = ("width", "value_width", "capacity", "temperature", "candidates", "expansion",
                 "winners", "depth", "idle", "hold", "revise", "fade", "seed", "direct", "dtype",
@@ -264,6 +312,9 @@ class LongTermMemory:
             self.cells: np.ndarray = np.full((cells, self.DEPTH), self.EMPTY, dtype=np.uint32)
             self.fills: np.ndarray = np.zeros(cells, dtype=np.uint8)
             self._corners = {m: np.triu_indices(m, 1) for m in (self.pairs, self.winners)}
+            self._hits: np.ndarray | None = None
+            self._touched: np.ndarray | None = None
+            self._sums = np.asarray(self.projection.sum(axis=0), dtype=self.dtype)
         elif self.coarse:
             self.units: np.ndarray = np.full((n, self.winners), -1, dtype=np.int32)
             self.places: np.ndarray = np.zeros((n, self.winners), dtype=np.int32)
@@ -275,7 +326,8 @@ class LongTermMemory:
 
     def address(self, key: np.ndarray) -> np.ndarray:
         """The key's address: its ``winners`` most driven units, those driven above zero."""
-        drive = np.asarray(key, dtype=self.dtype) @ self.projection
+        drive = self._drive(key) if self.pairs else np.asarray(key, dtype=self.dtype) @ \
+            self.projection
         top = np.argpartition(drive, -self.winners)[-self.winners:]
         return np.asarray(top[drive[top] > 0], dtype=np.int32)
 
@@ -337,10 +389,20 @@ class LongTermMemory:
 
     # -- the address of pairs
 
+    def _drive(self, keys: np.ndarray) -> np.ndarray:
+        """The units' drive under the address of pairs, for one key or for rows of keys: the
+        projection of each key less its own mean. A key of zeros and ones drives every unit by
+        the sum of a few of its weights, so the units of the largest sums would win for every
+        key and crowd their pairs' cells; a centred key drives each unit as often as any."""
+        rows = np.asarray(keys, dtype=self.dtype)
+        drive = rows @ self.projection
+        drive -= rows.mean(axis=-1, keepdims=True) * self._sums
+        return np.asarray(drive)
+
     def _filed(self, key: np.ndarray) -> np.ndarray:
         """The units whose pairs file a record with ``key``: its ``pairs`` most driven units,
         those driven above zero."""
-        drive = np.asarray(key, dtype=self.dtype) @ self.projection
+        drive = self._drive(key)
         top = np.argpartition(drive, -self.pairs)[-self.pairs:]
         return np.asarray(top[drive[top] > 0], dtype=np.int32)
 
@@ -392,14 +454,39 @@ class LongTermMemory:
         order among equals."""
         if len(units) < 2:
             return np.zeros(0, dtype=np.int64)
-        cell, tag = self._pair_cells(units)
-        # an entry under the pair's own tag is its slot once the tag is taken off; an empty
-        # entry or another pair's leaves bits above the capacity
-        entries = self.cells[cell] ^ tag[:, None]
-        slots, hits = np.unique(entries[entries < np.uint32(self.capacity)], return_counts=True)
+        if _COUNT_PAIRS is not None and self.COMPILED:
+            if self._hits is None:  # the compiled loop's scratch: a count per slot
+                reach = min(self.capacity, self.winners * (self.winners - 1) // 2 * self.DEPTH)
+                self._hits = np.zeros(self.capacity, dtype=np.uint16)
+                self._touched = np.zeros(reach, dtype=np.uint32)
+            found = _COUNT_PAIRS(np.sort(np.asarray(units, dtype=np.int64)),
+                                 self.cells.reshape(-1), self.DEPTH, int(self.expansion),
+                                 self._bits, np.uint32(self.capacity), self._hits,
+                                 self._touched)
+            slots = self._touched[:found].astype(np.int64)
+            hits = self._hits[slots].astype(np.int64)
+            self._hits[slots] = 0
+        else:
+            cell, tag = self._pair_cells(units)
+            # an entry under the pair's own tag is its slot once the tag is taken off; an empty
+            # entry or another pair's leaves bits above the capacity
+            entries = self.cells[cell] ^ tag[:, None]
+            slots, hits = np.unique(entries[entries < np.uint32(self.capacity)],
+                                    return_counts=True)
+            slots = slots.astype(np.int64)
         if len(slots) > self.candidates:
-            slots = np.sort(slots[np.argsort(-hits, kind="stable")[: self.candidates]])
-        return np.asarray(slots, dtype=np.int64)
+            # the slots found under at least as many pairs as fit whole, then slots of the
+            # level below, the lowest first, until the candidates are full
+            above = np.cumsum(np.bincount(hits)[::-1])[::-1]
+            fits = above <= self.candidates
+            level = int(np.argmax(fits)) if fits.any() else len(above)
+            chosen = slots[hits >= level]
+            room = self.candidates - len(chosen)
+            if room and level:
+                below = slots[hits == level - 1]
+                chosen = np.concatenate([chosen, np.partition(below, room - 1)[:room]])
+            slots = chosen
+        return np.asarray(np.sort(slots), dtype=np.int64)
 
     # -- a source's signature
 
@@ -683,7 +770,7 @@ class LongTermMemory:
                 raise ValueError("keys and values are finite")
             slots = np.arange(self.count, self.count + len(rows))
             if self.coarse and self.pairs:
-                drive = rows @ self.projection
+                drive = self._drive(rows)
                 top = np.argpartition(drive, -self.pairs, axis=1)[:, -self.pairs:]
                 whole = np.take_along_axis(drive, top, axis=1).min(axis=1) > 0
                 cell, tag = self._pair_cells(top[whole])
