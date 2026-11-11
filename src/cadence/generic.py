@@ -649,7 +649,7 @@ _MESSAGE_FOUNDERS: dict[str, Any] = {
 # of the moments heard at or below which a code unit is content for a turn's key (#305)
 _LONGTERM_FOUNDERS: dict[str, Any] = {
     "heads": 1, "amplitude": 3.0, "match": 0.75, "revise": 0.999, "turn": None, "rare": 0.03,
-    "distinct": None,
+    "distinct": None, "best": False, "rest": False,
 }
 
 
@@ -685,6 +685,15 @@ def _longterm_genes(longterm: Any, genes: Mapping[str, Any]) -> dict[str, Any]:
         if out["turn"] is None or not 0 < out["distinct"] <= 1:
             raise ValueError("longterm_distinct is a share of a cue's heaviest weight in (0, 1], "
                              "and it reads turns: it needs longterm_turn=channel")
+    for name in ("best", "rest"):
+        if not isinstance(out[name], (bool, np.bool_)):
+            raise ValueError(f"longterm_{name} must be boolean")
+        out[name] = bool(out[name])
+        if out[name] and out["distinct"] is None:
+            raise ValueError(f"longterm_{name} reads records by what tells them apart: it "
+                             "needs longterm_distinct")
+    if out["rest"] and out["heads"] < 2:
+        raise ValueError("longterm_rest cues the second head: it needs longterm_heads >= 2")
     return out
 
 
@@ -2631,6 +2640,7 @@ class Brain:
                 amplitude=kept_records["amplitude"], match=kept_records["match"],
                 revise=kept_records["revise"], seed=seed, turn=kept_records["turn"],
                 rare=kept_records["rare"], distinct=kept_records["distinct"],
+                best=kept_records["best"], rest=kept_records["rest"],
             )
         # The index memory of the stream's moments. Populations named ``recall`` and ``next``
         # without ``recall=True`` are ordinary ones: an instrument may name and drive its own.
@@ -3704,6 +3714,10 @@ class Brain:
                 genes.update(longterm_turn=kept.turn, longterm_rare=kept.rare)
             if kept.distinct is not None:
                 genes["longterm_distinct"] = kept.distinct
+            if kept.best:
+                genes["longterm_best"] = True
+            if kept.rest:
+                genes["longterm_rest"] = True
         maturity = self.basal_ganglia.maturity
         if maturity is not None:
             genes.update(maturity=True, maturity_scale=maturity.scale,

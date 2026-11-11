@@ -522,3 +522,110 @@ def test_a_saved_brain_with_distinct_records_continues_as_the_one_saved(tmp_path
     branch = second.longterm.branch()
     branch.hear(moment(9))
     assert len(second.longterm.codebook) == len(first.longterm.codebook)
+
+
+# -- the record that holds the most, and what the question asks beyond it (#311)
+
+
+def best_brain(**settings):
+    return turns_brain(longterm_distinct=0.1, longterm_heads=2, longterm_match=0.5,
+                       longterm_best=True, **settings)
+
+
+def test_best_and_rest_need_distinct_and_name_their_settings():
+    b = best_brain(longterm_rest=True)
+    assert b.longterm.best and b.longterm.rest
+    assert b.longterm.to_dict()["best"] is True and b.longterm.to_dict()["rest"] is True
+    assert "best" not in distinct_brain().longterm.to_dict()
+    assert b.describe()["genes"].get("longterm_best") is True
+    with pytest.raises(ValueError, match="longterm_distinct"):
+        turns_brain(longterm_best=True)
+    with pytest.raises(ValueError, match="longterm_heads"):
+        turns_brain(longterm_distinct=0.1, longterm_rest=True)
+    with pytest.raises(ValueError, match="boolean"):
+        turns_brain(longterm_distinct=0.1, longterm_best=1)
+
+
+def test_the_best_read_takes_the_record_of_subject_and_relation():
+    b = best_brain()
+    b.reset()
+    say(b, 0, 6, TURN, 10)   # agent 0, relation 6: 10
+    say(b, 0, 7, TURN, 11)   # agent 0, relation 7: 11
+    say(b, 1, 6, TURN, 12)   # agent 1, relation 6: 12
+    say(b, 2, 6, TURN, 13)   # agent 2, relation 6: 13 (the latest record of relation 6)
+    say(b, 0, 6, 9, TURN)    # relation 6 of agent 0, with a word no record holds
+    drive = b.stimulus(np.zeros((1, INPUTS)))
+    assert b.longterm.read_slots[0, 0] == 0
+    assert np.allclose(drive[0, b.connectome.populations["longterm"]], 3.0 * moment(10)[0])
+    latest = distinct_brain()  # the latest record above the match: agent 2's
+    latest.reset()
+    say(latest, 0, 6, TURN, 10, 0, 7, TURN, 11, 1, 6, TURN, 12, 2, 6, TURN, 13, 0, 6, 9, TURN)
+    latest.stimulus(np.zeros((1, INPUTS)))
+    assert latest.longterm.read_slots[0, 0] != 0
+
+
+def test_the_best_read_takes_the_latest_telling_of_a_revised_fact():
+    b = best_brain()
+    b.reset()
+    say(b, 0, 6, TURN, 10, 1, 6, TURN, 12, 0, 6, TURN, 11)  # agent 0's fact told again
+    say(b, 0, 6, TURN)
+    drive = b.stimulus(np.zeros((1, INPUTS)))
+    assert b.longterm.read_slots[0, 0] == 2
+    assert np.allclose(drive[0, b.connectome.populations["longterm"]], 3.0 * moment(11)[0])
+
+
+def test_rest_reads_the_second_fact_of_a_chain_and_nothing_for_one_fact():
+    b = best_brain(longterm_rest=True)
+    b.reset()
+    say(b, 0, 6, TURN, 10)   # agent 0, relation 6: 10
+    say(b, 1, 6, TURN, 11)   # agent 1, relation 6: 11
+    say(b, 10, 7, TURN, 12)  # 10, relation 7: 12
+    say(b, 11, 7, TURN, 13)  # 11, relation 7: 13
+    say(b, 0, 6, 7, TURN)    # relation 7 of relation 6 of agent 0
+    drive = b.stimulus(np.zeros((1, INPUTS)))
+    kept = b.longterm
+    assert kept.read_slots[0, 0] == 0 and kept.read_slots[0, 1] == 2
+    assert np.allclose(drive[0, b.connectome.populations["longterm_1"]], 3.0 * moment(12)[0])
+    say(b, ())               # the answer's silent moment writes nothing
+    say(b, 1, 6, TURN)       # one fact: the first record holds the whole question
+    drive = b.stimulus(np.zeros((1, INPUTS)))
+    assert kept.read_slots[0, 0] == 1 and kept.read_slots[0, 1] == -1
+    assert not drive[0, b.connectome.populations["longterm_1"]].any()
+
+
+def moment_of(inputs: int, on: int) -> np.ndarray:
+    x = np.zeros((1, inputs))
+    x[0, on] = 1.0
+    return x
+
+
+def test_the_records_lists_grow_past_a_dense_table_and_read_the_same():
+    """Thousands of records over thousands of entries: each read takes the record the dense
+    table's arithmetic takes."""
+    inputs, turn = 64, 63
+    b = cd.Brain.compose(inputs, 4, modules=(16,), seed=0, backend="cpu", message=70,
+                         longterm=3000, longterm_turn=turn, longterm_distinct=0.1,
+                         longterm_heads=2, longterm_match=0.5, longterm_best=True)
+    kept = b.longterm
+    rng = np.random.default_rng(0)
+    b.reset()
+    for _ in range(2500):  # a subject of three channels, a relation, the value
+        x = np.zeros((1, inputs))
+        x[0, rng.choice(48, 3, replace=False)] = 1.0
+        kept.hear(x)
+        for on in (48 + int(rng.integers(8)), turn, 56 + int(rng.integers(7))):
+            kept.hear(moment_of(inputs, on))
+    assert kept.stores[0].count == 2500 and kept.entries > 2000
+    values = {kept._entries[np.asarray(kept.message.code(moment_of(inputs, on))[0],
+                                       dtype=np.uint8).tobytes()] for on in range(56, 63)}
+    sets = np.zeros((2500, kept.entries))
+    for slot, held in kept._members[0].items():
+        sets[slot, held] = 1.0
+    for slot in rng.choice(2500, 20, replace=False):
+        cue = np.array([e for e in kept._members[0][int(slot)] if e not in values])
+        weight = kept.weights(0) * np.isin(np.arange(kept.entries), cue)
+        weight = weight * (weight >= 0.1 * weight.max() - 1e-12)
+        held = sets @ weight / weight.sum()
+        able = held >= max(0.5, held.max() - 1e-9) - 1e-12
+        want = int(np.argmax(np.where(able, kept.stamps[0, :2500], -1.0)))
+        assert kept._read_distinct(0, cue) == want
