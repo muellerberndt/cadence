@@ -15,9 +15,9 @@ corrections and runs it on a stream:
 4. **read:** held-out utterances, the letter decoder (``collapse``) and, with a word list, the
    beam over the list (``WordBeam``): characters and words;
 5. **adapt:** half of a new speaker's utterances as corrections heard beside three training
-   utterances at weight .25 (``speech.correct.Rehearsal``), the speaker's other half and the
-   held-out speakers read before and after (on LibriSpeech the dev-clean speaker with the most
-   utterances, kept apart from the held-out ones);
+   utterances at weight .25 (``speech.correct.Rehearsal``) at a tenth of the life's rates, the
+   speaker's other half and the held-out speakers read before and after (on LibriSpeech the
+   dev-clean speaker with the most utterances, kept apart from the held-out ones);
 6. **stream:** one held-out utterance heard 100 ms at a time (``speech.stream.StreamReader``),
    the text as it arrives and the seconds per step.
 
@@ -41,6 +41,7 @@ for _name in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
     os.environ.setdefault(_name, "1")
 
 import argparse  # noqa: E402
+import dataclasses  # noqa: E402
 import json  # noqa: E402
 import tempfile  # noqa: E402
 import time  # noqa: E402
@@ -290,12 +291,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             return score(said_, [u["text"] for u in group])["characters"]
 
         before = {"speaker": reading_of(readings), "others": reading_of(held)}
+        # corrections at a tenth of the life's lesson rates (``--correction-rate``), as read
+        config = brain.learner.config
+        bias = config.eta_bias if config.eta_bias is not None else config.eta / 10
+        brain.retune(learning=dataclasses.replace(config, eta=config.eta * args.correction_rate,
+                                                  eta_bias=bias * args.correction_rate))
         for u in corrections:
             copy = frozen(brain, folder)
             logp = log_beliefs(copy, [u["rows"]])[0]
             bank.correct(brain, u["rows"], forced_path(logp, u["symbols"]))
         after = {"speaker": reading_of(readings), "others": reading_of(held)}
         report["adapt"] = {"speaker": adapt[0]["speaker"], "corrections": len(corrections),
+                           "rate": args.correction_rate,
                            "characters_before": before, "characters_after": after}
         print(json.dumps(report["adapt"]), flush=True)
 
@@ -368,6 +375,8 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     parser.add_argument("--align-every", type=int, default=8, help="batches between alignments")
     parser.add_argument("--fields", type=int, default=64, help="learned_fields")
     parser.add_argument("--width", type=int, default=256, help="the association's neurons")
+    parser.add_argument("--correction-rate", type=float, default=0.1,
+                        help="the corrections' share of the life's lesson rates")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--out", help="a JSON file for the report")
     args = parser.parse_args(argv)

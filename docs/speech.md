@@ -137,7 +137,16 @@ speakers it knew. `Rehearsal` hears each correction as one stream beside three e
 utterances, taught at a quarter of the correction's weight (`Brain.lesson(weights=)`), and
 keeps the earlier utterances in a bank under a byte budget.
 
+Teach corrections at a tenth of the rates the brain was trained at. At the training rate a few
+corrections undo what the brain knew: on issue 304's set after two passes, eleven corrections at
+the full rate took the corrected speaker from .30 to .27 and the held-out speakers from .31 to .29.
+
 ```python
+import dataclasses
+
+config = ears.learner.config                        # a tenth of every lesson rate
+ears.retune(learning=dataclasses.replace(config, eta=config.eta / 10,
+                                         eta_bias=config.eta_bias / 10))
 bank = Rehearsal(rows=3, weight=0.25, budget=64 * 2**20)
 for rows, text in zip(utterances, texts):
     bank.remember(rows, Alignments().even("u", len(rows), text))   # earlier rows, labelled
