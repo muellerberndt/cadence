@@ -126,6 +126,27 @@ to the bit.
   latest record holding `longterm_match` of its distinct entries' weight, in a lexicon of any
   size, and a second head chains from what the first record is about.
 - The conversation chamber, `benchmarks/dialogue/`, with bAbI adapters and matched controls.
+### A word said by its parts (#302)
+
+- **The chamber's motor by parts** (`benchmarks/grammar/MEANING_PROTOCOL_7.md`, no library
+  setting; the library's motor slots): a word said as its stem and its form, every lesson teaching
+  both. From the held state at 256 association neurons with the recall read barred, the verb's form
+  on held-out clauses is said at .98 to 1.00 on 12 of 12 fresh founders and held-out clauses at .97
+  to 1.00 (+.06 against whole words, paired); paths fall .07 from the held state and three hops .13
+  with the read free, inside two standard errors.
+
+### A message keyed by role (#301)
+
+- **`message_roles`** (`Brain.compose(message=units, message_roles=groups)`, and
+  `cadence.Message(..., roles=groups)`), off by default: groups of input channels, one group a
+  role. A heard moment of role `r` joins that role's blocks by the moments of the role heard
+  before it, and a moment of no group joins a last group's, so a role's moments lie in its own
+  blocks wherever in the episode they were heard. Without the setting every bit is as on 0.97.0.
+  The declared run is [`benchmarks/grammar/MEANING_PROTOCOL_6.md`](benchmarks/grammar/MEANING_PROTOCOL_6.md):
+  keyed by role at 256 association neurons with the recall read barred, the brain says held-out
+  combinations at .90 on 22 of 24 fresh founders (+.04 against blocks by position, paired) with
+  brackets .05 under; longer clauses read .00, their third and fourth distractors landing in
+  blocks no lesson writes.
 
 ## 0.97.0 — 2026-11-10
 

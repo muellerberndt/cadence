@@ -702,7 +702,7 @@ _MESSAGE_SCALE = 1.2
 _MESSAGE_FOUNDERS: dict[str, Any] = {
     "phases": 4, "winners": 5, "fan_in": 16, "amplitude": 1.5, "gains": 1, "read": False,
     "read_amplitude": 3.0, "read_rate": 0.01, "read_temperature": 0.25,
-    "boundary": None, "boundary_holds": False,
+    "boundary": None, "boundary_holds": False, "roles": (),
 }
 
 
@@ -777,6 +777,11 @@ def _message_genes(message: Any, genes: Mapping[str, Any]) -> dict[str, Any]:
         out[name] = bool(out[name])
     if out["boundary"] is not None:
         out["boundary"] = _count("message_boundary", out["boundary"], low=0)
+    try:  # the role groups' channels are checked against the inputs by the message itself
+        out["roles"] = tuple(tuple(int(c) for c in group) for group in (out["roles"] or ()))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("message_roles are groups of input channels") from exc
+    out["blocks"] = out["phases"] * (len(out["roles"]) + 1 if out["roles"] else 1)
     if out["units"] % out["gains"]:
         raise ValueError("message_gains must divide the units of a block")
     for name in ("amplitude", "read_amplitude", "read_rate"):
@@ -1495,7 +1500,7 @@ def _validate_life_state(
             raise ValueError("invalid saved message") from exc
         if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
             raise ValueError("invalid saved message seed")
-        width = held["phases"] * held["units"]
+        width = held["blocks"] * held["units"]
         if (
             told.get("inputs") != sensory
             or len(populations["message"]) != width
@@ -1509,9 +1514,13 @@ def _validate_life_state(
             raise ValueError("invalid saved message counts")
         if array("message/held", (batch,)).dtype.kind != "b":
             raise ValueError("invalid saved message boundary flags")
+        if held["roles"]:
+            counts = array("message/counts", (batch, len(held["roles"]) + 1))
+            if counts.dtype.kind not in "iu" or (counts < 0).any():
+                raise ValueError("invalid saved message role counts")
         array("message/previous", (batch, association))
         if held["read"]:
-            for kind, outputs in (("content", held["units"]), ("turn", held["phases"])):
+            for kind, outputs in (("content", held["units"]), ("turn", held["blocks"])):
                 array(f"message/{kind}_x", (sensory, outputs))
                 array(f"message/{kind}_c", (association, outputs))
                 array(f"message/{kind}_b", (outputs,))
@@ -2237,7 +2246,7 @@ def _layout(
             raise ValueError(
                 "a message needs a vector brain without a learned code in this version"
             )
-        regions.append(Region("message", messaged["phases"] * messaged["units"]))
+        regions.append(Region("message", messaged["blocks"] * messaged["units"]))
         if messaged["amplitude"] or not messaged["read"]:
             # the association reads the whole message; a message composed silent beside its
             # read (``message_amplitude=0.0``) is read through the port alone
@@ -2748,6 +2757,7 @@ class Brain:
                 heard_width, phases=messaged["phases"], units=messaged["units"],
                 winners=messaged["winners"], fan_in=messaged["fan_in"], seed=seed,
                 boundary=messaged["boundary"], boundary_holds=messaged["boundary_holds"],
+                roles=messaged["roles"],
                 connectome=connectome, amplitude=messaged["amplitude"], gains=messaged["gains"],
                 read_amplitude=messaged["read_amplitude"], read_rate=messaged["read_rate"],
                 read_temperature=messaged["read_temperature"],
@@ -3509,7 +3519,7 @@ class Brain:
             "episodic", "backend", "device", "precision", "dense_limit", "connectome",
             "history_decays",
             "message", "message_phases", "message_winners", "message_fan_in", "message_gains",
-            "message_boundary", "message_boundary_holds", "message_read",
+            "message_boundary", "message_boundary_holds", "message_roles", "message_read",
             "longterm", *(f"longterm_{name}" for name in _LONGTERM_FOUNDERS),
             "carried_gain",
             *_EPISODIC_SETTINGS, "recall", *(f"recall_{name}" for name in Recall.CONSTRUCTION),
@@ -3842,6 +3852,8 @@ class Brain:
             if held.boundary is not None:
                 genes.update(message_boundary=int(held.boundary),
                              message_boundary_holds=bool(held.boundary_holds))
+            if held.roles:
+                genes["message_roles"] = [list(group) for group in held.roles]
             if held.reads:
                 genes.update(
                     message_read=True, message_read_amplitude=held.read_amplitude,
@@ -5404,7 +5416,7 @@ class Brain:
             # one gain per block, or per group of a block's neurons (``message_gains``)
             groups, width = int(self.message.gains), int(self.message.units)
             width //= groups
-            for k in range(int(self.message.phases)):
+            for k in range(self.message.blocks):
                 for g in range(groups):
                     slot = k * groups + g
                     hearing.add(
@@ -7038,6 +7050,7 @@ class Brain:
                     built.inputs, phases=built.phases, units=built.units,
                     winners=built.winners, fan_in=int(told["fan_in"]), seed=int(told["seed"]),
                     boundary=built.boundary, boundary_holds=built.boundary_holds,
+                    roles=built.roles,
                     connectome=built.connectome, amplitude=built.amplitude, gains=built.gains,
                     read_amplitude=built.read_amplitude, read_rate=built.read_rate,
                     read_temperature=built.read_temperature, port=built.port,
@@ -7045,6 +7058,8 @@ class Brain:
                 message.trace = data["message/trace"].astype(float)
                 message.told = data["message/told"].astype(np.int64)
                 message.held = data["message/held"].astype(bool)
+                if message.roles:
+                    message.counts = data["message/counts"].astype(np.int64)
                 message.previous = data["message/previous"].astype(float)
                 if message.reads:
                     message.maps = [
