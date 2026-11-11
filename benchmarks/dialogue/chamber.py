@@ -208,7 +208,57 @@ def babi_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+def keys_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
+    """Where the records' key binds, without a life: each question's key (the held message at
+    its turn, as the ``records`` arm holds it) against its fact's key, for every wording. Read
+    as the cosine of the two, the share at the records' match or above, and the share whose
+    nearest fact key among the session's facts and every earlier fact is its own."""
+    import cadence as cd
+
+    founder = int(spec["founder"])
+    world = wd.World(founder)
+    brain = make_brain(world.lexicon, founder, "records")
+    fields = ("inputs", "phases", "units", "winners", "fan_in", "seed")
+    settings = {k: brain.message.to_dict()[k] for k in fields}
+    match = float(brain.longterm.match)
+    lex = world.lexicon
+
+    def key(said: list[str]) -> np.ndarray:
+        coder = cd.Message(**settings)
+        coder.reset(1)
+        for w in said:
+            coder.hear(lex.moment(w)[None])
+        return np.asarray(coder.key()[0], dtype=float)
+
+    def cosine(a: np.ndarray, b: np.ndarray) -> float:
+        return float(a @ b / max(np.linalg.norm(a) * np.linalg.norm(b), 1e-12))
+
+    out = []
+    for wording in ("prefix", "trained", "held"):
+        rng = np.random.default_rng(np.random.SeedSequence([founder, 305, 5]))
+        cosines, own = [], []
+        for conversation in world.conversations(rng, 8, 12, 2, lesson=False, wording=wording):
+            facts: list[tuple[str, np.ndarray]] = []  # (person, key) of every fact told
+            for session in conversation:
+                for turn in session:
+                    if not turn.asked:
+                        facts.append((turn.tags["about"], key(turn.said[: turn.turn_at])))
+                        continue
+                    q = key(turn.said)
+                    mine = [k for p, k in facts if p == turn.tags["about"]][-1]
+                    cosines.append(cosine(q, mine))
+                    best = max(range(len(facts)), key=lambda i: cosine(q, facts[i][1]))
+                    own.append(facts[best][0] == turn.tags["about"])
+        out.append({"founder": founder, "chamber": "keys", "wording": wording,
+                    "cosine": round(float(np.mean(cosines)), 4),
+                    "at_match": round(float(np.mean(np.array(cosines) >= match - 1e-9)), 4),
+                    "nearest_own": round(float(np.mean(own)), 4), "questions": len(own)})
+    return out
+
+
 def run_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
+    if spec.get("keys"):
+        return keys_cell(spec)
     return babi_cell(spec) if "task" in spec else synthetic_cell(spec)
 
 

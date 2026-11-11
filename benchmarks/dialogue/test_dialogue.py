@@ -109,7 +109,7 @@ def test_the_records_arm_files_a_record_under_each_fact_s_words_before_its_turn(
 
 def test_the_plans_parse():
     plans = {p.stem: json.loads(p.read_text()) for p in (HERE / "step0").glob("*.json")}
-    assert set(plans) == {"synthetic", "babi", "controls-synthetic", "controls-babi"}
+    assert set(plans) == {"synthetic", "babi", "controls-synthetic", "controls-babi", "keys"}
     todo = ch.cells(plans["babi"])
     assert len(todo) == 3 * 3 * 4 and {c["task"] for c in todo} == {1, 2, 6}
     assert len(ch.cells(plans["synthetic"])) == 12
@@ -129,3 +129,9 @@ def test_the_controls_match_the_brain_and_read_the_same_questions():
     x, y, where = co.encode(lexicon, wd.World(0).conversations(np.random.default_rng(0), 2, 2,
                                                                2, lesson=True))
     assert x.shape[0] == 2 and len(where) == 2 * 3 and (y >= 0).sum() == len(where)
+
+
+def test_the_key_reading_finds_the_prefix_whole_and_the_questions_apart():
+    rows = {r["wording"]: r for r in ch.keys_cell({"founder": 0})}
+    assert rows["prefix"]["cosine"] == 1.0 and rows["prefix"]["at_match"] == 1.0
+    assert rows["trained"]["at_match"] == 0.0 and rows["trained"]["cosine"] < 0.5
