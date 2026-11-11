@@ -11,11 +11,13 @@ take no step, a baseline without a step.
 
 from __future__ import annotations
 
+import contextlib
 import copy
 import dataclasses
 import importlib.util
 import sys
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -146,14 +148,61 @@ def compose(arm: str, founder: int, extra: dict[str, Any] | None = None) -> Any:
     spec = ARMS[arm]
     inputs = (BANDS, FRAMES) if spec["sees"] == "image" else BANDS * FRAMES
     settings: dict[str, Any] = {"backend": "cpu", **spec["compose"], **(extra or {})}
-    brain = Brain.compose(inputs, ACTIONS, seed=founder, **settings)
+    direct = float(settings.pop("direct", 0.0))
+    if direct:  # development of round 2: a plastic pathway from the pools to the motor region
+        with _direct_pathway(direct):
+            brain = Brain.compose(inputs, ACTIONS, seed=founder, **settings)
+    else:
+        brain = Brain.compose(inputs, ACTIONS, seed=founder, **settings)
     if spec.get("hold"):
         brain.fields.learning = False
     return brain
 
 
+@contextlib.contextmanager
+def _direct_pathway(scale: float) -> Iterator[None]:
+    """Compose with one more projection, sensory to motor (not reciprocal: the senses are
+    given), at ``scale``, beside the association's: the layout the library develops otherwise."""
+    from cadence import generic
+    from cadence.genome import Projection
+
+    composed = generic._layout
+
+    def layout(*args: Any, **kwargs: Any) -> Any:
+        genome, resolved = composed(*args, **kwargs)
+        extra = Projection("sensory", "motor", scale=scale, reciprocal=False)
+        return dataclasses.replace(genome, projections=(*genome.projections, extra)), resolved
+
+    generic._layout = layout  # type: ignore[assignment]
+    try:
+        yield
+    finally:
+        generic._layout = composed  # type: ignore[assignment]
+
+
+def soft_targets(target: np.ndarray, share: float) -> np.ndarray:
+    """One-hot targets per step, except that the silent step after a word step is taught the
+    word at ``share`` and silence at the rest: its window holds the word's last frame as well."""
+    rows, steps = target.shape
+    out = np.zeros((rows, steps, ACTIONS))
+    safe = np.where(target < 0, SILENCE, target)
+    out[np.arange(rows)[:, None], np.arange(steps)[None, :], safe] = 1.0
+    for r in range(rows):
+        for k in np.flatnonzero(target[r] < SILENCE):
+            if k + 1 < steps and target[r, k + 1] == SILENCE:
+                out[r, k + 1] = 0.0
+                out[r, k + 1, SILENCE] = 1.0 - share
+                out[r, k + 1, target[r, k]] = share
+    return out
+
+
 class BrainLearner:
-    """A brain hearing phrases: a lesson on the step's targets before each act when taught."""
+    """A brain hearing phrases: a lesson on the step's targets before each act when taught.
+    ``silence_weight`` weighs the rows taught silence in each lesson (``Brain.lesson(weights=)``),
+    and ``soft`` teaches the step after a word step the word at that share (``targets=``)."""
+
+    silence_weight = 1.0
+    soft = 0.0
 
     kind = "brain"
     hold = 1  # steps a word stays due (``held``)
@@ -184,14 +233,25 @@ class BrainLearner:
         started = time.process_time()
         rows, steps = x.shape[:2]
         actions = np.full((rows, steps), -1, np.int64)
+        soft = None
         if target is not None:
             target = held(target, self.hold)
+            if self.soft:
+                soft = soft_targets(np.asarray(target), self.soft)
         self.brain.reset()
         for k in range(steps):
             if target is not None:
                 self.work["lessons"] += 1
+                labels = np.asarray(target[:, k], dtype=np.int64)
+                taught: dict[str, Any] = {}
+                if self.silence_weight != 1.0:
+                    taught["weights"] = np.where(labels == SILENCE, self.silence_weight, 1.0)
+                if soft is not None:
+                    taught["targets"] = soft[:, k]
+                else:
+                    taught["labels"] = labels
                 try:
-                    self.brain.lesson(x[:, k], np.asarray(target[:, k], dtype=np.int64))
+                    self.brain.lesson(x[:, k], **taught)
                 except (LearningPhaseError, RuntimeError):
                     self.work["refused_lessons"] += 1
             try:
@@ -212,7 +272,7 @@ class BrainLearner:
         if clone.fields is not None:
             clone.fields.learning = False
         out = BrainLearner(clone, self.arm)
-        out.hold = self.hold
+        out.hold, out.silence_weight, out.soft = self.hold, self.silence_weight, self.soft
         return out
 
     def set_rate(self, scale: float) -> None:
@@ -228,7 +288,7 @@ class BrainLearner:
     def copy(self) -> BrainLearner:
         out = BrainLearner(copy.deepcopy(self.brain), self.arm)
         out.work = dict(self.work)
-        out.hold = self.hold
+        out.hold, out.silence_weight, out.soft = self.hold, self.silence_weight, self.soft
         return out
 
 
@@ -374,7 +434,8 @@ def read(
         targets = phrases.target[chunk, : actions.shape[1]]
         for j, r in enumerate(chunk):
             ref = phrases.reference(int(r))
-            got = decode(actions[j : j + 1], collapse=learner.hold > 1)[0]
+            collapse = learner.hold > 1 or getattr(learner, "soft", 0.0) > 0
+            got = decode(actions[j : j + 1], collapse=collapse)[0]
             a, b, c = edits(got["words"], ref)
             s, ins, d = s + a, ins + b, d + c
             words += len(ref)

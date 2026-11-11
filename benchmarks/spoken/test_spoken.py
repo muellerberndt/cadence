@@ -231,3 +231,33 @@ def test_a_saved_life_adapts_from_where_it_ended(sets, tmp_path):
         assert "error" not in again, again.get("trace")
         at0 = again["adaptation"][0]["curve"][0]["retention"]
         assert again["readings"] == [] and 0.0 <= at0["exact"] <= 1.0
+
+
+def test_soft_targets_share_the_step_after_a_word_between_the_word_and_silence():
+    s, e = ph.SILENCE, ph.END
+    target = np.array([[s, 3, s, 5, 7, s, e]])
+    soft = ch.soft_targets(target, 0.4)
+    assert soft.shape == (1, 7, ph.ACTIONS) and np.allclose(soft.sum(axis=2), 1.0)
+    assert soft[0, 2, 3] == 0.4 and soft[0, 2, s] == 0.6
+    assert soft[0, 1, 3] == 1.0 and soft[0, 3, 5] == 1.0 and soft[0, 4, 7] == 1.0
+    assert soft[0, 5, 7] == 0.4 and soft[0, 6, e] == 1.0 and soft[0, 0, s] == 1.0
+
+
+def test_weighted_soft_lessons_and_the_direct_pathway_teach_a_brain(sets):
+    out, _ = sets
+    train = ph.Phrases(out / "base_train.npz")
+    hearing = ch.Hearing.measured(train)
+    plain = ch.compose("fields", 0)
+    direct = ch.compose("fields", 0, {"direct": 1.0})
+    pools = np.asarray(direct.connectome.populations["sensory"])
+    motor = np.asarray(direct.connectome.populations["motor"])
+    reaches = np.isin(direct.connectome.pre, pools) & np.isin(direct.connectome.post, motor)
+    assert reaches.sum() == len(pools) * len(motor)
+    assert direct.parameters() > plain.parameters()
+    assert not (np.isin(plain.connectome.pre, pools) & np.isin(plain.connectome.post, motor)).any()
+    learner = ch.BrainLearner(direct, "fields")
+    learner.silence_weight, learner.soft = 0.25, 0.5
+    before = np.array(direct.brain.efficacy, copy=True)
+    ch.train(learner, train, ch.groups(train, np.arange(8), 8), hearing)
+    assert learner.work["refused_lessons"] == 0
+    assert not np.array_equal(before, np.asarray(direct.brain.efficacy))

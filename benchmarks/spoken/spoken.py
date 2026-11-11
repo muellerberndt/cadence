@@ -159,6 +159,9 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     if spec.get("load"):  # a saved life: its adaptation alone, from where the life ended
         learner = loaded(learner, Path(spec["load"]))
     learner.hold = int(spec.get("hold", 1))
+    if learner.kind == "brain":
+        learner.silence_weight = float(spec.get("silence_weight", 1.0))
+        learner.soft = float(spec.get("soft", 0.0))
     validation = phrases(data, "base_validation")
     test = phrases(data, "base_test")
     v_rows = sample(len(validation), READ, "validation")
@@ -275,6 +278,8 @@ def main() -> None:
     parser.add_argument("--minutes", nargs="+", type=float, default=[0, 1, 2, 5])
     parser.add_argument("--replays", type=int, default=3)
     parser.add_argument("--hold", type=int, default=1, help="steps a word stays due")
+    parser.add_argument("--silence-weight", type=float, default=1.0, help="weight of silence rows")
+    parser.add_argument("--soft", type=float, default=0.0, help="the word's share a step later")
     parser.add_argument("--per-speaker", action="store_true", help="one job per new speaker")
     parser.add_argument("--probe", action="store_true")
     parser.add_argument("--extra", default=None, help="JSON of compose settings")
@@ -299,6 +304,8 @@ def main() -> None:
             "replays": args.replays,
             "probe": args.probe,
             "hold": args.hold,
+            "silence_weight": args.silence_weight,
+            "soft": args.soft,
             "extra": json.loads(args.extra) if args.extra else None,
             "save": str(Path(args.save) / f"{name}-{f}") if args.save else None,
             "load": str(Path(args.load) / f"{name}-{f}") if args.load else None,
