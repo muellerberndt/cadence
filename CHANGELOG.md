@@ -11,7 +11,12 @@
   demonstrator, measuring the raw readings against the population code, a dense constant block
   beside the code, teaching on the brain's own path alone and mixed with watched episodes, and the
   efference copy under it. The teaching guide's section on the brain's own path states the order to
-  teach and act in, the early-failure collapse and its remedy, from its readings.
+  teach and act in, the early-failure collapse and its remedy, from its readings. Two more
+  chambers there: the scan-and-fire chamber (one answer 73% of the moments; class weights move
+  agreement from the commonest answer to the rarest without raising the whole), and an ablation
+  of the opt-ins under teaching on the brain's own path (the efference copy slows the first round;
+  the episodic memory steadies the rounds). The teaching guide adds that a demonstrator's answer
+  must follow from what the brain observes, and to read agreement per answer.
 
 ## 0.97.0 — 2026-11-10
 

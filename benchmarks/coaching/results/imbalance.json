@@ -1,0 +1,292 @@
+{
+ "rows": [
+  {
+   "arm": "plain",
+   "founder": 0,
+   "overall": 0.97375,
+   "per_answer": {
+    "LEFT": 0.9948805460750854,
+    "FIRE": 0.8333333333333334,
+    "RIGHT": 0.9758064516129032
+   },
+   "shares": {
+    "LEFT": 0.7325,
+    "FIRE": 0.1125,
+    "RIGHT": 0.155
+   },
+   "seconds": 5.7
+  },
+  {
+   "arm": "plain",
+   "founder": 1,
+   "overall": 0.98,
+   "per_answer": {
+    "LEFT": 0.9812286689419796,
+    "FIRE": 0.9777777777777777,
+    "RIGHT": 0.9758064516129032
+   },
+   "shares": {
+    "LEFT": 0.7325,
+    "FIRE": 0.1125,
+    "RIGHT": 0.155
+   },
+   "seconds": 4.3
+  },
+  {
+   "arm": "plain",
+   "founder": 2,
+   "overall": 0.97625,
+   "per_answer": {
+    "LEFT": 0.9795221843003413,
+    "FIRE": 0.9666666666666667,
+    "RIGHT": 0.967741935483871
+   },
+   "shares": {
+    "LEFT": 0.7325,
+    "FIRE": 0.1125,
+    "RIGHT": 0.155
+   },
+   "seconds": 5.1
+  },
+  {
+   "arm": "plain",
+   "founder": 3,
+   "overall": 0.985,
+   "per_answer": {
+    "LEFT": 1.0,
+    "FIRE": 0.9555555555555556,
+    "RIGHT": 0.9354838709677419
+   },
+   "shares": {
+    "LEFT": 0.7325,
+    "FIRE": 0.1125,
+    "RIGHT": 0.155
+   },
+   "seconds": 8.6
+  },
+  {
+   "arm": "plain",
+   "founder": 4,
+   "overall": 0.9,
+   "per_answer": {
+    "LEFT": 0.9078498293515358,
+    "FIRE": 0.7444444444444445,
+    "RIGHT": 0.9758064516129032
+   },
+   "shares": {
+    "LEFT": 0.7325,
+    "FIRE": 0.1125,
+    "RIGHT": 0.155
+   },
+   "seconds": 13.0
+  },
+  {
+   "arm": "plain",
+   "founder": 5,
+   "overall": 0.98,
+   "per_answer": {
+    "LEFT": 0.9948805460750854,
+    "FIRE": 0.9,
+    "RIGHT": 0.967741935483871
+   },
+   "shares": {
+    "LEFT": 0.7325,
+    "FIRE": 0.1125,
+    "RIGHT": 0.155
+   },
+   "seconds": 15.5
+  },
+  {
+   "arm": "inverse",
+   "founder": 0,
+   "overall": 0.86125,
+   "per_answer": {
+    "LEFT": 0.8276450511945392,
+    "FIRE": 0.9333333333333333,
+    "RIGHT": 0.967741935483871
+   },
+   "shares": {
+    "LEFT": 0.7325,
+    "FIRE": 0.1125,
+    "RIGHT": 0.155
+   },
+   "seconds": 13.2
+  },
+  {
+   "arm": "inverse",
+   "founder": 1,
+   "overall": 0.94125,
+   "per_answer": {
+    "LEFT": 0.931740614334471,
+    "FIRE": 1.0,
+    "RIGHT": 0.9435483870967742
+   },
+   "shares": {
+    "LEFT": 0.7325,
+    "FIRE": 0.1125,
+    "RIGHT": 0.155
+   },
+   "seconds": 22.5
+  },
+  {
+   "arm": "inverse",
+   "founder": 2,
+   "overall": 0.93125,
+   "per_answer": {
+    "LEFT": 0.9334470989761092,
+    "FIRE": 0.8555555555555555,
+    "RIGHT": 0.9758064516129032
+   },
+   "shares": {
+    "LEFT": 0.7325,
+    "FIRE": 0.1125,
+    "RIGHT": 0.155
+   },
+   "seconds": 13.6
+  },
+  {
+   "arm": "inverse",
+   "founder": 3,
+   "overall": 0.9525,
+   "per_answer": {
+    "LEFT": 0.9539249146757679,
+    "FIRE": 0.9111111111111111,
+    "RIGHT": 0.9758064516129032
+   },
+   "shares": {
+    "LEFT": 0.7325,
+    "FIRE": 0.1125,
+    "RIGHT": 0.155
+   },
+   "seconds": 7.6
+  },
+  {
+   "arm": "inverse",
+   "founder": 4,
+   "overall": 0.9125,
+   "per_answer": {
+    "LEFT": 0.9027303754266212,
+    "FIRE": 0.9222222222222223,
+    "RIGHT": 0.9516129032258065
+   },
+   "shares": {
+    "LEFT": 0.7325,
+    "FIRE": 0.1125,
+    "RIGHT": 0.155
+   },
+   "seconds": 26.8
+  },
+  {
+   "arm": "inverse",
+   "founder": 5,
+   "overall": 0.965,
+   "per_answer": {
+    "LEFT": 0.962457337883959,
+    "FIRE": 0.9333333333333333,
+    "RIGHT": 1.0
+   },
+   "shares": {
+    "LEFT": 0.7325,
+    "FIRE": 0.1125,
+    "RIGHT": 0.155
+   },
+   "seconds": 22.0
+  },
+  {
+   "arm": "sqrt",
+   "founder": 0,
+   "overall": 0.925,
+   "per_answer": {
+    "LEFT": 0.9215017064846417,
+    "FIRE": 0.8444444444444444,
+    "RIGHT": 1.0
+   },
+   "shares": {
+    "LEFT": 0.7325,
+    "FIRE": 0.1125,
+    "RIGHT": 0.155
+   },
+   "seconds": 19.1
+  },
+  {
+   "arm": "sqrt",
+   "founder": 1,
+   "overall": 0.9775,
+   "per_answer": {
+    "LEFT": 0.9778156996587031,
+    "FIRE": 0.9666666666666667,
+    "RIGHT": 0.9838709677419355
+   },
+   "shares": {
+    "LEFT": 0.7325,
+    "FIRE": 0.1125,
+    "RIGHT": 0.155
+   },
+   "seconds": 10.0
+  },
+  {
+   "arm": "sqrt",
+   "founder": 2,
+   "overall": 0.96875,
+   "per_answer": {
+    "LEFT": 0.9761092150170648,
+    "FIRE": 0.9,
+    "RIGHT": 0.9838709677419355
+   },
+   "shares": {
+    "LEFT": 0.7325,
+    "FIRE": 0.1125,
+    "RIGHT": 0.155
+   },
+   "seconds": 18.3
+  },
+  {
+   "arm": "sqrt",
+   "founder": 3,
+   "overall": 0.97875,
+   "per_answer": {
+    "LEFT": 0.9863481228668942,
+    "FIRE": 0.9444444444444444,
+    "RIGHT": 0.967741935483871
+   },
+   "shares": {
+    "LEFT": 0.7325,
+    "FIRE": 0.1125,
+    "RIGHT": 0.155
+   },
+   "seconds": 14.6
+  },
+  {
+   "arm": "sqrt",
+   "founder": 4,
+   "overall": 0.7875,
+   "per_answer": {
+    "LEFT": 0.7184300341296929,
+    "FIRE": 1.0,
+    "RIGHT": 0.9596774193548387
+   },
+   "shares": {
+    "LEFT": 0.7325,
+    "FIRE": 0.1125,
+    "RIGHT": 0.155
+   },
+   "seconds": 8.5
+  },
+  {
+   "arm": "sqrt",
+   "founder": 5,
+   "overall": 0.98375,
+   "per_answer": {
+    "LEFT": 0.9914675767918089,
+    "FIRE": 0.9555555555555556,
+    "RIGHT": 0.967741935483871
+   },
+   "shares": {
+    "LEFT": 0.7325,
+    "FIRE": 0.1125,
+    "RIGHT": 0.155
+   },
+   "seconds": 12.3
+  }
+ ]
+}

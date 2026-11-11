@@ -1,4 +1,4 @@
-# The cart-pole chamber: what a brain sees, and whose path the lessons follow
+# Coaching chambers: what a brain sees, and whose path its lessons follow
 
 [`cartpole.py`](cartpole.py) reproduces Gymnasium's CartPole-v1 in NumPy (the same equations,
 constants, Euler step, termination at 2.4 m or 12 degrees, and the 500-step limit), so it needs
@@ -49,3 +49,57 @@ What the readings show, at three founders:
 
 Three founders separate the code from the raw readings and the collapse from its absence; they do
 not rank `coach` against `mixed` at the fourth round.
+
+## The scan-and-fire chamber
+
+[`imbalance.py`](imbalance.py): a field of 32 columns shows a target as a bump around its column,
+or nothing. The demonstrator scans LEFT while nothing is in view, turns toward a target off centre
+and FIREs within two columns of the centre; a turn shifts the view three columns and a shot clears
+the target. LEFT covers the scan and the turn left, 73% of the held-out moments; FIRE is 11% and
+RIGHT 16%. A default brain per founder watches 40 episodes of 40 moments and is read frozen on 20
+held-out episodes, per answer.
+
+```sh
+PYTHONPATH=src python benchmarks/coaching/imbalance.py --out benchmarks/coaching/results/imbalance.json
+```
+
+| Lessons | Overall | LEFT | FIRE | RIGHT |
+| --- | --- | --- | --- | --- |
+| unweighted | 0.90 to 0.98 | 0.91 to 1.00 | 0.74 to 0.98 | 0.94 to 0.98 |
+| inverse of the share | 0.86 to 0.96 | 0.83 to 0.96 | 0.86 to 1.00 | 0.94 to 1.00 |
+| inverse square root | 0.79 to 0.98 | 0.72 to 0.99 | 0.84 to 1.00 | 0.96 to 1.00 |
+
+Six founders ([receipt](results/imbalance.json)). Weighting moves agreement from the commonest
+answer to the rarest: inverse weights raise FIRE on the two weakest founders from 0.74 and 0.83 to
+0.92 and 0.93 and lower LEFT; unweighted lessons agree best overall. A watched brain here does not
+collapse onto the commonest answer, so the weighting is no general remedy; read each answer's
+agreement and weigh only where the rare answer is the one that matters.
+
+## Which opt-ins a coached brain needs
+
+[`ablation.py`](ablation.py): the cart-pole task and body; a brain of modules `(64, 32)` watches
+eight demonstrated episodes, then is taught on its own path only, three rounds of 16 episodes,
+every moment taught before its act. The arms are the set `arousal`, `maturity`,
+`memory_fade=1.2e-4`, `memory_choice`, `efference_amplitude=1.0` and `learning_compiled_moment`,
+the set less each in turn, and the default brain.
+
+```sh
+cd benchmarks/coaching && PYTHONPATH=../../src python ablation.py --out results/ablation.json
+```
+
+Starts balanced for 500 steps of 32, after watching and after each round ([receipt](results/ablation.json)):
+
+| Arm | Founder 0 | Founder 1 | Founder 2 |
+| --- | --- | --- | --- |
+| the whole set | 0, 23, 30, 32 | 2, 4, 14, 32 | 0, 0, 32, 32 |
+| less `arousal`, `maturity` or `memory_fade` | the same, to the bit | | |
+| less `memory_choice` | 11, 27, 2, 21 | 0, 17, 32, 32 | 0, 26, 10, 32 |
+| less `efference_amplitude` | 6, 32, 32, 32 | 0, 13, 32, 32 | 2, 21, 32, 32 |
+| less `learning_compiled_moment` | 0, 32, 32, 32 | 2, 24, 32, 32 | 0, 32, 32, 32 |
+| the default brain | 0, 4, 10, 14 | 23, 16, 8, 15 | 0, 3, 0, 24 |
+
+Arousal, maturity and fading records leave lessons unchanged, so those arms repeat the whole set.
+The efference copy slows the first round; without the episodic memory the rounds swing. The
+compiled moment computes the same equations in another order (other bits), and the arm without it
+reads faster after the first round. Taught after acting rather than before, the whole set fell to
+0 of 32 after the first round and stayed there in an earlier reading.

@@ -381,10 +381,28 @@ On the [cart-pole chamber](../benchmarks/coaching/README.md) (three founders, 32
 10 to 76 steps on average, from 1 to 22 starts after watching; two of the three recover to 32 of 32
 by the fourth round. Following each of its own episodes with a watched one keeps the ordinary
 moments in the lessons: after the first round 7 to 14 starts and 385 to 459 steps, no founder below
-259 steps in any round. Compose such a brain without the efference copy: on the same chamber a
-brain with `efference_amplitude=1.0` left one founder of three at 0 of 32 through all four rounds,
-a latch on its own last command of the kind [#296](https://github.com/muellerberndt/cadence/issues/296)
-reports on a Doom body. Take the labels from the
+259 steps in any round. The opt-ins change the pace: a brain of modules `(64, 32)` with arousal,
+maturity, fading records, the episodic memory, the efference copy and the compiled moment balanced
+32 of 32 on every founder by the third round, where the default brain balanced 14, 15 and 24 of 32
+([the opt-in ablation](../benchmarks/coaching/README.md#which-opt-ins-a-coached-brain-needs)).
+Without the efference copy that brain balanced 32, 13 and 21 starts after the first round against
+23, 4 and 0 with it; without the episodic memory the rounds swung (one founder fell from 27 to 2).
+Taught after acting instead of before, the same brain with the copy fell to 0 of 32 and stayed
+there.
+
+**The demonstrator's answer must follow from what the brain observes.** A scripted demonstrator
+that keeps an internal phase (approach, grasp, lift, carry) answers its own moments consistently,
+because along its own path the phase and the scene change together. On a state only the brain
+reaches, a grasp closed on air say, its answer follows a phase the observation does not show and
+can change from one moment to the next on the same view. Taught, those labels contradict one
+another and the demonstrations. Label the brain's own path only with a demonstrator whose answer
+is a function of the observation; with one that keeps hidden state, teach more of its own
+demonstrations instead.
+
+**Read agreement per answer.** A watch that stops once the brain agrees with the demonstrator on
+a share of moments can stop on the commonest answer alone: a brain that scans everywhere agrees
+with a demonstrator that mostly scans. Count each answer's agreement apart, and let the watch run
+whole episodes ([every answer is the majority class](#every-answer-is-the-majority-class)). Take the labels from the
 demonstrator the brain watched: corrections from a different policy after a bootstrap by watching
 lower the agreement with the watched demonstrator
 ([issue 215](https://github.com/muellerberndt/cadence/issues/215)). Teach many rows at once at the
@@ -646,7 +664,12 @@ class, and a brain can settle on answering it everywhere. Overall accuracy then 
 the rare class is never answered. Read per-class accuracy, then:
 
 - weigh the rows by the inverse of their class's share (`weights=`,
-  [above](#teach-a-distribution-weigh-the-rows));
+  [above](#teach-a-distribution-weigh-the-rows)). The weight moves accuracy from the common class
+  to the rare one rather than adding to both: on the
+  [scan-and-fire chamber](../benchmarks/coaching/README.md#the-scan-and-fire-chamber) (the
+  commonest answer 73% of the moments, six founders) inverse weights raised the rarest answer on
+  the two weakest founders from 0.74 and 0.83 to 0.92 and 0.93 and lowered the commonest from 0.91
+  to 1.00 to 0.83 to 0.96, and unweighted lessons agreed best overall (0.90 to 0.98);
 - keep `learning_surprise=True` (a new brain's default), so rows answered right stop pulling;
 - or sample the lessons so every class appears about equally often.
 
