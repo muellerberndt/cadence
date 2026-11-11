@@ -759,3 +759,148 @@ def test_the_third_declaration_s_receipts_hold_the_verdicts_the_readme_states():
                  "| 1.661 to 1.688, 3 of 3 | **passes** |", "| 16 | 10,000 | 4.322 | 4.453 |",
                  "| .9875 to 1.000, 5 of 6 | **fails** |", "| 1.000, 6 of 6 | **passes** |"):
         assert cell in readme
+
+
+# -- the fourth declaration (cadence#310): a million records, facts of parts, shared keys
+
+def test_the_scan_takes_the_largest_cosine_and_the_earlier_record_among_equals():
+    mi = _load("million")
+    rng = np.random.default_rng(0)
+    keys = mi.unit(rng.standard_normal((300, 16)).astype(np.float32))
+    keys[200] = keys[7]  # a record told twice: the earlier leads
+    cues = keys[[3, 7, 250]].astype(np.float64)
+    top = mi.scan(keys, cues, 2)
+    assert top[:, 0].tolist() == [3, 7, 250] and top[1, 1] == 200
+    from cadence.longterm import LongTermMemory
+
+    store = LongTermMemory(16, 4, 300, candidates=0, cosine=True, dtype="float32", fade=False)
+    store.fill(keys, np.zeros((300, 4)))
+    noisy = mi.unit(cues + rng.standard_normal(cues.shape))
+    assert mi.scan(keys, noisy)[:, 0].tolist() == [store.read(c, credit=False).first()
+                                                   for c in noisy]
+
+
+def test_the_keys_and_cues_of_a_million_records_have_their_declared_forms():
+    mi = _load("million")
+    rng = np.random.default_rng(1)
+    hashed = mi.hashed_records(rng, 500)
+    on = (hashed > 0).sum(axis=1)
+    assert hashed.shape == (500, 280) and on.min() >= 15 and on.max() <= 22
+    assert set(np.unique(hashed)) == {0.0, 1.0}
+    noisy = mi.make_cue(rng, hashed[0], "noisy", "hashed")
+    moved = int(round(0.3 * on[0]))
+    assert (noisy > 0).sum() == on[0] and ((noisy > 0) & (hashed[0] > 0)).sum() == on[0] - moved
+    keys, family, themes = mi.code_records(rng, 800, 32)
+    assert np.allclose(np.linalg.norm(keys, axis=1), 1, atol=1e-5)
+    assert (family >= 0).sum() == 800 // 4 // 8 * 8 and len(themes) == 25
+    members = np.flatnonzero(family == 3)
+    assert len(members) == 8 and np.all(keys[members] @ themes[3] > 0.7)
+    half = mi.make_cue(rng, keys[0], "partial", "code")
+    assert (half == 0).sum() == 16
+
+
+def test_a_million_cell_scores_every_arm_and_the_numpy_arm_reads_as_the_compiled():
+    mi = _load("million")
+    pairs = {"pairs": 8, "expansion": 512, "winners": 32, "candidates": 64, "direct": 0}
+    spec = {"founder": 0, "n": 2000, "form": "code", "width": 32, "value_width": 8,
+            "trials": 40, "head_trials": 6, "timed": 5,
+            "arms": [{"name": "scan"}, {"name": "pairs", "settings": pairs},
+                     {"name": "pairs-numpy", "settings": pairs, "numpy": True}]}
+    rows = mi.run_cell(spec)
+    by = {(r["arm"], r["cue"], r["heads"]): r for r in rows}
+    assert by["scan", "exact", 1]["found"] == 1.0 and by["pairs", "exact", 1]["found"] == 1.0
+    for cue in ("exact", "noisy", "partial", "similar_noisy"):
+        assert by["pairs", cue, 1]["found"] == by["pairs-numpy", cue, 1]["found"]
+    assert by["pairs", "noisy", 1]["compiled"] in (True, False)
+    assert by["pairs-numpy", "noisy", 1]["compiled"] is False
+    assert by["pairs", "noisy", 1]["scored"] <= 64 and by["scan", "noisy", 1]["scored"] == 2000
+    assert by["scan", "each", 8]["found"] == 1.0 and by["pairs", "each", 8]["found"] == 1.0
+    hashed = mi.run_cell({**spec, "form": "hashed", "arms": spec["arms"][:2]})
+    assert {r["width"] for r in hashed} == {280}
+    assert {r["cue"] for r in hashed} == {"exact", "noisy", "partial"}
+
+
+def test_facts_of_parts_are_found_asked_in_parts_and_chained():
+    fa = _load("facts")
+    world = fa.World(0, 800, 16, "parts")
+    assert world.n == 800 and world.key_width == 32
+    assert len(set(world.has[5].tolist())) == fa.PER and (world.object != world.subject).all()
+    fact = world.fact(int(world.subject[13]), int(world.relation[13]))
+    assert fact == 13
+    pairs = {"pairs": 8, "expansion": 512, "winners": 32, "candidates": 128, "direct": 0}
+    rows = fa.run_cell({"founder": 0, "n": 800, "width": 16, "form": "parts", "trials": 20,
+                        "arms": [{"name": "scan"}, {"name": "pairs", "settings": pairs}]})
+    by = {(r["arm"], r["reading"], r["k"]): r["found"] for r in rows}
+    for arm in ("scan", "pairs"):
+        assert by[arm, "fact-exact", 1] == 1.0 and by[arm, "subject", 4] == 1.0
+        assert by[arm, "compound-each", 4] == 1.0
+        assert by[arm, "chain-exact", 2] == by[arm, "chain-exact", 3] == 1.0
+    assert by["scan", "compound-summed", 8] < by["scan", "compound-each", 8]
+
+
+def test_shared_keys_are_one_record_without_apart_and_two_with_it():
+    fa = _load("facts")
+    pairs = {"pairs": 8, "expansion": 512, "winners": 32, "candidates": 128, "direct": 0}
+    rows = fa.run_cell({"founder": 0, "n": 1600, "width": 16, "form": "parts", "trials": 30,
+                        "shared": 0.2, "again": 0.05,
+                        "arms": [{"name": "plain", "settings": pairs},
+                                 {"name": "apart", "settings": {**pairs, "apart": 32}}]})
+    by = {(r["arm"], r["reading"]): r for r in rows}
+    assert by["apart", "shared-own"]["records"] == 1600
+    assert by["plain", "shared-own"]["records"] < 1600  # a sharing pair is one record
+    assert by["apart", "shared-shared"]["found"] == 1.0
+    assert by["plain", "shared-shared"]["found"] < 0.9
+    assert by["apart", "shared-again"]["found"] == 1.0 and by["apart", "shared-again"]["stale"] == 0
+
+
+def test_the_fourth_declaration_s_plans_parse_on_their_declared_founders():
+    import json
+
+    mi, fa = _load("million"), _load("facts")
+    plans = {p.stem: json.loads(p.read_text()) for p in (HERE / "protocol-4").glob("*.json")}
+    assert set(plans) == {"capacity", "ten-million", "ten-million-hashed", "timing", "facts",
+                          "shared-apart", "shared-plain"}
+    assert plans["capacity"]["founders"] == list(range(3100, 3112))
+    assert plans["facts"]["founders"] == list(range(3112, 3124))
+    assert plans["shared-apart"]["founders"] == list(range(3124, 3136))
+    assert plans["timing"]["founders"] == [3136, 3137, 3138]
+    capacity = mi.cells(plans["capacity"])
+    assert len(capacity) == 12 * 2 * 4 and capacity[0]["n"] == 1_000_000
+    declared = {"pairs": 16, "expansion": 16384, "winners": 256, "candidates": 4096}
+    for name in ("capacity", "timing", "facts", "shared-plain"):
+        assert [a["settings"] for a in plans[name]["arms"] if a["name"] == "pairs"] == [declared]
+    assert plans["shared-apart"]["arms"][0]["settings"] == {**declared, "apart": 32}
+    assert len(fa.cells(plans["facts"])) == 12 * 2 * 2
+    assert plans["ten-million"]["arms"][0]["settings"]["candidates"] == 8192
+    assert any(a.get("numpy") for a in plans["timing"]["arms"])
+
+
+def test_the_brain_chamber_takes_a_larger_lexicon_one_stream_and_the_address_of_pairs():
+    br = _load("brain_records")
+    store = {"pairs": 4, "expansion": 64, "winners": 8, "candidates": 8, "direct": 0,
+             "fade": False}
+    with pytest.raises(TypeError):
+        br.run_cell({"founder": 0, "arm": "records", "n": [3], "rounds": 1, "questions": 1,
+                     "capacity": 64, "store": store})  # direct is no setting a brain names
+    del store["direct"]
+    rows = br.run_cell({"founder": 0, "arm": "records", "n": [40], "rounds": 4, "questions": 6,
+                        "capacity": 64, "nouns": 64, "verbs": 48, "streams": 1,
+                        "store": store})
+    row = rows[0]
+    assert row["records"] == [40] and row["unrevised"]["questions"] == 6
+    assert row["unrevised"]["found"] >= 0.8 and row["revised"]["stale"] == 0.0
+
+
+def test_the_fifth_declaration_s_plan_parses_on_its_founders():
+    import json
+
+    br = _load("brain_records")
+    plan = json.loads((HERE / "protocol-5" / "brain.json").read_text())
+    todo = br.cells(plan)
+    assert [c["founder"] for c in todo] == list(range(3140, 3152))
+    assert {c["arm"] for c in todo} == {"records"} and todo[0]["n"] == [100_000]
+    assert todo[0]["streams"] == 1 and todo[0]["capacity"] >= 100_000
+    world = br.World(0, todo[0]["nouns"], todo[0]["verbs"])
+    assert world.inputs == 1284 and world.fan_in() == 587 and len(world.pool) >= 100_000
+    assert todo[0]["store"] == {"pairs": 16, "expansion": 16384, "winners": 256,
+                                "candidates": 4096, "fade": False}

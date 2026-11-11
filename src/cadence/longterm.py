@@ -495,6 +495,7 @@ class LongTermMemory:
                 self._ats = np.zeros(self.BLOCK, dtype=np.int64)
                 self._tags = np.zeros(self.BLOCK, dtype=np.uint32)
                 self._held = np.zeros(self.BLOCK * self.DEPTH + 1, dtype=np.uint32)
+            assert self._touched is not None
             found = _COUNT_PAIRS(np.sort(np.asarray(units, dtype=np.int64)),
                                  self.cells.reshape(-1), self.DEPTH, int(self.expansion),
                                  self._bits, np.uint32(self.capacity), self._hits,
@@ -1703,12 +1704,12 @@ class LongTermRecords:
                        window_entries=np.array(window, dtype=np.int64).reshape(-1, 2),
                        cue_entries=np.array(cue, dtype=np.int64).reshape(-1, 2))
         for s, store in enumerate(self.stores):
-            held = store.arrays()
+            kept = store.arrays()
             by_rows, whole = self._saved(store)
             for name in (*self.SAVED_ROWS, *by_rows):
-                out[f"store/{s}/{name}"] = np.array(held[name][: store.count])
+                out[f"store/{s}/{name}"] = np.array(kept[name][: store.count])
             for name in ("state", *whole):
-                out[f"store/{s}/{name}"] = held[name]
+                out[f"store/{s}/{name}"] = kept[name]
         return out
 
     @staticmethod

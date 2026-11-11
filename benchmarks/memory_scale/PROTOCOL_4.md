@@ -90,7 +90,7 @@ fact's current object.
 | Arm | Settings | Read at |
 | --- | --- | --- |
 | `scan` | every record scored: the control and the ceiling | every N |
-| `units` | the store as it stands: `expansion=8192, winners=64, candidates=256` | to 1,000,000; at 10,000,000 on `code-128` |
+| `units` | the store as it stands: `expansion=8192, winners=64, candidates=256` | to 1,000,000 |
 | `pairs` | `pairs=16, expansion=16384, winners=256, candidates=4096` | 100,000 and 1,000,000 |
 | `pairs`, ten million | `pairs=16, expansion=32768, winners=512, candidates=8192` | 10,000,000 |
 
@@ -106,7 +106,7 @@ passes on 10 of 12 unless it says otherwise.
 | Gate | Reading | Bar |
 | --- | --- | --- |
 | C1 | `pairs` at 1,000,000 records, `code-128` and `hashed-280`: found from an exact cue; from a noisy and from a partial cue | .99; .95 |
-| C1, reported | 10,000,000 records: `scan` and `pairs`, `code-128` on 2 founders (with `units`) and `hashed-280` on 1 | none |
+| C1, reported | 10,000,000 records: `scan` and `pairs`, `code-128` on 2 founders and `hashed-280` on 1 | none |
 | C3a | `pairs` at 1,000,000, `code-128` and `hashed-280`: found on exact, noisy and partial cues against `scan` on the same cues | within .01 |
 | C3b | ms per read of `pairs` at 1,000,000 over ms at 100,000, mean of the three cue kinds, one core, `code-128` and `hashed-280`, compiled and through NumPy | under 3, on 3 of 3 |
 | C2 | 1,000,000 facts of which 4 in 100 share their key with another fact, written one by one, then 1 in 100 told again with another object; `pairs` with `apart=32`: found over all facts (.04 of the sharing facts' rate plus .96 of the others') | .99 on 12 of 12 |
@@ -121,7 +121,8 @@ revised facts' current and stale rates; bytes per record, the records a read sco
 entries it reads and its multiply-accumulates in every table.
 
 **The timing (C3b)** is read by cells of their own: founders 3136 to 3138, three processes on a
-box that runs nothing else, 300 timed reads per cue kind. The compiled read and the NumPy read
+box that runs nothing else (the box's queue starts them once every other cell of this declaration
+but the hashed ten million has ended), 300 timed reads per cue kind. The compiled read and the NumPy read
 are two arms over the same records. The `scan` and `units` arms are timed beside them.
 
 ## Founders
@@ -135,7 +136,7 @@ this declaration.
 | ten million | `ten-million.json`, `ten-million-hashed.json` | 3100 and 3101; 3100 | 10,000,000 |
 | timing | `timing.json` | 3136 to 3138 | 100,000 and 1,000,000 |
 | facts | `facts.json` | 3112 to 3123 | 100,000 and 1,000,000, both key forms |
-| shared keys | `shared-apart.json`, `shared-plain.json` | 3124 to 3135 | 1,000,000 |
+| shared keys | `shared-apart.json`; `shared-plain.json` | 3124 to 3135; 3124 to 3127 | 1,000,000 |
 
 ## Expectations, stated before the runs
 
@@ -169,4 +170,8 @@ development cells read `pairs` with 2,048 candidates; three draws read it with 4
   for `pairs` at 100,000. Each part read by a head finds 1.000.
 - **`code-64` binds on the key's width** at 1,000,000: the scan reads .986 on noisy and .980 on
   partial cues, and `pairs` .98 and .97.
-- **Ten million** is unread in development (three cells run at the time of this declaration).
+- **Ten million.** One development cell (founder 0, `code-128`) read `pairs` with
+  `expansion=32768, winners=256, candidates=4096`: exact 1.000, noisy .985, partial .985, where
+  the scan reads 1.000, 1.000 and 1.000; a read 8.8 ms against the scan's 500 ms. A full cell drops
+  12.6% of the table's entries: pairs of units whose weights point alike recur in many records. The
+  declared setting reads twice the winners and twice the candidates; it is unread.

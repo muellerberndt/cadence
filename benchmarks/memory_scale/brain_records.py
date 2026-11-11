@@ -39,6 +39,12 @@ The control ``plain`` is the same brain without ``longterm`` through the same nu
 
 ``--cost`` reads the plan's cost cells (``cost_cell``) and ``--store`` the reading's facts in a
 store without the brain (``store_cell``).
+
+**At 100,000 records and more (cadence#310, C6).** A plan may name a larger lexicon (``nouns``,
+``verbs``), the streams the reading tells and asks (``streams``; the nursery keeps its 16), and
+the settings of each stream's store (``store``: ``longterm_pairs`` and the others by the names
+``Brain.compose`` takes after ``longterm_``). Without them a plan reads as the third declaration
+read it.
 """
 
 from __future__ import annotations
@@ -72,10 +78,10 @@ UNITS = 280
 class World:
     """The lexicon's moments with the turn channel, and the pairs split by founder."""
 
-    def __init__(self, founder: int) -> None:
+    def __init__(self, founder: int, nouns: int = NOUNS, verbs: int = VERBS) -> None:
         import meanings as mn
 
-        self.lexicon = mn.Lexicon(NOUNS, VERBS)
+        self.lexicon = mn.Lexicon(nouns, verbs)
         self.inputs = self.lexicon.inputs + 1
         self.turn = self.lexicon.inputs
         rng = np.random.default_rng(np.random.SeedSequence([founder, 288, 3, 1]))
@@ -99,12 +105,14 @@ class World:
         return round(16 / 70 * 2 * self.inputs)
 
 
-def make_brain(world: World, founder: int, records: int, heads: int = 1) -> Any:
+def make_brain(world: World, founder: int, records: int, heads: int = 1,
+               store: dict[str, Any] | None = None) -> Any:
     warnings.simplefilter("ignore")
     import cadence as cd
 
-    settings: dict[str, Any] = {} if not records else {"longterm": records,
-                                                       "longterm_heads": heads}
+    settings: dict[str, Any] = {} if not records else {
+        "longterm": records, "longterm_heads": heads,
+        **{f"longterm_{name}": value for name, value in (store or {}).items()}}
     return cd.Brain.compose(
         world.inputs, PATIENTS, modules=(64,), seed=founder, backend="cpu", message=UNITS,
         message_fan_in=world.fan_in(), message_boundary=world.turn,
@@ -164,8 +172,10 @@ def own_keys(brain: Any, world: World, about: np.ndarray) -> np.ndarray:
 
 
 def read_at(brain: Any, world: World, founder: int, n: int,
-            questions: int = QUESTIONS) -> dict[str, Any]:
-    """The reading at ``n`` records per stream; the brain is changed by it."""
+            questions: int = QUESTIONS, streams: int = STREAMS) -> dict[str, Any]:
+    """The reading at ``n`` records per stream over ``streams`` streams; the brain is changed
+    by it."""
+    STREAMS = streams  # noqa: N806 - the reading's streams, the module's unless given
     rng = np.random.default_rng(np.random.SeedSequence([founder, 288, 3, 3, n]))
     kept = getattr(brain, "longterm", None)
     if kept is not None:
@@ -222,19 +232,23 @@ def read_at(brain: Any, world: World, founder: int, n: int,
 
 def run_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
     founder, arm = int(spec["founder"]), spec["arm"]
-    world = World(founder)
+    world = World(founder, int(spec.get("nouns", NOUNS)), int(spec.get("verbs", VERBS)))
     records = int(spec.get("capacity", 10_000)) if arm != "plain" else 0
-    brain = make_brain(world, founder, records, int(spec.get("heads", 1)))
+    brain = make_brain(world, founder, records, int(spec.get("heads", 1)), spec.get("store"))
     t0 = time.perf_counter()
     report = nursery(brain, world, founder, int(spec.get("rounds", ROUNDS)))
     report["nursery_seconds"] = round(time.perf_counter() - t0, 1)
     base = {"founder": founder, "arm": arm, "parameters": int(brain.parameters()),
             "neurons": int(brain.connectome.n), **report}
     rows = []
+    if getattr(brain, "longterm", None) is not None:
+        # the reading empties the records it is given: the nursery's are not copied with it
+        brain.longterm.clear()
     for n in spec["n"]:
         reader = copy.deepcopy(brain)
         t0 = time.perf_counter()
-        row = read_at(reader, world, founder, int(n), int(spec.get("questions", QUESTIONS)))
+        row = read_at(reader, world, founder, int(n), int(spec.get("questions", QUESTIONS)),
+                      int(spec.get("streams", STREAMS)))
         rows.append({**base, **row, "seconds": round(time.perf_counter() - t0, 1)})
         del reader
     return rows
