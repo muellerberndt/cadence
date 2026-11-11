@@ -11,13 +11,11 @@ take no step, a baseline without a step.
 
 from __future__ import annotations
 
-import contextlib
 import copy
 import dataclasses
 import importlib.util
 import sys
 import time
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -149,35 +147,12 @@ def compose(arm: str, founder: int, extra: dict[str, Any] | None = None) -> Any:
     inputs = (BANDS, FRAMES) if spec["sees"] == "image" else BANDS * FRAMES
     settings: dict[str, Any] = {"backend": "cpu", **spec["compose"], **(extra or {})}
     direct = float(settings.pop("direct", 0.0))
-    if direct:  # development of round 2: a plastic pathway from the pools to the motor region
-        with _direct_pathway(direct):
-            brain = Brain.compose(inputs, ACTIONS, seed=founder, **settings)
-    else:
-        brain = Brain.compose(inputs, ACTIONS, seed=founder, **settings)
+    if direct:  # round 2: the plastic pathway from the pools to the motor region
+        settings["fields_motor"] = direct
+    brain = Brain.compose(inputs, ACTIONS, seed=founder, **settings)
     if spec.get("hold"):
         brain.fields.learning = False
     return brain
-
-
-@contextlib.contextmanager
-def _direct_pathway(scale: float) -> Iterator[None]:
-    """Compose with one more projection, sensory to motor (not reciprocal: the senses are
-    given), at ``scale``, beside the association's: the layout the library develops otherwise."""
-    from cadence import generic
-    from cadence.genome import Projection
-
-    composed = generic._layout
-
-    def layout(*args: Any, **kwargs: Any) -> Any:
-        genome, resolved = composed(*args, **kwargs)
-        extra = Projection("sensory", "motor", scale=scale, reciprocal=False)
-        return dataclasses.replace(genome, projections=(*genome.projections, extra)), resolved
-
-    generic._layout = layout  # type: ignore[assignment]
-    try:
-        yield
-    finally:
-        generic._layout = composed  # type: ignore[assignment]
 
 
 def soft_targets(target: np.ndarray, share: float) -> np.ndarray:

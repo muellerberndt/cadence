@@ -801,7 +801,7 @@ def _load_composition(value: Any, learner: Learner) -> dict[str, Any] | None:
                 "sensory_scale", "working_memory_scale", "seed"}
     if not isinstance(value, dict) or set(value) - {
         "history_scale", "recall_scale", "image", "code", "learned_code", "attention", "apical",
-        "learned_fields", "ports",
+        "learned_fields", "ports", "fields_motor",
     } != expected:
         raise ValueError("invalid saved composition provenance")
     compartment = learner.brain.apical
@@ -1961,6 +1961,7 @@ def _layout(
     slots: int | Sequence[int] = 1,
     learned_fields: int | None = None,
     ports: int = 0,
+    fields_motor: float = 0.0,
 ) -> tuple[Genome, dict[str, Any]]:
     """The layout ``Brain.compose`` develops (``Genome.composed``) and the settings it resolved.
     ``options`` are compose's other settings; the efference copy, the heard history, the recall
@@ -2179,8 +2180,28 @@ def _layout(
             projections.append(
                 Projection(name, "association", scale=_RECALL_SCALE, reciprocal=False)
             )
+    if (
+        isinstance(fields_motor, (bool, np.bool_))
+        or not isinstance(fields_motor, (int, float, np.integer, np.floating))
+        or not np.isfinite(fields_motor)
+        or fields_motor < 0
+    ):
+        raise ValueError("fields_motor must be a finite nonnegative scale")
+    fields_motor = float(fields_motor)
+    if fields_motor and not fields:
+        raise ValueError(
+            "fields_motor reads the pools of learned fields: inputs=(height, width[, channels]) "
+            "with learned_fields=features"
+        )
+    if fields_motor:
+        # Appended last: the brain with the pathway is the brain without it plus one plastic
+        # projection from the pools (and ports) to the motor region, beside the association's
+        projections.append(
+            Projection("sensory", "motor", scale=fields_motor, reciprocal=False)
+        )
     genome = Genome(tuple(regions), tuple(projections), label="composed-brain")
     return genome, {
+        "fields_motor": fields_motor,
         "inputs": inputs,
         "actions": actions,
         "units": units,
@@ -3059,6 +3080,7 @@ class Brain:
         slots: int | Sequence[int] = 1,
         learned_fields: int | None = None,
         ports: int = 0,
+        fields_motor: float = 0.0,
         **options: Any,
     ) -> Brain:
         """Compose one continuing brain: senses, reciprocal processing regions, a motor choice and
@@ -3082,7 +3104,9 @@ class Brain:
         fields that a local rule shapes, pooled over overlapping regions, in place of the visual
         cortex: the first module reads the pools and the memories key on them. ``ports=k``
         beside them reads ``k`` further values per row (a body's own senses) after the flattened
-        image, as sensory neurons beside the pools.
+        image, as sensory neurons beside the pools. ``fields_motor=scale`` (opt-in, with
+        ``learned_fields``) adds a plastic projection from the pools to the motor region at that
+        scale, beside the association's, taught by the same lessons.
         ``teaching`` is the teaching point of the lesson's learner (``"founder"``,
         ``"normalized"`` or ``"deep"``); ``learning=LearnerConfig(...)`` replaces the whole
         configuration instead. ``connectome`` wraps a custom anatomy with these founders;
@@ -3165,7 +3189,7 @@ class Brain:
             inputs, actions, options, modules=modules, observers=observers, lateral=lateral,
             scales=scales, features=features, field=field, code=code,
             learned_code=learned_code, seed=seed, slots=slots, learned_fields=learned_fields,
-            ports=ports,
+            ports=ports, fields_motor=fields_motor,
         )
         units, learned = layout["units"], layout["learned"]
         association = layout["widths"][-1]
@@ -3202,10 +3226,11 @@ class Brain:
                 or lateral is not None
                 or scales is not None
                 or (features, field) != (8, 3)
+                or layout["fields_motor"]
             ):
                 raise ValueError(
                     "a connectome brings its own layout: modules, observers, lateral, "
-                    "scales, features and field are compose's layout settings"
+                    "scales, features, field and fields_motor are compose's layout settings"
                 )
             populations = connectome.populations
             sensory = populations.get("sensory", populations.get("visual/input", ()))
@@ -3299,6 +3324,8 @@ class Brain:
             result._composition["learned_fields"] = layout["fields"]
         if layout["ports"]:
             result._composition["ports"] = layout["ports"]
+        if layout["fields_motor"]:
+            result._composition["fields_motor"] = layout["fields_motor"]
         if attention:
             result._composition["attention"] = True
         if result.brain.apical is not None:
