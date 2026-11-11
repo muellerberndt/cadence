@@ -2829,7 +2829,7 @@ def seventh_verdict(rows: list[dict[str, Any]], controls: list[dict[str, Any]],
 
 # ---------------------------------------- the sentence in the hidden layers (cadence#308)
 
-FLOORS = tuple(range(10628600, 10628612))  # twelve fresh founders (SENTENCE_PROTOCOL.md)
+FLOORS = tuple(range(10628600, 10628606))  # six fresh founders (SENTENCE_PROTOCOL.md)
 SAID = ("clause", "clause_held", "roles", "dyck", "path", "clause_long")
 BACK = ("back", "back_held", "back_long")
 
