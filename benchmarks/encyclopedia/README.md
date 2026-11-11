@@ -50,6 +50,20 @@ longterm_rest=True, longterm_fade=False)`:
 What is hand-engineered is named as such: the words' form codes (a hash), the closed answer
 vocabulary, one action an answer, and the lessons drawn answer first.
 
+## Readings
+
+The declared run (twelve fresh founders, 741,542 parameters, 10,000 facts read once; the full
+tables in [`PROTOCOL.md`](PROTOCOL.md#outcome-of-the-declared-run)), said with found in brackets:
+
+| Reading | Said | Found |
+| --- | --- | --- |
+| Trained wordings | .977 to .998 | .996 to 1.000 |
+| Held-out wordings | .957 to .996 | .998 to 1.000 |
+| A fact told again: the current object (the earlier one) | .947 to .993 (.000 to .007) | .997 to 1.000 |
+| Two facts | .750 to .963 | .980 to .993 |
+| The relation said by another word | .247 to .397 | |
+| Records emptied at each answer | .000 to .027 | |
+
 ## Run
 
     python benchmarks/encyclopedia/encyclopedia_corpus.py fetch --out raw
