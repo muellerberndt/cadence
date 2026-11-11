@@ -10,6 +10,16 @@ fact a lesson used.
 
 The protocol, the corpus's checksums and the declared run are in [`PROTOCOL.md`](PROTOCOL.md).
 
+## The corpus
+
+Wikidata (CC0 1.0), the dump of 7 August 2026, read through the public SPARQL endpoint
+`https://qlever.dev/api/wikidata` with eleven queries, one a relation: a sovereign state's
+capital, continent, currency and language; a person's citizenship, occupation, birthplace, native
+language, sport and instrument; a city's country. The table `facts.tsv` holds 2,317,143 facts of
+983,271 subjects over 608 answers (SHA-256
+`057bd6f515a299343dae8731276eaa9ab6e59cb4844ad7e0f2342a67a4b9b18e`); each query's text, row count
+and checksum are in `PROTOCOL.md`. The data is kept in the lane's S3 bucket, none of it in git.
+
 ## The pieces
 
 | File | What it holds |
