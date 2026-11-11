@@ -656,7 +656,7 @@ def main() -> None:
     b.add_argument("--held", type=int, default=1_000, help="held-out phrases per length")
     b.add_argument("--speakers", type=int, default=24, help="new speakers from the test split")
     b.add_argument("--least", type=int, default=100, help="clips a new speaker holds at least")
-    b.add_argument("--adapt", type=int, default=84, help="adaptation phrases per new speaker")
+    b.add_argument("--adapt", type=int, default=90, help="adaptation phrases per new speaker")
     b.add_argument("--evaluate", type=int, default=16, help="evaluation phrases per new speaker")
     b.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     b.add_argument("--again", action="store_true")
