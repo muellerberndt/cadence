@@ -56,6 +56,7 @@ from .stream import (
     Recall,
     Trace,
 )
+from .tuning import PopulationCode
 
 __all__ = [
     "Arousal",
@@ -67,6 +68,7 @@ __all__ = [
     "lipschitz_constant",
     "row_mass",
     "PatternSeparator",
+    "PopulationCode",
     "ActorCritic",
     "ActorCriticConfig",
     "Maturity",
@@ -118,4 +120,4 @@ __all__ = [
     "save",
 ]
 
-__version__ = "0.97.0"
+__version__ = "0.97.1"

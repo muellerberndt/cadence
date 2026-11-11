@@ -1780,16 +1780,31 @@ class Learner:
         report.update(_taught_report(taught, len(taught)))
         return LearnedState(free, free, None, taught), report
 
-    @staticmethod
-    def _warn_exhausted(exhausted: bool) -> None:
+    # finite lessons that ran a free phase, and those whose free phase used its whole budget
+    finite_lessons = 0
+    exhausted_lessons = 0
+
+    def _warn_exhausted(self, exhausted: bool) -> None:
+        """Count a finite lesson and warn where its free phase used its whole budget. The 10th,
+        100th, 1,000th such lesson (each power of ten) says how many of this learner's lessons
+        they are, so a warning seen once is told apart from a brain that seldom settles."""
+        self.finite_lessons += 1
         if exhausted:
+            self.exhausted_lessons += 1
+            count = self.exhausted_lessons
+            often = ""
+            if count >= 10 and count == 10 ** (len(str(count)) - 1):
+                often = (
+                    f" This is the case in {count} of this learner's {self.finite_lessons} "
+                    "finite lessons so far."
+                )
             warnings.warn(
                 "finite teaching free phase used its entire free_steps budget; the "
                 "lesson may have been learned from a state that did not settle "
                 "(free_residual in the report holds the equation residual). Raise "
                 "free_steps, lower the gain, or opt into qualified=True to refuse "
                 "such lessons; "
-                "see docs/settling.md#finite-free-phases-that-run-out-of-budget.",
+                "see docs/settling.md#finite-free-phases-that-run-out-of-budget." + often,
                 RuntimeWarning,
                 stacklevel=3,
             )

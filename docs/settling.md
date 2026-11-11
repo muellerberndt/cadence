@@ -349,7 +349,9 @@ started from rest would correct the other one
 is not one, multiply by `c[e]` to get minus the gradient for a tied `efficacy`, and divide by `T`
 for ordinary cross-entropy. Tie groups (`Learner(tie_groups=...)`) and reciprocal pairs combine
 transitively; a group moves by its members' mean contrast and frozen members stay fixed. Tying
-constrains increments, so tied members stay equal only if they start equal.
+constrains increments, so tied members stay equal only if they start equal. A composed brain
+builds its groups from `tied`, whose blocks start as copies
+([tied projections](tune.md#tied-projections-opt-in)).
 `tests/test_equilibrium.py` checks the conversion by finite differences;
 [benchmarks/local_equilibrium](../benchmarks/local_equilibrium/README.md) compares the update
 with an implicit-gradient learner on the same network, and the
@@ -392,7 +394,10 @@ assumptions above. `contrast`, `update` and `apply` act on supplied states. Answ
 Finite teaching updates from whatever state the budgets reached. When a free phase uses all of
 `free_steps`, usually without reaching the movement stop, `Learner.step` reports
 `free_budget_exhausted` (`demonstration_free_budget_exhausted` through `Brain.step`) and warns;
-`free_residual` holds the equation residual. Fixed-length phases (`tolerance=None`) stay silent. Raise `free_steps`,
+`free_residual` holds the equation residual. The learner counts them: `exhausted_lessons` of its
+`finite_lessons` (the finite lessons that ran a free phase since it was made). Python shows a
+repeated warning once, so the warning of the 10th such lesson, the 100th and each further power
+of ten adds both counts. Fixed-length phases (`tolerance=None`) stay silent. Raise `free_steps`,
 lower the gain, or select `qualified=True` to refuse such lessons.
 
 A lesson report holds `attempted_presentations`, `accepted_presentations`, `accepted`,

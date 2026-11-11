@@ -93,7 +93,7 @@ def test_the_components_of_each_family():
     assert mn.components(row) == {
         "agent_noun": 1, "agent_number": 1, "verb": 1, "patient_noun": 2, "patient_number": 0,
         "distractors": 2, "distractor1_noun": 0, "distractor1_number": 0,
-        "distractor2_noun": 3, "distractor2_number": 1}
+        "distractor2_noun": 3, "distractor2_number": 1, "verb_form": 3}
     assert mn.positions(row) == {"go": 0, "verb": 5, "end": 7}
     row = gr.dyck(rng, [1, 1, 0, 1], [0, 1, 0, 1])  # ( [ ] [  leaves ( [ open
     assert mn.components(row) == {"open": 1, "innermost": 1, "outermost": 0,
@@ -522,3 +522,66 @@ def test_the_winners_and_fifth_plans_and_their_gates_read_small_lives():
     lines = mn.fifth_verdict(small, of=1)
     assert sum("-> A2c" in line for line in lines) == 2
     assert any("dyck_d4" in line for line in lines)
+
+
+def test_the_sixth_plan_keys_the_message_by_role_and_its_gates_read_small_lives():
+    warnings.simplefilter("ignore")
+    plan = mn.sixth_plan(tuple(range(24)))
+    tags = [s["tag"] for s in plan["sixth"]]
+    assert tags.count("both_256") == 24 and tags.count("both_p8") == 12
+    assert tags.count("role_256") == 24 and len(plan["sixth_controls"]) == 2 * 2 * 2 * 6
+    role = next(s for s in plan["sixth"] if s["tag"] == "role_256")
+    brain = mn.make_brain(0, role["settings"], 64)
+    assert brain.message.groups == 7 and brain.message.blocks == 28
+    rows = [mn.run_life({**spec, "module": 64, "batches": 2, "panel_batches": 1,
+                         "held_probes": 1, "long_probes": 1})
+            for spec in mn.sixth_plan((0,))["sixth"]]
+    lines = mn.sixth_verdict(rows, [])
+    assert any("-> R1" in line for line in lines) and any("-> R2" in line for line in lines)
+    assert any("-> G8" in line for line in lines)
+
+
+def test_the_verbs_form_is_probed_and_read_again_with_the_message_silent():
+    warnings.simplefilter("ignore")
+    row = mn.gr.clause(np.random.default_rng(0), 1, agent=(2, 1), v=1)
+    assert mn.components(row)["verb_form"] == 3  # the second verb, the plural form
+    spec = {"arm": "barred", "module": 64, "settings": mn.BOTH, "founder": 0, "tag": "x",
+            "batches": 2, "panel_batches": 1, "probe_scale": 0.0, "held_probes": 1,
+            "silent_reading": True}
+    life = mn.run_life(spec)
+    assert {"said_held_silent", "probes_held_silent", "panels_held_silent"} <= set(life)
+    assert "settled" in life["probes_held_silent"]["verb_form"]["verb"]
+
+
+def test_a_word_is_said_and_taught_by_its_parts():
+    warnings.simplefilter("ignore")
+    assert all(mn.parts_word(*mn.word_parts(w)) == w for w in range(gr.ACTIONS))
+    assert mn.word_parts(9) == (gr.NOUNS, mn.PLURAL)  # "see": the first verb, a plural agent
+    brain = mn.make_brain(0, {"parts": True})
+    assert type(brain).__name__ == "PartsBrain" and len(brain.motor_index) == sum(mn.PART_SLOTS)
+    x = np.tile(gr.concept("GO"), (2, 1))
+    brain.lesson(x, np.array([9, 4]))
+    said = brain.act(x, greedy=True)
+    assert said.shape == (2,) and all(0 <= w < gr.ACTIONS for w in said)
+    assert type(copy.deepcopy(brain)).__name__ == "PartsBrain"
+    plan = mn.seventh_plan((0, 1))
+    assert {s["tag"] for s in plan["seventh"]} == {"words_256", "parts_256", "w10_256",
+                                                   "words_free", "parts_free"}
+    assert len(plan["seventh_controls"]) == 2 * 2 * 2
+    rows = [mn.run_life({**spec, "module": 64, "batches": 2, "panel_batches": 1,
+                         "held_probes": 1}) for spec in mn.seventh_plan((0,))["seventh"]]
+    lines = mn.seventh_verdict(rows, [], of=1)
+    assert any(line.startswith("  P1:") for line in lines)
+    assert sum("-> P3" in line for line in lines) == 2
+
+
+def test_a_knock_life_leaves_the_shared_battery_as_it_is():
+    # the sequence battery every other test reads keeps its own make_brain (#306)
+    warnings.simplefilter("ignore")
+    shared = gr.BATTERY.make_brain
+    spec = mn.declared_plan((0,))["knock"][0]
+    row = mn.knock_life({**spec, "lessons": 1, "tests": 1, "module": 8})
+    assert row["kind"] == "knock" and row["chamber"] == "battery"
+    assert gr.BATTERY.make_brain is shared
+    brain = gr.BATTERY.make_brain(gr.BATTERY.TwoHop(), "recipe64", 0, module=8)
+    assert brain.describe()["genes"]["recall_position"] == 64

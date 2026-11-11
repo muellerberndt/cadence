@@ -63,11 +63,12 @@ def test_the_chamber_at_its_own_size_is_the_chamber() -> None:
                 same_row(lang, x, y)
 
 
-def test_the_life_at_the_chamber_size_is_the_chamber_life() -> None:
+def test_the_life_at_the_chamber_size_is_the_chamber_life(monkeypatch) -> None:
     warnings.simplefilter("ignore")
     lang = language.Language(4, 2)
     settings = life.ARMS["Fd"]
-    gr.ARMS["vocab_fd"] = settings
+    # the grammar chamber's table holds the arm for this test alone (#306)
+    monkeypatch.setitem(gr.ARMS, "vocab_fd", dict(settings))
     ours = life.make_brain(lang, "Fd", 3)
     theirs = gr.make_brain("vocab_fd", 3)
     assert ours.parameters() == theirs.parameters() == 30362

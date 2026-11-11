@@ -1791,6 +1791,8 @@ def _supported(brain: Any) -> None:
     ):
         if getattr(brain, name, None) is not None:
             raise refuse(what)
+    if getattr(brain, "tied", None):
+        raise refuse("no tied projections")
     store = brain.hippocampus
     if store is not None and (
         type(store) is not SynapticMemory or store.separator is not None

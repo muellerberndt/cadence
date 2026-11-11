@@ -693,3 +693,20 @@ def test_rest_with_one_head_holds_the_answering_record_alone():
     say(b, 1, 6, TURN)       # one fact
     b.stimulus(np.zeros((1, INPUTS)))
     assert b.longterm.read_slots[0, 0] == 1
+
+
+def test_entries_saved_as_tables_load_as_the_lists_they_were():
+    """A file that keeps the records' entries as tables (0.97.1's ``sets``, ``wset``, ``cue``)
+    loads into the lists."""
+    first = distinct_brain()
+    say(first, 0, 6, TURN, 10, 1, 7, TURN, 11, 0, 8)
+    kept = first.longterm
+    saved = kept.arrays()
+    tables = {k: v for k, v in saved.items()
+              if k not in ("held", "window_entries", "cue_entries")}
+    tables.update(sets=kept.sets, wset=kept.wset, cue=kept.cue)
+    second = distinct_brain()
+    second.longterm.take(tables, len(kept.stores), kept.counts)
+    for name in ("sets", "wset", "cue", "codebook", "stamps"):
+        np.testing.assert_array_equal(getattr(second.longterm, name), getattr(kept, name),
+                                      err_msg=name)

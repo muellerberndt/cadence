@@ -1711,6 +1711,25 @@ class LongTermRecords:
                 out[f"store/{s}/{name}"] = held[name]
         return out
 
+    @staticmethod
+    def _tables_as_rows(arrays: Mapping[str, np.ndarray]) -> dict[str, np.ndarray]:
+        """The entries of a file that keeps them as tables (``sets``, ``wset``, ``cue``, as
+        0.97.1 saves them) as the rows ``take`` reads."""
+        out = dict(arrays)
+        for name in ("sets", "wset", "cue"):
+            if name not in arrays:
+                raise ValueError("missing saved long-term records: the records' entries")
+        sets = np.asarray(arrays["sets"])
+        wset, cue = np.asarray(arrays["wset"]), np.asarray(arrays["cue"])
+        if sets.ndim != 3 or wset.ndim != 2 or cue.ndim != 2:
+            raise ValueError("invalid saved long-term records: the records' entries")
+        out["held"] = np.argwhere(sets > 0).astype(np.int64).reshape(-1, 3)
+        out["window_entries"] = np.argwhere(wset > 0).astype(np.int64).reshape(-1, 2)
+        out["cue_entries"] = np.argwhere(cue > 0).astype(np.int64).reshape(-1, 2)
+        for name in ("sets", "wset", "cue"):
+            del out[name]
+        return out
+
     def take(self, arrays: Mapping[str, np.ndarray], stores: int,
              counts: Mapping[str, int] | None = None) -> None:
         """Take back what ``arrays`` kept of ``stores`` streams' records and of the streams'
@@ -1764,6 +1783,8 @@ class LongTermRecords:
         self._entries, self._codes = {}, []
         self._wsets = [set() for _ in since]
         self._cues = [np.zeros(0, dtype=np.int64) for _ in since]
+        if self.distinct is not None and "sets" in arrays and "held" not in arrays:
+            arrays = self._tables_as_rows(arrays)  # a 0.97.1 file keeps the entries as tables
         if self.distinct is not None:
             saved = ("stamps", "codebook", "held", "window_entries", "cue_entries")
             if any(name not in arrays for name in saved):
