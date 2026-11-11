@@ -175,21 +175,56 @@ to .02.
 
 ## Outcome of the declared run
 
-Founders 3110 to 3121; receipts in [`results/declared/`](results/declared). `said` is the answer
-the brain says, `found` whether the record on its answering region holds the answer.
+Founders 3110 to 3121; receipts in [`results/declared/`](results/declared) (`brain.jsonl.gz`, the
+24 lives; `controls-10k.jsonl.gz`, the 48 control cells; `controls-100k.jsonl.gz`, a reading at
+100,000 facts on founders 3110 to 3112). `said` is the answer the brain says, `found` whether the
+record on its answering region holds the answer.
 
 | Gate | Bar, 10 of 12 | Said, per founder | Found | Passing | Result |
 | --- | --- | --- | --- | --- | --- |
-| E1 trained wordings | .90 | .977 to .998 | .996 to 1.000 | 12 of 12 | passes |
-| E1 held-out wordings | .80 | .957 to .996 | .998 to 1.000 | 12 of 12 | passes |
-| E3 revised, current | .95 | .947 to .993 | .997 to 1.000 | 11 of 12 | passes |
-| E3 revised, stale | under .02 | .000 to .007 | | 12 of 12 | passes |
-| E4 two facts | .80 | .750 to .963 | .980 to .993 | 10 of 12 | passes |
+| E1 trained wordings, 10,000 | .90 | .977 to .998 | .996 to 1.000 | 12 | passes |
+| E1 held-out wordings, 10,000 | .80 | .957 to .996 | .998 to 1.000 | 12 | passes |
+| E2 trained, 100,000 | within .05 of 10,000 | .980 to .999 (gap .000 to .007) | .995 to 1.000 | 12 | passes |
+| E2 held out, 100,000 | within .05 of 10,000 | .652 to .698 (gap .298 to .322) | .681 to .693 | 0 | fails |
+| E3 revised, current | .95 | .947 to .993 | .997 to 1.000 | 11 | passes |
+| E3 revised, stale | under .02 | .000 to .007 | | 12 | passes |
+| E4 two facts | .80 | .750 to .963 | .980 to .993 | 10 | passes |
+| E5 parity: trained, held out, revised, two facts | at or above the best control | | | 12, 12, 12, 12 | passes |
+
+**E2's failing term is the cue.** A third of the held-out questions are worded "name the
+{relation} of {subject} ?". Four subjects of the 100,000 facts hold the word "name" in their
+names, so the word weighs most in the question's cue and the read takes a record of "name": with
+the records alone that wording is found at .08 at 100,000 facts, and the other two held-out
+wordings at .995 and 1.000 (at 30,000 facts all three at 1.000). The trained wordings read at
+100,000 facts as at 10,000.
+
+**The learners at 10,000 facts** (said; seconds and multiply-accumulates per fact taken in and per
+answer, one core for the brain, two threads for each control):
+
+| Learner | Parameters | Trained | Held out | Two facts | Revised (stale) | Seconds a fact | MACs a fact | ms an answer | MACs an answer | Memory |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| the brain (`records`) | 741,542 | .977 to .998 | .957 to .996 | .750 to .963 | .947 to .993 (.000 to .007) | .054 | 365 M | 52 | 428 M | 86 MB of records |
+| `closed_lstm` | 743,712 | .757 to .825 | .047 to .210 | .183 to .277 | .713 to .843 (.020 to .067) | .211 | 11.5 G | 1.0 | 7.6 M | 3.0 MB |
+| `closed_transformer` | 746,928 | .416 to .697 | .098 to .300 | .183 to .267 | .557 to .760 (.027 to .063) | .236 | 8.2 G | 1.5 | 7.7 M | 3.0 MB |
+| `context_transformer` | 746,928 | .004 to .021 | .000 to .016 | .020 to .317 | .003 to .023 | .0005 | 14 M | 46 | 1.4 G | 6.1 MB |
+| `retrieval` | 746,928 | .597 to .780 | .504 to .679 | .090 to .237 | .543 to .780 (.053 to .180) | .000005 | 8 | 2.8 | 27 M | 4.5 MB |
+
+A closed-book learner's seconds and multiply-accumulates to take in a fact are its training's,
+spread over the facts; retrieval's are its index's.
+
+At 100,000 facts: the brain takes in a fact at .058 s with 473 MB of records; the closed-book LSTM
+reads .383 to .432 trained and .046 to .112 held out (its 40 minutes of training end first);
+retrieval .647 to .751 and .544 to .623.
 
 - **Records emptied at each answer:** said .000 to .027.
-- **Synonym wordings:** said .247 to .397. The relation said by a word no record holds leaves the
-  read to the subject's latest fact: the word-to-concept term.
-- **E4's misses are the readout's.** Capital chains are found at .96 to 1.00 and said at .24 to
-  .92; every other chain is said at .77 to 1.00. The answering record (the capital) is on head 0's
-  region and the bridge record (the country) on head 1's, and the country pulls the motor. The two
-  founders under the bar, 3111 and 3114, say capital chains at .24 and .38.
+- **Synonym wordings:** said .247 to .397 at 10,000 facts and .163 to .237 at 100,000. The
+  relation said by a word no record holds leaves the read to the subject's latest fact: the
+  word-to-concept term.
+- **The misses of two facts are the readout's.** Capital chains are found at .96 to 1.00 and said
+  at .24 to .92; every other chain is said at .77 to 1.00. With one head (development, founders 0
+  to 3, `results/development/one-head.jsonl.gz`), the country left off, capital chains read .30 to
+  .83: the question's own words ("citizenship") pull the answer towards a country.
+
+**Open remainder:** E2's cue (a question word a few records hold); a million facts (7 hours a life
+at this brain's intake); answers said whole and names said by their parts; comparisons; the
+settled-state key of #308 as the records' key.
