@@ -4,7 +4,7 @@
 
 # Cadence
 
-[Pragma Research](https://floatingpragma.io/) · [Documentation](https://github.com/muellerberndt/cadence/blob/main/docs/README.md) · [Application demos](https://github.com/muellerberndt/cadence-demos) · [Paper](https://philpapers.org/rec/MUECAP-2) · [PyPI](https://pypi.org/project/cadence-net/)
+[Pragma Research](https://floatingpragma.ai/) · [Documentation](https://github.com/muellerberndt/cadence/blob/main/docs/README.md) · [Application demos](https://github.com/muellerberndt/cadence-demos) · [Paper](https://philpapers.org/rec/MUECAP-2) · [PyPI](https://pypi.org/project/cadence-net/)
 
 [![CI](https://github.com/muellerberndt/cadence/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/muellerberndt/cadence/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](https://github.com/muellerberndt/cadence/blob/main/LICENSE)
@@ -343,7 +343,7 @@ Licensed under [GPL-3.0](https://github.com/muellerberndt/cadence/blob/main/LICE
 [Observer Patch Holography](https://github.com/FloatingPragma/observer-patch-holography)
 (OPH) is the related physics project. Its physics evidence is separate from
 Cadence's capability evidence.
-[Pragma Research](https://floatingpragma.io/) brings the projects together.
+[Pragma Research](https://floatingpragma.ai/) brings the projects together.
 
 Cadence has an official memecoin on Solana, deployed by the Solana community.
 Its token address is `46doJPsSjEVMsNZm4b32UbbvbUXjFTM3TDPBWMM3pump`
