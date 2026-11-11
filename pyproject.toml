@@ -78,6 +78,7 @@ testpaths = [
     "benchmarks/device",
     "benchmarks/doom",
     "benchmarks/pixels",
+    "benchmarks/spoken",
     "benchmarks/actor_latch",
 ]
 
