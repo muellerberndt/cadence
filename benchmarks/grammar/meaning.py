@@ -126,9 +126,9 @@ def parts_brain(brain: Any) -> Any:
             return np.array([parts_word(a, b) for a, b in chosen], dtype=np.int64)
 
         def lesson(self, observations: Any, labels: Any = None, **kwargs: Any) -> Any:
-            if labels is not None:
-                labels = np.array([word_parts(w) for w in np.asarray(labels).ravel()],
-                                  dtype=np.int64)
+            if labels is not None:  # a word, or ``-(stem + 1)`` for a stem without a form
+                labels = np.array([word_parts(w) if w >= 0 else (-int(w) - 1, NO_FORM)
+                                   for w in np.asarray(labels).ravel()], dtype=np.int64)
             return super().lesson(observations, labels, **kwargs)
 
     PartsBrain.__name__ = PartsBrain.__qualname__ = "PartsBrain"
@@ -856,9 +856,34 @@ def bar_meaning(brain: Any, rows: list[gr.Row]) -> None:
         _erase_slots(brain, lambda age: age < given)
 
 
+def echo_labels(rows: list[gr.Row], t: int) -> np.ndarray | None:
+    """The word each row's ``t``-th heard moment names, for a lesson at that moment (an echo):
+    a heard word itself, a noun concept's word in its number, a verb concept's stem (coded
+    ``-(stem + 1)``: its form waits for the agent). None where a row's moment names no word."""
+    out = []
+    for r in rows:
+        if r.family != "clause":  # brackets and paths are heard without a lesson
+            return None
+        x = r.pre[t]
+        words = np.flatnonzero(x[:gr.ACTIONS])
+        if len(words) == 1:
+            out.append(int(words[0]))
+            continue
+        on = {name for name, i in gr.C.items() if x[i]}
+        noun = [i for i, name in enumerate(gr.CONCEPTS[:gr.NOUNS]) if name in on]
+        if noun and on & {"AGENT", "PATIENT", "MOD"}:
+            out.append(gr.noun(noun[0], "PLURAL" in on))
+        elif on & {"SEE", "CHASE"}:
+            out.append(-(gr.NOUNS + (0 if "SEE" in on else 1) + 1))
+        else:
+            return None
+    return np.array(out, dtype=np.int64)
+
+
 def speak(brain: Any, rows: list[gr.Row], *, teach: bool, message: Message | None = None,
           bar: bool = False, work: dict[str, float] | None = None, cap: int = 4,
-          forced: bool = False, watch: Any = None, intervene: Any = None) -> list[list[int]]:
+          forced: bool = False, watch: Any = None, intervene: Any = None,
+          echo: bool = False) -> list[list[int]]:
     """``grammar.speak`` with a message and a barred read. After every act the moment joins
     ``message``, which is installed for the next settle; with ``bar`` the meaning's slots are
     emptied at the continuation's start (``bar_meaning``), in lessons and in readings alike.
@@ -875,6 +900,14 @@ def speak(brain: Any, rows: list[gr.Row], *, teach: bool, message: Message | Non
         message.reset(n)
     for t in range(len(rows[0].pre)):
         x = np.stack([r.pre[t] for r in rows])
+        named = echo_labels(rows, t) if teach and echo else None
+        if named is not None:  # a lesson at the heard moment: say the word it names
+            try:
+                report = brain.lesson(x, named)
+                work["lessons"] += 1
+                work["lesson_row_sweeps"] += report.get("total_row_sweeps", 0.0)
+            except RuntimeError:
+                work["refused"] += 1
         gr._act(brain, x, work)
         if message is not None:
             message.hear(x)
@@ -1414,7 +1447,7 @@ def message_life(spec: dict[str, Any]) -> dict[str, Any]:
                      else sayback_batch(rng, split) if saysback
                      else gr.train_batch(rng, split, grammar))
             speak(brain, batch, teach=True, message=message,
-                  bar=bool(barred.random() < rate), work=work)
+                  bar=bool(barred.random() < rate), work=work, echo=bool(spec.get("echo")))
             if b in checks and grammar == "g1" and not capacity and not paraphrases:
                 lean = message_panels(brain, tests, message, bar, ("clause", "dyck", "path"))
                 row["curve"].append({"batches": b, **{k: v["exact"] for k, v in lean.items()}})

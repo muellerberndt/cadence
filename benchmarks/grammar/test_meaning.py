@@ -599,3 +599,12 @@ def test_the_sentence_instrument_says_back_and_probes_the_heard_state():
     lines = mn.floors_verdict(rows, [control])
     assert any(line.startswith("| `both_256`") for line in lines)
     assert any(line.startswith("| lstm, online") for line in lines)
+
+
+def test_an_echo_names_the_word_of_a_heard_clause_moment():
+    row = gr.clause(np.random.default_rng(0), 1, agent=(2, 1), patient=(0, 0), v=1,
+                    mods=[(3, 0)], inverted=False)
+    named = [int(mn.echo_labels([row], t)[0]) for t in range(len(row.pre))]
+    assert named == [-(gr.NOUNS + 2), 6, 3, 0]  # the verb's stem, foxes, owl, dog
+    assert mn.echo_labels([mn.sayback(row)], 1).tolist() == [row.target[1]]
+    assert mn.echo_labels([gr.path(np.random.default_rng(0), 1)], 0) is None
