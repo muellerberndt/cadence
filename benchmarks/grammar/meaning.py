@@ -1468,6 +1468,16 @@ def message_life(spec: dict[str, Any]) -> dict[str, Any]:
         states = message_states(brain, {"trained": both["trained"], "held": both["held"]},
                                 message, bar)
         row["probes_held"] = transfer_probes(founder, states["trained"], states["held"], places)
+        if own:  # the store as a record's key: its width and how much of it a sentence fills
+            held = np.stack([at["heard"]["message"] for _, at in states["trained"]
+                             if "heard" in at])
+            row["store"] = {
+                "width": int(held.shape[1]),
+                "nonzero": round(float(np.mean(held != 0.0)), 4),
+                "above_tenth": round(float(np.mean(np.abs(held) > 0.1)), 4),
+                "blocks_filled": round(float(np.mean(np.any(held.reshape(
+                    len(held), brain.message.blocks, -1) != 0.0, axis=2))), 4),
+            }
         if saysback:  # the same clauses heard as words
             words = {k: [[sayback(r) for r in rows] for rows in both[k]] for k in both}
             states = message_states(brain, words, message, bar)
