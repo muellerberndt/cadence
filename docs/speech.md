@@ -178,7 +178,10 @@ assert reader.latency()["step_median_s"] > 0
 ```
 
 `latency()` reports the seconds each step took on the machine it ran on: the median, the 95th
-percentile and the seconds per second of audio.
+percentile and the seconds per second of audio. On one idle core of an AMD EPYC 9R14 (AWS c7a)
+the recipe's composition answers a 40 ms step in 1.05 ms at the median (1.10 ms at the 95th
+percentile): 0.026 seconds per second of audio. The beam over the 2,000-word list reads 30 seconds
+of beliefs in 0.08 seconds (`recipe.py --timing`).
 
 ## The recipe script
 
@@ -203,9 +206,7 @@ common hold 0.55 hours, two passes read characters .21 on 53 held-out `dev-clean
 (the brain says only blanks after the first pass). Eleven corrections of a new speaker raise that
 speaker's other recordings from .20 to .27 and the held-out speakers from .21 to .27: at this
 level each correction also teaches the language. Training takes about 1,150 seconds per hour of
-audio on one Intel Xeon core (AWS c7i) with 32 utterances side by side, and the streaming reader
-answers a 40 ms step in 4.4 ms at the median (0.11 seconds per second of audio), on a machine
-running other work beside it.
+audio on one Intel Xeon core (AWS c7i) with 32 utterances side by side.
 
 ## Settings, refusals and cost
 
