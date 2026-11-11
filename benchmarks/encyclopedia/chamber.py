@@ -153,18 +153,6 @@ def run_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
     brain = make_brain(lexicon, founder, arm, capacity, int(spec.get("module", 64)),
                        spec.get("longterm"))
     life = Life(brain, lexicon)
-    kept = getattr(brain, "longterm", None)
-    if kept is not None and spec.get("bridge") is False:  # development: head 1 left silent
-        held = kept.stimulus
-        silent = kept.columns[1:]
-
-        def stimulus(drive: np.ndarray, moment: Any = None) -> np.ndarray:
-            out = held(drive, moment)
-            for columns in silent:
-                out[:, columns] = 0.0
-            return out
-
-        kept.stimulus = stimulus
     rng = np.random.default_rng(np.random.SeedSequence([founder, 311, 1]))
     nursery: list[float] = []
     t0 = time.perf_counter()
