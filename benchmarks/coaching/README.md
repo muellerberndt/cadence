@@ -22,6 +22,8 @@ PYTHONPATH=src python benchmarks/coaching/cartpole.py --out benchmarks/coaching/
 | `coach` | `code`, then four rounds of 16 episodes on the brain's own path, every moment taught |
 | `mixed` | as `coach`, each of 8 own episodes a round followed by a watched one |
 | `coach+efference` | as `coach`, on a brain with `efference_amplitude=1.0` |
+| `percentile` | as `code`, over ranges from the 1st to the 99th percentile of each reading in eight other demonstrated episodes, `clamp=False`: a reading past its range fades and goes dark |
+| `percentile+clamp` | the same ranges, a reading past its range read at the nearer end (`clamp=True`, the code's default) |
 
 ## Readings
 
@@ -36,6 +38,8 @@ starts balanced for 500 steps of 32, and mean steps, after watching and after ea
 | `coach` rounds 1 to 4 | 0, 9.7; 0, 332.1; 0, 411.9; 32, 500.0 | 0, 75.5; 5, 321.4; 0, 269.2; 0, 326.4 | 0, 16.9; 0, 242.5; 32, 500.0; 32, 500.0 |
 | `mixed` rounds 1 to 4 | 7, 404.8; 10, 403.5; 0, 259.2; 10, 453.1 | 14, 459.0; 6, 393.6; 13, 458.4; 32, 500.0 | 10, 385.0; 0, 263.7; 14, 464.7; 21, 367.3 |
 | `coach+efference`, watched then rounds 1 to 4 | 23, 459.1; 0, 342.7; 9, 438.6; 6, 425.9; 8, 409.9 | 31, 498.5; 29, 461.1; 1, 191.8; 2, 424.8; 28, 496.9 | 9, 418.6; 0, 226.7; 0, 171.2; 0, 285.3; 0, 309.3 |
+| `percentile` | 1/32, 92.5 | 0/32, 67.5 | 2/32, 89.1 |
+| `percentile+clamp` | 1/32, 133.9 | 1/32, 124.9 | 3/32, 172.2 |
 
 What the readings show, at three founders:
 
@@ -46,6 +50,11 @@ What the readings show, at three founders:
   coaching alone recovers two founders of three to 32 of 32 by the fourth round. Mixed with watched
   episodes no founder falls below 259 steps, and one of three reaches 32 of 32 in four rounds.
 - With the efference copy one founder of three stays at 0 of 32 through the four rounds.
+- Ranges fitted to the demonstrator's own states hold the pole 83 steps on average, and 144 with
+  a reading past its range clamped to the nearer end, against 374 for the ranges of the task's
+  limits. Those percentiles span 0.031 rad of pole angle and 0.62 m of cart position, against
+  limits of 0.21 rad and 2.4 m; a brain that errs leaves the demonstrator's states, and past a
+  narrow range every state reads alike (clamped) or not at all.
 
 Three founders separate the code from the raw readings and the collapse from its absence; they do
 not rank `coach` against `mixed` at the fourth round.
@@ -68,12 +77,16 @@ PYTHONPATH=src python benchmarks/coaching/imbalance.py --out benchmarks/coaching
 | unweighted | 0.90 to 0.98 | 0.91 to 1.00 | 0.74 to 0.98 | 0.94 to 0.98 |
 | inverse of the share | 0.86 to 0.96 | 0.83 to 0.96 | 0.86 to 1.00 | 0.94 to 1.00 |
 | inverse square root | 0.79 to 0.98 | 0.72 to 0.99 | 0.84 to 1.00 | 0.96 to 1.00 |
+| every row (`learning_surprise=False`) | 0.97 to 0.99 | 0.99 to 1.00 | 0.87 to 0.98 | 0.88 to 0.99 |
 
 Six founders ([receipt](results/imbalance.json)). Weighting moves agreement from the commonest
 answer to the rarest: inverse weights raise FIRE on the two weakest founders from 0.74 and 0.83 to
-0.92 and 0.93 and lower LEFT; unweighted lessons agree best overall. A watched brain here does not
-collapse onto the commonest answer, so the weighting is no general remedy; read each answer's
-agreement and weigh only where the rare answer is the one that matters.
+0.92 and 0.93 and lower LEFT. The first three rows teach only the rows the brain answers wrong
+(`learning_surprise=True`, a new brain's default); the fourth teaches every row at weight 1 and
+agrees best overall: the weakest founder of the unweighted lessons rises from 0.90 overall and 0.74
+on FIRE to 0.97 and 0.87, while one founder's RIGHT falls from 0.98 to 0.88. A watched brain here
+does not collapse onto the commonest answer, so the weighting is no general remedy; read each
+answer's agreement and weigh only where the rare answer is the one that matters.
 
 ## Which opt-ins a coached brain needs
 

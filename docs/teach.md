@@ -101,7 +101,8 @@ Things to know:
 
 - **Lessons only where the answer is wrong.** A new brain holds `learning_surprise=True`: rows the
   brain answers right are skipped, and the report counts them in `agreed_presentations`
-  ([lessons only where the answer differs](#lessons-only-where-the-answer-differs)).
+  ([lessons only where the answer differs](#lessons-only-where-the-answer-differs)). With
+  several motor slots a row is right only where every slot is; `agreed_slots` counts the slots.
 - **Rows are streams.** Each row is one stream. Once the brain has acted on a batch, a lesson must
   have the same number of rows (`ValueError` "lesson batch must match the live streams") until
   `reset()`. Lessons on their own, before any act, can take any number of rows.
@@ -501,6 +502,13 @@ holds `True`.
 The report adds `agreed_presentations`, `LearnedState.taught` marks the taught rows, and an
 episodic memory records only those demonstrations.
 
+A row of several motor slots agrees only where every slot does, so a brain of twelve slots that
+answers ten of each row's as shown reports no agreed row and skips none. The composed brain's
+report also holds `agreed_slots`: the slots its answer gave as shown, counted over every row of
+the lesson (with one slot, the agreed rows). `agreed_slots / (attempted_presentations * slots)`
+is the share of the answer that is right. It reads zero where the lesson judges no row: under
+`learning_surprise=False` and for `targets`.
+
 Select it where a readout saturates under lessons it answers correctly, or where streams are
 shown row by row for many passes; [benchmarks/stream_words](../benchmarks/stream_words/README.md)
 uses it with every-row lessons as the control.
@@ -650,7 +658,7 @@ print(f"held out {accuracy:.2f} ± {2 * error:.2f}, per class {per_class}, contr
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| Every answer is the commoner class | class imbalance | [weights, surprise lessons](#every-answer-is-the-majority-class) |
+| Every answer is the commoner class | class imbalance | [weights, every-row lessons](#every-answer-is-the-majority-class) |
 | A brain that answered well gets worse as training continues | steps too large for a trained brain | [smaller steps, surprise lessons](#a-trained-brain-gets-worse-with-more-training) |
 | After long reward training the greedy answer is the same for every observation | the motor neurons saturated at a high `actor_eta` | [a tenth of the actor rate](#reward-training-pins-the-answer) |
 | `predict` answers right, `act` answers wrong, and lessons do not change the act | a deep brain with two stable states for one observation | [teach inside the stream](#a-deep-brain-whose-lessons-do-not-reach-its-act) |
@@ -670,7 +678,12 @@ the rare class is never answered. Read per-class accuracy, then:
   commonest answer 73% of the moments, six founders) inverse weights raised the rarest answer on
   the two weakest founders from 0.74 and 0.83 to 0.92 and 0.93 and lowered the commonest from 0.91
   to 1.00 to 0.83 to 0.96, and unweighted lessons agreed best overall (0.90 to 0.98);
-- keep `learning_surprise=True` (a new brain's default), so rows answered right stop pulling;
+- compare `learning_surprise=False`, which teaches every row and not only the wrong ones: on the
+  same chamber it agreed best overall (0.97 to 0.99 against 0.90 to 0.98) and raised the weakest
+  founder's rare answer from 0.74 to 0.87. Over a long curriculum at the normalized point,
+  teaching rows the brain already answers right can collapse it
+  ([lessons only where the answer differs](#lessons-only-where-the-answer-differs)), so read
+  both on the task;
 - or sample the lessons so every class appears about equally often.
 
 ### A trained brain gets worse with more training

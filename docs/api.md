@@ -589,15 +589,16 @@ setting, `fields`, which `GENES` names. Guide:
 ## Population code (`cadence.tuning`)
 
 ```text
-PopulationCode(ranges, per=16, floor=0.05)
+PopulationCode(ranges, per=16, floor=0.05, clamp=True)
 ```
 
 A fixed code of continuous readings for a brain's senses: each reading's `(low, high)` range is
 tiled by `per` inputs with Gaussian tuning curves one spacing wide, and a response under `floor`
-reads zero. `code(readings)` takes `(readings,)` or `(rows, readings)` finite values and returns
+reads zero. A value outside its range is read at the nearer end (`clamp=True`), or fades to
+nothing past it (`clamp=False`). `code(readings)` takes `(readings,)` or `(rows, readings)` finite values and returns
 `(rows, inputs)` rows; `inputs` is `per` times the number of readings, and `preferred` and
 `spacing` hold the tuning. It refuses an empty or non-finite range, a range whose low is not
-below its high, `per` under 2, a `floor` outside `[0, 1)`, and readings of another width or not
+below its high, `per` under 2, a `floor` outside `[0, 1)`, a `clamp` that is no bool, and readings of another width or not
 finite. It learns nothing and is not part of a checkpoint. Guide:
 [continuous readings](senses.md#continuous-readings-a-population-code).
 

@@ -14,7 +14,7 @@
     "FIRE": 0.1125,
     "RIGHT": 0.155
    },
-   "seconds": 5.7
+   "seconds": 6.2
   },
   {
    "arm": "plain",
@@ -30,7 +30,7 @@
     "FIRE": 0.1125,
     "RIGHT": 0.155
    },
-   "seconds": 4.3
+   "seconds": 6.8
   },
   {
    "arm": "plain",
@@ -46,7 +46,7 @@
     "FIRE": 0.1125,
     "RIGHT": 0.155
    },
-   "seconds": 5.1
+   "seconds": 6.3
   },
   {
    "arm": "plain",
@@ -62,7 +62,7 @@
     "FIRE": 0.1125,
     "RIGHT": 0.155
    },
-   "seconds": 8.6
+   "seconds": 4.7
   },
   {
    "arm": "plain",
@@ -78,7 +78,7 @@
     "FIRE": 0.1125,
     "RIGHT": 0.155
    },
-   "seconds": 13.0
+   "seconds": 4.9
   },
   {
    "arm": "plain",
@@ -94,7 +94,7 @@
     "FIRE": 0.1125,
     "RIGHT": 0.155
    },
-   "seconds": 15.5
+   "seconds": 4.7
   },
   {
    "arm": "inverse",
@@ -110,7 +110,7 @@
     "FIRE": 0.1125,
     "RIGHT": 0.155
    },
-   "seconds": 13.2
+   "seconds": 5.7
   },
   {
    "arm": "inverse",
@@ -126,7 +126,7 @@
     "FIRE": 0.1125,
     "RIGHT": 0.155
    },
-   "seconds": 22.5
+   "seconds": 6.5
   },
   {
    "arm": "inverse",
@@ -142,7 +142,7 @@
     "FIRE": 0.1125,
     "RIGHT": 0.155
    },
-   "seconds": 13.6
+   "seconds": 5.5
   },
   {
    "arm": "inverse",
@@ -158,7 +158,7 @@
     "FIRE": 0.1125,
     "RIGHT": 0.155
    },
-   "seconds": 7.6
+   "seconds": 4.7
   },
   {
    "arm": "inverse",
@@ -174,7 +174,7 @@
     "FIRE": 0.1125,
     "RIGHT": 0.155
    },
-   "seconds": 26.8
+   "seconds": 6.5
   },
   {
    "arm": "inverse",
@@ -190,7 +190,7 @@
     "FIRE": 0.1125,
     "RIGHT": 0.155
    },
-   "seconds": 22.0
+   "seconds": 4.2
   },
   {
    "arm": "sqrt",
@@ -206,7 +206,7 @@
     "FIRE": 0.1125,
     "RIGHT": 0.155
    },
-   "seconds": 19.1
+   "seconds": 5.8
   },
   {
    "arm": "sqrt",
@@ -222,7 +222,7 @@
     "FIRE": 0.1125,
     "RIGHT": 0.155
    },
-   "seconds": 10.0
+   "seconds": 14.2
   },
   {
    "arm": "sqrt",
@@ -238,7 +238,7 @@
     "FIRE": 0.1125,
     "RIGHT": 0.155
    },
-   "seconds": 18.3
+   "seconds": 12.4
   },
   {
    "arm": "sqrt",
@@ -254,7 +254,7 @@
     "FIRE": 0.1125,
     "RIGHT": 0.155
    },
-   "seconds": 14.6
+   "seconds": 9.9
   },
   {
    "arm": "sqrt",
@@ -270,7 +270,7 @@
     "FIRE": 0.1125,
     "RIGHT": 0.155
    },
-   "seconds": 8.5
+   "seconds": 9.7
   },
   {
    "arm": "sqrt",
@@ -286,7 +286,103 @@
     "FIRE": 0.1125,
     "RIGHT": 0.155
    },
-   "seconds": 12.3
+   "seconds": 10.3
+  },
+  {
+   "arm": "every",
+   "founder": 0,
+   "overall": 0.98875,
+   "per_answer": {
+    "LEFT": 0.9897610921501706,
+    "FIRE": 0.9777777777777777,
+    "RIGHT": 0.9919354838709677
+   },
+   "shares": {
+    "LEFT": 0.7325,
+    "FIRE": 0.1125,
+    "RIGHT": 0.155
+   },
+   "seconds": 20.9
+  },
+  {
+   "arm": "every",
+   "founder": 1,
+   "overall": 0.9725,
+   "per_answer": {
+    "LEFT": 1.0,
+    "FIRE": 0.9222222222222223,
+    "RIGHT": 0.8790322580645161
+   },
+   "shares": {
+    "LEFT": 0.7325,
+    "FIRE": 0.1125,
+    "RIGHT": 0.155
+   },
+   "seconds": 17.2
+  },
+  {
+   "arm": "every",
+   "founder": 2,
+   "overall": 0.97625,
+   "per_answer": {
+    "LEFT": 0.9948805460750854,
+    "FIRE": 0.8888888888888888,
+    "RIGHT": 0.9516129032258065
+   },
+   "shares": {
+    "LEFT": 0.7325,
+    "FIRE": 0.1125,
+    "RIGHT": 0.155
+   },
+   "seconds": 16.7
+  },
+  {
+   "arm": "every",
+   "founder": 3,
+   "overall": 0.985,
+   "per_answer": {
+    "LEFT": 0.9982935153583617,
+    "FIRE": 0.9111111111111111,
+    "RIGHT": 0.9758064516129032
+   },
+   "shares": {
+    "LEFT": 0.7325,
+    "FIRE": 0.1125,
+    "RIGHT": 0.155
+   },
+   "seconds": 19.2
+  },
+  {
+   "arm": "every",
+   "founder": 4,
+   "overall": 0.975,
+   "per_answer": {
+    "LEFT": 1.0,
+    "FIRE": 0.8666666666666667,
+    "RIGHT": 0.9354838709677419
+   },
+   "shares": {
+    "LEFT": 0.7325,
+    "FIRE": 0.1125,
+    "RIGHT": 0.155
+   },
+   "seconds": 24.3
+  },
+  {
+   "arm": "every",
+   "founder": 5,
+   "overall": 0.99125,
+   "per_answer": {
+    "LEFT": 1.0,
+    "FIRE": 0.9555555555555556,
+    "RIGHT": 0.9758064516129032
+   },
+   "shares": {
+    "LEFT": 0.7325,
+    "FIRE": 0.1125,
+    "RIGHT": 0.155
+   },
+   "seconds": 20.5
   }
  ]
 }

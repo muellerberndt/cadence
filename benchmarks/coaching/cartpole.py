@@ -18,7 +18,11 @@ Every arm composes a default brain per founder and reads the 32 held-out starts 
   every moment taught (surprise lessons skip the rows it already answers right);
 - ``mixed``: as ``coach``, each of 8 own episodes a round followed by a watched one;
 - ``coach+efference``: as ``coach``, on a brain with the efference copy
-  (``efference_amplitude=1.0``).
+  (``efference_amplitude=1.0``);
+- ``percentile``: as ``code``, over ranges from the 1st to the 99th percentile of each reading in
+  eight other demonstrated episodes, unclamped (``clamp=False``): a reading past its range fades
+  and goes dark;
+- ``percentile+clamp``: the same ranges, a reading past its range read at the nearer end.
 """
 
 from __future__ import annotations
@@ -28,6 +32,7 @@ import copy
 import json
 import math
 import time
+from multiprocessing import Pool
 from pathlib import Path
 
 import numpy as np
@@ -68,9 +73,25 @@ def demonstrator(state: np.ndarray) -> int:
     return int(state[2] + 0.5 * state[3] + 0.05 * state[0] + 0.2 * state[1] > 0)
 
 
+def percentile_ranges() -> list[tuple[float, float]]:
+    """The 1st to 99th percentile of each reading over eight demonstrated episodes."""
+    states = []
+    for seed in range(20_000, 20_008):
+        pole = CartPole(seed)
+        running = True
+        while running:
+            states.append(pole.state)
+            running = pole.step(demonstrator(pole.state))
+    low, high = np.percentile(np.array(states), [1, 99], axis=0)
+    return list(zip(low.tolist(), high.tolist(), strict=True))
+
+
 def senses(arm: str):
     if arm == "raw":
         return 4, lambda s: np.asarray(s, np.float64).reshape(1, 4)
+    if arm.startswith("percentile"):
+        code = PopulationCode(percentile_ranges(), per=16, clamp=arm == "percentile+clamp")
+        return code.inputs, code
     code = PopulationCode(RANGES, per=16)
     if arm == "code+dense":
         return code.inputs + 40, lambda s: np.hstack([code(s), np.full((1, 40), 0.75)])
@@ -123,16 +144,19 @@ def life(arm: str, founder: int) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--arms", nargs="+",
-                        default=["raw", "code", "code+dense", "coach", "mixed", "coach+efference"])
+                        default=["raw", "code", "code+dense", "coach", "mixed", "coach+efference",
+                                 "percentile", "percentile+clamp"])
     parser.add_argument("--founders", nargs="+", type=int, default=[0, 1, 2])
+    parser.add_argument("--processes", type=int, default=4)
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
     demo = [_demonstrate(seed) for seed in GATE]
-    rows = [life(arm, f) for arm in args.arms for f in args.founders]
+    with Pool(args.processes) as pool:
+        rows = pool.starmap(life, [(arm, f) for arm in args.arms for f in args.founders])
     for row in rows:
         reads = " ".join(f"{r['balanced']:2d}/32 {r['mean_steps']:5.1f}"
                          for r in row["reads"])
-        print(f"{row['arm']:11} founder {row['founder']}: {reads}  ({row['seconds']} s)",
+        print(f"{row['arm']:16} founder {row['founder']}: {reads}  ({row['seconds']} s)",
               flush=True)
     receipt = {"task": "CartPole-v1 dynamics in NumPy", "gate": [GATE.start, GATE.stop],
                "demonstrator": {"balanced": sum(s == STEPS for s in demo),

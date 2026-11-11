@@ -79,6 +79,7 @@ testpaths = [
     "benchmarks/doom",
     "benchmarks/pixels",
     "benchmarks/actor_latch",
+    "benchmarks/coaching",
 ]
 
 [tool.ruff]

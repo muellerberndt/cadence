@@ -16,10 +16,13 @@ the share of its moments the brain answers as the demonstrator does. Arms:
 
 - ``plain``: every lesson at weight 1;
 - ``inverse``: each lesson weighted by the inverse of its label's share among the lessons so far;
-- ``sqrt``: by the inverse square root of that share.
+- ``sqrt``: by the inverse square root of that share;
+- ``every``: every lesson at weight 1 on a brain that teaches every row
+  (``learning_surprise=False``), where the other arms skip the rows the brain answers right.
 
 Both weightings are normalised to a mean weight of 1 over the lessons (``LessonBalance`` below).
-The readings did not favour a weighting overall, so it stays in this chamber.
+The readings did not favour a weighting overall, so it stays in this chamber. Teaching every row
+agreed best overall.
 """
 
 from __future__ import annotations
@@ -92,8 +95,11 @@ def episode(seed: int, length: int = 40) -> tuple[np.ndarray, np.ndarray]:
 
 
 def life(arm: str, founder: int) -> dict:
-    brain = Brain.compose(COLUMNS, 3, seed=founder)
-    balance = None if arm == "plain" else LessonBalance(3, power=1.0 if arm == "inverse" else 0.5)
+    options = {"learning_surprise": False} if arm == "every" else {}
+    brain = Brain.compose(COLUMNS, 3, seed=founder, **options)
+    balance = None
+    if arm in ("inverse", "sqrt"):
+        balance = LessonBalance(3, power=1.0 if arm == "inverse" else 0.5)
     started = time.time()
     for e in range(40):
         x, labels = episode(1000 * founder + e)
@@ -118,7 +124,7 @@ def life(arm: str, founder: int) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--arms", nargs="+", default=["plain", "inverse", "sqrt"])
+    parser.add_argument("--arms", nargs="+", default=["plain", "inverse", "sqrt", "every"])
     parser.add_argument("--founders", nargs="+", type=int, default=[0, 1, 2, 3, 4, 5])
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)

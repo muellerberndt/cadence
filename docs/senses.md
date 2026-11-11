@@ -169,9 +169,16 @@ size is all the brain hears: a small angle drives the cortex a little and a larg
 direction. `PopulationCode(ranges, per=16)` spreads each reading over `per` inputs whose preferred
 values tile its range `(low, high)`, with Gaussian tuning curves one spacing wide, the way place
 and head-direction cells tile a space. A value lights the inputs within two spacings of it, five at
-most, and every other input reads zero (`floor=0.05`); outside the range the input at the nearer
-end fades. The code is fixed, learns nothing and is not saved with a brain: build it once with the
-ranges the readings cover and compose the brain with `code.inputs` inputs.
+most, and every other input reads zero (`floor=0.05`). A value outside the range is read at the
+nearer end (`clamp=True`), so a reading never goes dark; with `clamp=False` it fades there and
+reads nothing 2.45 spacings past the end (1.55 at `floor=0.3`). The code is fixed, learns nothing
+and is not saved with a brain: build it once and compose the brain with `code.inputs` inputs.
+
+Give each reading the range the brain's own states will cover, which is wider than a
+demonstrator's: a brain that errs leaves the states it was shown. On the
+[cart-pole chamber](../benchmarks/coaching/README.md), ranges from the 1st to the 99th percentile
+of each reading in demonstrated episodes hold the pole 83 steps on average over three founders
+unclamped and 144 clamped, against 374 for the ranges of the task's limits.
 
 The spacing is the code's resolution. Where the task turns on a small difference, a grasp a
 centimetre from closing or a release over a narrow bin, give the brain a second code of the same

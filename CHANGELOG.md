@@ -17,6 +17,22 @@
   of the opt-ins under teaching on the brain's own path (the efference copy slows the first round;
   the episodic memory steadies the rounds). The teaching guide adds that a demonstrator's answer
   must follow from what the brain observes, and to read agreement per answer.
+- **`PopulationCode(clamp=True)`**: a value outside its range is read at the nearer end. With
+  `clamp=False` it fades and then reads nothing, 1.55 spacings past the end at `floor=0.3`. The
+  cart-pole chamber gains two arms on ranges fitted to the demonstrator's states: 83 steps
+  unclamped and 144 clamped, against 374 for the task's limits
+  ([continuous readings](docs/senses.md#continuous-readings-a-population-code)).
+- **`agreed_slots` in a brain's lesson report**: the slots its answer gave as shown, over every
+  row. A row of several motor slots agrees only where every slot does, so `agreed_presentations`
+  reads zero for a brain that is right in most slots
+  ([lessons only where the answer differs](docs/teach.md#lessons-only-where-the-answer-differs)).
+- **Lessons that run out of free sweeps are counted**: `Learner.exhausted_lessons` of
+  `Learner.finite_lessons`, and the warning of the 10th, 100th and each further power of ten says
+  both ([finite free phases](docs/settling.md#finite-free-phases-that-run-out-of-budget)).
+- The scan-and-fire chamber gains an every-row arm (`learning_surprise=False`): 0.97 to 0.99
+  overall against 0.90 to 0.98 for surprise lessons, the weakest founder's rare answer from 0.74
+  to 0.87. The teaching guide's section on a majority answer now says to compare both.
+- `benchmarks/coaching` joins the test paths; its test loads the chamber by path.
 
 ## 0.97.0 — 2026-11-10
 
