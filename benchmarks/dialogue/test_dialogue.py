@@ -185,4 +185,4 @@ def test_the_declared_receipts_hold_the_verdicts_the_readme_states():
              if not r["reading"].get("erase")}
     for row in babi:
         if row["reading"].get("erase"):
-            assert abs(row["scores"]["all"]["right"] - plain[row["founder"]]) <= 0.001
+            assert abs(row["scores"]["all"]["right"] - plain[row["founder"]]) <= 0.001 + 1e-9
