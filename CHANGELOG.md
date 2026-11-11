@@ -1,152 +1,66 @@
 # Changelog
 
-## Unreleased
+## 0.97.1 - 2026-11-11
 
-### Added
+Opt-ins built on the v0.98.0 lanes, and the chambers that read them. No default changes: with
+every new option unset a brain lives, saves and describes to the bit as on 0.97.0 on
+`backend="cpu"`, and `Lives` keeps every action and parameter.
 
-- **Tied projections** (`tied`, opt-in; #308, #284). `Brain.compose(..., tied={(pre, post):
-  (blocks of pre, blocks of post)})` ties a projection across equal blocks of its two regions:
-  `(k, 1)` reads every block of `pre` through one set of synapses, `(1, k)` writes every block
-  of `post` through one, `(k, k)` joins block i to block i through one. A lesson or a reward
-  steps a tied synapse by the mean of the steps its copies would take untied, as
-  `Learner(tie_groups=...)` steps a group, and the copies hold one efficacy to the bit through
-  lessons, rewards, a checkpoint, `grow` and each backend (`cpu`, `torch`, `mlx`).
-  `parameters()` counts a tied synapse once and `describe()` lists the tie. A genome declares
-  one as `Projection(..., tied=...)`; `develop` draws the projection as the untied one of that
-  seed and repeats its first block, so every other projection starts as beside the untied one;
-  `Genome.tied` hands the ties to `Brain.compose(connectome=..., tied=...)`, and
-  `cadence.genome.tie_groups` gives the learner's groups. A tied brain updates on the general
-  path (no compiled moment, no device-resident MLX update); `Lives` and `graft` refuse it, and
-  `grow` adds no neurons to a region a tie cuts into blocks. With the option unset every brain,
-  its file and its description are unchanged to the bit on `backend="cpu"`; a composed tied
-  brain's file is refused by 0.97.0 (docs/tune.md, tied projections; docs/anatomy.md).
-### Benchmarks
+```bash
+python -m pip install cadence-net==0.97.1
+```
 
-- **The letters chamber** ([`benchmarks/letters/`](benchmarks/letters/README.md), #304). Letters
-  heard as sounds of one to four frames, said one symbol a frame, read the same for every learner:
-  the stream as said, the CTC reading, held-out words, each letter's said steps and the stages.
-  Matched controls by gradient: an LSTM and a transformer by CTC, and LSTMs on the brains'
-  per-frame targets. No library change.
-  - Step 0 (development founders): taught a letter at its sound's first frame, the 0.97.0 default
-    says each letter once (.96 of sounds, .003 inserted per character, characters .968 on 18,000
-    words) and loses words at the emission of a letter after a letter pair no trained word holds
-    (missed .286 against .006), while its state holds the letter there at .99. Taught at a step
-    the sound does not mark (letters spread evenly over the word), it holds letters and misses
-    half.
-  - Step 1 ([`PROTOCOL_1.md`](benchmarks/letters/PROTOCOL_1.md), six fresh founders): two motor
-    slots, the symbol heard and whether to say it, fail the emission gate (3 of 6) and the words
-    gate (held-out words .40, 0 of 6), where the default reads .47 and passes emission on 6 of 6.
-    Learners taught when to say a letter by a per-frame lesson read held-out words at .40 to .67;
-    the CTC learners, which choose their own timing, at .85 to .94.
-  - Step 2 ([`PROTOCOL_2.md`](benchmarks/letters/PROTOCOL_2.md), six fresh founders): a teacher
-    that knows each word's letters and frames re-aligns them every 500 words by the monotonic best
-    path through a frozen copy's beliefs, and teaches each letter on every frame of its path. On
-    the CTC reading the 0.97.0 default reads characters .999 and held-out words .994, both gates on
-    6 of 6, beside the supplied alignment (.983) and the CTC LSTM (.99). Candidate (b), taught
-    until its sampled act says a letter, failed in development because the same sound frame took
-    a letter's lesson and blank's.
-  - The read-speech adapter (`speech.py`, Step 3): LibriSpeech heard as 40 ms steps of log-mel,
-    taught by CTC's forced alignment through the brain's beliefs, read by the same CTC reading.
-    On 4,000 utterances and three fresh founders the default (116,092 parameters) reads
-    characters .21 and no words, where CTC learners at its size read .38 to .50 and no words. The
-    term located is the letter from the sound (.18 against .36 to .50).
-  - `vocabulary.py`: the most frequent words of LibriSpeech's training transcripts, utterances
-    whose every word is on the list, and words read against the open lexicon and matched to the
-    list.
-  - Round 3 on #307's corpus (2,100 utterances whose every word is on the list, 2.5 hours):
-    through `learned_fields` the letter from the sound reads .35 at associations of 256 and 512
-    (.18 on raw log-mel); every row taught with `fields_motor=1.0` lifts the emission given the
-    letter from .42 to .78 and characters from .26 to .33, beside CTC learners at .33 to .44. No
-    learner forms words at this exposure.
+### Opt-ins
 
-### A pathway from the pools of learned fields to the motor region (opt-in, #303)
+- **`tied`** (#308, #284): `Brain.compose(..., tied={(pre, post): (blocks of pre, blocks of
+  post)})` shares one set of synapses across equal blocks of a projection; a tied synapse steps
+  by the mean of its copies' steps, `parameters()` counts it once, and 0.97.0 refuses the file
+  ([tied projections](docs/tune.md#tied-projections-opt-in)).
+- **`fields_motor=scale`** (#303, #304): with `learned_fields`, a plastic projection from the
+  pools to the motor region, taught by the same lessons
+  ([spoken words](docs/senses.md#spoken-words-a-spectrogram-as-an-image)).
+- **`longterm_turn=channel`** (#305): every heard moment with that input channel on is a turn
+  whose key is the rare units of the message heard since the last value, so an episode holds as
+  many records as turns ([turns in a conversation](docs/memory.md#turns-in-a-conversation-opt-in)).
+- **`longterm_distinct=share`** (#305): with `longterm_turn`, a question reads the latest record
+  holding `longterm_match` of its distinct entries' weight, each entry weighted by its rarity
+  among the stream's records.
+- **A second head that chains records** (#305): with `longterm_distinct` and `longterm_heads=2`,
+  the second head reads from what the first record is about.
+- **`message_roles=groups`** (#301): `Brain.compose(message=units, message_roles=groups)` and
+  `cadence.Message(..., roles=groups)` give each role of input channels its own blocks of the
+  held message ([held message](docs/memory.md#held-message)).
+- **`cadence.PopulationCode(ranges, per=16, floor=0.05, clamp=True)`** (#309): a fixed code of
+  continuous readings, each spread over tuned inputs that stay at zero away from its value
+  ([continuous readings](docs/senses.md#continuous-readings-a-population-code)).
+- **`agreed_slots`** in a composed brain's lesson report (#309): the motor slots the judging
+  answer gave as shown, over every row
+  ([lessons only where the answer differs](docs/teach.md#lessons-only-where-the-answer-differs)).
+- **`Learner.finite_lessons` and `Learner.exhausted_lessons`** (#309): counts of finite lessons
+  and of those whose free phase used its whole budget; the warning of the 10th, 100th and each
+  further power of ten states both
+  ([finite free phases](docs/settling.md#finite-free-phases-that-run-out-of-budget)).
 
-`Brain.compose(..., learned_fields=features, fields_motor=scale)` adds one plastic projection
-from the pools (and any ports) straight to the motor region at that scale, beside the
-association's, taught by the same lessons: `features * 9 * actions` synapses. It is appended after
-every other projection, so a brain without it keeps its layout and every draw to the bit; a
-checkpoint keeps it and `describe()` reports it under `composition`. Refused with `ValueError`
-without `learned_fields`, negative or not finite. In the spoken-phrase chamber, with soft lessons
-over a word's steps, it lifts what the brain says at a word step from .421 to .537 at an
-association of 256 (development founders).
+### Chambers
 
-### Spoken-phrase chamber (#303)
+- **`benchmarks/coaching`** (#309): the cart-pole chamber (raw readings against the population
+  code, teaching on the brain's own path), the scan-and-fire chamber (a majority answer) and an
+  ablation of the opt-ins under coaching.
+- **`benchmarks/dialogue`** (#305): a closed-domain conversation chamber with a synthetic world,
+  bAbI task 1 adapters and matched controls.
+- **`benchmarks/spoken`** (#303): spoken phrases of a closed vocabulary, a new speaker and a
+  dialect within one life, against a transformer and an LSTM at the brain's parameter count.
+- **`benchmarks/letters`** (#304): letters into words, a teacher's forced alignment, the
+  read-speech adapter and the 2,000-word list of #307.
+- **`benchmarks/grammar`** (#301, #302): protocols 6 (a message keyed by role) and 7 (a word said
+  by its parts).
+- **`benchmarks/pixels`** (#284): the fields' pool rows read through one tied set of synapses.
+- **`benchmarks/settle/oracle.py`** (#290): the ceiling of a first guess for the settle.
 
-`benchmarks/spoken/` reads a continuing brain on spoken phrases of a closed vocabulary, and its
-adaptation within one life to a new speaker and to a new dialect, against a transformer and an
-LSTM trained online on the same audio at the brain's parameter count. No library change: every
-brain in it is a brain of 0.97.0.
+### Fixes
 
-- **Corpora.** Speech Commands v0.02 (CC BY 4.0) in same-speaker phrases of 2 to 4 words, the
-  second construction of #183 with its repaired `end`; new speakers from its test split;
-  AudioMNIST's German-accent speakers (MIT) as the dialect, ten words shared; an adapter for
-  Common Voice's single-word segment (CC0). `phrases.py build` records each download's checksum
-  and every built set's hash; tests run on synthetic speech.
-- **Hearing.** 98 log-mel frames of 40 bands every 0.49 s, read through `learned_fields` as an
-  image `inputs=(40, 98)`.
-- **Step 0** (two development founders, 24,000 phrases): the pools of the fields hold the word at
-  a word step at .626 for a linear readout; the 0.97.0 default reads .286 word accuracy and says
-  silence at .449 of the word steps, an association of 256 reads .425, and the transformer with
-  CTC at those parameter counts reads .731 and .743. The term that trails is the brain's read of
-  its pools.
-- **The declared run** (six fresh founders, 18 new speakers, 18 dialect speakers): no gate reads
-  for Cadence. The brain at `modules=(256,)` (1,275,684 parameters) reads .357 against the
-  transformer with CTC's .739, 0 of 6 within .05. On a new speaker its gain over two minutes is
-  level with the fine-tuned transformer's (-.009 paired, 5 of 6 founders) and its retention change
-  is higher by +.128; on the dialect its gain trails by .093. A step of 0.49 s takes 2.43 ms on
-  one core.
-- **Round 2** (the brain's read of its pools): teaching every row its label and `fields_motor=1.0`
-  lift the brain at an association of 256 from .425 to .551 (development founders); lessons
-  weighted against silence end the silence majority and turn deletions into wrong words. On six
-  fresh founders the declared arm (`fields_motor=1.0`, soft targets) reads .539 against .747,
-  0 of 6 within .05, with what it says at a word step within .111 of what its pools hold; G2 and
-  G3 0 of 6. One stream takes 4.84 ms per second of audio on one core.
-- **Round 3:** `readout.py` reads a saved brain at the word steps: on six fresh founders the brain
-  says the right word at .537 where its association reads .587, says silence at .124, and its
-  pathways into the motor region add (cut: .398 without the pools', .295 without the
-  association's). Corrections that hear three earlier phrases at `weights=` .25 (`held25`) keep
-  the earlier speakers (+.005 and +.003 at 2 minutes) at plain's gain; at weight zero they halve
-  plain's loss of retention.
-### Turns in a conversation for long-term records (opt-in, #305)
-
-`Brain.compose(longterm=records, longterm_turn=channel)` keys a brain's own records the way a
-conversation needs. Every heard moment with the input channel on is a turn, and an episode holds
-as many turns as it hears. Off by default; without it a brain with records is the brain of 0.97.0,
-to the bit.
-
-- **Key.** A turn's key is made of the moments heard since the last value, kept on the units of the
-  message's code that are rare (`longterm_rare`, 3% of the moments heard). The frequent words drop
-  out, so a statement and a question about one person share the person's units.
-- **Write and read.** Each turn writes the moment after it under its key and reads at that moment,
-  so a lesson at a question's answer sees the record on its region. No reset is needed between
-  facts.
-- **Saved.** A checkpoint keeps the windows, keys and unit counts.
-- **Read by what tells records apart** (`longterm_distinct=share`): each distinct heard moment is
-  a codebook entry weighted by its rarity among the stream's own records, a question reads the
-  latest record holding `longterm_match` of its distinct entries' weight, in a lexicon of any
-  size, and a second head chains from what the first record is about.
-- The conversation chamber, `benchmarks/dialogue/`, with bAbI adapters and matched controls.
-### A word said by its parts (#302)
-
-- **The chamber's motor by parts** (`benchmarks/grammar/MEANING_PROTOCOL_7.md`, no library
-  setting; the library's motor slots): a word said as its stem and its form, every lesson teaching
-  both. From the held state at 256 association neurons with the recall read barred, the verb's form
-  on held-out clauses is said at .98 to 1.00 on 12 of 12 fresh founders and held-out clauses at .97
-  to 1.00 (+.06 against whole words, paired); paths fall .07 from the held state and three hops .13
-  with the read free, inside two standard errors.
-
-### A message keyed by role (#301)
-
-- **`message_roles`** (`Brain.compose(message=units, message_roles=groups)`, and
-  `cadence.Message(..., roles=groups)`), off by default: groups of input channels, one group a
-  role. A heard moment of role `r` joins that role's blocks by the moments of the role heard
-  before it, and a moment of no group joins a last group's, so a role's moments lie in its own
-  blocks wherever in the episode they were heard. Without the setting every bit is as on 0.97.0.
-  The declared run is [`benchmarks/grammar/MEANING_PROTOCOL_6.md`](benchmarks/grammar/MEANING_PROTOCOL_6.md):
-  keyed by role at 256 association neurons with the recall read barred, the brain says held-out
-  combinations at .90 on 22 of 24 fresh founders (+.04 against blocks by position, paired) with
-  brackets .05 under; longer clauses read .00, their third and fourth distractors landing in
-  blocks no lesson writes.
+- Benchmark tests pass in any order (#306): every chamber's plain-named sibling modules resolve
+  to its own files under one pytest process, and tests that changed a shared table copy it.
 
 ## 0.97.0 — 2026-11-10
 

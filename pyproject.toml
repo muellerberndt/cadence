@@ -80,6 +80,9 @@ testpaths = [
     "benchmarks/pixels",
     "benchmarks/spoken",
     "benchmarks/actor_latch",
+    "benchmarks/coaching",
+    "benchmarks/dialogue",
+    "benchmarks/letters",
 ]
 
 [tool.ruff]

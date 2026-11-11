@@ -1532,7 +1532,11 @@ Use it to alternate or sequence the brain's own actions under identical input: i
 efference_decay=0.0`) alternation reads 0.97 and 0.93 against 0.50 and 0.40 with the trace
 alone and 0.50 for uniform random. Leave it off for delayed credit: in the
 [key-door chamber](../benchmarks/keydoor/README.md) a copy at amplitude 0.3 feeds less at every
-delay, and at 3.0 the creature does not feed.
+delay, and at 3.0 the creature does not feed. Taught on its own path, a brain with the copy learns
+more slowly at first: on the [cart-pole chamber's ablation](../benchmarks/coaching/README.md#which-opt-ins-a-coached-brain-needs)
+its first round balanced 23, 4 and 0 starts of 32 against 32, 13 and 21 without the copy, and both
+balanced 32 of 32 by the third. On a default brain with the copy (the chamber's `coach+efference`
+arm) one founder of three stays at 0 of 32 through four rounds.
 
 ## Heard history
 

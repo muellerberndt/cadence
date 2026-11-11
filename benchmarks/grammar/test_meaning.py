@@ -573,3 +573,15 @@ def test_a_word_is_said_and_taught_by_its_parts():
     lines = mn.seventh_verdict(rows, [], of=1)
     assert any(line.startswith("  P1:") for line in lines)
     assert sum("-> P3" in line for line in lines) == 2
+
+
+def test_a_knock_life_leaves_the_shared_battery_as_it_is():
+    # the sequence battery every other test reads keeps its own make_brain (#306)
+    warnings.simplefilter("ignore")
+    shared = gr.BATTERY.make_brain
+    spec = mn.declared_plan((0,))["knock"][0]
+    row = mn.knock_life({**spec, "lessons": 1, "tests": 1, "module": 8})
+    assert row["kind"] == "knock" and row["chamber"] == "battery"
+    assert gr.BATTERY.make_brain is shared
+    brain = gr.BATTERY.make_brain(gr.BATTERY.TwoHop(), "recipe64", 0, module=8)
+    assert brain.describe()["genes"]["recall_position"] == 64

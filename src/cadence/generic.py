@@ -583,6 +583,14 @@ def _image_shape(inputs: Any) -> tuple[int, int, int] | None:
     return height, width, rest[0] if rest else 1
 
 
+def _matched_slots(answer: Any, labels: Any) -> float:
+    """How many slots, over every row, ``answer`` gives as ``labels`` show: with one motor slot
+    the rows that agree, with several every agreeing slot of every row. Zero for labels of
+    another shape than the answer, which the lesson refuses."""
+    given, shown = np.asarray(answer), np.asarray(labels)
+    return float(np.count_nonzero(given == shown)) if given.shape == shown.shape else 0.0
+
+
 def _count(name: str, value: Any, low: int = 0) -> int:
     """A Python or NumPy integer of at least ``low``; booleans are refused."""
     if (
@@ -5295,8 +5303,10 @@ class Brain:
         key = self._decision_key(code)  # of the decision the lesson is shown for
         answer = None
         tokens = None if labels is None else self._token_rows(labels)
+        matched = 0.0  # the slots, over every row, the judging answer gives as shown
         if judged is not None:
             answer = judged[1]
+            matched = _matched_slots(answer, labels)
         elif self.learner.config.surprise and labels is not None:
             # the brain's own answer, the act it would issue: its complete greedy choice on the
             # settle its act reads, warm from the stream, with the episodic vote under the
@@ -5312,6 +5322,8 @@ class Brain:
                 answer = np.where(
                     tokens.reshape((-1,) + (1,) * (np.ndim(answer) - 1)), answer, -1
                 )
+            # after the mask: a row taught at every lesson counts no agreed slot
+            matched = _matched_slots(answer, labels)
         agreed = None
         whole = None
         differs = None if judged is None else judged[2]
@@ -5359,6 +5371,9 @@ class Brain:
         if self.message is not None and self.message.reads:
             # the read's lesson: the message's blocks scored against the lesson's movement
             teaching.update(self.message.learn(self.learner.brain, lesson))
+        # a row of several motor slots agrees only where every slot does, so beside the rows
+        # the report counts the slots: zero where the lesson does not judge its rows
+        teaching["agreed_slots"] = matched
         named = self.__dict__.get("_agreed_report") if agreed is not None else None
         if named is None or named[0] != teaching:
             named = (

@@ -10,6 +10,7 @@ reads them:
 | `code=units` | a fixed sparse code of the observation, which the memories key on and a vector brain's cortex reads | [the observation code](#the-observation-code) |
 | `learned_code=units` (opt-in) | a code that a region of the brain's own neurons learns while the brain lives | [the learned code](#the-learned-code) |
 | `attention=True` with `learned_code` | Recall selects a recent event and its successor by an ordered pair of learned codes | [single-head attention](memory.md#single-head-learned-code-attention-opt-in) |
+| `PopulationCode(ranges)` before the brain | a few continuous readings (an angle, a velocity, a distance), each spread over tuned inputs | [continuous readings](#continuous-readings-a-population-code) |
 
 ```python
 import numpy as np
@@ -207,6 +208,43 @@ them, the code's kind as `"fields"`, and `parameters()` counts both tables
 (`64 * channels * features + features`). At 84 by 84 the map holds 39 by 39 positions: a
 frame's responses take `1,521 * 64 * channels * features` multiply-adds, and a learning step
 about three times that on a frame whose every patch carries structure.
+
+## Continuous readings: a population code
+
+A reading such as a pole's angle or a cart's velocity arrives as one number, and as one input its
+size is all the brain hears: a small angle drives the cortex a little and a large one a lot, in one
+direction. `PopulationCode(ranges, per=16)` spreads each reading over `per` inputs whose preferred
+values tile its range `(low, high)`, with Gaussian tuning curves one spacing wide, the way place
+and head-direction cells tile a space. A value lights the inputs within two spacings of it, five at
+most, and every other input reads zero (`floor=0.05`). A value outside the range is read at the
+nearer end (`clamp=True`), so a reading never goes dark; with `clamp=False` it fades there and
+reads nothing 2.45 spacings past the end (1.55 at `floor=0.3`). The code is fixed, learns nothing
+and is not saved with a brain: build it once and compose the brain with `code.inputs` inputs.
+
+Give each reading the range the brain's own states will cover, which is wider than a
+demonstrator's: a brain that errs leaves the states it was shown. On the
+[cart-pole chamber](../benchmarks/coaching/README.md), ranges from the 1st to the 99th percentile
+of each reading in demonstrated episodes hold the pole 83 steps on average over three founders
+unclamped and 144 clamped, against 374 for the ranges of the task's limits.
+
+```python
+from cadence import PopulationCode
+
+code = PopulationCode([(-2.4, 2.4), (-3.0, 3.0), (-0.21, 0.21), (-3.0, 3.0)], per=16)
+x = code([0.1, -0.5, 0.02, 0.3])            # a cart-pole's position, velocity, angle, spin
+assert x.shape == (1, 64) and 4 <= (x > 0).sum() <= 20  # a few lit inputs per reading
+rows = code(np.zeros((3, 4)))               # rows of readings code to rows of inputs
+assert rows.shape == (3, 64)
+pole = Brain.compose(inputs=code.inputs, actions=2, seed=0)
+assert pole.act(x, greedy=True).shape == (1,)
+```
+
+On the [cart-pole chamber](../benchmarks/coaching/README.md) (CartPole-v1's dynamics, a default
+brain per founder, eight watched demonstrations, 32 held-out starts, three founders) the four raw
+readings balance 0 starts of 32 for 500 steps (31 to 78 steps on average); through the code, 1 to 22
+starts (323 to 476 steps). Keep the inputs quiet where nothing happens: the same code beside 40
+inputs that read 0.75 at every moment balances 0 of 32 (183 to 297 steps), since a drive that sits
+on every moment makes every moment look alike.
 
 ## The observation code
 

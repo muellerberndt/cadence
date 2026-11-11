@@ -394,7 +394,10 @@ assumptions above. `contrast`, `update` and `apply` act on supplied states. Answ
 Finite teaching updates from whatever state the budgets reached. When a free phase uses all of
 `free_steps`, usually without reaching the movement stop, `Learner.step` reports
 `free_budget_exhausted` (`demonstration_free_budget_exhausted` through `Brain.step`) and warns;
-`free_residual` holds the equation residual. Fixed-length phases (`tolerance=None`) stay silent. Raise `free_steps`,
+`free_residual` holds the equation residual. The learner counts them: `exhausted_lessons` of its
+`finite_lessons` (the finite lessons that ran a free phase since it was made). Python shows a
+repeated warning once, so the warning of the 10th such lesson, the 100th and each further power
+of ten adds both counts. Fixed-length phases (`tolerance=None`) stay silent. Raise `free_steps`,
 lower the gain, or select `qualified=True` to refuse such lessons.
 
 A lesson report holds `attempted_presentations`, `accepted_presentations`, `accepted`,
