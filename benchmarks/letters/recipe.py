@@ -22,7 +22,8 @@ corrections and runs it on a stream:
    the text as it arrives and the seconds per step.
 
 Corpus: LibriSpeech (CC BY 4.0, https://www.openslr.org/12), a directory holding its
-``LibriSpeech/train-clean-100`` and ``LibriSpeech/dev-clean`` folders, read with ``soundfile``;
+``LibriSpeech/<split>`` folders (``--splits``, ``train-clean-100`` by default, and ``dev-clean``),
+read with ``soundfile``;
 with ``--words`` only utterances whose every word is on the list. ``--synthetic`` builds a tiny
 corpus of tone words instead, so the recipe runs without a download (the test does).
 
@@ -197,7 +198,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             words = WordBeam(list(SYNTHETIC_WORDS))
     else:
         root = Path(args.librispeech)
-        train = librispeech(root, "train-clean-100", listed, args.utterances)
+        train = [u for split in args.splits.split(",")
+                 for u in librispeech(root, split, listed, args.utterances)][: args.utterances]
         held = librispeech(root, "dev-clean", listed, args.held, seed=args.seed)
         # the corrected speaker: the dev-clean speaker with the most such utterances, apart
         counts: dict[str, int] = {}
@@ -319,6 +321,8 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     source.add_argument("--synthetic", action="store_true", help="tone words, no download")
     parser.add_argument("--words", help="a word list, one word (and its count) a line")
     parser.add_argument("--utterances", type=int, default=400, help="training utterances")
+    parser.add_argument("--splits", default="train-clean-100",
+                        help="LibriSpeech training splits, comma-separated, in order")
     parser.add_argument("--held", type=int, default=60, help="held-out utterances")
     parser.add_argument("--adapt", type=int, default=24,
                         help="utterances of a new speaker: half corrections, half read")
