@@ -85,7 +85,7 @@ class Genome:
 
         keywords = (
             "modules", "observers", "lateral", "scales", "features", "field", "code",
-            "learned_code", "seed", "slots", "learned_fields", "ports",
+            "learned_code", "seed", "slots", "learned_fields", "ports", "fields_motor",
         )
         layout = {name: settings.pop(name) for name in keywords if name in settings}
         return _layout(inputs, actions, settings, **layout)[0]

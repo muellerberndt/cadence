@@ -24,7 +24,7 @@ keyword.
 Brain.compose(inputs, actions, *, connectome=None, modules=(64,), observers=(),
               lateral=None, teaching=None, scales=None, features=8, field=3, code=None,
               learned_code=None, attention=False, seed=0, slots=1, learned_fields=None,
-              ports=0, **options) -> Brain
+              ports=0, fields_motor=0.0, **options) -> Brain
 ```
 
 The composed System 1 brain, with optional System 2 `observers` in the same graph.
@@ -52,6 +52,9 @@ The composed System 1 brain, with optional System 2 `observers` in the same grap
 - `ports=k` (opt-in, with `learned_fields`): `k` further values per observation row after the
   flattened image, read by `k` sensory neurons beside the pools and keyed on with them
   ([ports beside the screen](senses.md#ports-beside-the-screen)).
+- `fields_motor=scale` (opt-in, with `learned_fields`): a plastic projection from the pools to the
+  motor region at that scale, beside the association's, taught by the same lessons
+  ([spoken words](senses.md#spoken-words-a-spectrogram-as-an-image)).
 - `scales`: maps `"sensory"` and `"trace"` to the initial magnitudes of the projections from
   those regions (founders 1.0 and 1.2; a name left out keeps its founder), fixed at
   construction. The history's and the recall memory's projections start at 1.2, a constant.
@@ -154,7 +157,7 @@ of 8 decisions, demonstrations recorded at 1.0, 24 active separation cells) are 
 | `memory_fade` in `[0, 1)`, and above 0 needs `episodic=True` ([records that fade](memory.md#records-that-fade-with-disuse-opt-in)) | `ValueError` |
 | `memory_context`, `memory_extinction` need `memory_choice`; `memory_context_hold` (`"unchanged"` or `"punished"`) needs `memory_choice` and `memory_context` | `ValueError` |
 | `learned_code` at least 2; `learned_code_fields` without it, `code` beside it, an image brain, the `torch` backend, or a connectome without the region's populations and complete synapses | `ValueError` |
-| `learned_fields` at least 2, on an image of at least 8 by 8 pixels, without `code` or `learned_code`; `image` or `ports` without `learned_fields`; `ports` negative or not an integer; `grow` and `graft` of a brain that holds them | `ValueError` |
+| `learned_fields` at least 2, on an image of at least 8 by 8 pixels, without `code` or `learned_code`; `image`, `ports` or `fields_motor` without `learned_fields`; `ports` negative or not an integer; `fields_motor` negative or not finite; `grow` and `graft` of a brain that holds them | `ValueError` |
 | `memory_context` in `[0, 1)`; `memory_extinction` in `[0, 1]`; `working_memory_decay`, `efference_decay` in `[0, 1)` | `ValueError` |
 | `maturity` boolean; `maturity_scale` and `maturity_recovery` other than their founders (10.0 and 200,000) need `maturity` | `ValueError` |
 | `maturity_scale` finite and at least `1e-12`; `maturity_recovery` finite and at least 1 | `ValueError` |
