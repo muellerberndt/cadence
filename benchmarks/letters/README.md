@@ -263,6 +263,43 @@ PYTHONPATH=src python benchmarks/letters/device.py match --rows 32 --places cpu 
 PYTHONPATH=src python benchmarks/letters/device.py time --places torch:cuda:float32 cpu --batches 32 128
 ```
 
+## Round 4: exposure, more speech and the word list
+
+Declared in [`protocol-speech-r4.json`](protocol-speech-r4.json) and
+[`protocol-speech-r4-more.json`](protocol-speech-r4-more.json), with amendments on
+[issue 304](https://github.com/muellerberndt/cadence/issues/304) that read the gates at pass 6,
+the last pass all twelve lives reached by the reading time. The arm is `fields256_p` (1,285,724
+parameters), on twelve fresh founders (304500 to 304511), the 2.5-hour on-list set, and a reading
+after every pass. A life saves its brain at rest at every re-alignment, and a life stopped on the
+way continues from there (ten did once).
+
+| Characters | Pass 1 | 2 | 3 | 4 | 5 | 6 | 10 | 30 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Brain, `fields256_p` | .306 | .343 | .349 | .363 | .376 | .384 | | |
+| LSTM, CTC, online (1,284,410) | .385 | .409 | .419 | .426 | .433 | .433 | .444 | .439 |
+| Transformer, CTC, online (1,289,333) | .257 | .318 | .355 | .363 | .383 | .388 | .405 | .420 |
+| LSTM, CTC, offline | .402 | .448 | .461 | .468 | .478 | .481 | .477 | .440 |
+| Transformer, CTC, offline | .371 | .417 | .439 | .449 | .460 | .469 | .476 | .447 |
+
+- **Both gates fail.** At pass 6, paired against the offline CTC transformer at epoch 6:
+  characters -.085 (two standard errors .010) and the letter from the sound -.081 (.011), on 0 of
+  12 founders within the bars (-.03 and -.05).
+- **The term is the letter from the sound.** The brain climbs at the controls' rate from a lower
+  start: its gap to the offline transformer holds at -.08 from pass 3 to pass 6, and no term of
+  the brain has stopped climbing at pass 6. Emission given the letter sits at .81 to .83 from
+  pass 2, against .91 for the transformer.
+- **More speech** (6,023 utterances, 7.1 hours, six founders, read at pass 1): at equal training
+  steps the brain reads characters .348, as on 2.5 hours heard three times (.349). The offline
+  transformer gains from the grown set (.513 at epoch 10 against .476).
+- **The word list.** `cadence.speech.decode.WordBeam` over the 2,000-word list raises the
+  brain's words from -.037 to .003 at pass 6 (+.040, two standard errors .010). The CTC controls
+  gain more (+.06 to +.09). No learner forms words at this exposure (the best is .147, the offline
+  transformer with the list's counts as a prior).
+- **Where word knowledge would enter.** On the reference's path through the brain's beliefs,
+  letters are heard as space on a fifth to two fifths of their steps (t .36, d .36, e .22), and
+  the reference word is among the five list words nearest the said word for 5.8% of words. A word
+  prior acts on letters before words form, not on a choice among near words.
+
 ## What this does and does not establish
 
 The chamber measures composed brains on one synthetic world with supplied sound timing and one

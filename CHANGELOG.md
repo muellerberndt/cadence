@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Benchmarks
+
+- **The letters chamber, round 4** (`benchmarks/letters/`, #304). `fields256_p` read after every
+  pass on the 2.5-hour on-list set, twelve fresh founders, beside CTC controls at its parameter
+  count. At pass 6 it reads characters .384, level with the CTC transformer heard online (.388)
+  and under the online LSTM (.433) and the offline learners (.469 to .481). Its gap to the
+  offline transformer holds at -.08 from pass 3 on: the letter from the sound is the term. On
+  7.1 hours heard once it reads as on 2.5 hours heard three times. A life continues from its
+  brain saved at every re-alignment, and a control from its last pass.
+
 ## 0.99.0 - 2026-11-13
 
 A map of what is where, held in the brain's own carried activity (`cadence.space.map.Map`,
