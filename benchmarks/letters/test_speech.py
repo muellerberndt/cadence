@@ -166,3 +166,24 @@ def test_a_stopped_control_continues_from_its_last_pass(tmp_path: Path) -> None:
     assert len(offline["probes"]) == 2
     once = sp.control(cache, "lstm", "offline", 3, 4000, {}, epochs=2)
     assert once is not None and len(once["probes"]) == 1 and once["probes"][0]["passes"] == 2
+
+
+def test_the_library_front_end_hears_as_the_chamber() -> None:
+    """``cadence.speech``'s defaults are this chamber's: the same energies and the same image."""
+    import json
+
+    from cadence.speech.frontend import Hearing, log_mel
+
+    rng = np.random.default_rng(4)
+    audio = rng.normal(size=8000) * np.sin(np.linspace(0, 300, 8000))
+    np.testing.assert_allclose(log_mel(audio), sp.energies_of(audio, sp.mel_bank(40)))
+    frames = log_mel(audio)
+    hearing = Hearing.fit([frames, log_mel(rng.normal(size=6000))])
+    meta = {"mels": 40, "window": 24, **{k: v for k, v in hearing.to_dict().items()
+                                          if k in ("mean", "std")}}
+    windows = sp.windows_of(frames, 24)
+    z = np.clip((windows - np.asarray(meta["mean"])) / np.asarray(meta["std"]),
+                -sp.CLIP_SIGMA, sp.CLIP_SIGMA) * sp.SCALE
+    chamber = np.ascontiguousarray(z.transpose(0, 2, 1)).reshape(len(z), -1)
+    np.testing.assert_allclose(hearing.steps(frames), chamber.astype(np.float32))
+    assert json.loads(json.dumps(hearing.to_dict()))["window"] == 24
