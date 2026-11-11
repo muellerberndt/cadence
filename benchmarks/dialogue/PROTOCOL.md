@@ -215,3 +215,24 @@ records' read the rest.
 
 **Total work.** 12 synthetic and 24 bAbI lives of the brain; 24 synthetic and 48 bAbI lives of the
 controls; one spot CPU box.
+
+### Outcome of the second declaration
+
+Read on founders 3056 to 3061 and recorded in
+[the README](README.md#the-second-declaration-records-read-by-what-tells-them-apart), with the
+receipts in `results/second/` and `summarize.gates(found, "distinct", SECOND)` recomputing each
+gate.
+
+| Gate | Verdict |
+| --- | --- |
+| T1 | passes, 6 of 6: .997 to 1.000 |
+| T2 | passes, 6 of 6: .9992 to 1.000 |
+| T3 | passes, 6 of 6: .996 to 1.000 ten sessions back, revised 1.000, stale at most .001 |
+| T4 | passes, 6 of 6: .094 to .137 against `previous_word`'s .082 to .144 |
+| D1 | passes, 6 of 6: .993 to 1.000 |
+| D2 | passes, 5 of 6: .187 to .312 against .243 to .404; founder 3061 reads .312 against .244 plus .05 |
+
+Reported: bAbI task 2 at .315 to .436, its second record holding the answer on .506 of the
+questions; the records' read 2% to 4% of the brain's multiply-accumulates per answer.
+
+**Against the expectations.** As expected. **Departures from the plan of the run.** None.

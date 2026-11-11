@@ -90,7 +90,7 @@ def test_every_arm_lives_and_scores_its_answers(arm):
         assert 0 <= row["scores"]["all"]["right"] <= 1 and row["answer_ms"] > 0
     brain = ch.make_brain(wd.World(0).lexicon, 0, arm)
     assert (getattr(brain, "longterm", None) is not None) == (arm.startswith("records")
-                                                              or arm == "turns")
+                                                              or arm in ("turns", "distinct"))
     assert (getattr(brain, "message", None) is not None) == (arm != "previous_word")
     assert rows[0]["parameters"] == brain.parameters()
 
@@ -198,3 +198,20 @@ def test_the_second_declaration_s_plans_parse_on_fresh_founders():
     brain = ch.make_brain(wd.World(0, people=24).lexicon, 0, "distinct")
     assert brain.longterm.distinct == 0.5 and brain.longterm.heads == 2
     assert brain.longterm.match == 0.5
+
+
+def test_the_second_declaration_s_receipts_hold_the_verdicts_the_readme_states():
+    import summarize as sm
+
+    found = []
+    for path in sorted((HERE / "results" / "second").glob("*.jsonl.gz")):
+        found += sm.rows(path.with_name(path.name.removesuffix(".gz")))
+    assert len(found) == 60 + 48 + 96 + 48
+    gates = sm.gates(found, "distinct", sm.SECOND)
+    assert set(gates) == {"T1", "T2", "T3", "T4", "D1", "D2"}
+    assert all(gate["passes"] for gate in gates.values())
+    assert gates["D2"]["founders"] == 5 and min(gates["D1"]["values"]) == 0.993
+    chain = sm.score(found, "distinct", "B", "found 1", founders=sm.SECOND, chamber="babi-2")
+    assert chain == [0.506] * 6
+    readme = (HERE / "README.md").read_text()
+    assert "| D1 | bAbI task 1 | .90, 5 of 6 | .993 to 1.000, 6 of 6 | **passes** |" in readme

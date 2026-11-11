@@ -152,3 +152,36 @@ records carry nothing to the answers. Task 1's lexicon holds four people, so a n
 one moment of 28, as often as the bar of .03 allows, and the people's units drop out of the key; a
 statement's key keeps its verb's and place's units, which no question holds. Task 2 asks where an
 object is, told through the person who carries it: two records apart.
+
+## The second declaration: records read by what tells them apart
+
+[`PROTOCOL.md`](PROTOCOL.md#the-second-declaration-records-read-by-what-tells-them-apart-declared-11-november-2026-before-its-first-life),
+declared at commit `5a85c124` before its first life: `longterm_distinct=0.5`, with
+`longterm_turn`, `longterm_heads=2` and `longterm_match=0.5` (the `distinct` arm), founders 3056
+to 3061, one spot c7i.8xlarge (receipts in [`results/second/`](results/second)).
+
+| Gate | Reading | Bar | Founders | Verdict |
+| --- | --- | --- | --- | --- |
+| T1 told earlier | R1, pairs no lesson told | .90, 5 of 6 | .997 to 1.000, 6 of 6 | **passes** |
+| T2 paraphrased | R3, held-out wordings | .80, 5 of 6 | .9992 to 1.000, 6 of 6 | **passes** |
+| T3 across sessions | R2: ten back; revised; stale | .90; .90; .02 | .996 to 1.000; 1.000; .000 to .001, 6 of 6 | **passes** |
+| T4 held and used | R5, records emptied, ten back | `previous_word` plus .05 | .094 to .137 against .082 to .144, 6 of 6 | **passes** |
+| D1 | bAbI task 1 | .90, 5 of 6 | .993 to 1.000, 6 of 6 | **passes** |
+| D2 | bAbI task 1, records emptied at each answer | `previous_word` plus .05 | .187 to .312 against .243 to .404, 5 of 6 | **passes** |
+
+| Arm | Parameters | bAbI task 1 | first record holds the answer | bAbI task 2 | second record holds the answer | Synthetic, ten back (R2) | multiply-accumulates per answer, task 1 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `distinct` | 98,813 (task 1), 107,801 (task 2), 112,658 | .993 to 1.000 | 1.000 | .315 to .436 | .506 | .996 to 1.000 | 28.5 to 33.9 million |
+| `previous_word` | 23,149, 30,317, 34,264 | .243 to .404 | | .213 to .349 | | .082 to .144 | 4.3 to 19.1 million |
+| LSTM online / offline | 97,638, 108,338, 112,720 | .261 to .329 / .442 to .463 | | .146 to .187 / .187 to .350 | | .105 to .121 / .109 to .164 | 2.0 million |
+| transformer online / offline | 96,298, 107,606, 113,660 | .347 to .470 / .408 to .435 | | .150 to .171 / .183 to .232 | | .133 to .152 / .117 to .164 | 2.6 million |
+
+- **A key of any lexicon's size.** Task 1's names, which the frequency bar dropped, are the heaviest
+  entries of their questions: the first record holds the answer on every question of every
+  founder, and the brain answers .993 to 1.000 of them. The synthetic world keeps its readings.
+- **Chaining.** In task 2 the first record is the object's own (its value is the object), and the
+  second, cued by the person the first record names, holds the answer on .506 of the questions.
+  The brain answers .315 to .436, above every control. The second read misses where the carrier
+  dropped the object and went on: the carrier's latest record is after the drop.
+- **Cost.** The records' read is 2% to 4% of the brain's multiply-accumulates per answer; the
+  settle's sweeps over every synapse are the rest.
