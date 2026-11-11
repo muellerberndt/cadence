@@ -55,6 +55,7 @@ SPACE = len(ALPHABET) + 1  # 28
 SYMBOLS = len(ALPHABET) + 2  # blank, the letters and the apostrophe, space
 RATE, WINDOW, HOP, STACK = 16000, 400, 160, 4
 STEP_SECONDS = STACK * HOP / RATE  # 0.04
+TRAINING = ("train-clean-100", "train-clean-360")  # the word list's and the corpus's splits
 
 
 def word_matcher(protocol: dict[str, Any]) -> Any:
@@ -229,9 +230,10 @@ def load_windows(cache: Path, name: str, meta: dict[str, Any]) -> list[tuple[np.
 
 
 def prepare_listed(root: Path, out: Path, listed: list[str], *, mels: int = 40, window: int = 24,
-                   held: int = 300, longest: float = 12.0, seed: int = 0) -> dict[str, Any]:
-    """Cache the utterances of train-clean-100 whose every word is on ``listed`` (all of them,
-    at most ``longest`` seconds, in the corpus's order) and ``held`` such utterances of
+                   held: int = 300, longest: float = 12.0, seed: int = 0,
+                   training: tuple[str, ...] = TRAINING) -> dict[str, Any]:
+    """Cache the utterances of the ``training`` splits whose every word is on ``listed`` (all of
+    them, at most ``longest`` seconds, in the corpus's order) and ``held`` such utterances of
     dev-clean drawn at random, as 10 ms log-mel frames; a step hears its ``window`` latest
     frames, standardized per band on the training windows."""
     import soundfile
@@ -240,8 +242,9 @@ def prepare_listed(root: Path, out: Path, listed: list[str], *, mels: int = 40, 
     bank = mel_bank(mels)
     rng = np.random.default_rng(seed)
     sets: dict[str, list[tuple[str, np.ndarray, np.ndarray]]] = {}
-    for name, split in (("train", "train-clean-100"), ("held", "dev-clean")):
-        listing = [u for u in utterances(root, split) if vc.on_list(u[2], on)]
+    for name, splits in (("train", training), ("held", ("dev-clean",))):
+        listing = [u for split in splits for u in utterances(root, split)
+                   if vc.on_list(u[2], on)]
         if name == "held":
             listing = [listing[int(k)] for k in rng.permutation(len(listing))]
         chosen = []
@@ -502,13 +505,17 @@ def life_batched(cache: Path, protocol: dict[str, Any], seed: int, out: Path) ->
     """``life`` with ``batch`` utterances heard side by side as streams of one brain: each batch
     from rest, an utterance after its end holding its last step and taught blank there; the
     teacher re-aligns every ``align_every`` batches on a frozen copy; a reading every
-    ``probe_every`` batches. A stopped life continues from its last reading."""
+    ``probe_every`` batches; ``passes`` passes over the training utterances, each in its own
+    seeded order. A stopped life continues from its last reading."""
     import cadence as cd
 
     train, held = load(cache, "train"), load(cache, "held")
     size = int(protocol["batch"])
-    order = np.random.default_rng([seed, 7]).permutation(len(train))
-    groups = batches(order, np.array([len(x) for x, _ in train]), size)
+    lengths = np.array([len(x) for x, _ in train])
+    groups = [g for p in range(int(protocol.get("passes", 1)))  # each pass in its own order
+              for g in batches(np.random.default_rng([seed, 7, p]).permutation(len(train))
+                               if p else np.random.default_rng([seed, 7]).permutation(len(train)),
+                               lengths, size)]
     every, probe_every = int(protocol["align_every"]), int(protocol["probe_every"])
     brain = cd.Brain.compose(inputs_of(cache), SYMBOLS, backend="cpu", seed=seed,
                              **protocol["brain"]["genes"])
@@ -620,12 +627,12 @@ def control(cache: Path, model: str, mode: str, seed: int, parameters: int,
         score["reading_seconds_per_audio_second"] = read_seconds / audio
         record["probes"].append({"utterances": n, "work": dict(learner.work), "score": score})
 
-    passes = 1 if mode == "online" else epochs
+    passes = int(protocol.get("passes", 1)) if mode == "online" else epochs
     best, waited = float("inf"), 0
     for epoch in range(passes):
         total = 0.0
-        for i in (order if epoch == 0 else np.random.default_rng([seed, epoch]).permutation(
-                len(train))):
+        for i in (order if epoch == 0 else np.random.default_rng(
+                [seed, 7, epoch] if mode == "online" else [seed, epoch]).permutation(len(train))):
             x, y = train[int(i)]
             total += learner.update(x, y)
         if mode == "offline":
@@ -662,7 +669,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(prepare(args.root, args.out, train=args.train)))
         return 0
     if args.command == "words":  # the list: the most frequent words of the training transcripts
-        total = vc.counts(args.root, ("train-clean-100",))
+        total = vc.counts(args.root, TRAINING)
         args.out.write_text("".join(f"{w} {total[w]}\n" for w in vc.top(total, 2000)))
         return 0
     if args.command == "prepare-listed":

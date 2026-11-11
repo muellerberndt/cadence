@@ -107,14 +107,22 @@ def count(net: Any) -> int:
 
 
 def matched_width(model: str, target: int, inputs: int, classes: int) -> int:
-    """The width whose parameter count is nearest ``target`` (even, for the transformer)."""
-    best: tuple[int, int] | None = None
-    for width in range(4, 257, 2 if model == "transformer" else 1):
-        n = count(build(model, width, inputs, classes, 0))
-        if best is None or abs(n - target) < abs(best[1] - target):
-            best = (width, n)
-    assert best is not None
-    return best[0]
+    """The width whose parameter count is nearest ``target`` (even, for the transformer): the
+    count grows with the width, so a bisection over widths 4 to 2,048 finds it."""
+    step = 2 if model == "transformer" else 1
+
+    def size(width: int) -> int:
+        return count(build(model, width, inputs, classes, 0))
+
+    low, high = 4 // step, 2048 // step  # in steps of ``step``
+    while low < high:
+        middle = (low + high) // 2
+        if size(middle * step) < target:
+            low = middle + 1
+        else:
+            high = middle
+    candidates = [w for w in (low * step - step, low * step) if w >= 4]
+    return min(candidates, key=lambda w: (abs(size(w) - target), w))
 
 
 def chunks(stream: dict[str, Any], words: int, letters: int) -> list[tuple[int, int, list[int]]]:
