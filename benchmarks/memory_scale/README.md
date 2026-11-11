@@ -647,6 +647,222 @@ and the four founders with distinct keys or nearly so find 1.000 over all facts,
 declaration's reading by the dot product found .9925 to 1.000 on its two such founders. Used lies
 within .005 of found on every founder and kind, and no revised fact is stale.
 
+## The fourth declaration: a million records
+
+Declared on [#310](https://github.com/muellerberndt/cadence/issues/310) under
+[`PROTOCOL_4.md`](PROTOCOL_4.md) at commit `042cced6`, before the first run on its founders. It
+reads the store alone at 100,000, 1,000,000 and 10,000,000 records: an address whose work grows
+slower than the records, several records for one question, chains, and facts whose keys are one
+key. One spot c7i.16xlarge, one thread per process; `summarize_million.py` recomputes every table
+and gate below from the receipts (`results/fourth-*.jsonl.gz`).
+
+**The address of pairs** (`LongTermMemory(pairs=16, expansion=16384, winners=256,
+candidates=4096)`). A record is filed under every pair of its 16 most driven address units, in a
+table of cells sized to the capacity. A cue's 256 winners name the pairs it reads, and the 4,096
+slots found under the most pairs go to the read's competition. The store's address of units, as
+it stands, lists every slot under each of 64 units, so a cue's units name about half of the slots
+whatever their number. The scan scores every record: the control and the ceiling. Every arm reads
+by cosine at temperature 0, so a read holds its first choice whole; found means that choice is
+the record. Nothing is learned: the projection, the table and the key of parts are designed, and
+each is read beside its control.
+
+### The gates
+
+| Gate | Reading | Bar | Result |
+| --- | --- | --- | --- |
+| C1 | pairs at 1,000,000, codes of 128 and the hashed form: exact; noisy and partial | .99; .95 | exact 1.000; codes .997 to 1.000 and .996 to 1.000; hashed .999 to 1.000 and .973 to .986; 12 of 12: **passes** |
+| C3a | pairs against the scan at 1,000,000 on the same cues | within .01 | largest gap .004 (codes) and .010 (hashed, partial), 12 of 12: **passes** |
+| C3b | ms per read at 1,000,000 over 100,000, one core, compiled and through NumPy | under 3 | pending: the timing cells run on the idle box |
+| C2 | 1,000,000 facts, 4 in 100 sharing their key: found over all facts, with `apart` | .99, 12 of 12 | 1.000, 12 of 12: **passes** |
+| C4a | 1,000,000 facts: the subject by 2, 4, 8 heads | .95 each | 1.000; 1.000; .994 to 1.000, 12 of 12: **passes** |
+| C4b | 1,000,000 facts: four parts, a head each | .90 | 1.000, 12 of 12: **passes** |
+| C5 | 100,000 facts: two and three hops, exact and noisy first cue | .95; .90 | 1.000 and .998 to 1.000, 12 of 12: **passes** |
+
+### Capacity
+
+`million.py`, founders 3100 to 3111, 1,000 cues of each kind per cell, 200 trials for several heads. Each cell is the range over the twelve founders; bytes, records scored, table entries read, multiply-accumulates and the projection's fixed weights are per record or per read, means over the founders.
+
+| Form | Records | Arm | exact | noisy | partial | similar, noisy | bytes a record | records scored | entries read | multiply-accumulates | fixed weights |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `code-128` | 100,000 | `pairs` | 1.000 | .999 to 1.000 | 1.000 | .996 to 1.000 | 1,859 | 3,462 | 522,240 | 2,540,286 | 2,097,152 |
+| `code-128` | 100,000 | `scan` | 1.000 | 1.000 | 1.000 | .996 to 1.000 | 772 | 100,000 | 0 | 12,800,000 | 0 |
+| `code-128` | 100,000 | `units` | 1.000 | .998 to 1.000 | .999 to 1.000 | .996 to 1.000 | 1,869 | 256 | 50,001 | 1,081,344 | 1,048,576 |
+| `code-128` | 1,000,000 | `pairs` | 1.000 | .997 to 1.000 | .996 to 1.000 | .995 to .998 | 1,783 | 4,096 | 522,240 | 2,621,440 | 2,097,152 |
+| `code-128` | 1,000,000 | `scan` | 1.000 | 1.000 | 1.000 | .998 to 1.000 | 772 | 1,000,000 | 0 | 128,000,000 | 0 |
+| `code-128` | 1,000,000 | `units` | 1.000 | .997 to 1.000 | .994 to 1.000 | .994 to .999 | 1,828 | 256 | 500,016 | 1,081,344 | 1,048,576 |
+| `code-256` | 100,000 | `pairs` | 1.000 | 1.000 | 1.000 | 1.000 | 2,455 | 3,015 | 522,240 | 4,966,255 | 4,194,304 |
+| `code-256` | 100,000 | `scan` | 1.000 | 1.000 | 1.000 | 1.000 | 1,284 | 100,000 | 0 | 25,600,000 | 0 |
+| `code-256` | 100,000 | `units` | 1.000 | .999 to 1.000 | .999 to 1.000 | 1.000 | 2,423 | 256 | 50,007 | 2,162,688 | 2,097,152 |
+| `code-256` | 1,000,000 | `pairs` | 1.000 | .999 to 1.000 | .998 to 1.000 | .998 to 1.000 | 2,304 | 4,096 | 522,240 | 5,242,880 | 4,194,304 |
+| `code-256` | 1,000,000 | `scan` | 1.000 | 1.000 | 1.000 | 1.000 | 1,284 | 1,000,000 | 0 | 256,000,000 | 0 |
+| `code-256` | 1,000,000 | `units` | 1.000 | .999 to 1.000 | .999 to 1.000 | .999 to 1.000 | 2,345 | 256 | 499,975 | 2,162,688 | 2,097,152 |
+| `code-64` | 100,000 | `pairs` | 1.000 | .994 to .999 | .987 to .997 | .950 to .972 | 1,561 | 4,092 | 522,240 | 1,310,469 | 1,048,576 |
+| `code-64` | 100,000 | `scan` | 1.000 | .995 to 1.000 | .988 to .997 | .952 to .972 | 516 | 100,000 | 0 | 6,400,000 | 0 |
+| `code-64` | 100,000 | `units` | 1.000 | .988 to .997 | .984 to .993 | .950 to .971 | 1,592 | 256 | 49,999 | 540,672 | 524,288 |
+| `code-64` | 1,000,000 | `pairs` | 1.000 | .970 to .989 | .960 to .984 | .939 to .957 | 1,523 | 4,096 | 522,240 | 1,310,720 | 1,048,576 |
+| `code-64` | 1,000,000 | `scan` | 1.000 | .981 to .993 | .971 to .987 | .946 to .960 | 516 | 1,000,000 | 0 | 64,000,000 | 0 |
+| `code-64` | 1,000,000 | `units` | 1.000 | .969 to .977 | .953 to .972 | .931 to .954 | 1,570 | 256 | 499,907 | 540,672 | 524,288 |
+| `hashed-280` | 100,000 | `pairs` | 1.000 | 1.000 | .987 to .997 |  | 2,566 | 3,104 | 522,240 | 5,456,710 | 4,587,520 |
+| `hashed-280` | 100,000 | `scan` | 1.000 | 1.000 | .990 to .999 |  | 1,380 | 100,000 | 0 | 28,000,000 | 0 |
+| `hashed-280` | 100,000 | `units` | 1.000 | 1.000 | .987 to .993 |  | 5,270 | 256 | 78,793 | 2,365,440 | 2,293,760 |
+| `hashed-280` | 1,000,000 | `pairs` | 1.000 | .999 to 1.000 | .973 to .986 |  | 2,401 | 4,096 | 522,240 | 5,734,400 | 4,587,520 |
+| `hashed-280` | 1,000,000 | `scan` | 1.000 | 1.000 | .982 to .992 |  | 1,380 | 1,000,000 | 0 | 280,000,000 | 0 |
+| `hashed-280` | 1,000,000 | `units` | 1.000 | .997 to 1.000 | .965 to .982 |  | 5,344 | 256 | 793,704 | 2,365,440 | 2,293,760 |
+
+| Form | Records | Arm | family, 2, 4, 8 heads | summed, 2, 4, 8 | each by a head, 2, 4, 8 |
+| --- | --- | --- | --- | --- | --- |
+| `code-128` | 100,000 | `pairs` | 1.00; 1.00; 1.00 | .99 to 1.00; .68 to .79; .00 to .01 | 1.00; 1.00; 1.00 |
+| `code-128` | 100,000 | `scan` | 1.00; 1.00; 1.00 | 1.00; .82 to .93; .00 to .01 | 1.00; 1.00; 1.00 |
+| `code-128` | 100,000 | `units` | 1.00; 1.00; 1.00 | .99 to 1.00; .43 to .55; .00 | 1.00; 1.00; 1.00 |
+| `code-128` | 1,000,000 | `pairs` | 1.00; 1.00; 1.00 | .99 to 1.00; .28 to .38; .00 | 1.00; 1.00; 1.00 |
+| `code-128` | 1,000,000 | `scan` | 1.00; 1.00; 1.00 | 1.00; .62 to .74; .00 | 1.00; 1.00; 1.00 |
+| `code-128` | 1,000,000 | `units` | 1.00; 1.00; 1.00 | .98 to 1.00; .11 to .20; .00 | 1.00; 1.00; 1.00 |
+| `code-256` | 100,000 | `pairs` | 1.00; 1.00; 1.00 | 1.00; .79 to .88; .01 to .07 | 1.00; 1.00; 1.00 |
+| `code-256` | 100,000 | `scan` | 1.00; 1.00; 1.00 | 1.00; 1.00; .53 to .67 | 1.00; 1.00; 1.00 |
+| `code-256` | 100,000 | `units` | 1.00; 1.00; 1.00 | 1.00; .61 to .72; .00 to .01 | 1.00; 1.00; 1.00 |
+| `code-256` | 1,000,000 | `pairs` | 1.00; 1.00; 1.00 | .99 to 1.00; .51 to .67; .00 to .01 | 1.00; 1.00; 1.00 |
+| `code-256` | 1,000,000 | `scan` | 1.00; 1.00; 1.00 | 1.00; .99 to 1.00; .20 to .32 | 1.00; 1.00; 1.00 |
+| `code-256` | 1,000,000 | `units` | 1.00; 1.00; 1.00 | .99 to 1.00; .33 to .38; .00 | 1.00; 1.00; 1.00 |
+| `code-64` | 100,000 | `pairs` | 1.00; 1.00; 1.00 | .99 to 1.00; .01 to .07; .00 | 1.00; 1.00; 1.00 |
+| `code-64` | 100,000 | `scan` | 1.00; 1.00; 1.00 | .99 to 1.00; .01 to .07; .00 | 1.00; 1.00; 1.00 |
+| `code-64` | 100,000 | `units` | 1.00; 1.00; 1.00 | .99 to 1.00; .01 to .06; .00 | 1.00; 1.00; 1.00 |
+| `code-64` | 1,000,000 | `pairs` | 1.00; 1.00; 1.00 | .98 to 1.00; .00 to .01; .00 | 1.00; 1.00; 1.00 |
+| `code-64` | 1,000,000 | `scan` | 1.00; 1.00; 1.00 | .98 to 1.00; .00 to .02; .00 | 1.00; 1.00; 1.00 |
+| `code-64` | 1,000,000 | `units` | 1.00; 1.00; 1.00 | .96 to .98; .00 to .01; .00 | 1.00; 1.00; 1.00 |
+
+- **What binds at 1,000,000 is the key, then the address.** A partial hashed cue keeps about ten
+  of its twenty units: the scan itself finds .982 to .992 of them, and the address of pairs loses
+  .002 to .010 more, where the right record is not among its 4,096 candidates (it is on .985 to
+  .994 of those cues). At 64 coordinates the key binds for every arm: the scan reads .981 to .993
+  from a noisy cue and .971 to .987 from a partial one.
+- **Several records.** k heads over a family, and a head for each of k codes, return k different
+  relevant records at 1.00 for k = 2, 4 and 8, every arm and size. k codes summed into one cue bind
+  on the key's width, as in the first declaration: four are found at .62 to .74 by the scan at 128
+  coordinates and 1,000,000 records and at .28 to .38 through the address of pairs, which loses
+  more of them; eight at .00 to .01 for every arm but the scan at 256 coordinates (.20 to .32).
+- **Bytes.** A record costs its key and value (772 bytes for codes of 128 and values of 64 in
+  float32), its sums (32 bytes) and, through the address of pairs, 960 bytes of table: 120 pairs at
+  8 entries a cell of 64 bytes. The table is sized to the capacity and drops the entries a full
+  cell does not take: 1.3% of them at 1,000,000 hashed keys and 2.3% at 1,000,000 codes of 128.
+
+### Several records, questions of parts, chains
+
+`facts.py`, founders 3112 to 3123. N / 8 entities and 64 relations, each a unit code of 64
+coordinates; every entity is the subject of 8 facts with 8 different relations, and a fact's
+value is its object's code, so what a read holds can be the next cue's subject. The key of parts
+is the subject's code beside the relation's (128 coordinates); the control key is their unit sum
+(64 coordinates). Each cell is the range over the twelve founders.
+
+| Key | Facts | Arm | one fact, exact; noisy | the subject by 2; 4; 8 heads | parts, a head each, 2; 4; 8 | parts summed into one cue, 2; 4; 8 | chain from an exact cue, 2 and 3 hops | from a noisy cue |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| parts | 100,000 | `pairs` | 1.000; .998 to 1.000 | 1.000; 1.000; 1.000 | 1.000; 1.000; 1.000 | .830 to .896; .014 to .028; .000 | 1.000 | .998 to 1.000 |
+| parts | 100,000 | `scan` | 1.000; 1.000 | 1.000; 1.000; 1.000 | 1.000; 1.000; 1.000 | .814 to .870; .014 to .030; .000 | 1.000 | .998 to 1.000 |
+| parts | 1,000,000 | `pairs` | 1.000; .980 to .992 | 1.000; 1.000; .994 to 1.000 | 1.000; 1.000; 1.000 | .806 to .862; .000 to .006; .000 | .998 to 1.000 | .978 to 1.000 |
+| parts | 1,000,000 | `scan` | 1.000; .996 to 1.000 | 1.000; 1.000; 1.000 | 1.000; 1.000; 1.000 | .818 to .870; .000 to .010; .000 | 1.000 | .998 to 1.000 |
+| summed | 100,000 | `pairs` | 1.000; .946 to .978 | 1.000; 1.000; .986 to 1.000 | 1.000; 1.000; 1.000 | .832 to .884; .000 to .002; .000 | 1.000 | .948 to .972 |
+| summed | 100,000 | `scan` | 1.000; .946 to .978 | 1.000; 1.000; .990 to 1.000 | 1.000; 1.000; 1.000 | .836 to .884; .000 to .002; .000 | 1.000 | .950 to .972 |
+| summed | 1,000,000 | `pairs` | .998 to 1.000; .862 to .892 | 1.000; 1.000; .946 to .968 | .998 to 1.000; .996 to 1.000; .994 to 1.000 | .700 to .752; .000; .000 | .996 to 1.000 | .848 to .892 |
+| summed | 1,000,000 | `scan` | 1.000; .868 to .902 | 1.000; 1.000; .976 to .996 | 1.000; 1.000; 1.000 | .726 to .784; .000; .000 | 1.000 | .860 to .910 |
+
+A chain of three hops reads as its two hops do: the miss is the first, noisy hop, and every later
+hop's cue holds a value read whole.
+
+- **Several facts through one cue bind.** Two parts summed are found at .81 to .90 and four at .00
+  to .03, for the scan as well: one address holds few superposed codes, the first declaration's
+  located term. A head per part finds every part to eight parts.
+- **The key of parts carries the noise.** With the subject and the relation summed on one set of
+  coordinates a noisy cue among 1,000,000 facts finds its fact at .86 to .90, the scan too; with
+  the parts side by side, .980 to .992 (the scan .996 to 1.000).
+- **The address against the scan** at 1,000,000 lies within .02 on every reading of the key of
+  parts. The widest gap is the noisy single fact: 8 facts share each subject and about 15,600
+  each relation, half a key apiece, and they crowd the candidates.
+
+### The read's cost on one core
+
+Pending: the declared timing cells (founders 3136 to 3138) run on a box that runs nothing else,
+from 21:57 UTC. The capacity cells above were timed on a box shared with about forty other
+processes: a read at 1,000,000 records took 6 to 18 ms through the address of pairs, 14 to 32 ms
+through the address of units and 69 to 93 ms for the scan (codes of 128); 9 to 20, 17 to 41 and
+155 to 297 ms (the hashed form). The address of pairs reads 522,240 table entries whatever the
+records, so its cost stays nearly flat, while the address of units' grows with the records: at
+100,000 records the address of units reads in about 1 ms and the address of pairs in 5 to 13 ms.
+
+### Facts whose keys are one key
+
+`facts.py`, founders 3124 to 3135 (the plain arm on 3124 to 3127), 1,000,000 facts with a key of
+parts. A share .04 of the facts have a key another fact has: an entity takes another's code and
+relations. Every fact has a source, a code of 32 coordinates drawn for it, which stands in for a
+second code of the sentence. Facts are written one by one in a shuffled order, then 1 in 100 is
+told again with another object; found is by value, the read holding the fact's current object.
+The cells were run again from 19:40 UTC on the same plan and code after the queue's session ended
+them while they wrote.
+
+| Arm | found, all facts | sharing facts | the others | told again: current | stale | records for the facts | ms per write |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `pairs` | .9782 to .9802 | .456 to .506 | 1.000 | 1.000 | .000 | .9800 | 6.564 to 6.706 |
+| `pairs-apart` | 1.0000 | 1.000 | 1.000 | 1.000 | .000 | 1.0000 | 8.015 to 8.151 |
+
+- **With `apart` every fact holds a record of its own.** A write whose key a record holds revises
+  it only where the source's signatures agree (5 of 8 units), and a read that carries its source
+  takes its own record among those tied at its best score: 1.000 over every kind of fact.
+- **Without it** a pair of facts with one key is one record, written by the fact told last: the
+  sharing facts read .46 to .51 and all facts .978 to .980.
+- The signature costs 16 bytes a record and about 1.4 ms a write here, with sixteen writers on the
+  box.
+
+### Ten million records
+
+Not read before the release. The declared cells (codes of 128 on founders 3100 and 3101, the
+hashed form on 3100) were queued after the timing; the first, filling at 19:39 UTC, was ended with
+the queue's session and runs again after the timing. One development cell (founder 0, codes of
+128, `expansion=32768, winners=256, candidates=4096`, half the declared winners and candidates)
+read exact 1.000, noisy .985 and partial .985 against the scan's 1.000, a read in 8.8 ms against
+the scan's 500 ms; a full table drops 12.6% of its entries there, since pairs of units whose
+weights point alike recur in many records.
+
+## The fifth declaration: a brain with its own records at 100,000
+
+Declared on #310 under [`PROTOCOL_5.md`](PROTOCOL_5.md) at `e60dbb04`, run under its Amendment 1
+at `e75f56a5` (the instrument's own-key count by parts, after a first life that ended in that
+count's memory before any question). The third declaration's chamber and brain with a lexicon of
+256 stems and 256 verbs (131,072 agent-verb pairs, 1,284 inputs) and each stream's store through
+the address of pairs (`longterm_pairs=16, longterm_expansion=16384, longterm_winners=256,
+longterm_candidates=4096, longterm_fade=False`). A nursery of 1,500 rounds over 16 streams; the
+reading tells 100,000 facts once each on one stream, a tenth again with another patient, and asks
+400 questions of each kind without lessons (chance .125). Founders 3140 to 3151.
+
+| Gate | Reading | Bar | Result |
+| --- | --- | --- | --- |
+| C6a | used, unrevised facts, 100,000 records | .95 | .960 to 1.000, 12 of 12: **passes** |
+| C6b | revised facts: found current; stale; used | .95; under .02; .95 | .995 to 1.000; .000; .995 to 1.000, 12 of 12: **passes** |
+
+| Founder | Records | Facts whose key another has | found | used | found, own key | revised: current | stale | used | ms a told moment | parameters |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 3140 | 99,856 | 0.29% | 0.9975 | 0.9975 | 1.0000 | 1.0000 | 0.0000 | 1.0000 | 9.78 | 2,403,231 |
+| 3141 | 99,546 | 0.91% | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 0.0000 | 1.0000 | 9.66 | 2,403,231 |
+| 3142 | 99,079 | 1.84% | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 0.0000 | 1.0000 | 9.57 | 2,403,231 |
+| 3143 | 95,365 | 8.58% | 0.9600 | 0.9600 | 1.0000 | 0.9950 | 0.0000 | 0.9950 | 9.61 | 2,403,231 |
+| 3144 | 99,400 | 1.20% | 0.9975 | 0.9950 | 1.0000 | 1.0000 | 0.0000 | 1.0000 | 9.55 | 2,403,231 |
+| 3145 | 98,761 | 2.36% | 0.9900 | 0.9900 | 1.0000 | 1.0000 | 0.0000 | 1.0000 | 9.68 | 2,403,231 |
+| 3146 | 99,228 | 1.54% | 0.9975 | 0.9975 | 1.0000 | 0.9975 | 0.0000 | 0.9975 | 9.76 | 2,403,231 |
+| 3147 | 97,694 | 4.38% | 0.9700 | 0.9700 | 1.0000 | 0.9975 | 0.0000 | 0.9950 | 9.75 | 2,403,231 |
+| 3148 | 97,494 | 5.00% | 0.9775 | 0.9775 | 1.0000 | 0.9950 | 0.0000 | 0.9950 | 9.59 | 2,403,231 |
+| 3149 | 99,550 | 0.90% | 0.9975 | 0.9950 | 1.0000 | 1.0000 | 0.0000 | 1.0000 | 9.75 | 2,403,231 |
+| 3150 | 99,254 | 1.49% | 0.9875 | 0.9875 | 1.0000 | 1.0000 | 0.0000 | 1.0000 | 9.67 | 2,403,231 |
+| 3151 | 98,895 | 2.09% | 0.9850 | 0.9850 | 1.0000 | 1.0000 | 0.0000 | 1.0000 | 9.61 | 2,403,231 |
+
+- **The misses are the key's.** Every question whose fact has a key of its own finds its record
+  and is answered from it (1.000 on every founder). At 280 units over this lexicon some agents' or
+  verbs' codes are one code, so 0.3% to 8.6% of a founder's facts share their whole key with
+  another fact, and each such pair is one record, written by the fact told last: the third
+  declaration's located term at ten times the records. The store's `apart` tells such facts apart
+  where a write carries a source (C2); the brain's records pass none.
+- **Used is found.** The answer lies within .0025 of the read on every founder and kind; a revised
+  fact is current on .995 to 1.000 of questions and never stale.
+- **Bytes and time.** About 14 kB a record, mostly its value (the heard moment of 1,284
+  coordinates in float64); a told moment takes 9.6 to 9.8 ms on one core with the box shared.
+- **Not read: 1,000,000 records a stream**, about 11 hours a founder at that cost.
+
 ## What these readings do not establish
 
 - Any default. The candidate is an instrument-level store and the library's `LongTermMemory` a
@@ -663,4 +879,13 @@ within .005 of found on every founder and kind, and no revised fact is stale.
 - Taught heads. The recall memory's heads come apart through lessons on their own address maps
   ([several heads](../../docs/memory.md#several-heads-opt-in)); those maps are at zero here, and
   untaught heads return different records only when each reads its first choice whole.
-- The cost of a compiled read. Every reading is NumPy on one thread.
+- The cost of a compiled read, in the first three declarations: every reading there is NumPy on
+  one thread. The fourth times the address of pairs compiled and through NumPy.
+- A learned address. The fourth declaration's address is a fixed projection and a table of pairs,
+  designed; its keys are random codes and hashed codes that stand in for a sentence's settled
+  state (#308), whose own keys are not read here.
+- A brain that holds 1,000,000 records a stream: the fifth declaration reads 100,000, and a
+  million facts of four moments take about 12 hours a founder at its cost.
+- The controls of C7: a transformer that holds the records in its context, and a retriever with a
+  reader. The scan is the retrieval ceiling over the same vectors; the first declaration's
+  transformer over the window holds 4,000 records.

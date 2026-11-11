@@ -175,3 +175,32 @@ development cells read `pairs` with 2,048 candidates; three draws read it with 4
   the scan reads 1.000, 1.000 and 1.000; a read 8.8 ms against the scan's 500 ms. A full cell drops
   12.6% of the table's entries: pairs of units whose weights point alike recur in many records. The
   declared setting reads twice the winners and twice the candidates; it is unread.
+
+## Outcome
+
+Read on the declared founders; tables in the
+[README](README.md#the-fourth-declaration-a-million-records), receipts in
+`results/fourth-*.jsonl.gz`, every gate recomputed by `summarize_million.py`.
+
+| Gate | Reading | Bar | Result |
+| --- | --- | --- | --- |
+| C1 | pairs at 1,000,000: exact; noisy and partial, codes of 128 and the hashed form | .99; .95 | exact 1.000; codes .997 to 1.000 and .996 to 1.000; hashed .999 to 1.000 and .973 to .986; 12 of 12: **passes** |
+| C3a | pairs against the scan at 1,000,000 | within .01 | largest gap .004 (codes) and .010 (hashed, partial), 12 of 12: **passes** |
+| C3b | ms per read, 1,000,000 over 100,000, one core | under 3, 3 of 3 | pending: the timing cells run on the idle box |
+| C2 | 1,000,000 facts, 4 in 100 sharing their key, with `apart`: found over all facts | .99, 12 of 12 | 1.000, 12 of 12: **passes** |
+| C4a | subject by 2, 4, 8 heads at 1,000,000 | .95 each | 1.000; 1.000; .994 to 1.000, 12 of 12: **passes** |
+| C4b | four parts, a head each, at 1,000,000 | .90 | 1.000, 12 of 12: **passes** |
+| C5 | chains at 100,000, two and three hops, exact and noisy | .95; .90 | 1.000 and .998 to 1.000, 12 of 12: **passes** |
+| C1, reported | 10,000,000 records | none | not read before the release |
+
+**The runs.** At 19:39 UTC the queue's waiter was stopped by hand, and its session ended the cells
+it held: the shared-key cells (writing, no read made) and the code-128 ten million (filling). The
+shared-key cells ran again from 19:40 UTC on the same plans and code; the timing ran once no other
+cell of this or the fifth declaration ran (21:57 UTC); the ten million cells run after it. The
+code-128 ten million's two founders run apart, for the box's memory; each cell is the declared one.
+
+**What binds**, in the order it binds: the key (a partial hashed cue keeps about ten units, and
+the scan itself finds .982 to .992; 64 coordinates bind for every arm), then the address (it loses
+up to .010 more on the partial hashed cue, where the record is not among the candidates); several
+codes summed into one cue bind on the key's width for every arm, and a head per part finds every
+part.
