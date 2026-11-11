@@ -172,3 +172,24 @@ stale answer; E4 at .90 to .94; E5 above every control on trained, held out and 
 on revised above the closed-book learners' .71 to .86. The synonym wordings at .35 to .45
 (their relation word no record holds: the word-to-concept term), and the erased records at .00
 to .02.
+
+## Outcome of the declared run
+
+Founders 3110 to 3121; receipts in [`results/declared/`](results/declared). `said` is the answer
+the brain says, `found` whether the record on its answering region holds the answer.
+
+| Gate | Bar, 10 of 12 | Said, per founder | Found | Passing | Result |
+| --- | --- | --- | --- | --- | --- |
+| E1 trained wordings | .90 | .977 to .998 | .996 to 1.000 | 12 of 12 | passes |
+| E1 held-out wordings | .80 | .957 to .996 | .998 to 1.000 | 12 of 12 | passes |
+| E3 revised, current | .95 | .947 to .993 | .997 to 1.000 | 11 of 12 | passes |
+| E3 revised, stale | under .02 | .000 to .007 | | 12 of 12 | passes |
+| E4 two facts | .80 | .750 to .963 | .980 to .993 | 10 of 12 | passes |
+
+- **Records emptied at each answer:** said .000 to .027.
+- **Synonym wordings:** said .247 to .397. The relation said by a word no record holds leaves the
+  read to the subject's latest fact: the word-to-concept term.
+- **E4's misses are the readout's.** Capital chains are found at .96 to 1.00 and said at .24 to
+  .92; every other chain is said at .77 to 1.00. The answering record (the capital) is on head 0's
+  region and the bridge record (the country) on head 1's, and the country pulls the motor. The two
+  founders under the bar, 3111 and 3114, say capital chains at .24 and .38.
