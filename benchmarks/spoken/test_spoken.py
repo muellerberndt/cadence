@@ -205,3 +205,29 @@ def test_a_held_word_stays_due_over_the_silent_steps_after_it_and_reads_once():
     assert ch.held(target, 3).tolist() == [[s, 3, 3, 3, 5, 7, 7, e, e, -1]]
     assert ch.decode(ch.held(target, 2), collapse=True)[0] == {"words": (3, 5, 7), "ended": True}
     assert ch.decode(ch.held(target, 2))[0]["words"] == (3, 3, 5, 7, 7)
+
+
+def test_a_saved_life_adapts_from_where_it_ended(sets, tmp_path):
+    pytest.importorskip("torch")
+    out, built = sets
+    for name in ("fields", "transformer_step"):
+        saved = tmp_path / f"{name}-0"
+        base = sp._run(
+            {"data": str(out), "learner": name, "founder": 0, "budgets": [32], "save": str(saved)}
+        )
+        assert "error" not in base, base.get("trace")
+        again = sp._run(
+            {
+                "data": str(out),
+                "learner": name,
+                "founder": 0,
+                "budgets": [],
+                "load": str(saved),
+                "speakers": [built["new_speaker"]],
+                "modes": ["plain"],
+                "minutes": [0],
+            }
+        )
+        assert "error" not in again, again.get("trace")
+        at0 = again["adaptation"][0]["curve"][0]["retention"]
+        assert again["readings"] == [] and 0.0 <= at0["exact"] <= 1.0

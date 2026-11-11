@@ -134,6 +134,20 @@ def note(text: str, started: float) -> None:
     print(f"[{time.process_time() - started:8.0f} s] {text}", file=sys.stderr, flush=True)
 
 
+def loaded(learner: Any, path: Path) -> Any:
+    """The learner a life saved at ``path`` (``.npz`` a brain, ``.pt`` a baseline)."""
+    if learner.kind == "brain":
+        from cadence import Brain
+
+        out = ch.BrainLearner(Brain.load(path.with_suffix(".npz")), learner.arm)
+    else:
+        import torch
+
+        out = ch.ControlLearner(torch.load(path.with_suffix(".pt"), weights_only=False))
+    out.hold = learner.hold
+    return out
+
+
 def life(spec: dict[str, Any]) -> dict[str, Any]:
     warnings.simplefilter("ignore", RuntimeWarning)
     data, name, founder = spec["data"], spec["learner"], int(spec["founder"])
@@ -142,13 +156,15 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     train = phrases(data, "base_train")
     hearing = ch.Hearing.measured(train)
     learner = learner_of(name, founder, spec.get("match", "fields"), extra)
+    if spec.get("load"):  # a saved life: its adaptation alone, from where the life ended
+        learner = loaded(learner, Path(spec["load"]))
     learner.hold = int(spec.get("hold", 1))
     validation = phrases(data, "base_validation")
     test = phrases(data, "base_test")
     v_rows = sample(len(validation), READ, "validation")
     t_rows = sample(len(test), READ, "test")
     budgets = sorted(int(b) for b in spec["budgets"])
-    batches = schedule(train, founder, budgets[-1])
+    batches = schedule(train, founder, budgets[-1]) if budgets else []
     readings: list[dict[str, Any]] = []
     taught = 0
     at = 0
@@ -176,7 +192,7 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     }
     if learner.kind == "control":
         out["width"] = learner.model.width
-    if spec.get("save"):
+    if spec.get("save") and not spec.get("load"):
         path = Path(spec["save"])
         path.parent.mkdir(parents=True, exist_ok=True)
         if learner.kind == "brain":
@@ -259,9 +275,13 @@ def main() -> None:
     parser.add_argument("--minutes", nargs="+", type=float, default=[0, 1, 2, 5])
     parser.add_argument("--replays", type=int, default=3)
     parser.add_argument("--hold", type=int, default=1, help="steps a word stays due")
+    parser.add_argument("--per-speaker", action="store_true", help="one job per new speaker")
     parser.add_argument("--probe", action="store_true")
     parser.add_argument("--extra", default=None, help="JSON of compose settings")
     parser.add_argument("--save", default=None, help="folder for each life's final learner")
+    parser.add_argument(
+        "--load", default=None, help="folder of saved lives: adapt each, with no base budget"
+    )
     parser.add_argument("--out", required=True)
     parser.add_argument("--workers", type=int, default=1)
     args = parser.parse_args()
@@ -272,7 +292,7 @@ def main() -> None:
             "founder": f,
             "budgets": args.budgets,
             "match": args.match,
-            "speakers": args.speakers,
+            "speakers": speakers,
             "modes": args.modes,
             "rates": args.rates,
             "minutes": args.minutes,
@@ -281,9 +301,11 @@ def main() -> None:
             "hold": args.hold,
             "extra": json.loads(args.extra) if args.extra else None,
             "save": str(Path(args.save) / f"{name}-{f}") if args.save else None,
+            "load": str(Path(args.load) / f"{name}-{f}") if args.load else None,
         }
         for name in args.learners
         for f in args.founders
+        for speakers in ([[k] for k in args.speakers] if args.per_speaker else [args.speakers])
     ]
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
