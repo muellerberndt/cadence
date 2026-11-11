@@ -1,0 +1,421 @@
+{
+ "task": "CartPole-v1 dynamics in NumPy",
+ "gate": [
+  10000,
+  10032
+ ],
+ "demonstrator": {
+  "balanced": 32,
+  "mean_steps": 500.0
+ },
+ "rows": [
+  {
+   "arm": "raw",
+   "founder": 0,
+   "reads": [
+    {
+     "balanced": 0,
+     "mean_steps": 77.96875
+    }
+   ],
+   "seconds": 9.6
+  },
+  {
+   "arm": "raw",
+   "founder": 1,
+   "reads": [
+    {
+     "balanced": 0,
+     "mean_steps": 31.3125
+    }
+   ],
+   "seconds": 7.8
+  },
+  {
+   "arm": "raw",
+   "founder": 2,
+   "reads": [
+    {
+     "balanced": 0,
+     "mean_steps": 48.8125
+    }
+   ],
+   "seconds": 8.6
+  },
+  {
+   "arm": "code",
+   "founder": 0,
+   "reads": [
+    {
+     "balanced": 22,
+     "mean_steps": 475.5
+    }
+   ],
+   "seconds": 24.8
+  },
+  {
+   "arm": "code",
+   "founder": 1,
+   "reads": [
+    {
+     "balanced": 1,
+     "mean_steps": 322.875
+    }
+   ],
+   "seconds": 17.6
+  },
+  {
+   "arm": "code",
+   "founder": 2,
+   "reads": [
+    {
+     "balanced": 7,
+     "mean_steps": 324.09375
+    }
+   ],
+   "seconds": 21.6
+  },
+  {
+   "arm": "code+dense",
+   "founder": 0,
+   "reads": [
+    {
+     "balanced": 0,
+     "mean_steps": 236.03125
+    }
+   ],
+   "seconds": 22.9
+  },
+  {
+   "arm": "code+dense",
+   "founder": 1,
+   "reads": [
+    {
+     "balanced": 0,
+     "mean_steps": 183.4375
+    }
+   ],
+   "seconds": 26.2
+  },
+  {
+   "arm": "code+dense",
+   "founder": 2,
+   "reads": [
+    {
+     "balanced": 0,
+     "mean_steps": 296.6875
+    }
+   ],
+   "seconds": 30.0
+  },
+  {
+   "arm": "coach",
+   "founder": 0,
+   "reads": [
+    {
+     "balanced": 22,
+     "mean_steps": 475.5
+    },
+    {
+     "balanced": 0,
+     "mean_steps": 9.65625
+    },
+    {
+     "balanced": 0,
+     "mean_steps": 332.125
+    },
+    {
+     "balanced": 0,
+     "mean_steps": 411.875
+    },
+    {
+     "balanced": 32,
+     "mean_steps": 500.0
+    }
+   ],
+   "seconds": 181.1
+  },
+  {
+   "arm": "coach",
+   "founder": 1,
+   "reads": [
+    {
+     "balanced": 1,
+     "mean_steps": 322.875
+    },
+    {
+     "balanced": 0,
+     "mean_steps": 75.5
+    },
+    {
+     "balanced": 5,
+     "mean_steps": 321.4375
+    },
+    {
+     "balanced": 0,
+     "mean_steps": 269.21875
+    },
+    {
+     "balanced": 0,
+     "mean_steps": 326.4375
+    }
+   ],
+   "seconds": 164.0
+  },
+  {
+   "arm": "coach",
+   "founder": 2,
+   "reads": [
+    {
+     "balanced": 7,
+     "mean_steps": 324.09375
+    },
+    {
+     "balanced": 0,
+     "mean_steps": 16.90625
+    },
+    {
+     "balanced": 0,
+     "mean_steps": 242.5
+    },
+    {
+     "balanced": 32,
+     "mean_steps": 500.0
+    },
+    {
+     "balanced": 32,
+     "mean_steps": 500.0
+    }
+   ],
+   "seconds": 208.6
+  },
+  {
+   "arm": "mixed",
+   "founder": 0,
+   "reads": [
+    {
+     "balanced": 22,
+     "mean_steps": 475.5
+    },
+    {
+     "balanced": 7,
+     "mean_steps": 404.75
+    },
+    {
+     "balanced": 10,
+     "mean_steps": 403.46875
+    },
+    {
+     "balanced": 0,
+     "mean_steps": 259.25
+    },
+    {
+     "balanced": 10,
+     "mean_steps": 453.125
+    }
+   ],
+   "seconds": 200.6
+  },
+  {
+   "arm": "mixed",
+   "founder": 1,
+   "reads": [
+    {
+     "balanced": 1,
+     "mean_steps": 322.875
+    },
+    {
+     "balanced": 14,
+     "mean_steps": 459.0
+    },
+    {
+     "balanced": 6,
+     "mean_steps": 393.59375
+    },
+    {
+     "balanced": 13,
+     "mean_steps": 458.375
+    },
+    {
+     "balanced": 32,
+     "mean_steps": 500.0
+    }
+   ],
+   "seconds": 244.5
+  },
+  {
+   "arm": "mixed",
+   "founder": 2,
+   "reads": [
+    {
+     "balanced": 7,
+     "mean_steps": 324.09375
+    },
+    {
+     "balanced": 10,
+     "mean_steps": 385.0
+    },
+    {
+     "balanced": 0,
+     "mean_steps": 263.65625
+    },
+    {
+     "balanced": 14,
+     "mean_steps": 464.6875
+    },
+    {
+     "balanced": 21,
+     "mean_steps": 367.28125
+    }
+   ],
+   "seconds": 227.2
+  },
+  {
+   "arm": "coach+efference",
+   "founder": 0,
+   "reads": [
+    {
+     "balanced": 23,
+     "mean_steps": 459.125
+    },
+    {
+     "balanced": 0,
+     "mean_steps": 342.65625
+    },
+    {
+     "balanced": 9,
+     "mean_steps": 438.5625
+    },
+    {
+     "balanced": 6,
+     "mean_steps": 425.90625
+    },
+    {
+     "balanced": 8,
+     "mean_steps": 409.9375
+    }
+   ],
+   "seconds": 140.5
+  },
+  {
+   "arm": "coach+efference",
+   "founder": 1,
+   "reads": [
+    {
+     "balanced": 31,
+     "mean_steps": 498.46875
+    },
+    {
+     "balanced": 29,
+     "mean_steps": 461.0625
+    },
+    {
+     "balanced": 1,
+     "mean_steps": 191.78125
+    },
+    {
+     "balanced": 2,
+     "mean_steps": 424.78125
+    },
+    {
+     "balanced": 28,
+     "mean_steps": 496.875
+    }
+   ],
+   "seconds": 164.6
+  },
+  {
+   "arm": "coach+efference",
+   "founder": 2,
+   "reads": [
+    {
+     "balanced": 9,
+     "mean_steps": 418.59375
+    },
+    {
+     "balanced": 0,
+     "mean_steps": 226.65625
+    },
+    {
+     "balanced": 0,
+     "mean_steps": 171.21875
+    },
+    {
+     "balanced": 0,
+     "mean_steps": 285.3125
+    },
+    {
+     "balanced": 0,
+     "mean_steps": 309.34375
+    }
+   ],
+   "seconds": 91.4
+  },
+  {
+   "arm": "percentile",
+   "founder": 0,
+   "reads": [
+    {
+     "balanced": 1,
+     "mean_steps": 92.53125
+    }
+   ],
+   "seconds": 15.2
+  },
+  {
+   "arm": "percentile",
+   "founder": 1,
+   "reads": [
+    {
+     "balanced": 0,
+     "mean_steps": 67.53125
+    }
+   ],
+   "seconds": 12.7
+  },
+  {
+   "arm": "percentile",
+   "founder": 2,
+   "reads": [
+    {
+     "balanced": 2,
+     "mean_steps": 89.125
+    }
+   ],
+   "seconds": 12.1
+  },
+  {
+   "arm": "percentile+clamp",
+   "founder": 0,
+   "reads": [
+    {
+     "balanced": 1,
+     "mean_steps": 133.90625
+    }
+   ],
+   "seconds": 12.9
+  },
+  {
+   "arm": "percentile+clamp",
+   "founder": 1,
+   "reads": [
+    {
+     "balanced": 1,
+     "mean_steps": 124.90625
+    }
+   ],
+   "seconds": 13.8
+  },
+  {
+   "arm": "percentile+clamp",
+   "founder": 2,
+   "reads": [
+    {
+     "balanced": 3,
+     "mean_steps": 172.21875
+    }
+   ],
+   "seconds": 14.1
+  }
+ ]
+}

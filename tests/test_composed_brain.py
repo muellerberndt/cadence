@@ -1,5 +1,7 @@
 """Behavioral contracts for composing the recovered mechanisms."""
 
+import copy
+
 import numpy as np
 import pytest
 
@@ -156,6 +158,47 @@ def test_learning_surprise_gene_teaches_only_the_rows_the_brain_answers_differen
     assert report["demonstration_accepted_presentations"] == 3.0
     assert report["demonstration_agreed_presentations"] == 0.0
     assert Brain.compose(4, 2, modules=(8,), seed=0, recall=False).learner.config.surprise is False
+
+
+def test_a_lesson_counts_the_slots_its_answer_gives_as_shown() -> None:
+    rng = np.random.default_rng(0)
+    x, labels = rng.uniform(0, 1, (6, 16)), rng.integers(0, 3, (6, 4))
+    brain = Brain.compose(inputs=16, actions=12, seed=0, slots=(3, 3, 3, 3))
+    own = copy.deepcopy(brain).act(x, greedy=True)  # the answer the lesson judges
+    report = brain.lesson(x, labels)
+    # a row agrees only where its four slots do: no row here, and most slots of some
+    assert report["agreed_presentations"] == float((own == labels).all(axis=1).sum()) == 0.0
+    assert report["agreed_slots"] == float((own == labels).sum()) > 0.0
+    assert brain.last_learning["demonstration_agreed_slots"] == report["agreed_slots"]
+    for _ in range(200):
+        brain.reset()
+        report = brain.lesson(x, labels)
+    assert report["agreed_presentations"] == 6.0 and report["agreed_slots"] == 24.0
+
+
+def test_agreed_slots_follow_the_rows_declared_tokens_teach_at_every_lesson() -> None:
+    rng = np.random.default_rng(2)
+    x = rng.uniform(0, 1, (6, 16))
+    brain = Brain.compose(inputs=16, actions=4, seed=0, recall_tokens=[0, 1, -1, -1])
+    labels = copy.deepcopy(brain).act(x, greedy=True)
+    report = brain.lesson(x, labels)  # every label the brain's own answer
+    # rows whose label names no token are taught anyway and count no agreed slot
+    assert report["agreed_slots"] == report["agreed_presentations"]
+    assert report["agreed_presentations"] == float((labels < 2).sum())
+
+
+def test_agreed_slots_of_one_slot_are_the_agreed_rows_and_zero_without_a_judgment() -> None:
+    rng = np.random.default_rng(1)
+    x = rng.uniform(0, 1, (6, 16))
+    brain = Brain.compose(inputs=16, actions=3, seed=0)
+    labels = copy.deepcopy(brain).act(x, greedy=True)
+    labels[:2] = (labels[:2] + 1) % 3
+    report = brain.lesson(x, labels)
+    assert report["agreed_slots"] == report["agreed_presentations"] == 4.0
+    # targets have no single answer to agree with, and an every-row lesson judges no row
+    assert brain.lesson(x, targets=np.full((6, 3), 1 / 3))["agreed_slots"] == 0.0
+    every = Brain.compose(inputs=16, actions=3, seed=0, learning_surprise=False)
+    assert every.lesson(x, labels)["agreed_slots"] == 0.0
 
 
 def test_learning_surprise_judges_from_the_brains_own_answer(monkeypatch) -> None:

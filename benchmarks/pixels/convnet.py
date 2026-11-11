@@ -51,11 +51,11 @@ def macs(shape: tuple[int, int, int], actions: int, hidden: int) -> int:
     return conv + g["flat"] * hidden + hidden * (actions + 1)
 
 
-def hidden_for(shape: tuple[int, int, int], actions: int, target: int) -> int:
-    """The hidden width whose parameter count is nearest ``target`` (at least 16)."""
+def hidden_for(shape: tuple[int, int, int], actions: int, target: int, least: int = 16) -> int:
+    """The hidden width whose parameter count is nearest ``target`` (at least ``least``)."""
     g = geometry(shape)
     fixed = parameters(shape, actions, 0)
-    return max(16, round((target - fixed) / (g["flat"] + 1 + actions + 1)))
+    return max(least, round((target - fixed) / (g["flat"] + 1 + actions + 1)))
 
 
 class ConvActorCritic:

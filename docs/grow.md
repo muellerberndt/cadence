@@ -284,4 +284,6 @@ What does not grow or graft:
   new neuron would join the pool's normalization;
 - a learned code's region, or a joint landing on it: the code lives in its tables as well as its
   synapses;
-- brains with tied synapses or rates set by hand; set the rates on the new brain.
+- brains with tie groups or rates set by hand; set the rates on the new brain. A composed tie
+  ([`tied`](tune.md#tied-projections-opt-in)) grows with the brain, and a region it cuts into
+  blocks takes no new neurons; `graft` takes no tied brain.

@@ -4,7 +4,7 @@
 
 # Cadence
 
-[Pragma Research](https://floatingpragma.io/) · [Documentation](https://github.com/muellerberndt/cadence/blob/main/docs/README.md) · [Application demos](https://github.com/muellerberndt/cadence-demos) · [Paper](https://philpapers.org/rec/MUECAP-2) · [PyPI](https://pypi.org/project/cadence-net/)
+[Pragma Research](https://floatingpragma.ai/) · [Documentation](https://github.com/muellerberndt/cadence/blob/main/docs/README.md) · [Application demos](https://github.com/muellerberndt/cadence-demos) · [Paper](https://philpapers.org/rec/MUECAP-2) · [PyPI](https://pypi.org/project/cadence-net/)
 
 [![CI](https://github.com/muellerberndt/cadence/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/muellerberndt/cadence/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](https://github.com/muellerberndt/cadence/blob/main/LICENSE)
@@ -17,7 +17,7 @@ action is read from that equilibrium, and every synapse learns from the differen
 settles, with no backward pass and no training/inference switch.
 
 ```sh
-python -m pip install cadence-net==0.97.0
+python -m pip install cadence-net==0.97.1
 ```
 
 ```python
@@ -57,7 +57,7 @@ episodic memory, a learned code, images.
 The [documentation index](https://github.com/muellerberndt/cadence/blob/main/docs/README.md)
 lists the rest: wide inputs, growing and grafting, evaluation, your own anatomy, how the
 brain settles, backends; the
-[released documentation](https://github.com/muellerberndt/cadence/blob/v0.97.0/docs/README.md)
+[released documentation](https://github.com/muellerberndt/cadence/blob/v0.97.1/docs/README.md)
 describes the APIs of the installed package. Integrated learned world prediction, repair
 localized to what failed and cheap stable operation are work in progress; Cadence is alpha
 research software.
@@ -343,7 +343,7 @@ Licensed under [GPL-3.0](https://github.com/muellerberndt/cadence/blob/main/LICE
 [Observer Patch Holography](https://github.com/FloatingPragma/observer-patch-holography)
 (OPH) is the related physics project. Its physics evidence is separate from
 Cadence's capability evidence.
-[Pragma Research](https://floatingpragma.io/) brings the projects together.
+[Pragma Research](https://floatingpragma.ai/) brings the projects together.
 
 Cadence has an official memecoin on Solana, deployed by the Solana community.
 Its token address is `46doJPsSjEVMsNZm4b32UbbvbUXjFTM3TDPBWMM3pump`

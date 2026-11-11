@@ -110,6 +110,67 @@ assert recursive.live(observation).shape == (1,)
 Observers settle with the base and never override a finished answer. The wiring permits
 recursive correction without teaching it.
 
+### Tied projections (opt-in)
+
+Some observations hold the same kind of thing in several places: three positions of a board,
+four slots that each hold one word, the rows of a pooled image. A brain that reads each place
+through synapses of its own learns each place apart, and a place the lessons seldom fill is
+read from synapses that few lessons taught. `tied` gives the places one set of synapses:
+
+```python
+import numpy as np
+from cadence import Brain
+
+# twelve inputs: three places of four values each, read through one set of 4 by 64 synapses
+shared = Brain.compose(inputs=12, actions=3, seed=0, recall=False,
+                       tied={("sensory", "association"): (3, 1)})
+plain = Brain.compose(inputs=12, actions=3, seed=0, recall=False)
+print(plain.parameters() - shared.parameters())    # 512: two of the three copies of 256
+print(shared.describe()["layout"]["tied"])
+rng = np.random.default_rng(0)
+shared.lesson(rng.random((4, 12)), rng.integers(3, size=4))
+read = shared.brain.dense()[np.ix_(shared.sensory_index, shared.association_index)]
+assert np.array_equal(read[:4], read[4:8]) and np.array_equal(read[:4], read[8:])
+```
+
+`tied` maps a projection of the layout, named by its two regions as in the table above, to
+`(blocks of pre, blocks of post)`. Each region is cut into that many equal blocks in neuron
+order:
+
+| Blocks | What shares one set of synapses |
+| --- | --- |
+| `(k, 1)` | every block of `pre` onto the whole of `post`: `post` reads each block alike |
+| `(1, k)` | the whole of `pre` onto every block of `post`: each block is written alike |
+| `(k, k)` | block i of `pre` onto block i of `post`, with no synapse between two different blocks |
+
+What a tie holds:
+
+- **One efficacy per tied synapse.** Its copies start equal and stay equal to the bit through
+  every lesson and reward, a checkpoint, `grow` and each backend (`cpu`, `torch`, `mlx`).
+- **The mean step.** A lesson or a reward steps a tied synapse by the mean of the steps its
+  copies would take untied: each copy's own step, from its own contrast and its own optimizer
+  history, then the mean over the copies, as `Learner(tie_groups=...)` steps a group
+  ([the learning rule](settling.md#learning-the-freenudged-rule)). A place no lesson fills
+  moves with the places the lessons fill. A reciprocal projection's reverse synapses join the
+  group of their forward partners.
+- **Counted once.** `parameters()` counts a tied synapse once, and `describe()` lists the tie
+  under `layout["tied"]`. A sweep of the settle sums over every copy, so its
+  multiply-accumulates are the untied brain's.
+- **The same draws.** Development draws a tied projection as the untied one of that seed and
+  repeats its first block, so every other projection starts as it does beside the untied one.
+- **Synapses, and no bias.** Each neuron of a block keeps a bias of its own.
+
+Limits: a tied brain's updates take the general path (the [compiled moment](#the-compiled-moment-opt-in)
+and the update that stays on the MLX device hand the step to the host). `Lives` and `graft`
+refuse a tied brain, `grow` adds no neurons to a region a tie cuts into blocks, and a learned
+code's own projections and the sensory region of `learned_fields` with `ports` take no tie.
+Unset, the brain is the brain without the option, to the bit. An anatomy of your own declares
+the tie on its projection ([tied projections in a genome](anatomy.md#tied-projections)).
+
+One reading: an image brain's pooled fields lie in three rows, and a read tied across them
+answers objects in a band of places no lesson showed at .977 against .947, at half the
+parameters ([learned receptive fields](senses.md#learned-receptive-fields)).
+
 ## Defaults and expert overrides
 
 Set only the values you intend to change; the rest keep their composed founders, which are the

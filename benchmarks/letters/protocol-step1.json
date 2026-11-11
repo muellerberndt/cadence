@@ -1,0 +1,73 @@
+{
+ "schema": "letters/1",
+ "issue": "https://github.com/muellerberndt/cadence/issues/304",
+ "stage": "Step 1, declared before its first life: the emission decision apart from the letter (candidate (c)) on fresh founders, beside the 0.97.0 default and matched gradient baselines.",
+ "world": {
+  "letters": 16,
+  "features": 16,
+  "words": 40,
+  "held_out": 8,
+  "word_letters": [
+   3,
+   5
+  ],
+  "noise": 0.1,
+  "sound_frames": [
+   1,
+   4
+  ],
+  "silence": [
+   1,
+   3
+  ]
+ },
+ "training_words": 18000,
+ "probe_every": 3000,
+ "evaluation_words": 300,
+ "founders": [
+  304100,
+  304101,
+  304102,
+  304103,
+  304104,
+  304105
+ ],
+ "brain": {
+  "genes": {
+   "actor_eta": 0.0,
+   "actor_eta_bias": 0.0,
+   "actor_eta_critic": 0.0
+  },
+  "note": "Brain.compose(16, 18, backend='cpu', seed=s, **genes, **arm genes): the 0.97.0 default composition (the recall memory, the heard history of the moment before, the store). The world pays nothing: the reward learner's rates are zero."
+ },
+ "arms": {
+  "split": {
+   "motor": "split",
+   "labels": "onset",
+   "role": "the mechanism: Brain.compose(16, 20, slots=[18, 2]); the first slot taught the symbol heard on every frame of its sound (frames), the second taught 1 at the supplied alignment and 0 elsewhere; the brain says the first slot's symbol where the second says 1"
+  },
+  "default": {
+   "labels": "onset",
+   "role": "the 0.97.0 default taught the supplied alignment, the reference"
+  }
+ },
+ "controls": {
+  "parameters": 21331,
+  "learners": [
+   "lstm ctc",
+   "transformer ctc",
+   "lstm ce (the default's onset targets)",
+   "lstm split (the split brain's two targets)"
+  ],
+  "modes": [
+   "online: one pass at the brain's exposure",
+   "offline: shuffled epochs to the stopping rule (patience 3, at most 60)"
+  ]
+ },
+ "gates": {
+  "emission": "split, on the stream as said (nothing merged): inserted characters under .02 per reference character and characters at .95, on 5 of 6 founders",
+  "words": "split: held-out words said whole at .90 on 5 of 6 founders, read beside both CTC baselines",
+  "beside": "split against default paired by founder on held-out words, characters and the misses after an unseen letter pair; not a gate"
+ },
+ "stop": "One life per process. No setting changes after any life; every life is kept and reported."
+}

@@ -101,7 +101,8 @@ Things to know:
 
 - **Lessons only where the answer is wrong.** A new brain holds `learning_surprise=True`: rows the
   brain answers right are skipped, and the report counts them in `agreed_presentations`
-  ([lessons only where the answer differs](#lessons-only-where-the-answer-differs)).
+  ([lessons only where the answer differs](#lessons-only-where-the-answer-differs)). With
+  several motor slots a row is right only where every slot is; `agreed_slots` counts the slots.
 - **Rows are streams.** Each row is one stream. Once the brain has acted on a batch, a lesson must
   have the same number of rows (`ValueError` "lesson batch must match the live streams") until
   `reset()`. Lessons on their own, before any act, can take any number of rows.
@@ -163,6 +164,25 @@ When a teacher's action ran in place of the issued one, as at the end of the exa
 issued action with a greedy `act`, which learns nothing from it, and teach the shown action with
 `lesson(observations, labels)`; the next `step` takes no reward. A reward reported for the shown
 action would credit an action that did not run.
+
+**Saying a symbol once per event.** A label at one step of an event, with blank on the rest, teaches
+the brain *when* to answer as well as *what*. Put that step where the input marks the event: in
+the [letters chamber](../benchmarks/letters/README.md) letters taught at their sound's first frame
+are said once (.96 of sounds), and letters spread evenly over a word, at steps the sound does not
+mark, are held over several steps and half missed. The step is learned as a feature of the context
+the lessons showed: after a pair of letters no lesson held, a quarter to a third of letters go
+unsaid, by the brain and by an LSTM taught the same labels alike. A label on every step of the
+event teaches only *what*, and it carries to new contexts (held-out words .99), with the symbol said
+on every step of its event; read the answers with adjacent repeats once and blanks dropped.
+
+Where the teacher knows the sequence and not its timing (the letters of a spoken word), let the
+brain's own beliefs place it. Every few hundred events a frozen copy answers the coming stream
+greedily, the teacher assigns each event's steps to its known symbols by the monotonic best path
+through the copy's log beliefs (`ctc_path` in the chamber, CTC's forced alignment), and teaches
+each step its symbol. Started from an even split, the path converges on the true timing (.92 to
+.96 of steps right at the first pass, .999 at the last), and held-out words read .994, as with the
+true timing. A label that depends on the brain's own sampled act does not work: the same input
+then takes both a symbol's lesson and blank's.
 
 ## Learning from outcomes
 
@@ -366,7 +386,35 @@ assert (pupil.predict(observe(cells)) == demonstrator(cells)).all()
 ```
 
 Watching alone, the pupil copies the two cells the demonstrator visits and answers the others
-wrongly; on its own path it reaches those cells and learns them. Take the labels from the
+wrongly; on its own path it reaches those cells and learns them.
+
+Teach before acting on the same observation, as `step(..., teacher=labels)` orders them: an act
+writes its moment to the recall memory, and a lesson after it reads that moment before its
+successor is written. With surprise lessons (a new brain's default) a row the brain answers right
+is judged and skipped, so the lesson corrects only where the brain would go wrong. The pupil
+above has no recall memory, so its order does not matter.
+
+**The first round on the brain's own path.** On the [cart-pole chamber](../benchmarks/coaching/README.md)
+(three founders, 32 held-out starts, 16 episodes a round) the first round on the brain's own path
+drops every founder to 0 starts of 32, 10 to 76 steps on average, from 1 to 22 starts after
+watching; two of the three recover to 32 of 32 by the fourth round. Following each of its own
+episodes with a watched one reads 7 to 14 starts and 385 to 459 steps after the first round, and no
+founder below 259 steps in any round. A candidate term, which no arm isolates: a brain that fails
+early takes its lessons from the moments before a failure, and the ordinary moments it learned by
+watching go untaught. On a brain of modules `(64, 32)` the episodic memory, the efference copy and
+the compiled moment change the pace (arousal, maturity and fading records change no lesson there):
+with all six opt-ins it balanced 32 of 32 on every founder by the third round, where the same brain
+without them balanced 14, 15 and 24 of 32
+([the opt-in ablation](../benchmarks/coaching/README.md#which-opt-ins-a-coached-brain-needs)).
+Without the efference copy that brain balanced 32, 13 and 21 starts after the first round against
+23, 4 and 0 with it; without the episodic memory the rounds swung (one founder fell from 27 to 2).
+Taught after each act instead of before it, the whole set also balanced 32 of 32 by the third
+round on this chamber.
+
+**Read agreement per answer.** A watch that stops once the brain agrees with the demonstrator on
+a share of moments can stop on the commonest answer alone: a brain that scans everywhere agrees
+with a demonstrator that mostly scans. Count each answer's agreement apart, and let the watch run
+whole episodes ([every answer is the majority class](#every-answer-is-the-majority-class)). Take the labels from the
 demonstrator the brain watched: corrections from a different policy after a bootstrap by watching
 lower the agreement with the watched demonstrator
 ([issue 215](https://github.com/muellerberndt/cadence/issues/215)). Teach many rows at once at the
@@ -464,6 +512,14 @@ holds `True`.
 
 The report adds `agreed_presentations`, `LearnedState.taught` marks the taught rows, and an
 episodic memory records only those demonstrations.
+
+A row of several motor slots agrees only where every slot does, so a brain of twelve slots that
+answers ten of each row's as shown reports no agreed row and skips none. The composed brain's
+report also holds `agreed_slots`: the slots its answer gave as shown, counted over every row of
+the lesson (with one slot, the agreed rows; with `recall_tokens`, a row whose label names no token is
+taught at every lesson and counts no agreed slot). `agreed_slots / (attempted_presentations * slots)`
+is the share of the answer that is right. It reads zero where the lesson judges no row: under
+`learning_surprise=False` and for `targets`.
 
 Select it where a readout saturates under lessons it answers correctly, or where streams are
 shown row by row for many passes; [benchmarks/stream_words](../benchmarks/stream_words/README.md)
@@ -614,7 +670,7 @@ print(f"held out {accuracy:.2f} ± {2 * error:.2f}, per class {per_class}, contr
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| Every answer is the commoner class | class imbalance | [weights, surprise lessons](#every-answer-is-the-majority-class) |
+| Every answer is the commoner class | class imbalance | [weights; compare every-row and surprise lessons](#every-answer-is-the-majority-class) |
 | A brain that answered well gets worse as training continues | steps too large for a trained brain | [smaller steps, surprise lessons](#a-trained-brain-gets-worse-with-more-training) |
 | After long reward training the greedy answer is the same for every observation | the motor neurons saturated at a high `actor_eta` | [a tenth of the actor rate](#reward-training-pins-the-answer) |
 | `predict` answers right, `act` answers wrong, and lessons do not change the act | a deep brain with two stable states for one observation | [teach inside the stream](#a-deep-brain-whose-lessons-do-not-reach-its-act) |
@@ -628,8 +684,18 @@ class, and a brain can settle on answering it everywhere. Overall accuracy then 
 the rare class is never answered. Read per-class accuracy, then:
 
 - weigh the rows by the inverse of their class's share (`weights=`,
-  [above](#teach-a-distribution-weigh-the-rows));
-- keep `learning_surprise=True` (a new brain's default), so rows answered right stop pulling;
+  [above](#teach-a-distribution-weigh-the-rows)). The weight moves accuracy from the common class
+  to the rare one and does not add to both: on the
+  [scan-and-fire chamber](../benchmarks/coaching/README.md#the-scan-and-fire-chamber) (the
+  commonest answer 73% of the moments, six founders) inverse weights raised the rarest answer on
+  the two weakest founders from 0.74 and 0.83 to 0.92 and 0.93 and lowered the commonest from 0.91
+  to 1.00 to 0.83 to 0.96, and unweighted lessons agreed best overall (0.90 to 0.98);
+- compare `learning_surprise=False`, which teaches every row, the right ones too: on the
+  same chamber it agreed best overall (0.97 to 0.99 against 0.90 to 0.98) and raised the weakest
+  founder's rare answer from 0.74 to 0.87. Over a long curriculum at the normalized point,
+  teaching rows the brain answers right can collapse it
+  ([lessons only where the answer differs](#lessons-only-where-the-answer-differs)), so read
+  both on the task;
 - or sample the lessons so every class appears about equally often.
 
 ### A trained brain gets worse with more training

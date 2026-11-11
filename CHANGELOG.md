@@ -24,26 +24,6 @@ those of 0.97.0, to the bit.
 - Instruments `benchmarks/memory_scale/million.py` and `facts.py`, declared in
   [`PROTOCOL_4.md`](benchmarks/memory_scale/PROTOCOL_4.md).
 
-### Turns in a conversation for long-term records (opt-in, #305)
-
-`Brain.compose(longterm=records, longterm_turn=channel)` keys a brain's own records the way a
-conversation needs. Every heard moment with the input channel on is a turn, and an episode holds
-as many turns as it hears. Off by default; without it a brain with records is the brain of 0.97.0,
-to the bit.
-
-- **Key.** A turn's key is made of the moments heard since the last value, kept on the units of the
-  message's code that are rare (`longterm_rare`, 3% of the moments heard). The frequent words drop
-  out, so a statement and a question about one person share the person's units.
-- **Write and read.** Each turn writes the moment after it under its key and reads at that moment,
-  so a lesson at a question's answer sees the record on its region. No reset is needed between
-  facts.
-- **Saved.** A checkpoint keeps the windows, keys and unit counts.
-- **Read by what tells records apart** (`longterm_distinct=share`): each distinct heard moment is
-  a codebook entry weighted by its rarity among the stream's own records, a question reads the
-  latest record holding `longterm_match` of its distinct entries' weight, in a lexicon of any
-  size, and a second head chains from what the first record is about.
-- The conversation chamber, `benchmarks/dialogue/`, with bAbI adapters and matched controls.
-
 ### The encyclopedia: facts read once (opt-in, #311)
 
 A brain reads a corpus of facts once, writing its own records, and answers questions about them
@@ -64,6 +44,69 @@ before.
   trained and held-out wordings, revisions, questions of two facts, and matched controls (a
   closed-book LSTM and transformer, a transformer with the facts in its window, and BM25
   retrieval read by a transformer).
+
+## 0.97.1 - 2026-11-11
+
+Opt-ins built on the v0.98.0 lanes, and the chambers that read them. No default changes: with
+every new option unset a brain acts, learns and describes to the bit as on 0.97.0 on
+`backend="cpu"`, its file holds the same arrays, and `Lives` keeps every action and parameter. A
+saved file's last lesson report adds `demonstration_agreed_slots`; 0.97.0 loads it.
+
+```bash
+python -m pip install cadence-net==0.97.1
+```
+
+### Opt-ins
+
+- **`tied`** (#308, #284): `Brain.compose(..., tied={(pre, post): (blocks of pre, blocks of
+  post)})` shares one set of synapses across equal blocks of a projection; a tied synapse steps
+  by the mean of its copies' steps, `parameters()` counts it once, and 0.97.0 refuses the file
+  ([tied projections](docs/tune.md#tied-projections-opt-in)).
+- **`fields_motor=scale`** (#303, #304): with `learned_fields`, a plastic projection from the
+  pools to the motor region, taught by the same lessons
+  ([spoken words](docs/senses.md#spoken-words-a-spectrogram-as-an-image)).
+- **`longterm_turn=channel`** (#305): every heard moment with that input channel on is a turn
+  whose key is the rare units of the message heard since the last value, so an episode holds as
+  many records as turns ([turns in a conversation](docs/memory.md#turns-in-a-conversation-opt-in)).
+- **`longterm_distinct=share`** (#305): with `longterm_turn`, a question reads the latest record
+  holding `longterm_match` of its distinct entries' weight, each entry weighted by its rarity
+  among the stream's records.
+- **A second head that chains records** (#305): with `longterm_distinct` and `longterm_heads=2`,
+  the second head reads from what the first record is about.
+- **`message_roles=groups`** (#301): `Brain.compose(message=units, message_roles=groups)` and
+  `cadence.Message(..., roles=groups)` give each role of input channels its own blocks of the
+  held message ([held message](docs/memory.md#held-message)).
+- **`cadence.PopulationCode(ranges, per=16, floor=0.05, clamp=True)`** (#309): a fixed code of
+  continuous readings, each spread over tuned inputs that stay at zero away from its value
+  ([continuous readings](docs/senses.md#continuous-readings-a-population-code)).
+- **`agreed_slots`** in a composed brain's lesson report (#309): the motor slots the judging
+  answer gave as shown, over every row
+  ([lessons only where the answer differs](docs/teach.md#lessons-only-where-the-answer-differs)).
+- **`Learner.finite_lessons` and `Learner.exhausted_lessons`** (#309): counts of finite lessons
+  and of those whose free phase used its whole budget; the warning of the 10th, 100th and each
+  further power of ten states both
+  ([finite free phases](docs/settling.md#finite-free-phases-that-run-out-of-budget)).
+
+### Chambers
+
+- **`benchmarks/coaching`** (#309): the cart-pole chamber (raw readings against the population
+  code, teaching on the brain's own path), the scan-and-fire chamber (a majority answer) and an
+  ablation of the opt-ins under coaching.
+- **`benchmarks/dialogue`** (#305): a closed-domain conversation chamber with a synthetic world,
+  bAbI task 1 adapters and matched controls.
+- **`benchmarks/spoken`** (#303): spoken phrases of a closed vocabulary, a new speaker and a
+  dialect within one life, against a transformer and an LSTM at the brain's parameter count.
+- **`benchmarks/letters`** (#304): letters into words, a teacher's forced alignment, the
+  read-speech adapter and the 2,000-word list of #307.
+- **`benchmarks/grammar`** (#301, #302): protocols 6 (a message keyed by role) and 7 (a word said
+  by its parts).
+- **`benchmarks/pixels`** (#284): the fields' pool rows read through one tied set of synapses.
+- **`benchmarks/settle/oracle.py`** (#290): the ceiling of a first guess for the settle.
+
+### Fixes
+
+- Benchmark tests pass in any order (#306): every chamber's plain-named sibling modules resolve
+  to its own files under one pytest process, and tests that changed a shared table copy it.
 
 ## 0.97.0 — 2026-11-10
 

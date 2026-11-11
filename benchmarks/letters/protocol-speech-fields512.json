@@ -1,0 +1,49 @@
+{
+ "schema": "letters-speech/1",
+ "issue": "https://github.com/muellerberndt/cadence/issues/304",
+ "stage": "Round 3, declared before its first life: read speech on #307's corpus through learned_fields at an association of 512, the forced alignment, the CTC reading and the 2,000-word list, beside CTC baselines at the brain's parameter count.",
+ "data": {
+  "corpus": "LibriSpeech (CC BY 4.0), openslr.elda.org mirror; md5 train-clean-100 2a93770f6d5c6c964bc36631d331a522, train-clean-360 c0e676e450a7ff2f54aeade5171606fa, dev-clean 42e2234ba48799c1f50f24a7926300a1",
+  "list": "words-2000.txt (md5 c3653e7a4315440a0088e2a3d0576081): the 2,000 most frequent words of the train-clean-100 and train-clean-360 transcripts with their counts (speech.py words)",
+  "train": "every utterance of train-clean-100 and train-clean-360 whose every word is on the list, at most 12 seconds, in the corpus's order: 2,100 utterances, 223,960 steps, 8,990.6 seconds (train.npz md5 f0b91a336f9beeeed359967fba454d9b)",
+  "held": "every such utterance of dev-clean that fits (at most 300, seed 0): 274 utterances, 23,378 steps, 939.2 seconds, no speaker on both sides (held.npz md5 ec4c2c1ae7689b3b0d198e27c1f0aa0c)",
+  "steps": "40 ms; a step hears its 24 latest 10 ms frames of 40 log-mel bands as a 40 by 24 image, less the window's mean, standardized per band on the training windows, clipped at 3 and scaled by 0.3 (speech.py prepare-listed)"
+ },
+ "founders": [
+  304400,
+  304401,
+  304402
+ ],
+ "batch": 32,
+ "passes": 2,
+ "align_every": 8,
+ "probe_every": 33,
+ "word_list": "words-2000.txt",
+ "brain": {
+  "genes": {
+   "actor_eta": 0.0,
+   "actor_eta_bias": 0.0,
+   "actor_eta_critic": 0.0,
+   "learned_fields": 64,
+   "modules": [
+    512
+   ]
+  },
+  "note": "Brain.compose((40, 24), 29, backend='cpu', seed=s, learned_fields=64, modules=(512,), **actor rates at zero): the 0.97.0 default composition otherwise, 2,242,588 parameters. 32 utterances heard side by side as streams, each batch from rest, an utterance after its end holding its last step and taught blank there."
+ },
+ "teacher": "The first 8 batches on the even split of each utterance's steps among its characters; every 8 batches a frozen copy answers the next 8 batches greedily and each utterance's steps go to its characters by CTC's forced alignment through the copy's log beliefs (ctc_path); each step taught the symbol on its path. Two passes over the training utterances, each pass in its own seeded order.",
+ "controls": {
+  "parameters": 2242588,
+  "learners": [
+   "lstm ctc",
+   "transformer ctc"
+  ],
+  "modes": [
+   "online: two passes at the brain's exposure, one Adam step per utterance (rate 0.003)",
+   "offline: shuffled epochs to the stopping rule (rate 0.001, patience 3, at most 30)"
+  ]
+ },
+ "readings": "On the 274 held-out utterances by the CTC reading: characters; inserted, deleted and substituted characters per character; the letter from the sound, its emission given the letter and the word given its letters (speech.locate); words and exact transcripts against the open lexicon and matched to the list (vocabulary.py, the match an output stage of the instrument); seconds of training and of reading per second of audio, one core.",
+ "gate": "None: a measured target. The term that loses words is reported for every learner. A letter said once per sound is an open item: the CTC reading is the decoding.",
+ "stop": "One life per process; every life kept and reported; a life a lost machine stops continues from its last saved reading."
+}

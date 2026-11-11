@@ -278,6 +278,23 @@ def test_exhausted_finite_free_phase_warns_and_is_counted():
     assert any("free_residual" in str(w.message) for w in caught)
 
 
+def test_exhausted_lessons_are_counted_and_the_tenth_says_how_many():
+    learner = exhausted_learner()
+    assert (learner.finite_lessons, learner.exhausted_lessons) == (0, 0)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        for _ in range(10):
+            learner.step(np.full((1, 36), 0.2), np.array([0]))
+    assert (learner.finite_lessons, learner.exhausted_lessons) == (10, 10)
+    said = [str(w.message) for w in caught if "entire free_steps budget" in str(w.message)]
+    assert len(said) == 10 and len(set(said[:9])) == 1  # one text, so shown once by default
+    assert said[9].endswith("in 10 of this learner's 10 finite lessons so far.")
+    settled = readout_learner()
+    settled.config = replace(settled.config, qualified=False)
+    settled.step(np.full((1, 36), 0.2), np.array([0]))
+    assert (settled.finite_lessons, settled.exhausted_lessons) == (1, 0)
+
+
 def test_fixed_length_phases_and_settled_phases_stay_silent():
     with warnings.catch_warnings():
         warnings.simplefilter("error")
