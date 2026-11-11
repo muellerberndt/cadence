@@ -157,6 +157,18 @@ training phrases.
 | `Rehearsal(rows=3, weight=0.25)` | +.072 / +.005 | +.080 / -.002 |
 | beside three earlier phrases at full weight | +.062 / +.012 | +.062 / +.012 |
 
+On read speech (`benchmarks/letters/corrections.py`, issue 314): the twelve lives of the letters
+chamber at their third pass (characters .35), each corrected on 13 held-out speakers with half of
+each speaker's recordings (4 to 11), as forced-alignment labels at a tenth of the lives' rates.
+
+| Correction | The corrected speaker's other recordings | The other held-out speakers |
+| --- | --- | --- |
+| alone | .349 to .360 | .349 to .352 |
+| `Rehearsal(rows=3, weight=0.25)` | .349 to .362 | .349 to .358 |
+
+Rehearsal gains as much on the speaker (+.002 paired, on 12 of 12 founders within two standard
+errors) and keeps more of the others (+.006, beyond two standard errors on 10 of 12).
+
 Correct a brain with the lessons it learned from. These lives learned soft targets; corrected with
 plain labels instead, `Rehearsal` gains +.027 and +.049 and the earlier speakers lose .021 and
 .030. `correct(brain, rows, targets=...)` and `remember(rows, targets=...)` take soft targets; a
