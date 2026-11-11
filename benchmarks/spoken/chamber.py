@@ -52,8 +52,12 @@ BATCH = 32
 # Without the recall memory a brain composes no lessons of its own: ``TAUGHT`` names the
 # default's teaching and heard moment, so an arm without the memory differs by the memory alone.
 TAUGHT: dict[str, Any] = {
-    "recall": False, "teaching": "deep", "learning_surprise": True, "learning_fast_settle": True,
-    "carried_gain": 0.01, "history_decays": (0.0,),
+    "recall": False,
+    "teaching": "deep",
+    "learning_surprise": True,
+    "learning_fast_settle": True,
+    "carried_gain": 0.01,
+    "history_decays": (0.0,),
 }
 ARMS: dict[str, dict[str, Any]] = {
     "fields": {"sees": "image", "compose": {"learned_fields": 64}},
