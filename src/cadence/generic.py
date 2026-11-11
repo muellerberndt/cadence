@@ -709,9 +709,12 @@ _MESSAGE_FOUNDERS: dict[str, Any] = {
 # The founders of the brain's long-term records (``longterm=records`` names the records a stream
 # holds): heads, the drive of a held record, the cosine at which a record holds the message's key
 # for a read, and at which a write is that record told again (only the same key, for keys of
-# zeros and ones: two keys of a held message that differ in one unit are two facts, #288).
+# zeros and ones: two keys of a held message that differ in one unit are two facts, #288);
+# with ``longterm_turn`` the input channel that marks a turn, several in an episode, and the share
+# of the moments heard at or below which a code unit is content for a turn's key (#305)
 _LONGTERM_FOUNDERS: dict[str, Any] = {
-    "heads": 1, "amplitude": 3.0, "match": 0.75, "revise": 0.999,
+    "heads": 1, "amplitude": 3.0, "match": 0.75, "revise": 0.999, "turn": None, "rare": 0.03,
+    "distinct": None,
 }
 
 
@@ -737,6 +740,16 @@ def _longterm_genes(longterm: Any, genes: Mapping[str, Any]) -> dict[str, Any]:
         out[name] = real(f"longterm_{name}", out[name], low=0)
         if out[name] > 1:
             raise ValueError(f"longterm_{name} is a cosine: it lies in [0, 1]")
+    if out["turn"] is not None:
+        out["turn"] = _count("longterm_turn", out["turn"], low=0)
+    out["rare"] = real("longterm_rare", out["rare"], low=0)
+    if not 0 < out["rare"] <= 1:
+        raise ValueError("longterm_rare is a share of the moments heard: it lies in (0, 1]")
+    if out["distinct"] is not None:
+        out["distinct"] = real("longterm_distinct", out["distinct"], low=0)
+        if out["turn"] is None or not 0 < out["distinct"] <= 1:
+            raise ValueError("longterm_distinct is a share of a cue's heaviest weight in (0, 1], "
+                             "and it reads turns: it needs longterm_turn=channel")
     return out
 
 
@@ -1522,14 +1535,15 @@ def _validate_longterm_state(
     if (
         not isinstance(kept, dict)
         or not isinstance(told, dict)
-        or told.get("boundary") is None
-        or told.get("boundary_holds") is not True
+        or (kept.get("turn") is None and (told.get("boundary") is None
+                                          or told.get("boundary_holds") is not True))
     ):
         raise ValueError("saved long-term records need a held message held from a turn")
     try:
         settings = _longterm_genes(
             kept["capacity"],
-            {f"longterm_{name}": kept[name] for name in _LONGTERM_FOUNDERS},
+            {f"longterm_{name}": kept.get(name, founder)
+             for name, founder in _LONGTERM_FOUNDERS.items()},
         )
         streams = kept["records"]
         seed = kept["seed"]
@@ -2746,7 +2760,8 @@ class Brain:
             self.longterm = LongTermRecords(
                 connectome, self.message, kept_records["records"], heads=kept_records["heads"],
                 amplitude=kept_records["amplitude"], match=kept_records["match"],
-                revise=kept_records["revise"], seed=seed,
+                revise=kept_records["revise"], seed=seed, turn=kept_records["turn"],
+                rare=kept_records["rare"], distinct=kept_records["distinct"],
             )
         # The index memory of the stream's moments. Populations named ``recall`` and ``next``
         # without ``recall=True`` are ordinary ones: an instrument may name and drive its own.
@@ -3838,6 +3853,10 @@ class Brain:
             genes.update(longterm=kept.capacity, longterm_heads=kept.heads,
                          longterm_amplitude=kept.amplitude, longterm_match=kept.match,
                          longterm_revise=kept.revise)
+            if kept.turn is not None:
+                genes.update(longterm_turn=kept.turn, longterm_rare=kept.rare)
+            if kept.distinct is not None:
+                genes["longterm_distinct"] = kept.distinct
         maturity = self.basal_ganglia.maturity
         if maturity is not None:
             genes.update(maturity=True, maturity_scale=maturity.scale,
@@ -6953,7 +6972,8 @@ class Brain:
                     if kept is None
                     else {
                         "longterm": kept["capacity"],
-                        **{f"longterm_{name}": kept[name] for name in _LONGTERM_FOUNDERS},
+                        **{f"longterm_{name}": kept.get(name, founder)
+                           for name, founder in _LONGTERM_FOUNDERS.items()},
                     }
                 ),
                 **(

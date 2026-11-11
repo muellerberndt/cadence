@@ -1,0 +1,71 @@
+{
+ "founders": [
+  3050,
+  3051,
+  3052,
+  3053,
+  3054,
+  3055
+ ],
+ "people": 24,
+ "places": 8,
+ "rounds": 400,
+ "sessions": 4,
+ "facts": 2,
+ "arms": [
+  {
+   "arm": "turns"
+  },
+  {
+   "arm": "turns",
+   "label": "turns_nearest",
+   "longterm": {
+    "match": 0.0
+   }
+  },
+  {
+   "arm": "previous_word"
+  }
+ ],
+ "readings": [
+  {
+   "name": "R1",
+   "wording": "trained",
+   "sessions": 6,
+   "gap": 1
+  },
+  {
+   "name": "R2",
+   "wording": "trained",
+   "sessions": 21,
+   "gap": 10
+  },
+  {
+   "name": "R3",
+   "wording": "held",
+   "sessions": 21,
+   "gap": 10
+  },
+  {
+   "name": "R4",
+   "wording": "trained",
+   "sessions": 101,
+   "gap": 100,
+   "batches": 2
+  },
+  {
+   "name": "R5",
+   "wording": "trained",
+   "sessions": 21,
+   "gap": 10,
+   "erase": "records"
+  },
+  {
+   "name": "R6",
+   "wording": "trained",
+   "sessions": 21,
+   "gap": 10,
+   "erase": "message"
+  }
+ ]
+}

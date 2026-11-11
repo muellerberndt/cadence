@@ -1,0 +1,30 @@
+{
+ "founders": [
+  3050,
+  3051,
+  3052,
+  3053,
+  3054,
+  3055
+ ],
+ "tasks": [
+  1,
+  2
+ ],
+ "data": "en",
+ "epochs": 5,
+ "models": [
+  "lstm",
+  "transformer"
+ ],
+ "modes": [
+  "online",
+  "offline"
+ ],
+ "target_arm": "turns",
+ "readings": [
+  {
+   "name": "B"
+  }
+ ]
+}
