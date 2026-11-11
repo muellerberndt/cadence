@@ -408,29 +408,13 @@ class Efference(Trace):
 
     source: str = "motor"
     target: str = "efference"
-    # the motor neuron of an act that issues no command (``efference_silent``): a stream
-    # whose act it is keeps its copy as it stands, so the copy holds the last command issued
-    silent: int | None = None
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        if self.silent is not None and (
-            isinstance(self.silent, (bool, np.bool_))
-            or not isinstance(self.silent, (int, np.integer))
-            or not 0 <= self.silent < len(self.hidden)
-        ):
-            raise ValueError("efference_silent must be the index of one motor neuron")
-        if self.silent is not None:
-            self.silent = int(self.silent)
 
     def update(self, state: BrainState) -> None:
         raise TypeError("the efference copy is written by the issued command; use issue")
 
     def issue(self, command: np.ndarray) -> None:
         """After the decision: the trace decays toward the ``(batch, motor)`` command, one
-        row per stream with ones at the motor neurons of the executed action. With ``silent``
-        a row whose command holds that motor neuron issues nothing: its trace and last command
-        stay as they stand."""
+        row per stream with ones at the motor neurons of the executed action."""
         command = np.asarray(command, dtype=float)
         if command.ndim != 2 or command.shape[1] != len(self.hidden):
             raise ValueError("a command is one row of motor values per stream")
@@ -438,19 +422,9 @@ class Efference(Trace):
             raise ValueError("a command must be finite")
         if len(self.trace) != len(command):
             self.reset(len(command))
-        quiet = None if self.silent is None else command[:, self.silent] > 0
-        kept = None if quiet is None else (self.trace[quiet].copy(), self.last[quiet].copy())
         self.trace = self.decay * self.trace + (1.0 - self.decay) * command
         self.last = command.copy()
-        if kept is not None and quiet is not None:
-            self.trace[quiet], self.last[quiet] = kept
         self.cold[:] = False
-
-    def to_dict(self) -> dict[str, float | int | str]:
-        out = super().to_dict()
-        if self.silent is not None:
-            out["silent"] = self.silent
-        return out
 
 
 @dataclass
