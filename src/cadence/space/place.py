@@ -341,15 +341,6 @@ class Space:
     control a brain's answer is read against: a thing that moves by itself is moved by its last
     seen movement as it is, whatever the brain answers. It can be set at any step.
 
-    ``sheet`` (off unless given: ``True``, a ``cadence.space.sheet.Sheet`` or its settings)
-    holds the things that move by themselves on a settled belief sheet. A report read writes
-    the sheet, and at every other step the sheet settles one moment on: its kernels move the
-    mass it carried, and the cells the caller says are in sight (``in_sight``: a function of
-    places, or flags on the sheet's cells) are emptied. The row's place is the sheet's mean
-    (its peak with ``read="peak"``), ``area`` gives its cells, and the place brain is asked
-    only for an arm's own end and for a thing heard. ``learn="sheet"`` gives lessons to the
-    sheet alone; ``truth`` (``observe``, ``advance``) gives it the true places to learn from.
-
     ``module`` names the place regions inside a host brain (``Brain.compose(..., trained=)``):
     the space then settles the host, reads the regions there and takes no lessons. ``track``
     keeps the synapses each lesson moved (``changed``, indices into the brain's synapses, and
@@ -360,7 +351,7 @@ class Space:
                  practice: float = 0.04, span: int = 30, sight: float | None = None,
                  cells: int = 32, records: int = 0, smooth: bool = True, read: str = "mean",
                  module: str | None = None, track: bool = False, course: bool = False,
-                 patience: int = 3, sheet: Any = None, **settings: Any):
+                 patience: int = 3, **settings: Any):
         if read not in ("mean", "peak", "seen"):
             raise ValueError("read is 'mean', 'peak' or 'seen'")
         self.interface = interface
@@ -427,15 +418,6 @@ class Space:
         if (self._columns < 0).any():
             raise ValueError("the place regions' inputs are no inputs of this brain")
         self.acted: np.ndarray | None = None  # a host brain's own action at the latest settle
-        # the settled belief sheet (off unless given): True, a Sheet, or a Sheet's settings
-        self.sheet: Any = None
-        if sheet is not None and sheet is not False:
-            from .sheet import Sheet
-
-            self.sheet = sheet if isinstance(sheet, Sheet) else Sheet(
-                interface.plane, **({} if sheet is True else dict(sheet)))
-        self._lessons: deque[dict[str, Any]] = deque(maxlen=len(SLOPE))
-        self._truth: np.ndarray | None = None
         self.cells = int(cells)
         self.seen_map = np.zeros((self.cells, self.cells))  # reports of things, by cell
         self.visit_map = np.zeros((self.cells, self.cells))  # reports and unseen places, by cell
@@ -492,11 +474,6 @@ class Space:
         self._last: dict[str, np.ndarray] = {}
         self._step: dict[str, np.ndarray] = {}
         self.brain.reset()
-        if self.sheet is not None:  # things that move by themselves begin at rest on the sheet
-            self.sheet.begin(rows)
-            self.sheet.write(~self.own, self.place, np.zeros(rows, dtype=bool))
-            self._lessons.clear()
-            self._truth = None
 
     def sense(self, commands: np.ndarray | None = None, cues: np.ndarray | None = None,
               joints: np.ndarray | None = None) -> np.ndarray:
@@ -551,7 +528,6 @@ class Space:
         f, rows = self.interface, self.rows
         if self.module is not None and learn:
             raise ValueError("a space in a host brain takes no lessons: teach the donor")
-        learn = bool(learn) and not (isinstance(learn, str) and learn == "sheet")
         if self.raised_with_joints is False:
             joints = None  # the file's regions took no lesson with joint readings
         asked = np.zeros((rows, f.joints)) if commands is None else np.broadcast_to(
@@ -563,8 +539,6 @@ class Space:
         quiet = np.where(self.own, ~(asked != 0).any(axis=1), ~self._moving)
         live = np.ones(rows, dtype=bool) if learn or self.module is not None else (
             ~quiet | sounding)
-        if self.sheet is not None and not learn and self.module is None:
-            live = live & (self.own | sounding)  # the sheet moves the things that move alone
         x = self.sense(asked, cues, joints)
         given = x  # what the brain is given: in a host, the host's whole observation
         if self.module is not None or self._width != x.shape[1]:
@@ -602,7 +576,7 @@ class Space:
         return predicted.copy()
 
     def observe(self, seen: np.ndarray, reports: np.ndarray, *, learn: bool = False,
-                in_sight: Any = None, truth: np.ndarray | None = None) -> np.ndarray:
+                in_sight: Any = None) -> np.ndarray:
         """The second half of a step. ``seen`` says which rows the camera reports and
         ``reports`` holds their positions, ``(rows, 2)``. A report read writes its row's place:
         a thing at rest takes the mean of its reports, and any other thing the report itself.
@@ -628,16 +602,11 @@ class Space:
             raise ValueError("a space in a host brain takes no lessons: teach the donor")
         seen = np.asarray(seen, dtype=bool).reshape(rows)
         z = np.where(seen[:, None], np.asarray(reports, dtype=np.float64).reshape(rows, 2), 0.0)
-        whole = bool(learn) and not (isinstance(learn, str) and learn == "sheet")
         live, quiet, sounding = step["live"], step["quiet"], step["sounding"]
         predicted = step["predicted"]
         read = seen & ~(self._practising > 0)  # the rows whose report is read
-        lit = None
-        if self.sheet is not None:  # beside a sheet, sight is evidence on the sheet's cells
-            lit, in_sight = self._lit_cells(in_sight), None
         looks = in_sight if callable(in_sight) else (
-            self._in_sight if in_sight is None and self.sight is not None
-            and self.sheet is None else None)
+            self._in_sight if in_sight is None and self.sight is not None else None)
         if looks is not None:
             visible = np.asarray(looks(predicted), dtype=bool).reshape(rows)
             predicted = self._wait_midway(looks, predicted, read, live & ~quiet & ~sounding)
@@ -659,7 +628,7 @@ class Space:
         predicted = np.where(refused[:, None], (self._anchor + self._seen_at) / 2.0, predicted)
         self._known[refused] = False  # it did not come out where its movement carries it
         self._moving[refused] = False
-        if whole:
+        if learn:
             self._teach(step, seen, z, predicted, read)
         deviation = np.sqrt(self.noise)
         near = np.linalg.norm(z - self.place, axis=1) < 4.0 * deviation * np.sqrt(
@@ -724,20 +693,17 @@ class Space:
             length = np.minimum(self.rng.geometric(1.0 / self.span, rows), 3 * self.span)
             self._practising = np.where(seen, np.maximum(self._practising - 1, 0), 0)
             self._practising = np.where(begin, length, self._practising)
-        if self.sheet is not None:
-            self._on_sheet(step, seen, z, read, lit, learn, truth)
         self._last = {**step, "refused": refused, "read": read}
         return self.place.copy()
 
     def advance(self, seen: np.ndarray, reports: np.ndarray,
                 commands: np.ndarray | None = None, cues: np.ndarray | None = None,
                 joints: np.ndarray | None = None, *, learn: bool = False,
-                beside: np.ndarray | None = None, in_sight: Any = None,
-                truth: np.ndarray | None = None) -> np.ndarray:
+                beside: np.ndarray | None = None, in_sight: Any = None) -> np.ndarray:
         """One step, ``predict`` and then ``observe``: every row's place after it. With
         ``in_sight`` a function (``observe``)."""
         self.predict(commands, cues, joints, learn=learn, beside=beside)
-        return self.observe(seen, reports, learn=learn, in_sight=in_sight, truth=truth)
+        return self.observe(seen, reports, learn=learn, in_sight=in_sight)
 
     def assign(self, reports: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Give the camera's reports of a step to rows, after ``predict``. ``reports`` holds one
@@ -807,18 +773,13 @@ class Space:
         """Write the trained place regions as a module file (``cadence.modules``), with the
         interface and the camera's learned noise in its record: the regions' inputs are the
         module's inputs, and a host reads the held place and the three outputs."""
-        from ..modules import save
-
-        record: dict[str, Any] = {
-            "interface": self.interface.to_dict(), "noise": float(np.sqrt(self.noise)),
-            "raised with joint readings": bool(self._felt_taught or self.raised_with_joints)}
-        extra = None
-        if self.sheet is not None:  # the sheet's kernels beside the regions
-            record["sheet"] = self.sheet.to_dict()
-            extra = {f"sheet/{key}": value for key, value in self.sheet.arrays().items()}
-        return save(self.brain, path, name=name, inputs=INPUTS, published=("place", *OUTPUTS),
-                    regions=(*INPUTS, "hidden", *OUTPUTS), interface=record, card=card,
-                    extra=extra)
+        return self.brain.save_module(
+            path, name=name, inputs=INPUTS, published=("place", *OUTPUTS),
+            regions=(*INPUTS, "hidden", *OUTPUTS),
+            interface={"interface": self.interface.to_dict(), "noise": float(np.sqrt(self.noise)),
+                       "raised with joint readings": bool(self._felt_taught
+                                                          or self.raised_with_joints)},
+            card=card)
 
     @classmethod
     def load(cls, module: Any, brain: Any = None, **settings: Any) -> Space:
@@ -838,16 +799,6 @@ class Space:
                 f"the module {module.name!r} was made with cadence {module.record['library']} "
                 f"and its regions are another version's (this version's place brain holds "
                 f"{lacking or 'other sizes'} beside them): make the file again with this version")
-        if "sheet" in held and "sheet" not in settings:  # the file's sheet, its kernels as taught
-            from .sheet import Sheet
-
-            told = held["sheet"]
-            settings["sheet"] = Sheet(
-                tuple(told["plane"]), tuple(told["cells"]), level=float(told["level"]),
-                rate=float(told["rate"]), born=str(told["born"]),
-                reach=float(told.get("reach", 0.3)),
-                kernel=np.asarray(module.arrays["sheet/kernel"], dtype=np.float64))
-            settings["sheet"].lessons = int(told.get("lessons", 0))
         if brain is None:
             space = cls(interface, brain=module.brain(), **settings)
         else:
@@ -879,11 +830,6 @@ class Space:
             at += f.regions[name]
         out["live"] = self._last["live"].copy()
         out["gone"] = self.gone.copy()
-        if self.sheet is not None:
-            mass = self.sheet.mass().reshape(self.rows, 2, *self.sheet.cells)
-            out["moving"], out["rest"] = mass[:, 0], mass[:, 1]
-            out["area"] = self.area()
-            out["kernel"] = self.sheet.kernel.copy()
         out["refused"] = self._last["refused"].copy()
         if "hidden" in self._last:
             t = self.interface.temperature
@@ -898,94 +844,7 @@ class Space:
             out["keep"] = self.keep.beliefs(self._last["keep"], t)
         return out
 
-    def area(self) -> np.ndarray:
-        """Beside a sheet: each row's area as flags on the sheet's cells, ``(rows, cells x,
-        cells y)``: the smallest set of cells that holds ``RATE`` of the row's belief. A cell
-        ``[i, j]`` is the rectangle of ``sheet.size`` metres around ``sheet.centers[i * cells y
-        + j]``. An arm's own end, which the sheet does not hold, has no cell."""
-        if self.sheet is None:
-            raise ValueError("an area of cells is read from a sheet: Space(..., sheet=True)")
-        return np.asarray(self.sheet.area(RATE))
-
     # -- inside
-
-    def _lit_cells(self, in_sight: Any) -> np.ndarray | None:
-        """Which of the sheet's cells the camera sees at this step: from the caller's function
-        of places, from flags on the cells (``(cells,)`` or ``(rows, cells)``), or from the map
-        of where things were seen (``sight``). None where nothing says."""
-        centers = self.sheet.centers
-        if callable(in_sight):
-            return np.asarray(in_sight(centers), dtype=bool).reshape(len(centers))
-        if in_sight is not None:
-            flags = np.asarray(in_sight, dtype=bool)
-            if flags.shape[-1] != len(centers):
-                raise ValueError(
-                    f"beside a sheet in_sight is a function of places or flags on the sheet's "
-                    f"{len(centers)} cells (sheet.centers), one row or a row a thing")
-            return flags
-        if self.sight is not None:
-            return self._in_sight(centers)
-        return None
-
-    def _on_sheet(self, step: dict[str, np.ndarray], seen: np.ndarray, z: np.ndarray,
-                  read: np.ndarray, lit: np.ndarray | None, learn: bool,
-                  truth: np.ndarray | None) -> None:
-        """The sheet's part of a step, for the things that move by themselves. A report read
-        writes the sheet at the place the program took from it, on the moving sheet where the
-        thing's seen movement is above its noise, and a place another sense named writes it at
-        rest. Every other row is settled one moment on: its carried mass moved by the kernels,
-        the cells in sight held at zero (a row whose report is left unread for practice takes
-        no such evidence, since the camera sees it). The row's place is then the sheet's and
-        its radius that of a circle as large as its area.
-
-        Lessons (``learn``): with ``truth`` every row settled on is taught where the thing
-        truly was, going on where its true step kept more than half of its seen movement.
-        Without it, a row in a practice span is taught by the report it did not read, six
-        reports later: going on where the six reports from that step on keep more than half of
-        its seen movement."""
-        sheet, rows = self.sheet, self.rows
-        alone = ~self.own
-        sounding = step["sounding"]
-        going = self._moving & self._known
-        sheet.write(alone & (read | sounding), self.place, going & read)
-        unread = alone & ~read & ~sounding
-        movement = self._movement * going[:, None]
-        shown = lit
-        if lit is not None and (self._practising > 0).any():
-            shown = np.broadcast_to(lit, (rows, sheet.count)) & ~(self._practising > 0)[:, None]
-        sheet.step(unread, movement, shown)
-        if unread.any():
-            at = sheet.where("peak" if self.read == "peak" else "mean")
-            cells = sheet.area(RATE).reshape(rows, -1).sum(axis=1)
-            wide = np.sqrt(cells * float(np.prod(sheet.size)) / np.pi)
-            self.place = np.where(unread[:, None], at, self.place)
-            self.radius = np.where(unread, wide, self.radius)
-        self.gone = np.where(alone, sheet.gone, self.gone)
-        if not learn:
-            return
-        loud = going & (np.linalg.norm(movement, axis=1) > 0)
-        if truth is not None:
-            true = np.asarray(truth, dtype=np.float64).reshape(rows, 2)
-            if self._truth is not None:
-                taught = unread & loud
-                stride = ((true - self._truth) * movement).sum(axis=1)
-                kept = stride > 0.5 * (movement * movement).sum(axis=1)
-                sheet.teach(sheet.taken(), taught, true, kept)
-            self._truth = true.copy()
-            return
-        self._lessons.append({"taken": sheet.taken(), "seen": seen.copy(), "z": z.copy(),
-                              "m": movement.copy(),
-                              "rows": unread & seen & loud & (
-                                  np.linalg.norm(movement, axis=1) >= 0.008)})
-        if len(self._lessons) < len(SLOPE):
-            return
-        held = list(self._lessons)
-        first = held[0]
-        whole = np.all([e["seen"] for e in held], axis=0)
-        slope = np.tensordot(SLOPE, np.stack([e["z"] for e in held]), axes=1)
-        m = first["m"]
-        kept = (slope * m).sum(axis=1) > 0.5 * (m * m).sum(axis=1)
-        sheet.teach(first["taken"], first["rows"] & whole, first["z"], kept)
 
     def _wait_midway(self, looks: Any, predicted: np.ndarray, read: np.ndarray,
                      moving: np.ndarray) -> np.ndarray:

@@ -159,5 +159,6 @@ beside it, with the error in view, out of view and by the steps since the hand w
 `--empty` and `--reach` name the rule for a thing whose place is seen empty. With `keep` the map
 answers as last seen does, from its own carried activity.
 
-[`belief.py`](belief.py) is a classical grid filter and [`sheet.py`](sheet.py) the nursery of
-the second stage (movement learned on the map); both are read against the map.
+`--physics '{"per": 3}' --train 800 --watched 0 50 200` raises learned physics on a nursery of
+the founder's scenes (`nursery`, the shares in `MIX`) and reads it after each number of scenes
+watched. [`belief.py`](belief.py) is a classical grid filter, a control.

@@ -44,9 +44,10 @@ composed, acts, learns and saves as on 0.98.0.
   a pillar the founder reads 11.8 cm over the hidden moments, where last seen reads 15.5 cm
   ([`benchmarks/tracking/mapped.py`](benchmarks/tracking/mapped.py)). The map's graph has no
   taught synapse.
-- **`cadence.space.sheet.Sheet`** (the second stage, in work): a belief over places with a
-  moving sheet and a sheet at rest, kernels tied across positions and taught by the library's
-  free and nudged phases, opt-in beside `Space` (`sheet=`).
+- **`cadence.space.physics.Physics`** (the second stage, `Map(physics=)`): learned physics on
+  the map. Velocity cells beside each cell, one kernel a velocity tied across cells and kinds,
+  born to stay (an untaught map with physics answers as the map, moment for moment) and taught
+  by the library's free and nudged phases whenever a thing is seen at two moments in a row.
 - **The chamber**: hands that visit a shadow and come back, pause, hop and go slowly
   (`kind="visit"`, `"pause"`, `"hops"`, `"slowhand"`), the recorded scene with the arm folded
   (`scenes/promise-folded.json`), and `mapped.py`, which scores a scene file with the map beside

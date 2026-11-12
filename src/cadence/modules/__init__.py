@@ -95,8 +95,7 @@ class Module:
         if key not in self._brains:
             with tempfile.TemporaryDirectory(prefix="cadence-module-") as folder:
                 path = Path(folder) / "brain.npz"
-                beside = set(self.record.get("beside") or ())  # arrays that are no brain's
-                held: dict[str, Any] = {k: v for k, v in self.arrays.items() if k not in beside}
+                held: dict[str, Any] = dict(self.arrays)
                 with path.open("wb") as handle:
                     np.savez(handle, **held)
                 self._brains[key] = Brain.load(path, backend=backend, device=device,
@@ -132,8 +131,7 @@ def _checksum(array: np.ndarray) -> str:
 
 def save(brain: Any, path: str | Path, *, name: str, inputs: Any, published: Any,
          regions: Any = None, interface: dict[str, Any] | None = None,
-         card: dict[str, Any] | None = None,
-         extra: dict[str, np.ndarray] | None = None) -> Path:
+         card: dict[str, Any] | None = None) -> Path:
     """Write ``brain``'s trained regions as a module file and return its path.
 
     ``regions`` names the populations the module is made of (the inputs, the published and
@@ -141,9 +139,7 @@ def save(brain: Any, path: str | Path, *, name: str, inputs: Any, published: Any
     those its own senses drive and ``published`` those a host reads. ``interface`` is the
     module's own record and ``card`` says what it was trained on and reads. The brain is saved
     as ``Brain.save`` saves it, its streams at rest and without per-synapse steps of its own,
-    with floats in 32 bits and synapse indices in 32 bits. ``extra`` holds arrays of the
-    module's own that are no part of the brain (each named ``part/array``); the record lists
-    them in ``beside`` and they are checked as every array is."""
+    with floats in 32 bits and synapse indices in 32 bits."""
     import copy
 
     from .. import __version__
@@ -175,11 +171,6 @@ def save(brain: Any, path: str | Path, *, name: str, inputs: Any, published: Any
         resting.save(whole, compressed=False)
         with np.load(whole, allow_pickle=False) as held:
             arrays = {key: held[key] for key in held.files}
-    beside = sorted(extra or {})
-    for key in beside:
-        if "/" not in key or key in arrays:
-            raise ValueError(f"an array beside the brain is named part/array, got {key!r}")
-        arrays[key] = np.asarray((extra or {})[key])
     for key, value in arrays.items():
         if value.dtype == np.float64:
             arrays[key] = value.astype(np.float32)
@@ -190,7 +181,6 @@ def save(brain: Any, path: str | Path, *, name: str, inputs: Any, published: Any
         "regions": {region: len(populations[region]) for region in order},
         "inputs": inputs, "published": published, "neurons": int(brain.connectome.n),
         "interface": interface or {}, "card": card or {},
-        **({"beside": beside} if beside else {}),
         "checksums": {key: _checksum(value) for key, value in sorted(arrays.items())},
     }
     written: dict[str, Any] = {"module": np.array(json.dumps(record)), **arrays}
