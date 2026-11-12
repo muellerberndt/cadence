@@ -144,11 +144,11 @@ uses none of them.
 **What was tried for the carry.** Two other forms were read before this one. With the sheet's
 potentials driving `held` and the pools' gains holding each pool at the length its reference was
 driven with, the program drove each reference with the length of what its pool carried in: a
-place moved by 0.02 cm in 1,000 moments, from the neuron's curve. A reference neuron that sums
-the carried activity in place of that number holds no place: the length a thing needs is the
-root of its summed squares, which is its summed activity for a thing on a cell's middle and half
-of it for a thing between four cells. The length held, in units of the length written, after
-1, 5, 10 and 20 moments:
+place moved by 0.02 cm in 1,000 moments, from the neuron's curve (read at 6d46a5d6). A
+reference neuron that sums the carried activity in place of that number holds no place: the
+length a thing needs is the root of its summed squares, which is its summed activity for a thing
+on a cell's middle and half of it for a thing between four cells. The length held, in units of the length written, after
+1, 5, 10 and 20 moments (read at 880299c2):
 
 | Reference | A thing on a cell's middle | A thing between four cells |
 | --- | --- | --- |
@@ -156,7 +156,9 @@ of it for a thing between four cells. The length held, in units of the length wr
 | The same at a weight of 0.5 | .25, .016, .0005, 5e-7 | 1, 1, 1, 1 |
 | The length, set by the program | 1, 1, 1, 1 | 1, 1, 1, 1 |
 
-The carry on the sheet's own neurons needs no gain and no set point, and it moves nothing.
+The carry on the sheet's own neurons needs no gain and no set point, and it moves nothing:
+eight things, two of one kind, read within 0.0035 cm after 1,000 moments with nothing sensed,
+their potentials unchanged to the bit (read at 6c8a352d).
 
 ## Questions, answered by settling
 
@@ -212,18 +214,18 @@ that cell is seen empty. `empty` says what the map does then:
 A reading on the two recorded scenes of the chamber, in which a hand goes behind a pillar at
 0.5 m/s, rests there for 70 moments and comes back
 ([`benchmarks/tracking/mapped.py`](../benchmarks/tracking/mapped.py)); the mean distance from
-the hand over its 91 hidden moments:
+the hand over its 91 hidden moments, read at 829e8419:
 
 | Arm | Shadows joined | Arm folded |
 | --- | --- | --- |
 | Last seen | 15.5 cm | 15.5 cm |
 | The map, `empty="keep"` | 15.5 cm | 15.5 cm |
-| The map, `empty="near"`, `reach=0.15` (the founder) | 11.8 cm | 11.8 cm |
-| The map, `empty="near"`, `reach=0.3` | 11.3 cm | 11.2 cm |
-| The map, `empty="near"`, `reach=0.6` | 16.3 cm | 17.2 cm |
+| The map, `empty="near"`, `reach=0.15` (the founder) | 10.7 cm | 10.7 cm |
+| The map, `empty="near"`, `reach=0.3` | 12.3 cm | 11.2 cm |
+| The map, `empty="near"`, `reach=0.6` | 20.4 cm | 19.6 cm |
 
-In view the map reads 1.2 cm, the camera's own error. The founder's cells hold the hand at
-every hidden moment, at 34 cells. The map does not move a thing along its last seen movement:
+In view the map reads 1.2 cm, the camera's own error. The founder's smallest set of cells
+holding .90 of the hand's activity holds the hand at every hidden moment, at 30 cells. The map does not move a thing along its last seen movement:
 that is the second stage.
 
 **How the reach was chosen.** The first value, 0.3 m, was fixed before any reading. It was
@@ -292,15 +294,16 @@ file from outside the library; both are a `Map`.
 A sound's direction and distance, and the arm's own joint readings, name a place; the caller
 passes the place: `moment(heard=[(kind, place)])` and `moment(felt=[(kind, place)])`. The place
 the arm's joint readings name is the arm's forward kinematics, which the program computes as a
-robot knows its own arm. On the chamber's scenes of the arm's own hand, the map fed so reads
-0.5 cm while the hand is out of view, where the true kinematics read 0.1 cm and last seen
-12.6 cm.
+robot knows its own arm. On 40 of the chamber's scenes of the arm's own hand (founder 0, read
+at 829e8419), the map fed so reads 0.5 cm while the hand is out of view, where the true
+kinematics read 0.1 cm and last seen 12.6 cm.
 
 **What was tried.** `cadence.space.map.Sense` is a taught projection of a reading onto the map's
 cells: a sheet of tuned readings, one synapse a unit and cell, taught by the library's free and
 nudged phases with a quadratic nudge at the moments the thing is felt while seen. Taught on 300
 scenes of the arm's own hand, the place it names read 12.0 cm out of view at 12 tuned readings a
-joint and 8.8 cm at 24: the tuned sheet is too coarse for the arm's forward map at this size.
+joint and 8.8 cm at 24 (read at 829e8419): the tuned sheet is too coarse for the arm's forward
+map at this size.
 
 ## Learned physics on the map
 
@@ -320,9 +323,10 @@ how a thing it does not see has moved.
 | `stride` | 0.5 m | A report of a kind with none of it within `step`: the nearest piece within this distance is that thing, moved unseen |
 | `margin` | 0.02 m | The camera's error: the distance around a held place over which sight decides whether it is seen empty |
 
-One moment settles one row whatever the number of things. Under Pyodide the founder takes 1.9 ms
-a moment with four things, 0.3 ms for the inventory and 1.8 ms a question; on one core natively
-1.3 ms a moment and 1.6 ms a question.
+One moment settles one row whatever the number of things. At 6c8a352d, on a Mac under a load of
+30 to 57 from other work, the founder takes 9.5 ms a moment with four things under Pyodide,
+1.5 ms for the inventory and 7.1 ms a question; on one core natively 5.3 ms a moment and
+6.2 ms a question.
 
 ## The baseline: places held by a program
 

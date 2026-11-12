@@ -8028,8 +8028,12 @@ def _compose_trained(
         raise ValueError("trained modules take a vector brain in this version: inputs is a count")
     if inputs < 1:
         raise ValueError("a brain around a module holds one input of its own or more")
+    if any(type(m).__name__ == "Map" for m in trained or ()):
+        raise ValueError("a map of things (cadence.space.map.Map) joins a brain as brain.space; "
+                         "trained= takes trained modules, brains saved with save_module")
     if not trained or any(not isinstance(m, Module) for m in trained):
-        raise ValueError("trained is a list of modules (cadence.modules.load, load_module)")
+        raise ValueError("trained is a list of trained modules (cadence.load_module of a file "
+                         "save_module wrote)")
     held = [m.name for m in trained]
     if len(set(held)) != len(held):
         raise ValueError("two trained modules share one name")

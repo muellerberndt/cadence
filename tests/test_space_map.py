@@ -203,6 +203,9 @@ def test_a_brain_holds_a_map_saves_it_and_reads_where_and_what(tmp_path):
     assert np.array_equal(grown.space.potential, held.potential)
     assert host.retune(teaching="normalized").space is not None
     assert again.space.what_is_at([-0.6, 1.0]) == CUP
+    with pytest.raises(ValueError, match="joins a brain as brain.space"):
+        cd.Brain.compose(inputs=4, actions=2, seed=0, backend="cpu",
+                         trained=[cd.modules.load("place")])
     again.space.reset()
     again.space.moment()
     assert again.space.things() == [] and not again.space.observation().any()
