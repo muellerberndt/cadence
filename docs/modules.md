@@ -379,11 +379,11 @@ library's first trained module.
 
 | Part | For | Joins by | Holds between moments | Learns | Arrives | Grow and graft | Reading |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| [`Space`](space.md#a-first-map) | A map of where things are: a place for every thing, held while the camera does not see it | `Space(interface)`, then `begin`, `advance` (or `predict` and `observe`), `where` | each thing's place, the radius of its area, its last seen movement and the moments since it was seen | the program is fixed; its place brain learns | blank | beside the brain | The tracking chamber's declared run reads it ([protocol](../benchmarks/tracking/PROTOCOL.md), [#320](https://github.com/muellerberndt/cadence/issues/320)); no reading is posted |
+| [`Space`](space.md#a-first-map) | A map of where things are: a place for every thing, held while the camera does not see it | `Space(interface)`, then `begin`, `advance` (or `predict` and `observe`), `where` | each thing's place, the radius of its area, its last seen movement and the moments since it was seen | the program is fixed; its place brain learns | blank | beside the brain | Its gates are S1 to S8 of [#320](https://github.com/muellerberndt/cadence/issues/320), read in the [tracking chamber](../benchmarks/tracking/README.md); no reading is posted |
 | [A place brain](space.md#the-regions) | The brain a space asks: how far a place moves in a step (`shift`), how far off it may be (`spread`), and the place a cue or a posture names (`found`) | `Space(interface)` composes one; `Interface`, `cadence.space.compose`, `cadence.space.anatomy` | nothing: every answer is settled from rest | yes: lessons made from the camera's reports alone, `advance(..., learn=True)` | blank | an anatomy of its own, so `grow` refuses it; its regions travel as the place module | |
 | [Several things, cues and kinds](space.md#several-things) | Reports that carry a look and no name, cues from another sense, and questions by kind and by place | `assign`, `hear`, `where_is(kind)`, `what_is_at(point)` | each row's look | no | | beside the brain | |
 | [Records of things at rest](space.md#records-of-things-at-rest) | A thing that stays put is filed by what it looks like and found again in a later scene | `Space(interface, records=n)`, `find(look)` | records in a `cd.LongTermMemory`, which stay over `begin` | no: records are written and revised | empty | beside the brain | |
-| [The place module](space.md#a-trained-module) | A place brain's trained regions inside another brain: the held place and the three answers, for the host to read | `space.save(path)` and `cd.load_module(path)`, or `cd.modules.load("place")` from v0.99.0; then `Brain.compose(..., trained=[module])` and `Space.load(module, brain=host)` | as the space holds them | held: a space in a host takes no lessons, and the host's lessons do not reach it | trained | at birth with `trained=`; `graft(module)` into a brain that holds its regions | Gates M1 to M5 of [#321](https://github.com/muellerberndt/cadence/issues/321) are declared for it; no reading is posted |
+| [The place module](space.md#a-trained-module) | A place brain's trained regions inside another brain: the held place and the three answers, for the host to read | `space.save(path)` and `cd.load_module(path)`, or `cd.modules.load("place")` from v0.99.0; then `Brain.compose(..., trained=[module])` and `Space.load(module, brain=host)` | as the space holds them | held: a space in a host takes no lessons, and the host's lessons do not reach it | trained | at birth with `trained=`; `graft(module)` into a brain that holds its regions | Its gates are M1 to M5 of [#321](https://github.com/muellerberndt/cadence/issues/321); no reading is posted |
 
 ```python
 from cadence.space import Interface, Space
@@ -796,10 +796,11 @@ assert unseen > 0.6                                      # chance is a third
 
 The body reads the place the space holds and answers from it while the camera reports nothing.
 How well a place is held and moved while unseen is the place module's own reading, which the
-tracking chamber's declared run takes ([#320](https://github.com/muellerberndt/cadence/issues/320));
-no reading is posted. The place brain of this example is a development stand-in taught for forty
-steps, so its places are rough. The built-in module ships with v0.99.0 as
-`cd.modules.load("place")`, and the code around it is the same.
+[tracking chamber](../benchmarks/tracking/README.md) takes against the gates of
+[#320](https://github.com/muellerberndt/cadence/issues/320); no reading is posted. The place
+brain of this example is a development stand-in taught for forty steps, so its places are
+rough. The built-in module ships with v0.99.0 as `cd.modules.load("place")`, and the code
+around it is the same.
 
 ## Parts that arrive trained
 
@@ -1155,8 +1156,8 @@ holds them to a stated budget of bytes in the wheel.
 | A visual system | Sight, from the learned receptive fields of [#284](https://github.com/muellerberndt/cadence/issues/284) | trained | planned, in the backlog of [issue 321](https://github.com/muellerberndt/cadence/issues/321) |
 | The hearing of letters | Letters heard in speech, from [#304](https://github.com/muellerberndt/cadence/issues/304) | trained | planned, in the backlog of [issue 321](https://github.com/muellerberndt/cadence/issues/321) |
 
-A module is shipped where three readings hold on fresh hosts, declared before the runs
-([issue 321](https://github.com/muellerberndt/cadence/issues/321)):
+A module is shipped where three readings hold on fresh hosts, declared before the runs (gates
+M1 to M3 of [issue 321](https://github.com/muellerberndt/cadence/issues/321)):
 
 1. **The skill arrives.** The grafted module does in the host what it did in its donor, before
    any lesson.
@@ -1165,8 +1166,8 @@ A module is shipped where three readings hold on fresh hosts, declared before th
 3. **The skill stays.** After the host learns a second, unrelated task, the module's skill reads
    within its first reading.
 
-These gates are declared for the place module, and no reading of them is posted. Each module's
-row takes its card's readings when they are.
+For the place module no reading of them is posted. Each module's row takes its card's readings
+when they are.
 
 ## What does not go together
 
