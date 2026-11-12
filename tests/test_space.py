@@ -195,7 +195,7 @@ def test_a_thing_that_does_not_come_out_where_it_would_be_seen_is_held_back():
         space.observe(hidden, np.zeros((1, 2)), in_sight=[False])
     carried = space.where()[0].copy()
     assert carried[0, 0] > last[0, 0] + 0.15
-    for _ in range(3):  # it would be seen by now if it had kept going, and no report comes
+    for _ in range(3):  # had it kept going it would be seen in these moments, and no report comes
         space.predict()
         space.observe(hidden, np.zeros((1, 2)), in_sight=[True])
     place, radius = space.where()
