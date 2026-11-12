@@ -170,6 +170,11 @@ class Map:
             bias=bias, backend=backend, apical=Apical(
                 np.isin(np.asarray(self.connectome.post), sheet), pools, fraction=self.level,
                 floor=1e-6))
+        # the same synapses without the compartment: a moment and a question by place use no
+        # pool, and settle without one
+        self._plain = Graph(self.connectome, self._model,
+                            efficacy=np.full(self.connectome.synapses, PASS), bias=bias,
+                            backend=backend)
         self._floor = 1e-3 * self.level  # activity under this is no thing
         self.trace = bool(trace)
         self.trajectory: dict[str, Any] = {}  # the latest settle by sweep, with ``trace``
@@ -196,6 +201,8 @@ class Map:
         self.doubt = np.zeros(self.count)  # one where a cell holds a thing not seen to be there
         self._sensed: list[tuple[int, str]] = []
         self.reading = np.zeros(self.count + self.units)  # ``where`` and ``what``, settled
+        # what the camera saw around each report of the moment before
+        self._views: list[tuple[np.ndarray, np.ndarray]] = []
         if getattr(self, "physics", None) is not None:
             self.physics.reset()
 
@@ -388,8 +395,9 @@ class Map:
         state = BrainState(v=begun, activation=self._model.activation(begun),
                            adaptation=np.zeros_like(begun), steps=0)
         first = np.maximum(np.asarray(state.activation)[0], 0.0)
-        state = self.graph.settle_batch(drive, steps=sweeps, tolerance=None, mask=mask,
-                                        state=state, trajectory=self.trace)
+        graph = self.graph if cue is not None else self._plain
+        state = graph.settle_batch(drive, steps=sweeps, tolerance=None, mask=mask, state=state,
+                                   trajectory=self.trace)
         if self.trace:  # the settle by sweep, for a reader who watches it
             rows = np.maximum(np.concatenate(
                 [first[None], np.asarray(state.trajectory)[:, 0]], axis=0), 0.0)
@@ -414,9 +422,12 @@ class Map:
         ``(cells,)`` or a function of ``(points, 2)`` places; None where nothing says. A thing
         is seen empty where the camera sees its held place (the mean of its piece) and no
         report claims it: a function judges the place itself, flags the cell that holds it. A
-        place a sense wrote the moment before counts as seen where the camera sees a place within
-        ``margin`` of it, the camera's own error: a hand last seen at a shadow's edge may have
-        been reported just past it.
+        place a sense wrote the moment before is a report, as far off as the camera's error: it
+        is seen empty where the camera sees around it, within ``margin``, everything it saw
+        there the moment before, and something. A hand last seen at a shadow's edge may have
+        been reported just past it, and the camera that did not move sees it empty; a camera
+        turning away from a thing it reported no longer sees some of what it saw around it, and
+        the thing stays.
 
         A report writes its place on its kind's units, in place of what its cells carried, and
         the pieces of its kind's activity within ``step`` of it are that thing: they are
@@ -442,22 +453,25 @@ class Map:
             sight = np.asarray(lit, dtype=bool).reshape(self.count)
         looks = self._looks(lit, sight)
         physics = self.physics
+        # the kernels act once taught: before any lesson the map is the map without physics,
+        # and physics only gathers its lessons
+        acting = physics is not None and physics.lessons > 0
         before = self.potential.copy()  # the map as the moment before left it
         self._before = before
         sensed = self.clock < 0.5  # the cells a sense wrote the moment before
         if physics is not None:  # the prediction: the kernels carry the moving mass
             mass_before = physics.mass
             self._carried_mass = mass_before
-            # and with it the moments since it was sensed: its clock, weighted by its mass
-            top = max(float(self.clock.max()), 1.0)
-            moved, timed = physics.carry(mass_before * (self.clock / top)[:, None, None])
+            moved = physics.carry()
             self.potential = self.potential + (moved - mass_before).sum(axis=2)
             physics.mass = moved
-            still = np.maximum(before - mass_before.sum(axis=2), 0.0).sum(axis=1)
-            arrived = moved.sum(axis=(1, 2))
-            weight = still + arrived
-            self.clock = np.where(arrived > 0, (still * self.clock + timed.sum(axis=(1, 2)) * top)
-                                  / np.maximum(weight, 1e-300), self.clock)
+            # the moments since it was sensed go with the mass: a cell the moving mass of a
+            # code unit reaches takes that mass's clock, its mean where it was
+            for unit in np.flatnonzero(moved.any(axis=(0, 2))):
+                was = mass_before[:, unit, :].sum(axis=1)
+                arrived = moved[:, unit, :].sum(axis=1) > 1e-3 * float(was.max(initial=0.0))
+                if was.sum() > 0:
+                    self.clock[arrived] = float(was @ self.clock / was.sum())
         motion: list[np.ndarray | None] = []  # each report's velocities, over the whole grid
         lessons: list[tuple[np.ndarray, np.ndarray]] = []
         activity = self._activity()
@@ -479,7 +493,7 @@ class Map:
             # a thing of the kind is sensed: the doubt about where one of it went is over, and
             # the pieces a moving thing left, sensed last when the thing it claims was, are it
             near += [p for p in pieces if self.doubt[p].mean() > 0.5]
-            if physics is not None and near:
+            if acting and near:
                 last = {round(float(self.clock[p].min())) for p in near}
                 near += [p for p in pieces if physics.mass[p].any()
                          and round(float(self.clock[p].min())) in last]
@@ -504,11 +518,19 @@ class Map:
             for piece in self._pieces(np.asarray(own > self._floor)):
                 at = (own[piece] @ self.centers[piece]) / own[piece].sum()
                 # a place a sense wrote the moment before is a report, as far off as the
-                # camera's error: the camera sees it where it sees a place within ``margin``
-                near_by = self.margin if sensed[piece].any() else 0.0
-                seen_empty = self.empty != "keep" and looks(at, near_by)
+                # camera's error: it is seen empty where the camera sees around it, within
+                # ``margin``, all it saw there when it reported it (where the field moved off
+                # it, the thing stays); any other place where the camera sees it
+                views = [(p, f) for p, f in self._views if np.linalg.norm(p - at) <= self.step]
+                if sensed[piece].any() and views:
+                    place, then = min(views, key=lambda v: float(np.linalg.norm(v[0] - at)))
+                    now = looks(place, self.margin)
+                    seen_empty = bool(now.any()) and not (then & ~now).any()
+                else:
+                    seen_empty = bool(looks(at, 0.0).any())
+                seen_empty = seen_empty and self.empty != "keep"
                 share = None
-                if physics is not None:  # its velocities, and its moving mass the camera sees
+                if acting:  # its velocities, and its moving mass the camera sees
                     share = self._share(piece, units[0])
                     lit = piece[sight[piece]]
                     if not seen_empty and len(lit):
@@ -568,26 +590,31 @@ class Map:
                 if len(self._lessons) >= 32:
                     self.teach()
         self._sensed = [(kind, sense) for kind, _, sense in reports]
+        # what the camera saw around each report, for the next moment's judgment
+        self._views = [(place, looks(place, self.margin)) for _, place, _ in reports]
         self.work["moments"] += 1
 
     def _looks(self, lit: Any, sight: np.ndarray) -> Any:
-        """Whether the camera sees a place, or a place within a distance of it along either
-        axis: ``lit`` itself where it is a function of places; with flags on cells, the flag of
-        the cell that holds the place; never where nothing says. Flags judge a place by its
+        """What the camera sees of a place: whether it sees the place, or with a distance which
+        of the 81 places on a grid of that half-width around it it sees. ``lit`` judges a
+        place where it is a function of places; with flags on cells, the flag of the cell that
+        holds it; nothing is seen where nothing says. Flags judge a place by its
         cell's middle, so a thing just outside the field whose cell's middle is inside it reads
         as seen: give a function where the field's edge crosses cells."""
         nx, ny = self.cells
-        around = np.array([[0.0, 0.0], [1.0, 0.0], [-1.0, 0.0], [0.0, 1.0], [0.0, -1.0]])
+        grid = np.linspace(-1.0, 1.0, 9)
+        around = np.stack(np.meshgrid(grid, grid, indexing="ij"), axis=-1).reshape(-1, 2)
 
-        def seen(at: np.ndarray, within: float = 0.0) -> bool:
-            points = np.asarray(at, dtype=np.float64)[None] + within * around
+        def seen(at: np.ndarray, within: float = 0.0) -> np.ndarray:
+            points = np.asarray(at, dtype=np.float64)[None] + (
+                within * around if within else np.zeros((1, 2)))
             if callable(lit):
-                return bool(np.asarray(lit(points), dtype=bool).any())
+                return np.asarray(lit(points), dtype=bool).reshape(len(points))
             if lit is None:
-                return False
+                return np.zeros(len(points), dtype=bool)
             i = np.clip(np.floor((points - self._low) / self.size).astype(np.intp), 0,
                         [nx - 1, ny - 1])
-            return bool(sight[i[:, 0] * ny + i[:, 1]].any())
+            return np.asarray(sight[i[:, 0] * ny + i[:, 1]])
 
         return seen
 
@@ -719,7 +746,8 @@ class Map:
                 groups.setdefault(since, []).append(piece)
             for since, pieces in groups.items():
                 cells = np.concatenate(pieces)
-                moving = self.physics is not None and bool(self.physics.mass[cells].any())
+                moving = bool(self.physics is not None and self.physics.lessons > 0
+                              and self.physics.mass[cells].any())
                 doubt = bool(self.doubt[cells].mean() > 0.5)
                 # the pieces a thing in doubt or in motion left, sensed last at one moment, are
                 # one thing; things at rest are a thing a piece

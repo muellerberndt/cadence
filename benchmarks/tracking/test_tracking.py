@@ -370,3 +370,21 @@ def test_the_errand_hands_visit_pause_hop_and_go_slowly():
             assert 0.10 / 30 - 1e-9 <= moved[moved > 0].max() <= 0.15 / 30 + 1e-9
         if kind in ("pause", "hops", "visit"):
             assert (moved[5:] == 0).sum() >= 12                            # it rests on its way
+
+
+@pytest.mark.parametrize("name", ["promise", "promise-folded"])
+def test_a_map_with_physics_untaught_answers_as_the_map(name):
+    from cadence.space.map import Map
+
+    mapped = _load("mapped")
+    scene = w.load(HERE / "scenes" / f"{name}.json")
+    feed = tr.given(scene)
+    plain, physics = Map(scene.geometry.plane), Map(scene.geometry.plane, physics=True)
+    for t in range(scene.steps):
+        seen = [(0, feed["report"][t])] if feed["seen"][t] else []
+        lit = mapped.seeing(scene, t) if t else None
+        for held in (plain, physics):
+            held.moment(seen=seen, lit=lit)
+        assert np.array_equal(plain.potential, physics.potential)
+        assert [(x["kind"], x["state"], x["since"], x["cells"].tolist()) for x in plain.things()] \
+            == [(x["kind"], x["state"], x["since"], x["cells"].tolist()) for x in physics.things()]

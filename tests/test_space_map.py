@@ -222,3 +222,17 @@ def test_a_thing_just_outside_the_field_stays_when_its_cell_middle_comes_into_vi
     assert thing["state"] == "held" and np.linalg.norm(thing["place"] - apple) < 0.0005
     held.moment(lit=lambda points: points[:, 0] < 0.2)            # the field reaches its place
     assert held.things()[0]["state"] == "near"
+
+
+def test_a_thing_stays_when_a_slowly_turning_field_passes_off_it():
+    held = Map(PLANE)
+    apple = np.array([0.05, 0.6])
+    for edge in np.arange(0.20, -0.20, -0.005):                   # the field's edge, 5 mm a moment
+
+        def field(points, edge=edge):
+            return points[:, 0] < edge
+
+        seen = [(APPLE, apple)] if edge > apple[0] else []
+        held.moment(seen=seen, lit=field)
+    (thing,) = held.things()
+    assert thing["state"] == "held" and np.linalg.norm(thing["place"] - apple) < 0.0005
