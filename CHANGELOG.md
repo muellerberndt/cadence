@@ -15,6 +15,15 @@
   the library states them. Packaged trained modules are described as planned. No library code
   changes.
 
+- **Corrections to the guides, read against the code**: `retune` changes a tied brain's settings
+  and refuses only `retune(tied=...)`; the `Brain(connectome, ...)` signature lists `longterm`
+  and the `ActorCriticConfig` signature `hold` and `entropy`; what `Lives` refuses includes a
+  held message, long-term records, tied projections, `actor_entropy` and the read's cortex at
+  unit norm; `grow(recall=True)` also gives a brain without a heard history the one block a new
+  brain's memory holds, and `recall_founder=True` grows the memory without it; the API
+  reference gains a section for `cadence.speech.frontend`, `align` and `decode`, and the speech
+  guide a line each for `LogMel`, `mel_bank`, `windows`, `even_path` and `greedy`.
+
 ## 0.98.0 - 2026-11-12
 
 A recogniser trained from recordings and their transcripts (`cadence.speech`), the read-speech

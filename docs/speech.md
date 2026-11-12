@@ -23,7 +23,7 @@ The whole recipe is one script, `benchmarks/letters/recipe.py` ([the recipe](#th
 import numpy as np
 from cadence import Brain
 from cadence.speech.frontend import Hearing, log_mel
-from cadence.speech.decode import Alphabet, WordBeam, collapse
+from cadence.speech.decode import Alphabet, WordBeam, collapse, greedy
 from cadence.speech.align import Alignments, log_beliefs
 from cadence.speech.correct import Rehearsal
 from cadence.speech.stream import StreamReader
@@ -49,6 +49,25 @@ assert hearing.shape == (40, 24)            # the image a brain reads
 ```
 
 `Hearing.to_dict()` and `Hearing.from_dict()` save and restore the statistics with the brain.
+
+Three more names of `cadence.speech.frontend` build the same steps in parts:
+
+- `mel_bank()` is the bank of triangular mel filters `log_mel` sums a frame's spectrum through;
+  `log_mel(audio, bank=bank)` takes one built once.
+- `windows(frames)` cuts the frames into each step's window before it is standardized;
+  `Hearing.rows(windows)` standardizes them, and `Hearing.steps(frames)` does both.
+- `LogMel(hearing)` joins `log_mel` at named settings (`rate`, `frame`, `hop`, `fft`) to a
+  `Hearing`: samples in, a brain's rows out.
+
+```python
+from cadence.speech.frontend import LogMel, mel_bank, windows
+
+bank = mel_bank()                           # (40, 257): 40 bands over a 512-point spectrum
+assert np.array_equal(log_mel(second, bank=bank), frames)
+held = windows(frames)                      # (24, 24, 40): steps, frames of a window, bands
+assert np.array_equal(hearing.rows(held), steps)
+assert np.array_equal(LogMel(hearing).steps(second), steps)
+```
 
 ## The composition
 
@@ -89,6 +108,8 @@ beliefs at each step, blank allowed on any step and required between a letter an
 letter after it (the forced alignment of CTC, `align.forced_path`). Before the brain believes
 anything, the steps are split evenly among the letters (`Alignments.even`). The path is the
 teacher's, computed outside the brain; the brain learns from it by its own rule.
+`align.even_path(steps, transcript)` is that even split as a function: each step's letter, with
+no blank.
 
 ```python
 utterances = [hearing.steps(log_mel(second)), hearing.steps(log_mel(second[:12000]))]
@@ -113,8 +134,9 @@ utterance, so an utterance heard in two passes holds a path for each.
 
 The brain's beliefs at each step are the softmax of its motor neurons. Reading the most believed
 symbol at each step and collapsing repeats and blanks gives the text (`collapse`, the reading of
-CTC). A word list reads the same beliefs through a beam over a trie of the list, so every word
-written is a list word (`WordBeam`).
+CTC). `decode.greedy(beliefs)` does both in one call and returns the text. A word list reads the
+same beliefs through a beam over a trie of the list, so every word written is a list word
+(`WordBeam`).
 
 ```python
 said = [0, 7, 7, 0, 15, 28, 28, 15, 14, 0]          # blank g g blank o space space o n blank
@@ -123,6 +145,7 @@ beliefs = np.log(np.full((len(said), alphabet.size), 0.01))
 beliefs[np.arange(len(said)), said] = np.log(0.72)  # a confident brain
 listed = WordBeam(["go", "on", "no"])
 assert listed.decode(beliefs) == "go on"
+assert greedy(beliefs) == "go on"                   # the plain reading, in one call
 ```
 
 On the 2.5-hour set the brain reads .33 characters after two passes, level with a CTC transformer
