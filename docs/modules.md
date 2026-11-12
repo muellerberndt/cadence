@@ -65,7 +65,7 @@ assert genes["teaching"] == "deep" and genes["learning_surprise"] is True
 
 ## How to read the tables
 
-Each table has the same columns.
+The tables of parts share these columns.
 
 | Column | What it says |
 | --- | --- |
@@ -75,8 +75,11 @@ Each table has the same columns.
 | Holds between moments | What a stream carries from one call to the next. `reset()` clears a stream's state and keeps what was learned and recorded |
 | Learns | Whether lessons, rewards or a rule of its own change it |
 | Arrives | `blank`: drawn from the seed or at zero, and learning shapes it. `fixed`: nothing in it learns. `empty`: a store without records. `trained`: shipped with trained synapses |
-| Grow and graft | First whether `grow` adds the part to a trained brain (`grow` adds it) or only `compose` builds it (at birth). Then what a graft does with it, below |
-| Reading | One measured figure with the benchmark or issue that holds it. A blank cell means no reading exists. A founder is a brain born from one seed, and fresh founders are seeds no setting was chosen on |
+| Grow and graft | First whether `grow` adds the part to a trained brain (`grow` adds it), only `compose` builds it (at birth), or it is a setting that `retune` changes in a living brain. Then what a graft does with it, below |
+| Reading | One measured figure with the benchmark or issue that holds it. A founder is a brain born from one seed, and fresh founders are seeds no setting was chosen on |
+
+A blank cell means that the column does not apply to the part or, under Reading, that no reading
+exists.
 
 No part of 0.98.0 arrives trained. The column is the place where a built-in module is marked
 `trained` when the library ships one ([parts that arrive trained](#parts-that-arrive-trained)).
@@ -103,7 +106,7 @@ continuous readings, an image, a wide vector.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | [A vector of numbers](start.md#2-observations-actions-and-streams) | Senses that are a row of numbers at each moment | `inputs=n` | nothing | its synapses into the first region, by lessons and rewards | blank | at birth; by region (`sensory`) | |
 | [Population code](senses.md#continuous-readings-a-population-code) | A few continuous readings (an angle, a velocity, a distance), each spread over tuned inputs | `code = cd.PopulationCode(ranges)` before the brain, then `inputs=code.inputs` | nothing | no | fixed | beside the brain; a checkpoint does not hold it | Cart-pole from four readings: 0 starts of 32 balanced on the raw readings, 1 to 22 through the code, three founders ([coaching chamber](../benchmarks/coaching/README.md), [#309](https://github.com/muellerberndt/cadence/issues/309)) |
-| [An image through a visual cortex](senses.md#image-inputs) | Small images | `inputs=(height, width)` or `(height, width, channels)`, with `features` and `field` | nothing | its receptive fields keep their draw; the regions that read them learn | fixed | at birth; by region (`visual`, with the regions above it) | An `act` at 84 by 84 takes 163 ms on one core, against 2.6 ms through learned fields ([pixel chamber](../benchmarks/pixels/README.md)) |
+| [An image through a visual cortex](senses.md#image-inputs) | An image, read through receptive fields that keep their draw | `inputs=(height, width)` or `(height, width, channels)`, with `features` and `field` | nothing | its receptive fields keep their draw; the regions that read them learn | blank | at birth; by region (`visual`, with the regions above it) | An `act` at 84 by 84 takes 163 ms on one core, against 2.6 ms through learned fields ([pixel chamber](../benchmarks/pixels/README.md)) |
 | [Learned receptive fields](senses.md#learned-receptive-fields) | A rendered screen or a spectrogram, where an object reads the same wherever it appears | `learned_fields=features` with an image `inputs` | nothing | yes, by a local rule of their own at every moment the brain accepts | blank | at birth; refused | Fresh frames .974 and a band of places no lesson showed .948, where a convolutional network trained by gradient reads 1.000 and .145, six fresh founders ([pixel chamber](../benchmarks/pixels/README.md), [#284](https://github.com/muellerberndt/cadence/issues/284)) |
 | [Ports beside the screen](senses.md#ports-beside-the-screen) | A body's own readings beside an image: health, a joint, the last action | `ports=k` with `learned_fields` | nothing | no: the values are read as given | fixed | at birth; refused, with the fields | |
 | [A fixed sparse code](senses.md#the-observation-code) | Wide observations: the code bounds the size of every memory's key | `code=units` | nothing | no | fixed | at birth; by region (`sensory`, which is the code) | At 12,824 inputs the recall memory's address map takes 1,322 MB uncoded and 8.9 MB at `code=1024` ([recall cost](memory.md#recall-cost)) |
@@ -177,12 +180,12 @@ assert command.shape == (1, 2)                                   # one choice pe
 
 ## Short-term state
 
-What a stream carries from one moment to the next. `reset()` clears all of it, and so does the
-end of an episode (`done`).
+What a stream carries from one moment to the next. `reset()` clears what a stream carries, and so
+does the end of an episode (`done`). The gains and maps a part learns are kept.
 
 | Part | For | Joins by | Holds between moments | Learns | Arrives | Grow and graft | Reading |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| [Neural activity](start.md#6-the-stream-state-what-carries-from-moment-to-moment) | The settled state the next settle starts from | every brain | the state itself, one row per stream | no | fixed | every brain; streams start afresh after `grow` and `graft` | |
+| [Neural activity](start.md#6-the-stream-state-what-carries-from-moment-to-moment) | The settled state the next settle starts from | every brain | the state itself, one row per stream | no | | every brain; the streams start afresh after `grow` and `graft` | |
 | [Working trace](memory.md#working-trace) | What the brain was just thinking: a cue across a short delay | every composed brain; `working_memory_amplitude=0.0` silences it | the association's settled activity of the moment before | the copy is fixed; the synapses that read it learn | blank | every composed brain; by region (`prefrontal`) | A cue carried across a short delay to its reward: 0.96 to 1.00 ([context tests](../tests/test_context_defaults.py)) |
 | [Heard history](memory.md#heard-history) | What the brain just heard: the same observation needs different answers after different earlier ones | a new brain holds one block, the moment before; `history_decays=(0.2, 0.8)` for slower blocks; `history_decays=()` removes it | the observations as heard, one fading block per decay | the blocks are fixed; the synapses that read them learn | blank | `grow(history_decays=...)` adds blocks; by region (`history`) | Grammar chamber, held-out sentences: .995 with the one block against .868 without, twelve lives ([the heard history in a new brain](memory.md#the-heard-history-in-a-new-brain)) |
 | [Efference copy](memory.md#efference-copy) | What the brain just did: sequencing its own actions under identical input | `efference_amplitude=1.0` | a fading one-hot of the commands it issued | the copy is fixed; the synapses that read it learn | blank | `grow(efference_amplitude=1.0)` adds it; by region (`efference`) | Alternation .97 and .93 against .50 and .40 with the trace alone ([rhythm chamber](../benchmarks/rhythm/README.md)) |
@@ -216,7 +219,7 @@ associative store. The weights themselves are the long-term skill, and
 | Part | For | Joins by | Holds between moments | Learns | Arrives | Grow and graft | Reading |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | [Recall memory](memory.md#the-recall-memory-in-full) | A notebook of recent moments: a moment heard once returns by its content or by its place | a new brain holds it up to 4,096 observation-code coordinates; `recall=False` removes it | 128 slots a stream, which `reset()` empties; learned address and position maps, which it keeps | yes: the maps, by lessons and by reward | blank: maps at zero, no slots | `grow(recall=True)` adds it; by region for its ports (`recall`, `next`), host's own for its slots and maps | Six fresh founders: copying unique tokens 1.00, n-back .99 to 1.00, a period of 40 at 1.00 ([one composition for sequences](memory.md#one-composition-for-sequences)) |
-| [More read heads](memory.md#several-heads-opt-in) | Two or more remembered facts in one answer | `recall_heads=2` | a read port and an address map per head | yes | blank | `grow(recall_heads=k)` adds heads | Two facts asked in one settle: every taught pair with two heads, 21 to 24% with one, four founders ([held heads](../benchmarks/attention/held_heads.py)) |
+| [More read heads](memory.md#several-heads-opt-in) | Two or more remembered facts in one answer | `recall_heads=2` | a read port and an address map per head | yes | blank | `grow(recall_heads=k)` adds heads; by region for their ports (`recall_1`, `next_1`, ...) | Two facts asked in one settle: every taught pair with two heads, 21 to 24% with one, four founders ([held heads](../benchmarks/attention/held_heads.py)) |
 | [When a read item happened](memory.md#when-a-read-item-happened-opt-in) | "How long ago?", "was A told before B?" | `recall_when=True` | nothing more | the synapses that read it learn | blank | at birth, or with a grown memory | "How long ago?" .87 to .95 against .51 to .80 without it ([sequence battery](../benchmarks/sequence/README.md)) |
 | [The learned value path](memory.md#the-learned-value-path-opt-in) | The answer is the token the read found, tokens no lesson used included | `recall_tokens=..., recall_gain=1.0` | one gain per read port | yes | blank: gains at zero | at birth; a brain with tokens grows no memory, heads or slots | Induction on tokens no lesson used: 0.00 without the path, 0.92 to 1.00 with it, six fresh founders ([sequence battery](../benchmarks/sequence/README.md)) |
 | [Its own actions in the slots](memory.md#its-own-actions-in-the-slots-opt-in) | What the brain did, found together with the moment it did it in | `recall_action=True` | the executed command in every slot | the synapses that read it learn | blank | at birth, or with a grown memory; no new slots afterwards | Pressing every third moment: .97 against .65 for the memory without it ([own action](../benchmarks/attention/own_action.py)) |
@@ -229,6 +232,14 @@ associative store. The weights themselves are the long-term skill, and
 | [The address of pairs](memory.md#a-million-records-opt-in) | A read whose cost grows far slower than the records | `pairs=16, expansion=16384, winners=256, candidates=4096` on the store; `longterm_pairs=16` and its settings in a brain | a table of the pairs each record is filed under | no | empty | beside the brain; at birth in a brain | A read among 1,000,000 records takes 3.4 ms on one core, 1.3 to 1.5 times its time at 100,000 ([#310](https://github.com/muellerberndt/cadence/issues/310)). A brain with it answers .960 to 1.000 of 100,000 facts heard once, twelve fresh founders ([the fifth declaration](../benchmarks/memory_scale/README.md#the-fifth-declaration-a-brain-with-its-own-records-at-100000)) |
 | [Heads, parts and chains](memory.md#a-million-records-opt-in) | Several records in one read, a question of several parts, a chain of facts | `read(cue, heads=k)`, `read_each(cues)`, `chain(cue, links)` | nothing more | no | | beside the brain | Among 1,000,000 facts: four parts with a head each 1.000, eight facts about one subject .994 to 1.000 ([#310](https://github.com/muellerberndt/cadence/issues/310)) |
 | [Keys held apart](memory.md#keys-held-apart-opt-in) | Two facts whose keys are one key keep two records | `apart=width`, then `write(key, value, source=row)` | a signature per record | no | | beside the brain | 1,000,000 facts, 4 in 100 sharing their key: found at 1.000 with it and .978 to .980 without ([memory scale](../benchmarks/memory_scale/README.md#facts-whose-keys-are-one-key), [#310](https://github.com/muellerberndt/cadence/issues/310)) |
+
+The recall memory's position code (`recall_position`, `recall_anchor`, `recall_relative`,
+`recall_slope`, `recall_grid`), its episode boundary (`recall_boundary`), a key over the last k
+events (`recall_window`), `recall_cortex_norm` and the late release of the value path
+(`recall_gain_after`, `recall_gain_next`) are settings of the one memory
+([recall settings](memory.md#recall-settings)). A brain's long-term records are a
+`LongTermRecords` with one `cd.LongTermMemory` per stream, and a read of either returns a
+`cd.LongTermRead`.
 
 ```python
 notebook = Brain.compose(inputs=4, actions=2, modules=(16,), seed=1)   # the two default memories
@@ -255,7 +266,7 @@ are opt-ins that decide when it learns and what it keeps.
 
 | Part | For | Joins by | Holds between moments | Learns | Arrives | Grow and graft | Reading |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| [Lessons](teach.md#supervised-lessons) | Show the right answer: every synapse compares its two neurons across three settles and takes a small step | `lesson(observations, labels)`, `step(observations, teacher=labels)` | the optimizer's running history | this is how the weights learn | blank | every brain; a grafted synapse starts its history afresh | |
+| [Lessons](teach.md#supervised-lessons) | Show the right answer: every synapse compares its two neurons across three settles and takes a small step | `lesson(observations, labels)`, `step(observations, teacher=labels)` | the optimizer's running history | this is how the weights learn | | every brain; a grafted synapse starts its history afresh | |
 | [Soft targets and row weights](teach.md#teach-a-distribution-weigh-the-rows) | A probability per action (a search, another brain), and rows that matter more than others | `lesson(observations, targets=p)`, `lesson(observations, labels, weights=w)` | nothing | as lessons | | every brain without `recall_tokens` or rehearsal | Inverse class weights raise the rarest answer on the two weakest founders from .74 and .83 to .92 and .93 ([scan-and-fire chamber](../benchmarks/coaching/README.md#the-scan-and-fire-chamber)) |
 | [The teaching point](teach.md#which-teaching-point) | The size and form of a lesson's step | `teaching="deep"` (a new brain's), `"normalized"` or `"founder"`; `retune(teaching=...)` moves a living brain | a running scale per synapse | as lessons | | `retune` changes it | |
 | [Surprise lessons](teach.md#lessons-only-where-the-answer-differs) | Teach only the rows the brain answers wrong | a new brain holds `learning_surprise=True`; `learning_surprise_share=True` for wide brains | nothing | as lessons | | `retune` changes it | Width 1,024: with the share every life ends at .95 to .99, and without it every fresh life collapses at least once ([width sweep](../benchmarks/sequence/README.md)) |
@@ -269,9 +280,11 @@ are opt-ins that decide when it learns and what it keeps.
 | [Records that fade](memory.md#records-that-fade-with-disuse-opt-in) | Unused records fade, and a skill practised for long fades far more slowly | `memory_fade=1.2e-4` | two sums of activity per key coordinate | no | fixed | at birth; `grow` and `graft` keep the brain's own | After 40,000 idle moments a skill practised for 2,000 keeps .36 and one practised for 40,000 keeps 1.00, 24 fresh founders ([#253](https://github.com/muellerberndt/cadence/issues/253)) |
 | [Imagination](start.md#private-imagination) | Settle a supplied sequence of observations on a private branch | `brain.imagine([observations, ...])` | nothing: the live state is untouched | no | | every brain | |
 
-The teaching recipes that use these parts are in [train a brain](teach.md): distilling another
-brain or a search, teaching on the brain's own path, self-play, a critic school and a value
-lesson.
+The teaching recipes that use these parts are in [train a brain](teach.md) and
+[learning from reward](reward.md): distilling another brain or a search, teaching on the brain's
+own path, self-play, a critic school and a value lesson. `predict`, `accuracy` and `fit` answer
+independent samples from rest and read the weights alone, so they test what the lessons left
+([evaluate without fooling yourself](teach.md#evaluate-without-fooling-yourself)).
 
 ```python
 cues, answers = np.eye(4), np.array([1, 0, 0, 1])
@@ -306,6 +319,9 @@ table lists where a brain's arithmetic runs and how a moment is solved.
 | [The fast solve](tune.md#which-settle-and-learning-options) | The same equations in fewer neuron updates | a new brain holds `learning_fast_settle=True` | nothing | no | | `retune` changes it | About half of a grammar-chamber pass on one Xeon core ([what a moment costs](tune.md#what-a-moment-costs)) |
 | [The compiled moment](tune.md#the-compiled-moment-opt-in) | The work around each solve in compiled calls on the CPU | `learning_compiled_moment=True` | nothing | no | | `retune` changes it | .54 to .56 of the default brain's seconds on one Xeon core ([the compiled moment](tune.md#the-compiled-moment-opt-in)) |
 | [Qualified teaching](tune.md#which-settle-and-learning-options) | Lessons refused unless every phase satisfies the equations | `learning_qualified=True, learning_nudged_steps=1024` | nothing | no | | `retune` changes it | |
+
+`dense_limit` and the environment variable `CADENCE_BACKEND` are settings of placement
+([backends](backends.md#the-default-backend)).
 
 ```python
 school = Brain.compose(inputs=4, actions=2, seed=0)
@@ -352,7 +368,7 @@ assert alphabet.decode(collapse([0, 7, 7, 0, 15, 0])) == "go"   # repeats and bl
 ## Growing and grafting
 
 Two calls put parts into a brain after its birth. Both return a new brain and leave the brains
-they read unchanged. Three more keep and change a brain.
+they read unchanged. The rows under them are the other ways to combine, keep and change a brain.
 
 | Call | For | What the new brain keeps | What starts at zero or afresh |
 | --- | --- | --- | --- |
@@ -402,12 +418,15 @@ no custom anatomy, and `graft` takes one.
 | `evolve`, `genes`, `cadence.genome.mutate` | Selection over genomes and settings | [evolve a brain](anatomy.md#evolve-a-brain) |
 | `Connectome` | A measured or hand-made wiring with named populations | [brains from a connectome](anatomy.md#brains-from-a-connectome) |
 | `NeuralGraph`, `NeuronModel`, `Adaptation`, `Apical`, `BrainState`, `Equilibrium`, `Nudge` | The runnable graph of graded neurons and what a settle returns | [how the brain settles](settling.md), [the API](api.md#neuralgraph-cadence) |
+| `cadence.blocks`: `layout`, `BlockTransport`, `block_contrast` | The cut of a graph into dense blocks that a settle sums over | [the API](api.md#blocks-cadenceblocks) |
 | `Learner`, `LearnerConfig`, `GraphHolder`, `LearningPhaseError`, `layered`, `embedded`, `learning_neuron_model` | The lesson's learner over any graph, and graphs to try it on | [the free/nudged rule](settling.md#learning-the-freenudged-rule), [the API](api.md#learning-cadencelearning) |
 | `ActorCritic`, `ActorCriticConfig`, `Maturity` | The reward learner over any learner | [a custom reward learner](reward.md#a-custom-reward-learner) |
 | `Arousal`, `ArousalConfig` | The arousal law of one stream, usable alone | [the API](api.md#arousal-cadencearousal) |
 | `Trace`, `Efference`, `History`, `Message`, `Recall` | The per-stream memories on any graph | [traces](memory.md#traces), [a held message](memory.md#a-held-message), [the API](api.md#streams-cadencestream) |
 | `FastSynapses`, `SynapticMemory`, `PatternSeparator` | Delta-rule stores and the code that keeps their keys apart | [standalone memory stores](memory.md#standalone-memory-stores) |
-| `LearnedCode` | The learned code's tables and rules | [the API](api.md#the-learned-code-cadencecode) |
+| `LearnedCode`, `cadence.fields.LearnedFields` | The tables and rules of the learned code and of the learned receptive fields | [the API](api.md#the-learned-code-cadencecode), [what the stage is](senses.md#what-the-stage-is) |
+| `LongTermMemory`, `LongTermRead`, `cadence.longterm.LongTermRecords` | The store of records, what a read of it returns, and a brain's own records | [the API](api.md#streams-cadencestream) |
+| `cadence.memories`: `Memories`, `Moment`, `EpisodicRecords` | The one contract every memory of a composed brain keeps, and the episodic records | [the API](api.md#the-memories-cadencememories) |
 | `calibrate_bias`, `naive_efficacy`, `preflight`, `seam_report` | Checks and starting points before the first lesson | [check before the first lesson](reward.md#check-before-the-first-lesson) |
 | `certificate`, `Certificate`, `ep_structure`, `EPStructure`, `row_mass`, `lipschitz_constant`, `conformance` | What a settle guarantees, and a neuron-by-neuron reference to check a backend against | [the settling certificate](settling.md#the-settling-certificate) |
 | `record_settlements`, `SettlementRecord` | Every settling step, for a display or an audit | [record every settling step](api.md#record-every-settling-step) |
@@ -419,7 +438,8 @@ no custom anatomy, and `graft` takes one.
 genome = cd.Genome.composed(6, 4, modules=(16,))           # the layout compose develops, to edit
 anatomy = cd.develop(genome, seed=0)                       # one connectome, the same for one seed
 custom = Brain.compose(6, 4, connectome=anatomy, seed=0, episodic=False)
-assert [region.name for region in genome.regions] == ["sensory", "association", "prefrontal", "motor"]
+names = [region.name for region in genome.regions]
+assert names == ["sensory", "association", "prefrontal", "motor"]
 assert custom.act(np.eye(6)[[0]], greedy=True).shape == (1,)
 ```
 
@@ -439,7 +459,7 @@ a space or nothing every 40 ms.
 | `frontend.Hearing` | Audio becomes a small image of 40 bands by 24 frames every 40 ms |
 | `learned_fields=64` | The fields read the image the same at every moment and in every band. They double the letter read from the sound, from .18 to .35 |
 | `fields_motor=1.0` with `learning_surprise=False` | A pathway from the fields straight to the motor, with every row taught: the letter said, given the letter held, rises from .42 to .78 |
-| `modules=(256,)` | A wider association holds more of what the fields hold (.575 against .431 of .626 on spoken words) |
+| `modules=(256,)` | A wider association holds more of what the fields hold: on spoken words .575 at 256 neurons against .431 at 64, where the fields hold .626 |
 | The actor's rates at zero | The brain learns from lessons alone |
 | `align.Alignments`, `decode.WordBeam`, `stream.StreamReader` | A teacher that places the letters, text through a word list, and live audio |
 
@@ -463,7 +483,7 @@ assert ears.parameters() == 1_285_724
 rows = hearing.steps(frames)                          # one row per 40 ms step
 labels = Alignments().even("first", len(rows), alphabet.encode("go on"))  # an even split to begin
 ears.reset()
-for row, label in zip(rows, labels):
+for row, label in zip(rows, labels, strict=True):
     ears.step(row[None], teacher=[label])             # one lesson and one act per step
 
 ears.fields.learning = False                          # read without moving the fields
@@ -485,7 +505,8 @@ speaker, is `benchmarks/letters/recipe.py` ([the recipe script](speech.md#the-re
 
 ### An agent that answers from facts it read once
 
-The brain of the [memory-scale benchmark](../benchmarks/memory_scale/README.md#the-third-declaration-a-brain-that-writes-and-reads-its-own-records),
+The brain of the memory-scale benchmark's
+[third declaration](../benchmarks/memory_scale/README.md#the-third-declaration-a-brain-that-writes-and-reads-its-own-records),
 at a small size. It hears a fact as four moments (who, did what, a turn, to whom), files it as a
 record of its own, and answers a question about it in a later episode.
 
@@ -497,10 +518,10 @@ record of its own, and answers a question about it in a later episode.
 | `longterm=64` | Each stream's records: the moment after the turn is written under the key, and read back before the settle of a later answer |
 
 ```python
-AGENTS, VERBS, PATIENTS, TURN = 6, 4, 4, 14     # inputs: agents 0-5, verbs 6-9, patients 10-13
+AGENTS, VERBS, PATIENTS, TURN = 6, 4, 4, 14     # agents 0-5, verbs 6-9, patients 10-13, the turn
 STREAMS = 8                                     # eight streams, each with records of its own
 
-def episode(agent, verb, patient=None):
+def fact(agent, verb, patient=None):
     """Four moments: who, did what, the turn, and to whom (silent in a question)."""
     rows, moments = np.arange(STREAMS), [np.zeros((STREAMS, 15)) for _ in range(4)]
     moments[0][rows, agent] = 1.0
@@ -512,12 +533,12 @@ def episode(agent, verb, patient=None):
 
 def tell(brain, about, patient):
     brain.reset()                               # a new episode: the notebook's slots are emptied
-    for moment in episode(about // VERBS, about % VERBS, patient):
+    for moment in fact(about // VERBS, about % VERBS, patient):
         brain.act(moment, greedy=True)          # the moment after the turn becomes a record
 
 def ask(brain, about, answer=None):
     brain.reset()
-    *heard, silent = episode(about // VERBS, about % VERBS)
+    *heard, silent = fact(about // VERBS, about % VERBS)
     for moment in heard:
         brain.act(moment, greedy=True)
     if answer is not None:
@@ -745,16 +766,16 @@ A module is worth shipping where three readings hold on fresh hosts, declared be
 
 | Module | What it holds | Arrives | Status |
 | --- | --- | --- | --- |
-| The place module | Where things are in a space, held while they are out of view and moved by the brain's own commands ([issue 320](https://github.com/muellerberndt/cadence/issues/320)) | trained | planned for v0.99.0, the first built-in module |
-| A visual system | The learned receptive fields of the pixel chamber ([#284](https://github.com/muellerberndt/cadence/issues/284)) | trained | in the backlog of [issue 321](https://github.com/muellerberndt/cadence/issues/321) |
-| The hearing of letters | The fields and pathway of the letters chamber ([#304](https://github.com/muellerberndt/cadence/issues/304)) | trained | in the backlog of [issue 321](https://github.com/muellerberndt/cadence/issues/321) |
+| The place module | Where things are in a space, held while they are out of view ([issue 320](https://github.com/muellerberndt/cadence/issues/320)) | trained | planned for v0.99.0, the first built-in module |
+| A visual system | Sight, from the learned receptive fields of [#284](https://github.com/muellerberndt/cadence/issues/284) | trained | in the backlog of [issue 321](https://github.com/muellerberndt/cadence/issues/321) |
+| The hearing of letters | Letters heard in speech, from [#304](https://github.com/muellerberndt/cadence/issues/304) | trained | in the backlog of [issue 321](https://github.com/muellerberndt/cadence/issues/321) |
 
 This table is where each built-in module is listed, with its card's readings, as it ships.
 
 ## What does not go together
 
-The library refuses a combination by name, with one sentence that says what to do instead. Each
-row below was read from the library's own refusal on 0.98.0.
+The library refuses these combinations with a `ValueError` of one sentence that names the part.
+Each row below was read from the library's own refusal on 0.98.0.
 
 | Part | The library refuses | Do instead |
 | --- | --- | --- |

@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Documentation
+
+- **[Parts of a brain](docs/modules.md)** (#321): the catalogue of every part a brain is built
+  from, in tables by role (senses, association regions, the motor, short-term state, memories,
+  learning, many lives, the speech pieces, growing and grafting, an anatomy of your own). Each
+  part has its purpose, the option or call that joins it, what it holds between moments,
+  whether it learns, how it arrives, what `grow` and `graft` do with it, and a reading with its
+  benchmark or issue. Every group has a runnable example, and four brains are composed for a
+  purpose: a transcriber, an agent that answers from facts it read once, a body taught by a
+  demonstrator and a creature that lives on reward. The refusals between parts are listed as
+  the library states them. Packaged trained modules are described as planned. No library code
+  changes.
+
 ## 0.98.0 - 2026-11-12
 
 A recogniser trained from recordings and their transcripts (`cadence.speech`), the read-speech
