@@ -380,10 +380,10 @@ library's first trained module.
 | Part | For | Joins by | Holds between moments | Learns | Arrives | Grow and graft | Reading |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | [`Space`](space.md#a-first-map) | A map of where things are: a place for every thing, held while the camera does not see it | `Space(interface)`, then `begin`, `advance` (or `predict` and `observe`), `where` | each thing's place, the radius of its area, its last seen movement and the moments since it was seen | the program is fixed; its place brain learns | blank | beside the brain | Its gates are S1 to S8 of [#320](https://github.com/muellerberndt/cadence/issues/320), read in the [tracking chamber](../benchmarks/tracking/README.md); no reading is posted |
-| [A place brain](space.md#the-regions) | The brain a space asks: how far a place moves in a step (`shift`), how far off it may be (`spread`), and the place a cue or a posture names (`found`) | `Space(interface)` composes one; `Interface`, `cadence.space.compose`, `cadence.space.anatomy` | nothing: every answer is settled from rest | yes: lessons made from the camera's reports alone, `advance(..., learn=True)` | blank | an anatomy of its own, so `grow` refuses it; its regions travel as the place module | |
+| [A place brain](space.md#the-regions) | The brain a space asks: how far a place moves in a step (`shift`), how far off it may be (`spread`), the place a cue or a posture names (`found`), and with `course=True` the share of its seen movement a thing keeps (`keep`) | `Space(interface)` composes one; `Interface`, `cadence.space.compose`, `cadence.space.anatomy` | nothing: every answer is settled from rest | yes: lessons made from the camera's reports alone, `advance(..., learn=True)` | blank | an anatomy of its own, so `grow` refuses it; its regions travel as the place module | |
 | [Several things, cues and kinds](space.md#several-things) | Reports that carry a look and no name, cues from another sense, and questions by kind and by place | `assign`, `hear`, `where_is(kind)`, `what_is_at(point)` | each row's look | no | | beside the brain | |
 | [Records of things at rest](space.md#records-of-things-at-rest) | A thing that stays put is filed by what it looks like and found again in a later scene | `Space(interface, records=n)`, `find(look)` | records in a `cd.LongTermMemory`, which stay over `begin` | no: records are written and revised | empty | beside the brain | |
-| [The place module](space.md#a-trained-module) | A place brain's trained regions inside another brain: the held place and the three answers, for the host to read | `space.save(path)` and `cd.load_module(path)`, or `cd.modules.load("place")` from v0.99.0; then `Brain.compose(..., trained=[module])` and `Space.load(module, brain=host)` | as the space holds them | held: a space in a host takes no lessons, and the host's lessons do not reach it | trained | at birth with `trained=`; `graft(module)` into a brain that holds its regions | Its gates are M1 to M5 of [#321](https://github.com/muellerberndt/cadence/issues/321); no reading is posted |
+| [The place module](space.md#a-trained-module) | A place brain's trained regions inside another brain: the held place and the brain's answers, for the host to read | `space.save(path)` and `cd.load_module(path)`, or `cd.modules.load("place")` from v0.99.0; then `Brain.compose(..., trained=[module])` and `Space.load(module, brain=host)` | as the space holds them | held: a space in a host takes no lessons, and the host's lessons do not reach it | trained | at birth with `trained=`; `graft(module)` into a brain that holds its regions | Its gates are M1 to M5 of [#321](https://github.com/muellerberndt/cadence/issues/321); no reading is posted |
 
 ```python
 from cadence.space import Interface, Space
@@ -747,7 +747,7 @@ a question of its own about it: in which third of the plane the hand lies.
 | --- | --- |
 | `cadence.space.Space` | It holds the hand's place while the camera reports nothing, and shows it to the brain at every step |
 | The place module, `trained=[place]` | The place regions arrive trained and held: the body does not learn them again |
-| The default brain around it | Its association reads the held place and the module's three answers, and learns the body's own task |
+| The default brain around it | Its association reads the held place and the module's answers, and learns the body's own task |
 | `Space.load(place, brain=body)` | The space runs on the place regions inside the body |
 | `lesson`, then `predict(beside=...)` and `observe` | Each step is taught and then settled once, on the body's own senses beside the place regions |
 
@@ -764,7 +764,7 @@ for t in range(1, 40):                                   # forty steps of lesson
     reports = start + t * velocity + rng.normal(0.0, 0.01, (4, 2))
     trainer.advance(np.ones(4, dtype=bool), reports, learn=True)
 place = cd.load_module(trainer.save("place.npz", card={"trained on": "forty steps"}))
-assert place.name == "place" and place.published == ["place", "shift", "spread", "found"]
+assert place.name == "place" and {"place", "shift", "spread", "found"} <= set(place.published)
 
 body = Brain.compose(inputs=4, actions=3, seed=1, trained=[place])   # four senses of its own
 hand = Space.load(place, brain=body)                     # the space, on the regions in the body
