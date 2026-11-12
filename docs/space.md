@@ -9,9 +9,10 @@ The module has two stages: **the map, then learned physics on the map.**
 
 - **The map** (`cadence.space.map`, this guide) is a sheet of neurons whose settled activity is
   the whole state. No list of things is given to it and none is kept beside it.
-- **Learned physics on the map** (the second stage, in work) lets a brain learn how things move
-  from the things it watches moving on its map, and then infer how a thing it does not see has
-  moved. The map is its control: a brain that has watched nothing answers as the map does.
+- **Learned physics on the map** (`cadence.space.physics`, `Map(physics=)`) lets a brain learn
+  how things move from the things it watches moving on its map, and then infer how a thing it
+  does not see has moved. The map is its control: a brain that has watched nothing answers as
+  the map does, moment for moment.
 
 The pieces are opt-in: a program that does not import `cadence.space` gets a library without it.
 
@@ -23,6 +24,9 @@ The pieces are opt-in: a program that does not import `cadence.space` gets a lib
 | Read every thing it holds | `things`, `sheet` | [the inventory](#the-inventory) |
 | A thing that leaves view | `empty`, `reach` | [a place seen empty](#a-place-seen-empty) |
 | Keep the map | `save`, `Map.load`, `reset` | [the carried state](#the-carried-state) |
+| Hold it in a brain, or load the built-in one | `Brain.space`, `cadence.modules.load("place")` | [a brain that holds a map](#a-brain-that-holds-a-map) |
+| The arm's own hand and sounds | `felt=`, `heard=`, `Sense` | [other senses](#other-senses) |
+| Learn how things move | `Map(physics=)`, `moment(learn=True)` | [learned physics](#learned-physics-on-the-map) |
 | The earlier form, kept as a baseline | `Space`, `Interface` | [the baseline](#the-baseline-places-held-by-a-program) |
 
 ## What the brain does and what the program does
@@ -39,6 +43,8 @@ The pieces are opt-in: a program that does not import `cadence.space` gets a lib
 | The inventory | Reads the peaks, their cells and the clock | Holds them |
 | Kinds | Takes each thing's kind from the caller as a number | Holds a kind as a code over the sheet's units |
 | Lessons | None | None: the map's graph has no taught synapse |
+| With physics: a thing's motion | Passes in the motion seen: a report less the place held the moment before, as direction-selective cells give it; blends it into the thing's velocities at `blend` | Holds the velocities beside the place, on velocity cells |
+| With physics: how things move unseen | Makes each lesson's target from what was seen | Moves the mass by kernels it learned, one a velocity, tied across cells and kinds |
 
 The map is wiring and carried activity. Recognising a thing from pixels is another module's
 work: the caller says "a thing of this kind at this place".
@@ -81,19 +87,27 @@ three units and two kinds share one unit at most. `codes=` takes a table of the 
 4. **Sight again.** A report within `step` of a piece of its kind's activity is that thing. Its
    old cells are cleared and the report's cells are written, so in view a thing's place is the
    latest report.
-5. **A place seen empty.** A cell the camera sees loses what the map carried into it. A thing
-   whose place is seen empty, with no report of its kind near, is not where it was seen. The map
-   drives it onto the cells out of sight within reach of that place and marks those cells as
-   doubt. With no such cell the thing is kept by its kind with no place.
-6. **It is found.** A report of the kind ends the doubt: the cells of doubt that hold the kind
+5. **A place seen empty.** The camera sees a thing's held place (the mean of its activity) and
+   no report of its kind claims it: the thing is not where it was held. The map drives it, once,
+   onto the cells out of sight within reach of that place and marks those cells as doubt. With
+   no such cell the thing is kept by its kind with no place. A place reported the moment before
+   is a report, as far off as the camera's error: it is seen empty where the camera still sees
+   all it saw around it (within `margin`) when it reported it. A camera turning off a thing
+   leaves it held; a hand that walks into a shadow, which a still camera sees gone, is placed
+   out of sight near there.
+6. **Sight only takes away.** A thing in doubt is never moved again by sight: the cells of its
+   patch that the camera sees are taken away, and with none left it is kept by its kind with
+   no place.
+7. **It is found.** A report of the kind ends the doubt: the cells of doubt that hold the kind
    are cleared, and so is the nearest piece of the kind within `stride`, as the same thing moved
    unseen. With none of its kind that near, the report is a new thing.
-7. **Questions.** "Where is the apple": the carried potentials drive `held`, the apple's code
+8. **Questions.** "Where is the apple": the carried potentials drive `held`, the apple's code
    opens the pools of its units, the sheet settles on those units alone and `where` holds the
    apple's places. "What is there": the settle keeps the cells
    around the place and `what` holds the code of the thing there.
-8. **The inventory.** Every piece of activity is a thing: its kind, its place (the mean of the
-   piece), its cells, the moments since a sense wrote it, and its state.
+9. **The inventory.** Every piece of activity is a thing: its kind, its place (the mean of the
+   piece), its cells, the moments since a sense wrote it, and its state. The pieces a thing in
+   doubt or in motion left, sensed last at one moment, are one thing.
 
 ```python
 def camera_sees(points):                               # the caller knows its camera
@@ -174,15 +188,20 @@ half of the place unless `within` says otherwise.
 | `cells` | The thing's cells, as numbers into `centers` (each cell is `size` metres around its middle) |
 | `pieces` | The cells by connected piece. A thing in doubt that was driven onto two shadows is one entry with two pieces |
 | `since` | The moments since a sense wrote it; 0 at the moment it is sensed |
-| `state` | `"seen"`, `"heard"` or `"felt"` at the moment a sense writes it; `"held"` at its last known place; `"near"` on cells of doubt; `"not known where"` |
+| `state` | `"seen"`, `"heard"` or `"felt"` at the moment a sense writes it; `"held"` at its last known place; `"near"` on cells of doubt; `"moving"` where physics carries it unseen; `"not known where"` |
+| `velocity` | With physics: the mean of its velocities, metres a moment |
 
 `sheet(kind)` gives the kind's activity as a picture, `(cells x, cells y)`, and `sheet()` every
 unit summed.
 
+`area(kind, rate=0.9)` gives the smallest set of cells that holds that share of a kind's
+activity, as flags on the cells.
+
 `Map(..., trace=True)` keeps every settle by sweep in `trajectory`, for a reader who watches the
-brain: `asked` (`"moment"`, `"where_is"` or `"what_is_at"`), `sweeps` and the activity of `map`,
-`where` and `what` at each sweep. A watched settle begins with the sheet at rest and takes two
-sweeps: the first settles the sheet on its drive, the second the two regions that read it.
+brain: `asked` (`"moment"`, `"where_is"` or `"what_is_at"`), `sweeps` and every region's
+activity at each sweep (`map`, `held`, `where`, `what`, `reference`, `clock`, `doubt`, `lost`). A
+watched settle begins with the sheet at rest and takes two sweeps: the first settles the sheet
+on its drive, the second the two regions that read it.
 
 ## A place seen empty
 
@@ -231,10 +250,12 @@ shadow at once: in its first five moments unseen the map read 14.6 cm where last
 
 ## The carried state
 
-`arrays()` gives the state: the potentials of `map`, `clock`, `lost` and `doubt`. `save(path)`
-writes the map's settings, its codes and that state as arrays and one JSON record, and
-`Map.load(path)` reads them back. `reset()` empties the carried activity, and the map then
-reports no thing.
+`arrays()` gives the state: the potentials of `map`, `clock`, `lost` and `doubt`.
+`save(path, card=)` writes the map's settings, its codes and that state (with physics, its
+kernels as taught and its moving mass) as arrays and one JSON record, with a checksum of every
+array and a card. `Map.load(path)` reads them back, and refuses by name a file with a pickled
+object, an array that differs from its checksum, or arrays that do not fit the map's cells.
+`reset()` empties the carried activity, and the map then reports no thing.
 
 ```python
 import tempfile
@@ -246,6 +267,80 @@ assert np.allclose(again.where_is(APPLE), apples) and len(again.things()) == 3
 again.reset()
 again.moment()
 assert again.things() == [] and len(again.where_is(APPLE)) == 0
+```
+
+## A brain that holds a map
+
+A brain holds a map as a part of itself: `brain.space = Map(...)`. `Brain.save` writes the map
+with the brain and `Brain.load` restores it, its carried state included. The map's regions are a
+graph of their own inside the brain object, beside the brain's connectome and outside it. The
+brain reads the map through `observation()`: the activity of `where` (one value a cell) and of
+`what` (one a code unit) as the latest moment settled them.
+
+```python
+import cadence as cd
+
+held = cd.modules.load("place")                        # the map the library ships
+host = cd.Brain.compose(inputs=held.count + held.units, actions=2, seed=0, backend="cpu")
+host.space = held
+host.space.moment(seen=[(APPLE, [0.2, 0.5])])
+host.act(host.space.observation()[None])               # the brain reads where and what
+again = cd.Brain.load(host.save(Path(tempfile.mkdtemp()) / "host.npz"))
+assert again.space.what_is_at([0.2, 0.5]) == APPLE
+```
+
+`cadence.modules.load("place")` gives the built-in map, and `cadence.load_module(path)` a map
+file from outside the library; both are a `Map`.
+
+## Other senses
+
+A sound's direction and distance, and the arm's own joint readings, name a place; the caller
+passes the place: `moment(heard=[(kind, place)])` and `moment(felt=[(kind, place)])`. The place
+the arm's joint readings name is the arm's forward kinematics, which the program computes as a
+robot knows its own arm. On the chamber's scenes of the arm's own hand, the map fed so reads
+0.5 cm while the hand is out of view, where the true kinematics read 0.1 cm and last seen
+12.6 cm.
+
+**What was tried.** `cadence.space.map.Sense` is a taught projection of a reading onto the map's
+cells: a sheet of tuned readings, one synapse a unit and cell, taught by the library's free and
+nudged phases with a quadratic nudge at the moments the thing is felt while seen. Taught on 300
+scenes of the arm's own hand, the place it names read 12.0 cm out of view at 12 tuned readings a
+joint and 8.8 cm at 24: the tuned sheet is too coarse for the arm's forward map at this size.
+
+## Learned physics on the map
+
+`Map(physics=...)` gives each cell velocity cells: a thing's mass at a cell is shared among
+velocities on a grid of `per` by `per` velocities over `top` metres a moment on each axis. The
+still velocity is the map's own sheet, carried exactly as the map carries it; every other
+velocity is a region of its own.
+
+- **Sight.** A report writes the thing's place, as the map does. Its velocity is what the brain
+  sees of its motion: the report less the place the map held the moment before, as
+  direction-selective cells give it. The brain sees motion; it does not compute a line. The seen
+  motion is written as weights on the four velocities around it and blended into the velocities
+  the thing carried, at the share `blend`.
+- **Carry.** One kernel of three by three cells for each velocity, tied across every cell and
+  every kind, moves the mass each moment. The kernels are born to stay: a brain that has watched
+  nothing answers as the map does, moment for moment.
+- **Lessons** (`moment(learn=True)`). Whenever a thing is seen at two moments in a row, the mass
+  it carried the moment before is the drive, and the target is that mass moved, on each velocity,
+  by that velocity and by what the motion seen differs from the thing's own velocity. The
+  library's free and nudged phases with a quadratic nudge step the kernels. Where things keep
+  their motion the kernels learn to move each velocity's mass by that velocity; where things
+  stop or turn, by less or aside.
+- **Out of view.** The kernels move the mass. A thing whose predicted place the camera sees,
+  with no report, is not there; of a thing whose predicted place is out of sight, the moving
+  mass the camera sees is taken away. `motion()` gives each cell's velocity and the share of its
+  mass that moves.
+
+Nothing about movement is given: the kernels hold what the brain learned.
+
+```python
+moving = Map((-1.0, 1.0, -0.2, 1.4), physics={"per": 3})
+for step in range(30):                                 # a hand seen moving right, 1.5 cm a moment
+    moving.moment(seen=[(HAND, [-0.6 + 0.015 * step, 0.6])], learn=True)
+moving.teach()
+assert moving.physics.lessons > 0 and moving.things()[0]["velocity"][0] > 0.01
 ```
 
 ## Settings and cost
