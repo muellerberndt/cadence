@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+### Documentation
+
+- **[Parts of a brain](docs/modules.md)** (#321): the catalogue of every part a brain is built
+  from, in tables by role (senses, association regions, the motor, short-term state, memories,
+  learning, many lives, the speech pieces, growing and grafting, an anatomy of your own). Each
+  part has its purpose, the option or call that joins it, what it holds between moments,
+  whether it learns, how it arrives, what `grow` and `graft` do with it, and a reading with its
+  benchmark or issue. Every group has a runnable example, and five brains are composed for a
+  purpose: a transcriber, an agent that answers from facts it read once, a body taught by a
+  demonstrator, a creature that lives on reward and a body that knows where its hand is. The
+  refusals between parts are listed as the library states them.
+- **Parts that arrive trained** ([docs/modules.md](docs/modules.md#parts-that-arrive-trained),
+  #321): the module file and why loading one runs no code, `save_module`, `load_module`,
+  `compose(..., trained=)` and `graft(module)` with runnable examples (a skill saved, loaded
+  and arriving in a host before any lesson; a host that learns its own task while the module
+  stays to the bit; files and hosts refused by name), what a hosted module does, and the
+  `cadence.space` pieces with the place module in the catalogue's tables. The API reference
+  gains `trained=`, `save_module` and a section for `cadence.modules`.
+
+- **Corrections to the guides, read against the code**: `retune` changes a tied brain's settings
+  and refuses only `retune(tied=...)`; the `Brain(connectome, ...)` signature lists `longterm`
+  and the `ActorCriticConfig` signature `hold` and `entropy`; what `Lives` refuses includes a
+  held message, long-term records, tied projections, `actor_entropy` and the read's cortex at
+  unit norm; `grow(recall=True)` also gives a brain without a heard history the one block a new
+  brain's memory holds, and `recall_founder=True` grows the memory without it; the API
+  reference gains a section for `cadence.speech.frontend`, `align` and `decode`, and the speech
+  guide a line each for `LogMel`, `mel_bank`, `windows`, `even_path` and `greedy`.
+
 ### Space: where things are while they are out of view (#320)
 
 `cadence.space` is imported by name, and `import cadence` loads none of it. The guide is
@@ -54,34 +82,6 @@ with a blind spot and an ear, in plain NumPy; scenes of the arm's own hand, a pe
 rooms of several things; a scene file (`cadence-tracking-scene/1`) scored as a generated scene
 is; the controls (last seen, a constant-velocity Kalman filter, the arm's true kinematics, a
 matched LSTM and transformer) and the floors (a default brain asked the position at every step).
-
-### Documentation
-
-- **[Parts of a brain](docs/modules.md)** (#321): the catalogue of every part a brain is built
-  from, in tables by role (senses, association regions, the motor, short-term state, memories,
-  learning, many lives, the speech pieces, growing and grafting, an anatomy of your own). Each
-  part has its purpose, the option or call that joins it, what it holds between moments,
-  whether it learns, how it arrives, what `grow` and `graft` do with it, and a reading with its
-  benchmark or issue. Every group has a runnable example, and five brains are composed for a
-  purpose: a transcriber, an agent that answers from facts it read once, a body taught by a
-  demonstrator, a creature that lives on reward and a body that knows where its hand is. The
-  refusals between parts are listed as the library states them.
-- **Parts that arrive trained** ([docs/modules.md](docs/modules.md#parts-that-arrive-trained),
-  #321): the module file and why loading one runs no code, `save_module`, `load_module`,
-  `compose(..., trained=)` and `graft(module)` with runnable examples (a skill saved, loaded
-  and arriving in a host before any lesson; a host that learns its own task while the module
-  stays to the bit; files and hosts refused by name), what a hosted module does, and the
-  `cadence.space` pieces with the place module in the catalogue's tables. The API reference
-  gains `trained=`, `save_module` and a section for `cadence.modules`.
-
-- **Corrections to the guides, read against the code**: `retune` changes a tied brain's settings
-  and refuses only `retune(tied=...)`; the `Brain(connectome, ...)` signature lists `longterm`
-  and the `ActorCriticConfig` signature `hold` and `entropy`; what `Lives` refuses includes a
-  held message, long-term records, tied projections, `actor_entropy` and the read's cortex at
-  unit norm; `grow(recall=True)` also gives a brain without a heard history the one block a new
-  brain's memory holds, and `recall_founder=True` grows the memory without it; the API
-  reference gains a section for `cadence.speech.frontend`, `align` and `decode`, and the speech
-  guide a line each for `LogMel`, `mel_bank`, `windows`, `even_path` and `greedy`.
 
 ## 0.98.0 - 2026-11-12
 

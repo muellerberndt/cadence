@@ -1,7 +1,10 @@
-# The tracking chamber's declared run (issue #320)
+# The tracking chamber's declared run (issue #320): a draft
 
-Declared on the issue before the first life of a declared founder. A gate is changed only by a
-declared amendment, never after a reading.
+This page is a draft. The run is declared on the issue, with the commit of this page, before the
+first life of a declared founder, and it is declared once the development readings clear the
+bars. A gate is changed only by a declared amendment, never after a reading. Gates S9 to S12 of
+the issue (kinds and places both ways, the body's own turning and moving, a change unseen, many
+things) have no panel in the chamber, and this page gains them before the declaration.
 
 ## Founders and scenes
 
@@ -43,6 +46,11 @@ founders. A standard error is over the twelve founders, of the founder-paired di
   times the Kalman filter's, and on each of `slow`, `stop` and `turn` it is under the Kalman
   filter's by two standard errors. Read for `space` at the mean; the peak, the seen movement and
   `space-site` are reported beside it.
+  **Proposed amendment, to be declared with the run:** on `turn` the error is at or under 1.1
+  times the Kalman filter's. Its ground, on development founders 0, 1 and 2: a turn that begins
+  out of view leaves no trace in what the camera reports, and the matched LSTM and transformer
+  taught the true position at every step read 11.2 cm and 10.9 cm there against the Kalman
+  filter's 9.0 cm.
 - **S3, it stays.** On `stays_own` and `stays_other`: the answer moves by 0 over the 1,000 steps
   at rest out of view, and on `stays_other` the error over the last 100 steps is at or under the
   error while the thing was seen.

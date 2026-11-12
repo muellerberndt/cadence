@@ -119,16 +119,18 @@ Two readings of the brain's `shift` and one control (`read=`, which can be set a
 | `shift` | 64 | How far the place moves in this step: 32 tuned movements an axis, from -6 cm to 6 cm. |
 | `spread` | 16 | How far off a place predicted here is found to be: 16 tuned distances from 2 mm to 2 m. |
 | `found` | 48 | The place a cue or a posture names: 24 tuned positions an axis. |
+| `keep` | 8 | The share of its seen movement a thing that moves by itself keeps in this step, from 0 to 1 (read with `course=True`). |
 
-Every synapse runs from the inputs toward the outputs: the inputs to `hidden`, `hidden` to the
-outputs, and one-way synapses that start at zero from `motion` and `moved` to `shift`, from
-`unseen` and `motion` to `spread` and from `heard` and `felt` to `found`. A settle therefore has
-one answer whatever it began from, and the regions answer in a host brain as they do alone.
+The inputs drive `hidden`, `hidden` drives the outputs, and one-way synapses that start at zero from `motion` and `moved` to `shift`, from
+`unseen` and `motion` to `spread` and to `keep`, and from `heard` and `felt` to `found`. With
+`Interface(feedback=True)` the outputs also drive the hidden region, and the brain settles
+between the two. Without it a settle has one answer whatever it began from: that arm is the
+baseline the reciprocal brain is read against.
 Each output is one softmax, read at a temperature of 0.05.
 
 ```python
 assert list(interface.regions) == ["place", "moved", "motion", "unseen", "heard", "felt",
-                                   "hidden", "shift", "spread", "found"]
+                                   "hidden", "shift", "spread", "found", "keep"]
 state = space.state()                                  # plain arrays, one row a thing
 assert state["place"].shape == (4, interface.regions["place"])
 assert state["at"].shape == (4, 2) and state["radius"].shape == (4,)
@@ -246,6 +248,8 @@ takes no lessons: the regions were taught in their donor.
 | `smooth` | `True` | A thing in steady movement takes, in view, the place its line gives for the latest report; `False` takes the report itself |
 | `sight` | `None` | For a camera and a blind spot that stay where they are: a place out of view does not move into a cell where things are seen in more than this share of the visits |
 | `records` | `0` | Records of things at rest, by what they look like |
+| `course` | `False` | A thing that moves by itself is moved by its seen movement times the brain's `keep`, in place of the brain's `shift` |
+| `patience` | `3` | With `sight`: the steps in a row a place is predicted in sight before it goes back and rests |
 | `track` | `False` | Keep the synapses each lesson moved |
 | `module` | `None` | The name of the place regions inside a host brain |
 

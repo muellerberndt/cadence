@@ -13,7 +13,7 @@ from cadence.space.place import AREA, INPUTS, OUTPUTS
 
 PLANE = (-1.0, 1.0, -0.2, 1.4)
 SMALL = dict(place=8, moved=5, motion=9, counted=3, unseen=4, heard=(6, 4), felt=4, hidden=16,
-             shift=12, spread=6, found=8)
+             shift=12, spread=6, found=8, keep=4)
 
 
 def small(**settings) -> Space:
@@ -59,11 +59,12 @@ def test_an_interface_names_its_regions_and_reads_back():
     regions = interface.regions
     assert list(regions) == [*INPUTS, "hidden", *OUTPUTS]
     assert regions == {"place": 32, "moved": 27, "motion": 56, "unseen": 8, "heard": 320,
-                       "felt": 512, "hidden": 128, "shift": 64, "spread": 16, "found": 48}
-    assert interface.inputs == 955 and interface.outputs == 128
+                       "felt": 512, "hidden": 128, "shift": 64, "spread": 16, "found": 48,
+                       "keep": 8}
+    assert interface.inputs == 955 and interface.outputs == 136
     assert Interface(plane=PLANE).regions["felt"] == 256  # two joints: 16 readings each
     assert interface.limits == ((-np.pi, np.pi),) * 3
-    assert interface.slots == (32, 32, 16, 24, 24)
+    assert interface.slots == (32, 32, 16, 24, 24, 8)
     assert Interface.from_dict(interface.to_dict()) == interface
     with pytest.raises(ValueError, match="low below high"):
         Interface(plane=(1.0, -1.0, 0.0, 1.0))
@@ -146,6 +147,7 @@ def test_the_state_holds_every_regions_activity_as_plain_arrays():
     assert state["at"].shape == (1, 2) and state["radius"].shape == (1,)
     assert state["hidden"].shape == (1, 16) and state["spread"].shape == (1, 6)
     assert state["found"].shape == (1, 2, 8) and state["heard"].any()
+    assert state["keep"].shape == (1, 4) and np.isclose(state["keep"].sum(), 1.0)
     # the place region held a peak on each axis around the position before the step
     peak = state["place"].reshape(2, interface.place)
     centers = np.linspace(PLANE[0], PLANE[1], interface.place)
@@ -165,6 +167,69 @@ def test_reports_without_names_go_to_the_nearer_rows_of_their_look():
     cues = space.hear(np.array([[0.1, 0.5, 7], [0.3, 0.2, 9]]))
     assert np.isnan(cues[:2]).all() and cues[2].tolist() == [0.1, 0.5]
     assert np.isnan(space.hear(np.zeros((0, 3)))).all()
+
+
+def test_a_thing_heard_while_seen_teaches_the_place_a_cue_names():
+    space = small()
+    rng = np.random.default_rng(4)
+    start = np.array([[0.1, 0.6], [-0.4, 0.9]])
+    ear = np.array(space.interface.ear)
+    space.begin(start, looks=[1, 2])
+    for _ in range(12):
+        away = start - ear
+        cues = np.column_stack([np.arctan2(away[:, 1], away[:, 0]), np.linalg.norm(away, axis=1)])
+        space.advance([True, True], start + rng.normal(0.0, 0.01, (2, 2)), cues=cues, learn=True)
+    assert space.work["lesson_row_sweeps"] > 0 and space.state()["heard"].any()
+
+
+def test_a_thing_that_does_not_come_out_where_it_would_be_seen_is_held_back():
+    space = small(read="seen")  # the seen movement itself moves the place
+    start = np.array([[-0.5, 0.5]])
+    space.begin(start)
+    for t in range(1, 11):  # seen moving right at 2 cm a step
+        space.advance([True], start + [[0.02 * t, 0.0]])
+    last = space.where()[0].copy()
+    hidden = np.zeros(1, dtype=bool)
+    for _ in range(10):  # behind a pillar: carried on along its seen movement
+        space.predict()
+        space.observe(hidden, np.zeros((1, 2)), in_sight=[False])
+    carried = space.where()[0].copy()
+    assert carried[0, 0] > last[0, 0] + 0.15
+    for _ in range(3):  # it would be seen by now if it had kept going, and no report comes
+        space.predict()
+        space.observe(hidden, np.zeros((1, 2)), in_sight=[True])
+    place, radius = space.where()
+    assert np.allclose(place, (last + carried) / 2.0, atol=0.03)  # halfway along the hidden path
+    assert radius[0] >= np.linalg.norm(carried - last) / 2.0  # the circle reaches both ends
+    space.predict()
+    space.observe(hidden, np.zeros((1, 2)), in_sight=[True])
+    assert np.array_equal(space.where()[0], place) and space.state()["live"].tolist() == [False]
+
+
+def test_a_thing_on_a_hidden_stretch_waits_at_its_middle():
+    space = small(read="seen")
+    start = np.array([[-0.5, 0.5]])
+    space.begin(start)
+    for t in range(1, 11):  # seen moving right at 2 cm a step, to x = -0.30
+        space.advance([True], start + [[0.02 * t, 0.0]])
+
+    def looks(points):  # a pillar's shadow hides x from -0.29 to 0.11
+        x = np.asarray(points)[:, 0]
+        return (x < -0.29) | (x > 0.11)
+
+    hidden = np.zeros(1, dtype=bool)
+    errors = []
+    for t in range(1, 41):  # the thing stops 8 cm into the shadow and rests there
+        truth = np.array([-0.30 + min(0.02 * t, 0.08), 0.5])
+        space.predict()
+        place = space.observe(hidden, np.zeros((1, 2)), in_sight=looks)
+        errors.append(np.linalg.norm(place[0] - truth))
+    place, radius = space.where()
+    assert abs(place[0, 0] - (-0.30 + 0.21)) < 0.03  # the middle of the hidden stretch
+    assert max(errors) < 0.16 and errors[-1] < 0.16 and radius[0] >= errors[-1]
+    assert space.state()["live"].tolist() == [False]  # it waits, and the brain is not asked
+    space.advance([True], np.array([[-0.22, 0.5]]))  # seen again: the report writes the place
+    assert np.allclose(space.where()[0], [[-0.22, 0.5]])
 
 
 def test_a_kind_is_answered_with_its_places_and_a_place_with_its_kind():
