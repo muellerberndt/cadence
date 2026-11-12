@@ -15,10 +15,17 @@
 - **The acquisition protocol's tests read the same case on a loaded machine** (#317): the
   fixture runs of `benchmarks/acquisition/test_protocol.py` take the protocol's largest budget
   (300 seconds) in place of ten. They end at their first stage in about a second, so the cases
-  they write follow their updates and not the machine's speed, and the fixture asserts the case
-  it wrote.
+  they write follow their updates whatever the machine's speed, and the fixture asserts the
+  case it wrote.
 
 ### Documentation
+
+- **A reloaded brain and BLAS threads** (#315): the backends guide and the save section of
+  the first guide state that on the NumPy path (`CADENCE_FUSED=0`) a reloaded brain's
+  continued life repeats to the bit at one BLAS thread count, with the reading that located
+  it (four compositions of 35 continue to other last bits with the thread variables unset
+  than at one thread), and that the thread variables at 1 give a reloaded life that repeats
+  on another run or machine.
 
 - **[Parts of a brain](docs/modules.md)** (#321): the catalogue of every part a brain is built
   from, in tables by role (senses, association regions, the motor, short-term state, memories,
