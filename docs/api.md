@@ -312,7 +312,7 @@ population, so action indices keep their meaning after loading. A saved maturity
 Lives(inputs, actions, lives, *, seeds=None, backend="cpu", device=None, precision=None, **options)
 ```
 
-Many continuing brains of one anatomy, each composed by `Brain.compose(inputs, actions, seed=seeds[i],
+Many continuing brains of one anatomy (no trained module: `trained=` is refused by name), each composed by `Brain.compose(inputs, actions, seed=seeds[i],
 **options)`, the default composition with its store of place records (`episodic=False` composes without it;
 seeds `range(lives)` by default), stepped together, one stream each. Every life has its own parameters, optimizer, critic, eligibility, recall
 memory (its slots, its address and position maps), carried gains, working trace and random state.
@@ -655,6 +655,40 @@ nothing past it (`clamp=False`). `code(readings)` takes `(readings,)` or `(rows,
 below its high, `per` under 2, a `floor` outside `[0, 1)`, a `clamp` that is no bool, and readings of another width or not
 finite. It learns nothing and is not part of a checkpoint. Guide:
 [continuous readings](senses.md#continuous-readings-a-population-code).
+
+## The map of things (`cadence.space.map`, `cadence.space.physics`)
+
+```text
+Map(plane, cells=(32, 26), *, units=16, kinds=None, weight=3, codes=None, level=0.02,
+    empty="near", reach=0.15, step=0.15, stride=0.5, margin=0.02, seed=0, trace=False,
+    physics=None, backend="cpu")
+```
+
+What is where, held in a sheet's own settled activity: `cells` of the `plane` (`(x low, x high,
+y low, y high)`, metres) by `units` of a kind's code. Imported by name; `import cadence` loads
+none of it. The map's graph has no taught synapse.
+
+| Call | What it does |
+| --- | --- |
+| `moment(seen=(), heard=(), felt=(), lit=None, *, learn=False)` | One moment: each sense's reports as `(kind, (x, y))`; `lit` the cells in sight, flags `(cells,)` or a function of `(points, 2)` places. A report writes its place on its kind's units; a thing whose held place the camera sees with no report is driven once onto the cells out of sight within `reach` (`empty="near"`; `"clear"` and `"keep"` are the other rules); sight only takes cells away from a thing in doubt. With `physics` and `learn`, a thing seen at two moments in a row gives the kernels a lesson |
+| `where_is(kind) -> (things, 2)` | The places of a kind, by a settle with the kind's code as the cue |
+| `what_is_at(place, within=None) -> int or None` | The kind at a place, by a settle that keeps the cells around it |
+| `things() -> list[dict]` | The inventory read off the map: `kind`, `place`, `cells`, `pieces`, `since`, `state` (`seen`, `heard`, `felt`, `held`, `near`, `moving`, `not known where`), with physics `velocity` |
+| `area(kind, rate=0.9)`, `sheet(kind=None)`, `motion()` | The smallest set of cells holding `rate` of a kind's activity; its activity as a picture; with physics, each cell's velocity and moving share |
+| `observation()` | `where` and `what` as the latest moment settled them, for a brain that holds the map (`Brain.space`) |
+| `reset()`, `arrays()`, `save(path, card=None)`, `Map.load(path)`, `Map.card_of(path)` | The carried state emptied, read, written with a checksum of every array, read back (refusing a pickled object, a changed array, arrays that do not fit) |
+| `teach()` | Give the physics kernels the lessons gathered so far |
+| `trajectory` | With `trace=True`, every region's activity by sweep of the latest settle |
+
+`physics=True` or `physics={"top": 0.024, "per": 5, "blend": 0.1, "rate": 0.1}` gives the map
+velocity cells (`Physics`): one kernel a velocity, tied across cells and kinds, born to stay, and
+taught by the library's free and nudged phases with a quadratic nudge. `sparse_codes(kinds,
+units, weight=3, seed=0)` gives codes of `weight` units, any two sharing one at most. `Sense(map,
+ranges, per, rate=0.3)` is a taught projection of a reading onto the map's cells (`teach`,
+`named`). `cadence.modules.load("place")` and `cadence.load_module(path)` read a map file as a
+`Map`; `Brain.save` and `Brain.load` keep a brain's `space`. Refuses a plane whose low is not
+below its high, under 3 cells an axis, an `empty` other than the three, codes that are not zeros
+and ones with a one in every row. Guide: [space](space.md).
 
 ## Hearing, alignment and decoding (`cadence.speech.frontend`, `cadence.speech.align`, `cadence.speech.decode`)
 

@@ -352,6 +352,14 @@ def test_lives_refuse_a_part_their_axis_does_not_cover(options, named):
         cd.Lives(INPUTS, ACTIONS, 2, backend="torch", device="cpu", **{**OPTIONS, **options})
 
 
+def test_lives_refuse_a_trained_module_by_name(tmp_path):
+    donor = cd.Brain.compose(inputs=3, actions=2, seed=0, backend="cpu")
+    module = cd.load_module(donor.save_module(tmp_path / "m.npz", name="m",
+                                              inputs=["sensory"], published=["motor"]))
+    with pytest.raises(ValueError, match="trained module"):
+        cd.Lives(INPUTS, ACTIONS, 2, trained=[module], **OPTIONS)
+
+
 def test_lives_refuse_a_code_drawn_from_a_seed():
     with pytest.raises(ValueError, match="code of the observation"):
         cd.Lives(32, ACTIONS, 2, backend="torch", device="cpu", code=64, **OPTIONS)
