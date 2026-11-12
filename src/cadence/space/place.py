@@ -818,8 +818,9 @@ class Space:
         """Hold rows on a hidden stretch at its middle. A moving row with no report read whose
         stretch is unknown is looked ahead for along its seen movement, 400 steps at most: the
         stretch runs from where it was last seen to the first place it would be in sight again
-        after being out of it. ``predicted`` is given back with no row past the middle of its
-        stretch; a row held there is marked to rest."""
+        after being out of it, or to the plane's edge where it would stay hidden that far.
+        ``predicted`` is given back with no row past the middle of its stretch; a row held there
+        is marked to rest."""
         rows = np.flatnonzero(moving & ~read & self._known & ~np.isfinite(self._exit).all(axis=1))
         ahead = np.arange(1, 401)[:, None]
         for row in rows:
@@ -829,6 +830,8 @@ class Space:
             hidden = np.flatnonzero(~seen & inside)
             if len(hidden) and seen[hidden[0] :].any():
                 self._exit[row] = path[hidden[0] + int(np.argmax(seen[hidden[0] :]))]
+            elif len(hidden) and not inside.all():  # hidden as far as the plane reaches
+                self._exit[row] = path[int(np.flatnonzero(inside)[-1])]
         out = predicted.copy()
         for row in np.flatnonzero(~read & np.isfinite(self._exit).all(axis=1)):
             along = self._exit[row] - self._seen_at[row]
