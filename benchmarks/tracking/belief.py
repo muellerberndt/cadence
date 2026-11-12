@@ -160,6 +160,26 @@ def follow(scene: w.Scene, hazard: float, read: str = "mean", cell: float = 0.04
     return answers, held, size, (time.perf_counter() - began) * 1000.0 / (scene.steps - 1)
 
 
+def fit_hazard(training: list[w.Scene], hazards: tuple[float, ...] = (
+        0.002, 0.005, 0.01, 0.02, 0.03, 0.05, 0.1)) -> float:
+    """The hazard at which the belief's mean is nearest the true position over the steps out of
+    view of ``training``: a search over a grid, on the training scenes only, as the Kalman
+    filter's noise terms are fitted."""
+    best: tuple[float, float] | None = None
+    for hazard in hazards:
+        total, count = 0.0, 0
+        for scene in training:
+            out = ~scene.in_view[:, 0]
+            out[0] = False
+            total += float(tr.errors(scene, follow(scene, hazard)[0])[out, 0].sum())
+            count += int(out.sum())
+        mean = total / max(count, 1)
+        if best is None or mean < best[0]:
+            best = (mean, hazard)
+    assert best is not None
+    return best[1]
+
+
 def read_scene(scene: w.Scene, hazards: tuple[float, ...]) -> None:
     out = ~scene.in_view[:, 0]
     out[0] = False
@@ -184,7 +204,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scene", type=Path)
     parser.add_argument("--founder", type=int)
     parser.add_argument("--hazards", type=float, nargs="+", default=[0.01, 0.03, 0.1])
+    parser.add_argument("--fit", type=int, default=0,
+                        help="fit the hazard on this many of the founder's training scenes")
     args = parser.parse_args(argv)
+    if args.fit and args.founder is not None:
+        half = args.fit // 2  # as the lives' --vary: half among discs of the scenes' own
+        training = (w.scenes("other", tr.seed(args.founder, "train"), half)
+                    + w.scenes("other", tr.seed(args.founder, "train") + 50, args.fit - half,
+                               vary=True))
+        args.hazards = [fit_hazard(training)]
+        print(f"founder {args.founder}: hazard fitted on {args.fit} training scenes: "
+              f"{args.hazards[0]}", flush=True)
     if args.scene:
         read_scene(w.load(args.scene), tuple(args.hazards))
     if args.founder is not None:
