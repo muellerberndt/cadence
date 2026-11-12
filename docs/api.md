@@ -131,7 +131,8 @@ Brain(connectome, *, episodic=True, consolidation=0.05,
       maturity_recovery=200000.0,
       working_memory_decay=0.0, working_memory_amplitude=3.0,
       efference_decay=0.2, efference_amplitude=0.0,
-      history_decays=(), history_amplitude=3.0, message=None, carried_gain=0.0, recall=False,
+      history_decays=(), history_amplitude=3.0, message=None, longterm=None, carried_gain=0.0,
+      recall=False,
       learning=None,
       reward=None, slots=1, arousal=None, seed=0,
       backend="cpu", device=None, precision=None, inputs=None, code=None, learned_code=None, apical=0.0,
@@ -144,7 +145,9 @@ neuron) for an efference copy, `history` (one sensory-width block per entry of
 `history_decays`; one block of `learned_code` units with a learned code) for a heard
 history, with `message=units` a `message` population of `message_phases * units` neurons (and
 with `message_read=True` a `message_read` population of `units`) for a
-[held message](memory.md#held-message), with `recall=True` the `recall` and `next` regions, and with `learned_code=units` a
+[held message](memory.md#held-message), with `longterm=records` beside that message a `longterm` population of one
+neuron per sensory neuron (and `longterm_h` for each further head, `LongTermRecords.ports(heads)`) for its
+[long-term records](memory.md#long-term-records), with `recall=True` the `recall` and `next` regions, and with `learned_code=units` a
 `code` population of that many neurons with its complete dictionary, lateral and predictor
 synapses ([the learned code](senses.md#the-learned-code)).
 `inputs` names the observation width when the sensory region is a `code` of that width.
@@ -154,7 +157,7 @@ further neurons for the values a row carries after the image.
 `tied` maps two of the connectome's populations `(pre, post)` to `(blocks of pre, blocks of
 post)`: the synapses from `pre` to `post` at one place in their blocks are one tie group of the
 learner, and the blocks start as copies of one block ([tied projections](anatomy.md#tied-projections)).
-`genes` carries the `recall_*` settings and `learned_code_fields`. `learning` and `reward` default to the composed
+`genes` carries the `recall_*`, `message_*` and `longterm_*` settings and `learned_code_fields`. `learning` and `reward` default to the composed
 `LearnerConfig` and `ActorCriticConfig`; `arousal` is `True`, a field mapping or an
 `ArousalConfig`. With the store, `compose` fills in `memory_rate=0.2` (`memory_rate=1.0` keeps
 the last outcome); with `memory_choice=True` it fills in `memory_context=0.5` and
@@ -169,7 +172,7 @@ of 8 decisions, demonstrations recorded at 1.0, 24 active separation cells) are 
 | `memory_context`, `memory_extinction` need `memory_choice`; `memory_context_hold` (`"unchanged"` or `"punished"`) needs `memory_choice` and `memory_context` | `ValueError` |
 | `learned_code` at least 2; `learned_code_fields` without it, `code` beside it, an image brain, the `torch` backend, or a connectome without the region's populations and complete synapses | `ValueError` |
 | `learned_fields` at least 2, on an image of at least 8 by 8 pixels, without `code` or `learned_code`; `image`, `ports` or `fields_motor` without `learned_fields`; `ports` negative or not an integer; `fields_motor` negative or not finite; `grow` and `graft` of a brain that holds them | `ValueError` |
-| `tied` a mapping from `(pre, post)` to two positive integers, one of them 1 or the two equal; a projection the layout lacks or a population the connectome lacks; blocks that do not divide a region; blocks that hold different synapses or start at different signs or contact counts; a synapse two ties name; a learned code's own projections; the sensory region of `learned_fields` with `ports`; `retune`, `Lives` and `graft` of a tied brain, and `grow` of a region a tie cuts into blocks | `ValueError` |
+| `tied` a mapping from `(pre, post)` to two positive integers, one of them 1 or the two equal; a projection the layout lacks or a population the connectome lacks; blocks that do not divide a region; blocks that hold different synapses or start at different signs or contact counts; a synapse two ties name; a learned code's own projections; the sensory region of `learned_fields` with `ports`; `retune(tied=...)`, a construction setting (`retune` changes a tied brain's other settings); `Lives` and `graft` of a tied brain, and `grow` of a region a tie cuts into blocks | `ValueError` |
 | `memory_context` in `[0, 1)`; `memory_extinction` in `[0, 1]`; `working_memory_decay`, `efference_decay` in `[0, 1)` | `ValueError` |
 | `maturity` boolean; `maturity_scale` and `maturity_recovery` other than their founders (10.0 and 200,000) need `maturity` | `ValueError` |
 | `maturity_scale` finite and at least `1e-12`; `maturity_recovery` finite and at least 1 | `ValueError` |
@@ -337,9 +340,10 @@ records, with `memory_fade` and `maturity` where named), with or without the rec
 heard history and its gains per block, the carried gains and arousal (`arousal=True`, for `live`), at any
 teaching point, with one or several regions, observers and motor slots. It refuses, naming the part:
 `memory_choice`, a store with a separator, a learned or fixed code, an apical compartment, rehearsal, qualified
-teaching, the efference copy, a recall memory with several heads, a window, the command, the read of when or tokens,
-image inputs, and MPS, which has no float64 for the settles' checks. A moment any life refuses is refused for
-every life.
+teaching, the efference copy, a held message (`message`), long-term records (`longterm`), tied projections
+(`tied`), `actor_entropy`, a recall memory with several heads, a window, the command, the read of when, tokens or
+the cortex at unit norm, image inputs, and MPS, which has no float64 for the settles' checks. A moment any life
+refuses is refused for every life.
 
 ## Arousal (`cadence.arousal`)
 
@@ -652,6 +656,41 @@ below its high, `per` under 2, a `floor` outside `[0, 1)`, a `clamp` that is no 
 finite. It learns nothing and is not part of a checkpoint. Guide:
 [continuous readings](senses.md#continuous-readings-a-population-code).
 
+## Hearing, alignment and decoding (`cadence.speech.frontend`, `cadence.speech.align`, `cadence.speech.decode`)
+
+Opt-in: `import cadence` loads none of them. Guide: [speech](speech.md).
+
+```text
+log_mel(audio, *, rate=16000, mels=40, frame=400, hop=160, fft=512, bank=None) -> (frames, mels)
+mel_bank(mels=40, *, rate=16000, fft=512) -> (mels, fft // 2 + 1)
+windows(frames, *, window=24, stack=4) -> (steps, window, mels)
+Hearing(mean, std, window=24, stack=4, clip=3.0, scale=0.3)
+Hearing.fit(utterances, *, window=24, stack=4, clip=3.0, scale=0.3, floor=1e-3) -> Hearing
+LogMel(hearing, *, rate=16000, frame=400, hop=160, fft=512)
+even_path(steps, transcript) -> (steps,)
+forced_path(log_beliefs, transcript, *, blank=0, states=False) -> (steps,)
+log_beliefs(brain, utterances) -> list of (steps, symbols)
+Alignments(*, blank=0)
+Alphabet(letters="abcdefghijklmnopqrstuvwxyz'")
+collapse(symbols, *, blank=0) -> list[int]
+greedy(log_beliefs, alphabet=None) -> str
+WordBeam(words, *, counts=None, alphabet=None, beam=16, top=8, prior_weight=0.0, word_bonus=0.0)
+```
+
+The guide explains `log_mel` and `Hearing` under [hearing](speech.md#hearing-audio-as-an-image),
+`Alignments`, `forced_path` and `log_beliefs` under
+[training from transcripts](speech.md#training-from-transcripts), and `Alphabet`, `collapse` and
+`WordBeam` under [reading text](speech.md#reading-text-with-and-without-a-word-list), with their
+settings and refusals in [one table](speech.md#settings-refusals-and-cost). The other five names:
+
+| Name | Behaviour |
+| --- | --- |
+| `frontend.mel_bank` | The triangular filters, evenly spaced on the mel scale from 0 Hz to half the rate, that `log_mel` sums a frame's power spectrum through. `log_mel(audio, bank=bank)` takes a bank built once. Refuses fewer than one band, a rate that is not positive and a spectrum of fewer than two points. |
+| `frontend.windows` | The `window` latest frames at the end of each step of `stack` frames, the first frame repeated before the audio began, each window less its own mean; a trailing part of a step is dropped. `Hearing.rows(windows)` standardizes them, and `Hearing.steps(frames)` does both. Refuses frames that are not `(frames, mels)` with at least one frame, and a window or stack that is not positive. |
+| `frontend.LogMel` | `log_mel` at named settings joined to a `Hearing`: samples in, a brain's rows out. `steps(samples)` gives the rows of `hearing.steps(log_mel(samples))`, with `log_mel(samples)`, `rows(held)` and `shape` beside it; `window` and `hop` hold a frame's length and stride in samples, `stack` and `frames` the frames of a step and of its window. |
+| `align.even_path` | Each step's symbol on an even split of the steps among the transcript's symbols, with no blank: the path `Alignments.even` keeps before the brain believes anything. Refuses fewer than one step and an empty transcript. |
+| `decode.greedy` | The text of the most believed symbol at each step, repeats and blanks collapsed: `alphabet.decode(collapse(...))` of the beliefs' argmax, with `Alphabet()` where none is given. |
+
 ## Corrections and streaming (`cadence.speech.correct`, `cadence.speech.stream`)
 
 Opt-in: `import cadence` loads neither. Guide: [speech](speech.md).
@@ -762,7 +801,7 @@ names the release that retired its setting ([CHANGELOG](../CHANGELOG.md)).
 ```text
 ActorCritic(learner, critic, config=None, seed=0)
 ActorCriticConfig(gamma=0.99, lam=0.9, eta=0.5, eta_bias=None, eta_critic=0.05,
-                  dopamine_cap=1.0, eligibility_steps=None)
+                  dopamine_cap=1.0, eligibility_steps=None, hold=None, entropy=0.0)
 Maturity(scale, recovery, use=0.0)
 ```
 
@@ -771,7 +810,10 @@ critic on the `critic` neurons, eligibility traces and a dopamine signal. Fields
 and the decision contract are in [learning from reward](reward.md#settings). `dopamine_cap`
 and `eligibility_steps` are constants of a composed brain (1.0 and 12; `actor_dopamine_cap` and
 `actor_eligibility_steps` are refused by name); an `ActorCriticConfig`
-given as `reward=` is the expert route and keeps them as given.
+given as `reward=` is the expert route and keeps them as given. `hold` and `entropy` are a composed
+brain's opt-ins `actor_hold` ([a reward many moments after the
+decision](reward.md#a-reward-many-moments-after-the-decision)) and `actor_entropy`
+([exploration](reward.md#exploration-over-long-reward-lives-opt-in)).
 
 | Member | Behaviour |
 | --- | --- |
