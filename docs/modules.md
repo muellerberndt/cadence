@@ -5,29 +5,27 @@ and ways to learn. This page lists every part the library ships, in tables group
 a small example per group and five whole brains built for a purpose. Scan for the parts your
 purpose needs, then follow a part's name to the guide that owns it.
 
-A part joins a brain in one of four ways:
+A part joins a brain in one of five ways:
 
 | Way | When | Looks like |
 | --- | --- | --- |
 | An option of `Brain.compose` | at birth | `Brain.compose(inputs=4, actions=2, memory_choice=True)` |
 | `brain.grow(...)` | later, on a trained brain, which keeps what it learned | `brain.grow(recall=True)` |
 | `brain.graft(donor, ...)` | later, as trained regions of another brain | `host.graft(donor, ["sensory", "association", "motor"])` |
-| A package beside the brain | around the brain's moments, in your own program | `cd.PopulationCode`, `cd.LongTermMemory`, `cadence.speech`, `cadence.space` |
+| A module the brain holds | at any moment; saved and loaded with the brain | `brain.space = cd.modules.load("place")` |
+| A package beside the brain | around the brain's moments, in your own program | `cd.PopulationCode`, `cd.LongTermMemory`, `cadence.speech` |
 
-A trained module, a file of regions that arrive with their synapses trained, joins by the
-first way or the third: `Brain.compose(..., trained=[module])` builds a brain around it, and
-`brain.graft(module)` puts it into a brain that holds its regions
-([parts that arrive trained](#parts-that-arrive-trained)).
-
-A word on names: `modules=` sets the widths of the association regions, one row of the tables
-below. It is another thing than a trained module, which `trained=` takes.
+A module is a part that arrives as a file. The library ships the place module, a map of where
+things are, and a module file from outside the library loads the same way
+([modules](#modules-parts-that-arrive-as-files)). A word on names: `modules=` sets the widths of
+the association regions, one row of the tables below, and has nothing to do with these files.
 
 | You want | Section |
 | --- | --- |
 | To see what a brain holds with nothing named | [the default brain](#the-default-brain) |
 | A part by its role | [senses](#senses), [association regions](#association-regions), [the motor](#the-motor), [short-term state](#short-term-state), [memories](#memories), [learning](#learning), [many lives](#many-lives-and-where-they-run), [speech](#speech-pieces), [space](#space-pieces), [growing and grafting](#growing-and-grafting), [an anatomy of your own](#parts-for-an-anatomy-of-your-own) |
 | A whole brain for a task | [brains for a purpose](#brains-for-a-purpose) |
-| A part that comes trained | [parts that arrive trained](#parts-that-arrive-trained) |
+| A module from a file: the built-in map, or a file of your own | [modules](#modules-parts-that-arrive-as-files) |
 | To know which parts refuse each other | [what does not go together](#what-does-not-go-together) |
 
 Every example on this page runs as written, after these imports:
@@ -78,16 +76,15 @@ The tables of parts share these columns.
 | Joins by | The exact option or call |
 | Holds between moments | What a stream carries from one call to the next. `reset()` clears a stream's state and keeps what was learned and recorded |
 | Learns | Whether lessons, rewards or a rule of its own change it |
-| Arrives | `blank`: drawn from the seed or at zero, and learning shapes it. `fixed`: nothing in it learns. `empty`: a store without records. `trained`: a module file, whose synapses were trained before it was loaded |
+| Arrives | `blank`: drawn from the seed or at zero, and learning shapes it. `fixed`: nothing in it learns. `empty`: a store without records, or a map that holds no thing |
 | Grow and graft | First whether `grow` adds the part to a trained brain (`grow` adds it), only `compose` builds it (at birth), or it is a setting that `retune` changes in a living brain. Then what a graft does with it, below |
 | Reading | One measured figure with the benchmark or issue that holds it. A founder is a brain born from one seed, and fresh founders are seeds no setting was chosen on |
 
 A blank cell means that the column does not apply to the part or, under Reading, that no reading
 exists.
 
-One part of the tables arrives trained: the place module ([space pieces](#space-pieces)). A
-module file of your own arrives trained wherever you load it
-([parts that arrive trained](#parts-that-arrive-trained)).
+No part arrives with trained synapses. The place module arrives as a file: wiring with no
+taught synapse, and a map that holds no thing ([modules](#modules-parts-that-arrive-as-files)).
 
 What a graft does with a part is one of four things:
 
@@ -372,31 +369,61 @@ assert alphabet.decode(collapse([0, 7, 7, 0, 15, 0])) == "go"   # repeats and bl
 
 ## Space pieces
 
-`cadence.space` is an opt-in package beside the brain, as `cadence.speech` is. A `Space` is a
-program that holds a place for every thing between moments, and it asks a small brain of its own
-how far a place moves while the camera does not see it. That brain's trained regions are the
-library's first trained module.
+`cadence.space.map` is an opt-in package, imported by name as `cadence.speech` is. A brain with
+a spatial model has a map of things: the map holds where things are, each place bound to what
+the thing is, in the settled activity of a sheet of neurons. Its graph has no taught synapse.
 
 | Part | For | Joins by | Holds between moments | Learns | Arrives | Grow and graft | Reading |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| [`Space`](space.md#a-first-map) | A map of where things are: a place for every thing, held while the camera does not see it | `Space(interface)`, then `begin`, `advance` (or `predict` and `observe`), `where` | each thing's place, the radius of its area, its last seen movement and the moments since it was seen | the program is fixed; its place brain learns | blank | beside the brain | Its gates are S1 to S8 of [#320](https://github.com/muellerberndt/cadence/issues/320), read in the [tracking chamber](../benchmarks/tracking/README.md); no reading is posted |
-| [A place brain](space.md#the-regions) | The brain a space asks: how far a place moves in a step (`shift`), how far off it may be (`spread`), the place a cue or a posture names (`found`), and with `course=True` the share of its seen movement a thing keeps (`keep`) | `Space(interface)` composes one; `Interface`, `cadence.space.compose`, `cadence.space.anatomy` | nothing: every answer is settled from rest | yes: lessons made from the camera's reports alone, `advance(..., learn=True)` | blank | an anatomy of its own, so `grow` refuses it; its regions travel as the place module | |
-| [Several things, cues and kinds](space.md#several-things) | Reports that carry a look and no name, cues from another sense, and questions by kind and by place | `assign`, `hear`, `where_is(kind)`, `what_is_at(point)` | each row's look | no | | beside the brain | |
-| [Records of things at rest](space.md#records-of-things-at-rest) | A thing that stays put is filed by what it looks like and found again in a later scene | `Space(interface, records=n)`, `find(look)` | records in a `cd.LongTermMemory`, which stay over `begin` | no: records are written and revised | empty | beside the brain | |
-| [The place module](space.md#a-trained-module) | A place brain's trained regions inside another brain: the held place and the brain's answers, for the host to read | `space.save(path)` and `cd.load_module(path)`, or `cd.modules.load("place")` from v0.99.0; then `Brain.compose(..., trained=[module])` and `Space.load(module, brain=host)` | as the space holds them | held: a space in a host takes no lessons, and the host's lessons do not reach it | trained | at birth with `trained=`; `graft(module)` into a brain that holds its regions | Its gates are M1 to M5 of [#321](https://github.com/muellerberndt/cadence/issues/321); no reading is posted |
+| [The place module, a `Map`](space.md#a-first-map) | Where things are, held while they are out of view: "where is the apple?" and "what is at this place?" | `cd.modules.load("place")` or `Map(plane)`; `brain.space = ...` for a brain that holds it; `moment(seen=, heard=, felt=, lit=)` at each moment | every thing the senses reported: its kind, its last known place, the moments since a sense wrote it, and the doubt of a thing seen missing | no | empty | held by the brain object: `save`, `load`, `graft` and `retune` keep it | A hand that rests behind a pillar, on the two recorded scenes: 10.7 cm out of view, where its last seen place reads 15.5 cm; 1.2 cm in view, the camera's own error ([`mapped.py`](../benchmarks/tracking/mapped.py)) |
+
+How the senses change the map ([space](space.md#how-a-position-travels)):
+
+- **A thing enters when it is sensed.** A report is a kind, given as a number, and a place:
+  `seen=` for the camera, `heard=` for the place a sound names, `felt=` for the place the body's
+  own readings name. No list of things is given beforehand.
+- **With no sensory input nothing changes.** The last known place stays in the state, to the
+  bit, for any number of moments.
+- **A report updates a place.** A report near a thing of its kind is that thing, seen again or
+  moved unseen: its old place is cleared and the new one written.
+- **A place seen empty.** `lit` says which places the camera sees. A thing whose last known
+  place the camera sees, with no report of its kind, is not there. The map places it once on the
+  places out of sight within `reach` of where it was last seen; with none, it is kept by its
+  kind as "not known where". After that, sight only takes places away from it. `empty="keep"`
+  and `empty="clear"` are the other rules.
+- **Questions are answered by settling.** `where_is(kind)` gives the places of a kind and
+  `what_is_at(place)` the kind there. `things()` lists every thing with its kind, place, state
+  and the moments since it was sensed.
+
+Learned physics on the map, how a thing moves while it is out of view, follows in the next
+release. `cadence.space.Space`, the earlier form that holds a row a thing in a program, is kept
+as the baseline the map is read against
+([the baseline](space.md#the-baseline-places-held-by-a-program)).
 
 ```python
-from cadence.space import Interface, Space
+from cadence.space.map import Map
 
-interface = Interface(plane=(-1.0, 1.0, -0.2, 1.4), hidden=32)   # a plane of 2 m by 1.6 m
-space = Space(interface, seed=0, backend="cpu")
-space.begin(np.array([[0.2, 0.5], [-0.4, 1.0]]))         # two things at their starting positions
-space.advance(np.array([True, False]),                   # the camera reports the first one
-              np.array([[0.30, 0.62], [0.0, 0.0]]))
-where, radius = space.where()                            # each place, and its area's radius at .90
-assert np.allclose(where[0], [0.30, 0.62])               # the seen thing is where it was reported
-assert np.allclose(where[1], [-0.4, 1.0])                # the unseen thing stays where it was
+APPLE, CUP = 0, 1
+
+def camera(points):                                     # the camera sees right of x = -0.1
+    return points[:, 0] > -0.1
+
+room = Map((-1.0, 1.0, -0.2, 1.4))                      # a plane of 2 m by 1.6 m, no thing in it
+room.moment(seen=[(APPLE, [0.0, 0.6])], lit=camera)     # the apple enters when it is seen
+room.moment(heard=[(CUP, [-0.5, 1.0])])                 # the cup enters when it is heard
+for _ in range(100):
+    room.moment()                                       # no sensory input: nothing changes
+assert np.allclose(room.where_is(APPLE), [[0.0, 0.6]], atol=0.001)    # "where is the apple?"
+room.moment(heard=[(CUP, [-0.3, 1.0])])                 # heard elsewhere: the cup's place moves
+assert room.what_is_at([-0.3, 1.0]) == CUP and room.what_is_at([-0.5, 1.0]) is None
+room.moment(lit=camera)                                 # the camera sees the apple's place empty
+apple, cup = room.things()
+assert apple["state"] == "near" and not camera(room.centers[apple["cells"]]).any()
+assert cup["state"] == "held"                           # out of sight, the cup stays
 ```
+
+The apple is held on the places out of sight near where it was last seen: it is not where the
+camera saw it, so it is where the camera cannot see, near there.
 
 ## Growing and grafting
 
@@ -407,11 +434,8 @@ they read unchanged. The rows under them are the other ways to combine, keep and
 | --- | --- | --- | --- |
 | [`brain.grow(...)`](grow.md#grow-a-trained-brain) | New, empty parts on a trained brain: `recall=True`, `recall_heads=k`, `history_decays=(...)`, `efference_amplitude=a`, `slots=(...)` | every learned weight, the optimizer's history, the memories' records and settings, the actor, the critic and the arousal | every synapse that joins a new part to the brain, and the streams |
 | [`brain.graft(donor, regions)`](grow.md#graft-trained-regions-into-a-larger-brain) | Trained regions of another brain in this one, or a whole brain as one region (`into=`) | the donor's synapses, biases and gains among the grafted regions; everything else is this brain's own | the joints to the rest of this brain (`joints="zero"`), the grafted synapses' optimizer history, and the streams |
-| [`brain.graft(module)`](#graft-a-module-into-a-brain-that-holds-its-regions) | A trained module file in a brain that holds its regions | the module's synapses, biases and gains, held unless `freeze=False`; everything else is this brain's own | the joints (`joints="kept"` keeps them) and the streams |
-| [`Brain.compose(..., trained=[module])`](#build-a-brain-around-a-module) | A new brain built around a trained module | the module's synapses, held | everything of the brain's own, and the synapses that read the module |
-| [`brain.save_module(path, ...)`, `cd.load_module(path)`](#make-a-module) | A brain's trained regions as a module file, and the file as a module | the brain is unchanged | nothing |
 | [A second skill through lessons](grow.md#combine-the-skills-of-two-brains) | Two brains whose layouts differ | grow a slot on one, then teach it with the other's answers | the new slot |
-| [`brain.save(path)`, `Brain.load(path)`](start.md#8-save-and-load) | The same life continued later, or on another backend | everything: weights, memories, streams, a pending action | nothing |
+| [`brain.save(path)`, `Brain.load(path)`](start.md#8-save-and-load) | The same life continued later, or on another backend | everything: weights, memories, streams, a pending action, a map the brain holds | nothing |
 | [`brain.retune(...)`](tune.md#retune-the-same-life) | Another value of a setting in a life under way | everything | nothing; it refuses a setting that builds a part |
 
 `grow(recall=True)` gives a brain the memory a new brain holds, and with it the heard history's
@@ -438,6 +462,33 @@ grafted = host.graft(donor, ["sensory", "association", "motor"], freeze=True)
 assert (grafted.predict(kinds) == donor.predict(kinds)).all()   # the skill arrives
 assert not grafted.learner.plastic_synapses.all()         # the grafted synapses are frozen
 ```
+
+### What `graft` carries from a donor brain
+
+With the donor brain in hand, `graft` carries its regions into another brain
+([graft trained regions](grow.md#graft-trained-regions-into-a-larger-brain)).
+
+- **The donor's weights are kept.** The grafted neurons take the donor's biases and gains, and
+  the synapses among them take the donor's contact counts, efficacies and plasticity masks. They
+  drive their neurons as they did in the donor.
+- **The joints start at zero, or are kept.** A joint is a synapse of the host between a grafted
+  neuron and the rest. With `joints="zero"` the graft settles at first on what it reads from its
+  own regions, and learning gives the joints weight. With `joints="kept"` the joints keep the
+  host's own weights, so the graft is read at once and the host changes at once.
+- **`freeze=True` holds the graft.** The grafted synapses and neurons stop learning, while the
+  joints and the rest of the host learn. Set `brain.learner.plastic_synapses` and
+  `plastic_neurons` back to `True` to let the graft learn again.
+- **What a graft carries.** Weights, biases and gains of the regions you name. Each grafted pair
+  of regions holds the same number of neurons, and every synapse of the donor among them is a
+  synapse of the host.
+- **What a graft leaves.** The memories and their records, the settings, the actor, the critic,
+  the arousal and a map the brain holds are the host's own. The streams start afresh.
+- **A limit.** A donor region that settled with its donor's motor feedback, as an association
+  region does, settles in the host without that feedback
+  ([how a new part joins the brain](grow.md#how-a-new-part-joins-the-brain)).
+
+The example above grafts a trained pathway into a newborn and checks that the skill arrives:
+the grafted brain answers as its donor does, before any lesson.
 
 ## Parts for an anatomy of your own
 
@@ -468,8 +519,9 @@ no custom anatomy, and `graft` takes one.
 | `record_settlements`, `SettlementRecord` | Every settling step, for a display or an audit | [record every settling step](api.md#record-every-settling-step) |
 | `Receipt`, `canonical_json` | A result with its sources, verifiable later | [receipts](evaluate.md#receipts) |
 | `save`, `load` | A learner's checkpoint (`Brain.save` keeps a whole brain) | [checkpoints](api.md#checkpoints-cadencecheckpoint) |
-| `load_module`, `cadence.modules`: `Module`, `load`, `names`, `save`, `host` | A trained module file: read one, list and load the library's own, write one, and name a module's regions in a brain | [parts that arrive trained](#parts-that-arrive-trained), [the API](api.md#modules-cadencemodules) |
-| `cadence.space`: `Interface`, `Space`, `Tuned`, `anatomy`, `compose` | The place brain's regions, the program that holds places, tuned units read as a belief, and the place brain's anatomy and composition | [space](space.md) |
+| `load_module`, `cadence.modules`: `names`, `load` | A module file read, and the modules the library ships listed and loaded | [modules](#modules-parts-that-arrive-as-files), [the API](api.md#modules-cadencemodules) |
+| `cadence.space.map`: `Map`, `Sense`, `sparse_codes` | The map of things, a taught projection of a reading onto its cells, and codes of several units a kind | [space](space.md), [the API](api.md#the-map-of-things-cadencespacemap) |
+| `cadence.space`: `Space`, `Interface` | The earlier form, a program that holds a row a thing, kept as the baseline | [the baseline](space.md#the-baseline-places-held-by-a-program) |
 | `available_backends` | The backends this machine can run | [backends](backends.md) |
 
 ```python
@@ -737,345 +789,94 @@ which skills come and go, add `maturity=True` and `memory_fade`
 ([maturity](reward.md#maturity-opt-in),
 [records that fade](memory.md#records-that-fade-with-disuse-opt-in)).
 
-### A body that knows where its hand is
+### A brain that knows where things are
 
-A body whose camera loses sight of its hand, built around the place module of the
-[space guide](space.md). The space holds the hand's place between moments, and the body answers
-a question of its own about it: in which third of the plane the hand lies.
+A brain whose camera looks at a kitchen and then turns away, from the
+[space guide](space.md#a-brain-that-holds-a-map). The map it holds keeps where each thing was
+last seen, and answers where a thing is and what is at a place.
 
 | Part | Why |
 | --- | --- |
-| `cadence.space.Space` | It holds the hand's place while the camera reports nothing, and shows it to the brain at every step |
-| The place module, `trained=[place]` | The place regions arrive trained and held: the body does not learn them again |
-| The default brain around it | Its association reads the held place and the module's answers, and learns the body's own task |
-| `Space.load(place, brain=body)` | The space runs on the place regions inside the body |
-| `lesson`, then `predict(beside=...)` and `observe` | Each step is taught and then settled once, on the body's own senses beside the place regions |
+| The place module, `cd.modules.load("place")` | The map of things: each thing's kind and last known place, held while the camera looks elsewhere |
+| `brain.space` | The brain holds the map, and `save` and `load` keep it with the brain |
+| `inputs=place.count + place.units` | The brain reads the map's `observation()`: `where`, one value a cell, and `what`, one a code unit |
+| `lit=` at each moment | The places the camera sees. A turn that reports nothing leaves each thing where it was |
 
 ```python
-from cadence.space import Interface, Space
+APPLE, BREAD = 0, 1
 
-interface = Interface(plane=(-1.0, 1.0, -0.2, 1.4), heard=(6, 4), felt=4, hidden=32)
-rng = np.random.default_rng(0)
-trainer = Space(interface, seed=0)                       # a place brain of its own, to be taught
-start = np.array([[-0.6, 0.2], [0.5, 0.3], [0.0, 0.8], [-0.2, 1.0]])
-velocity = np.array([[0.010, 0.004], [-0.008, 0.006], [0.0, 0.0], [0.006, -0.010]])
-trainer.begin(start)
-for t in range(1, 40):                                   # forty steps of lessons from reports
-    reports = start + t * velocity + rng.normal(0.0, 0.01, (4, 2))
-    trainer.advance(np.ones(4, dtype=bool), reports, learn=True)
-place = cd.load_module(trainer.save("place.npz", card={"trained on": "forty steps"}))
-assert place.name == "place" and {"place", "shift", "spread", "found"} <= set(place.published)
+def ahead(points):                                       # the camera looks to the right
+    return points[:, 0] > 0.0
 
-body = Brain.compose(inputs=4, actions=3, seed=1, trained=[place])   # four senses of its own
-hand = Space.load(place, brain=body)                     # the space, on the regions in the body
-STEPS, own = 8, np.zeros((16, 4))                        # sixteen hands a scene; own senses quiet
+def behind(points):                                      # and then turns to the left
+    return points[:, 0] < 0.0
 
-def third(x):
-    return np.digitize(x, [-1 / 3, 1 / 3])               # the left, middle or right of the plane
-
-def scene(teach):
-    """Hands the camera reports for three steps, then loses. Returns who was answered right."""
-    places = rng.uniform([-0.9, -0.1], [0.9, 1.3], (16, 2))
-    hand.begin(places + rng.normal(0.0, 0.2, (16, 2)), own=True)   # where each was last known
-    right = []
-    for step in range(STEPS):
-        answer = third(hand.where()[0][:, 0])            # the third in which the place is held
-        if teach:
-            body.lesson(np.hstack([own, hand.sense()]), answer)   # teach the step, then act
-        hand.predict(beside=own)                         # the body settles; its act is hand.acted
-        right.append(hand.acted == answer)
-        hand.observe(np.full(16, step < 3), places + rng.normal(0.0, 0.01, (16, 2)))
-    return np.array(right)
-
-for _ in range(10):
-    scene(teach=True)
-unseen = scene(teach=False)[3:].mean()                   # the steps the camera reports nothing
-print("the hand's third of the plane, named while unseen:", round(float(unseen), 2))
-assert unseen > 0.6                                      # chance is a third
+place = cd.modules.load("place")                         # the built-in map
+kitchen = Brain.compose(inputs=place.count + place.units, actions=2, seed=0)
+kitchen.space = place                                    # the brain holds the map
+kitchen.space.moment(seen=[(APPLE, [0.3, 0.6]), (BREAD, [0.6, 1.0])], lit=ahead)
+for _ in range(20):
+    kitchen.space.moment(lit=behind)                     # the camera turns away: no report
+kitchen.act(kitchen.space.observation()[None])           # the brain reads where and what
+assert np.allclose(kitchen.space.where_is(APPLE), [[0.3, 0.6]], atol=0.001)
+assert kitchen.space.what_is_at([0.6, 1.0]) == BREAD     # "what is at this place?"
+assert kitchen.space.what_is_at([-0.5, 0.5]) is None     # in view, and nothing there
+again = Brain.load(kitchen.save("kitchen.npz"))          # the map is saved with the brain
+assert again.space.what_is_at([0.3, 0.6]) == APPLE
 ```
 
-The body reads the place the space holds and answers from it while the camera reports nothing.
-How well a place is held and moved while unseen is the place module's own reading, which the
-[tracking chamber](../benchmarks/tracking/README.md) takes against the gates of
-[#320](https://github.com/muellerberndt/cadence/issues/320); no reading is posted. The place
-brain of this example is a development stand-in taught for forty steps, so its places are
-rough. The built-in module ships with v0.99.0 as `cd.modules.load("place")`, and the code
-around it is the same.
+The camera sees none of the places where the apple and the bread were last seen, so each stays
+at its last known place for any number of moments. The brain reads `where` and `what` at every
+moment; what it does with them is its own task, taught by lessons or rewards as any brain's is.
+The map in a host brain is read against gates M1 to M4 of
+[#321](https://github.com/muellerberndt/cadence/issues/321) by
+[`hosts.py`](../benchmarks/tracking/hosts.py).
 
-## Parts that arrive trained
+## Modules: parts that arrive as files
 
-A trained part reaches a brain in two ways. With the donor brain in hand, `graft` carries its
-regions over ([what `graft` carries](#what-graft-carries-from-a-donor-brain)). Without it, a
-**module file** holds the trained regions with a record of what they are, and one call puts it
-into a brain.
+A module is a part that arrives as a file. The library ships basic modules that many brains
+use, and a module file from outside the library loads the same way. The first is the place
+module, the map of things of [space pieces](#space-pieces).
 
-| You want | Call | Section |
-| --- | --- | --- |
-| To write a module of your own | `brain.save_module(path, name=, inputs=, published=, regions=)` | [make a module](#make-a-module) |
-| To load one | `cd.load_module(path)`, `cd.modules.load(name)` | [load a module](#load-a-module) |
-| A brain built around it | `Brain.compose(..., trained=[module])` | [build a brain around a module](#build-a-brain-around-a-module) |
-| To know what the host's lessons change | | [what a hosted module does](#what-a-hosted-module-does) |
-| It in a brain that holds its regions | `brain.graft(module)` | [graft a module](#graft-a-module-into-a-brain-that-holds-its-regions) |
-| To know what is refused | | [a file that does not fit](#a-file-that-does-not-fit-is-refused-by-name) |
-| The modules the library ships | `cd.modules.names()` | [modules the library ships](#modules-the-library-ships) |
+| You want | Call |
+| --- | --- |
+| The modules the library ships | `cd.modules.names()`, `cd.modules.load("place")` |
+| A module file from outside the library | `cd.load_module(path)` |
+| To write a map as a module file | `map.save(path, card={...})` |
+| A brain that holds the map | `brain.space = map` |
 
 ### A module file
 
-A module file (format `cadence-module/1`) is one NumPy archive that holds two things:
+A module file is one NumPy archive that holds two things:
 
-- **The arrays** of the brain the module was trained in, as `Brain.save` writes them, with its
-  floats in 32 bits.
-- **One JSON record**: the format name, the module's name, the library version that wrote it,
-  its regions and their sizes, which regions are **inputs** (the module's own senses drive
-  them) and which are **published** (a host reads them), an `interface` record of the module's
-  own, a `card` that says what it was trained on and what it reads, and a checksum of every
-  array.
+- **The arrays**: the map's codes and its carried state, the activity that holds every thing's
+  place.
+- **One JSON record**: the format (`cadence-space-map/1`), the map's settings, the library
+  version that wrote it, a card that says what the module is, and a checksum of every array.
 
 Loading one runs no code from the file:
 
 - The archive is read without pickled objects, and the record is plain JSON.
-- The record is checked field by field, every array against its checksum, and the trained brain
-  against the regions the record names. A file that fails is refused with a `ValueError` that
-  says what is wrong with it
-  ([a file that does not fit](#a-file-that-does-not-fit-is-refused-by-name)).
-- The checksums lie in the file's own record. They catch a damaged or cut-off file. They are no
-  signature and do not say who wrote the file. A module's weights and its card are its
-  author's: read a module's skill on your own inputs before a brain relies on it.
-
-### Make a module
-
-Train a brain on the skill, then save its regions with `save_module`. Here the skill is to say
-which of four kinds of thing six noisy readings show.
+- Every array is checked against its checksum, and the arrays against the map's cells. A file
+  that fails is refused with a `ValueError` that says what is wrong with it.
+- The checksums catch a damaged or changed file. They are no signature and do not say who
+  wrote it.
 
 ```python
-rng = np.random.default_rng(0)
-kinds = np.eye(6)[:4]                                    # four kinds of thing, six readings each
+from cadence.space.map import Map
 
-def sample(count):
-    kind = rng.integers(0, 4, size=count)
-    return kinds[kind] + 0.1 * rng.normal(size=(count, 6)), kind
+assert cd.modules.names() == ["place"]                   # the modules the library ships
+built_in = cd.modules.load("place")                      # a new map at every call
+assert built_in.things() == [] and built_in.cells == (32, 26) and len(built_in.codes) == 16
 
-donor = Brain.compose(inputs=6, actions=4, modules=(32,), seed=1,
-                      recall=False,                      # no notebook: it answers from its inputs
-                      teaching="deep", learning_surprise=True)   # a new brain's lessons
-readings, kind = sample(64)                              # held out
-for _ in range(200):
-    donor.lesson(*sample(16))
-    if (donor.predict(readings) == kind).mean() >= 0.95:
-        break
-right = float((donor.predict(readings) == kind).mean())  # the skill, read from rest
-assert right >= 0.95
-
-path = donor.save_module(
-    "kinds.npz", name="kinds",
-    inputs=["sensory"],                                  # the regions its own senses drive
-    published=["motor"],                                 # the regions a host reads
-    regions=["sensory", "association", "motor"],         # every region from the first to the last
-    interface={"answers": ["cup", "key", "pen", "box"]}, # what its units stand for
-    card={"trained on": "noisy readings of four kinds", "held-out": right},
-)
+built_in.moment(seen=[(APPLE, [0.3, 0.6])])
+path = built_in.save("kitchen-map.npz", card={"what": "a kitchen with an apple"})
+taken = cd.load_module(path)                             # a module file from outside the library
+assert taken.what_is_at([0.3, 0.6]) == APPLE             # with the state it carried
+assert Map.card_of(path)["what"] == "a kitchen with an apple"
 ```
 
-| Argument | What it names |
-| --- | --- |
-| `name` | The module's name, without `/`. In a host its regions are the populations `name/region`, so the name is none of the host's own regions (`sensory`, `association`, `motor`) |
-| `inputs` | The regions the module's own senses drive: populations of the donor's inputs (`sensory` for a vector donor, `visual/input` for a donor with a visual cortex) |
-| `published` | The regions a host reads: the module's answer (`motor`), its interpretation (`association`), or both |
-| `regions` | The regions the module is made of: the inputs, the published and every region between them. Where omitted, the inputs and the published alone |
-| `interface` | The module's own record of what its regions stand for, as JSON values |
-| `card` | What it was trained on and what it reads, as JSON values |
-
-`save_module` leaves the brain unchanged. It writes the brain at rest, without streams.
-
-**A module stands alone.** In a host, a module is driven by its own inputs and by nothing else:
-no synapse leads from the host into it, and a graft carries weights and no memory. The donor's
-working trace, heard history, recall memory and associative store are left behind, and the
-regions they drove lie silent in the host. A module therefore answers in a host as its donor
-answers from rest without memories, which is what `donor.predict` reads. Check the skill with
-`predict` before you save it: a skill that `predict` does not show does not travel.
-
-- Train the donor with `recall=False`. Its file is smaller, and the host holds no silent recall
-  regions for it.
-- A donor keeps its whole layout in the file, and `compose(..., trained=)` puts all of it in the
-  host. An anatomy of your own that holds only the regions the skill needs makes the leanest
-  module ([parts for an anatomy of your own](#parts-for-an-anatomy-of-your-own)).
-- Name every region between the inputs and the published ones in `regions`: `graft(module)`
-  grafts those regions and refuses regions that share no synapse.
-- A donor with a held message, learned fields, a learned code or tied projections makes no
-  module in this version. A donor with an apical compartment grafts into a brain with the
-  same compartment and is refused by `compose(..., trained=)`
-  ([what does not go together](#what-does-not-go-together)).
-
-### Load a module
-
-```python
-module = cd.load_module(path)                            # from a file
-assert module.name == "kinds" and module.record["format"] == "cadence-module/1"
-assert module.regions == {"sensory": 6, "association": 32, "motor": 4}
-assert module.inputs == ["sensory"] and module.published == ["motor"]
-assert module.width == 6                                 # the inputs it adds to an observation
-assert module.interface["answers"][1] == "key" and module.card["held-out"] == right
-assert module.arrays["efficacy"].dtype == np.float32     # floats in 32 bits
-
-trained_in = module.brain()                              # the brain it was trained in
-assert (trained_in.predict(readings) == kind).mean() >= 0.9
-
-built_in = cd.modules.names()                            # the modules inside the library
-assert isinstance(built_in, list)
-```
-
-| A module's | Holds |
-| --- | --- |
-| `name`, `regions`, `inputs`, `published` | The record's name, each region's size, and the input and published regions by name |
-| `width` | The inputs the module adds to a brain's observation |
-| `interface`, `card` | The module's own record, and its card |
-| `record`, `arrays` | The whole JSON record, and the trained brain's arrays |
-| `brain()` | The brain the module was trained in, loaded from the arrays, on the CPU unless a backend is named. Every call gives a brain of its own, as the file holds it: lessons given to one reach neither the module nor another |
-| `columns(host)` | Where the module's inputs lie in a host's observation, one column an input neuron |
-
-`cd.modules.names()` lists the modules that ship inside the library, and `cd.modules.load(name)`
-returns one. The place module is the first, and it ships with v0.99.0: on a checkout of the
-development branch the list is empty ([modules the library ships](#modules-the-library-ships)).
-A module file from outside the library loads through `cd.load_module` and is used the same way.
-
-### Build a brain around a module
-
-`Brain.compose(..., trained=[module])` builds a brain with the module in place. The brain has
-senses, an association region, a motor and memories of its own, as any new brain has, and the
-module's regions stand beside them.
-
-```python
-host = Brain.compose(inputs=3, actions=2, seed=5, trained=[module])   # three inputs of its own
-assert host.inputs == 3 + module.width                   # the module's inputs follow its own
-assert module.columns(host).tolist() == [3, 4, 5, 6, 7, 8]
-assert len(host.connectome.populations["kinds/motor"]) == 4   # its regions: kinds/<region>
-assert list(host.memories) == ["working_memory", "history", "recall", "hippocampus"]
-
-def said(brain, observations, region):
-    """What a region settles to on each row: its most active unit."""
-    brain.reset()
-    brain.act(observations, greedy=True)
-    units = brain.connectome.populations[region]
-    answer = brain.basal_ganglia.state.activation[:, units].argmax(axis=1)
-    brain.reset()
-    return answer
-
-own = rng.random((64, 3))                                # whatever the host's own senses hold
-arrived = said(host, np.hstack([own, readings]), "kinds/motor")
-assert (arrived == kind).mean() >= 0.9                   # the skill arrives, before any lesson
-assert (arrived == donor.predict(readings)).mean() >= 0.9    # as the donor answers
-```
-
-The host took no lesson, and the module's region answers in it as the donor answers. An
-observation of the host is its own inputs followed by the module's.
-
-### What a hosted module does
-
-What `compose(..., trained=[module])` builds, and what it leaves to you:
-
-- **Its regions.** Every population of the donor is a population `name/...` of the host:
-  `kinds/sensory`, `kinds/association`, `kinds/motor`.
-- **Its inputs.** They follow the host's own in the observation. `module.columns(host)` gives
-  their columns.
-- **What the host reads.** The host's association region reads the published regions through
-  one-way synapses that start at zero, so a new host acts as a newborn does. Lessons and rewards
-  give those synapses weight. The host's own senses do not reach the module.
-- **What the host's memories hold.** The host's sensory projection covers its own inputs alone.
-  Its memories hear and key on the whole observation, so its heard history and its recall
-  memory hold the module's inputs too.
-- **Held by default.** The module's synapses and biases are held: `freeze` is on for a module.
-- **The host's lessons do not reach it.** No synapse leads from the host into the module, so its
-  neurons do not move between the phases of a lesson or of a reward. The host's learning moves
-  the host's own synapses and the synapses that read the module. The module's synapses stay to
-  the bit, held or released.
-- **To teach a module further**, teach its donor (`module.brain()` gives one), save it again,
-  and graft the newer file with `joints="kept"`
-  ([graft a module](#graft-a-module-into-a-brain-that-holds-its-regions)).
-
-```python
-def task(count):
-    """The host's own task: a cue of its own asks one of two questions about the kind."""
-    readings, kind = sample(count)
-    cue = rng.integers(0, 2, size=count)
-    own = np.zeros((count, 3))
-    own[np.arange(count), cue] = 1.0
-    return np.hstack([own, readings]), np.where(cue == 0, kind // 2, kind % 2)
-
-units = host.connectome.populations["kinds"]             # every neuron of the module
-inside = np.isin(host.connectome.pre, units) & np.isin(host.connectome.post, units)
-reading = np.isin(host.connectome.pre, units) & ~np.isin(host.connectome.post, units)
-assert not host.learner.plastic_synapses[inside].any()   # held
-assert not host.brain.efficacy[reading].any()            # the host reads it from zero
-
-questions, answers = task(128)                           # held out
-skill = said(host, questions, "kinds/motor")
-before = host.brain.efficacy.copy()
-for _ in range(120):
-    host.lesson(*task(16))                               # the host learns its second task
-assert (host.predict(questions) == answers).mean() >= 0.85
-
-moved = host.brain.efficacy != before
-assert moved[reading].any()                              # it learned to read the module
-assert not moved[inside].any()                           # and the module is as it was, to the bit
-same = (said(host, questions, "kinds/motor") == skill).mean()
-assert same >= 0.98                                      # and its skill reads the same
-
-released = host.graft(module, freeze=False, joints="kept")     # the same host, the module released
-start = released.brain.efficacy.copy()
-for _ in range(10):
-    released.lesson(*task(16))
-assert released.learner.plastic_synapses[inside].any()
-assert not (released.brain.efficacy != start)[inside].any()   # released, it moves as little
-```
-
-This example shows the mechanics. Whether a host learns its task in fewer lessons with a module
-than from birth is a reading each shipped module has to show
-([modules the library ships](#modules-the-library-ships)).
-
-Limits of a brain composed around a module in this version:
-
-- It has the default layout: one association region of 64 neurons. `modules`, `observers`,
-  `lateral` and `scales` are refused beside `trained=`. For another layout, build the anatomy
-  and graft the module in ([graft a module](#graft-a-module-into-a-brain-that-holds-its-regions)).
-- It is a vector brain with at least one input of its own, without `code`, `learned_code`,
-  `learned_fields`, `tied`, a held message or long-term records.
-- It records no construction, so `grow` refuses it. Compose it with every part it needs:
-  `slots`, `arousal`, `memory_choice`, `maturity`, `efference_amplitude`, `history_decays`,
-  `recall_heads` and `recall=False` all compose beside `trained=`.
-- It saves, loads and retunes as any brain. A loaded host holds the module as it was saved.
-- Several modules compose side by side (`trained=[first, second]`), each under its own name.
-
-### Graft a module into a brain that holds its regions
-
-`brain.graft(module)` puts a module into a brain that holds its regions under the module's name
-(`kinds/sensory`) or under the regions' own names (`sensory`). It refuses a brain that lacks a
-region, by that region's name, and a brain that holds one at another size. The graft is held
-unless `freeze=False`.
-
-```python
-alike = Brain.compose(inputs=6, actions=4, modules=(32,), seed=7)     # laid out as the donor
-taken = alike.graft(module)                              # onto its own sensory, association, motor
-assert (taken.predict(readings) == kind).mean() >= 0.9   # the newborn has the skill
-assert not taken.learner.plastic_synapses.all()          # held; freeze=False lets it learn
-
-kept = host.graft(module, joints="kept")                 # the file again, into the taught host
-assert (kept.predict(questions) == answers).mean() >= 0.85    # the host keeps its reading
-lost = host.graft(module)                                # joints="zero", the default
-assert not lost.brain.efficacy[reading].any()            # the reading starts again from zero
-```
-
-- **A brain laid out as the donor** takes the module onto its own regions. Such a graft is the
-  graft of [growing and grafting](#growing-and-grafting), from a file in the donor's place.
-  Here the module's regions are the brain's own senses, association and motor, so with
-  `freeze=False` the brain's lessons teach them.
-- **A host that holds the module** takes a newer file of it. With `joints="kept"` the host
-  keeps the synapses that read the module, and with them what it learned to read. The default
-  `joints="zero"` starts the reading again.
-- **An anatomy of your own** holds a module where one of its regions is the donor's connectome,
-  named after the module. `graft(module)` then grafts it by name
-  ([a whole brain as one region](grow.md#a-whole-brain-as-one-region-of-a-larger-anatomy)).
-
-### A file that does not fit is refused by name
+A file that does not fit is refused by name:
 
 ```python
 def refused(call):
@@ -1088,86 +889,38 @@ def refused(call):
 
 with np.load(path, allow_pickle=False) as held:
     arrays = {name: held[name] for name in held.files}
-np.savez("changed.npz", **{**arrays, "efficacy": arrays["efficacy"] + 1.0})   # one array changed
-assert "array 'efficacy' differs from its checksum" in refused(
+np.savez("changed.npz", **{**arrays, "potential": arrays["potential"] + 1.0})   # one array changed
+assert "array 'potential' differs from its checksum" in refused(
     lambda: cd.load_module("changed.npz"))
-
-donor.save("brain.npz")                                  # a brain's checkpoint is no module
-assert "holds no 'module' record" in refused(lambda: cd.load_module("brain.npz"))
-np.savez("pickled.npz", module=np.array({"format": "x"}, dtype=object))
-assert "is no module file" in refused(lambda: cd.load_module("pickled.npz"))
-assert "ships no module 'no-such-module'" in refused(lambda: cd.modules.load("no-such-module"))
-
-narrow = Brain.compose(inputs=6, actions=4, modules=(16,), seed=2)
-assert "'association' holds 16 neurons and the module's 'association' 32" in refused(
-    lambda: narrow.graft(module))
-picture = Brain.compose(inputs=(6, 6), actions=4, seed=2)    # an image brain has no `sensory`
-assert "has no region 'sensory' for the module 'kinds'" in refused(lambda: picture.graft(module))
-
-assert "without code" in refused(
-    lambda: Brain.compose(inputs=64, actions=2, code=32, trained=[module]))
-assert "is no input of this brain" in refused(
-    lambda: donor.save_module("odd.npz", name="odd", inputs=["association"], published=["motor"]))
+np.savez("pickled.npz", record=np.array({"format": "x"}, dtype=object))   # a pickled object
+assert "no pickled object" in refused(lambda: cd.load_module("pickled.npz"))
+assert "holds no 'module' record" in refused(lambda: cd.load_module("kitchen.npz"))   # a brain
+assert "ships no module 'kitchen'" in refused(lambda: cd.modules.load("kitchen"))
 ```
 
-[What does not go together](#what-does-not-go-together) lists every refusal.
+### A brain that holds the map
 
-### What `graft` carries from a donor brain
-
-With the donor brain in hand, `graft` carries its regions without a file
-([graft trained regions](grow.md#graft-trained-regions-into-a-larger-brain)). A module is
-grafted by the same rules.
-
-- **The donor's weights are kept.** The grafted neurons take the donor's biases and gains, and
-  the synapses among them take the donor's contact counts, efficacies and plasticity masks. They
-  drive their neurons as they did in the donor.
-- **The joints start at zero, or are kept.** A joint is a synapse of the host between a grafted
-  neuron and the rest. With `joints="zero"` the graft settles at first on what it reads from its
-  own regions, and learning gives the joints weight. With `joints="kept"` the joints keep the
-  host's own weights, so the graft is read at once and the host changes at once.
-- **`freeze` holds the graft.** It is off for a donor brain and on for a module, unless given.
-  The grafted synapses and neurons stop learning, while the joints and the rest of the host
-  learn. Set `brain.learner.plastic_synapses` and `plastic_neurons` back to `True` to let the
-  graft learn again.
-- **What a graft carries.** Weights, biases and gains of the regions you name. Each grafted pair
-  of regions holds the same number of neurons, and every synapse of the donor among them is a
-  synapse of the host.
-- **What a graft leaves.** The memories and their records, the settings, the actor, the critic
-  and the arousal are the host's own. The streams start afresh.
-- **A limit.** A donor region that settled with its donor's motor feedback, as an association
-  region does, settles in the host without that feedback
-  ([how a new part joins the brain](grow.md#how-a-new-part-joins-the-brain)). A module file
-  holds the donor's regions together with the motor region that fed back to them, so in a
-  brain composed around it they settle as they did in the donor.
-
-The example under [growing and grafting](#growing-and-grafting) grafts a trained pathway into a
-newborn and checks that the skill arrives: the grafted brain answers as its donor does, before
-any lesson.
+- **Held by the brain.** `brain.space = map` gives a brain its map. The map is a graph of its
+  own inside the brain object, beside the brain's connectome.
+- **Saved with the brain.** `brain.save` writes the map's settings, codes and carried state
+  under `space/`, and `Brain.load` restores them. A brain without a map saves no `space/` key.
+- **What the brain reads.** `brain.space.observation()` gives `where`, one value a cell (832
+  for the built-in map), and `what`, one a code unit (16), as the latest moment settled them. A
+  brain composed with `inputs=map.count + map.units` takes them as its observation
+  ([a brain that knows where things are](#a-brain-that-knows-where-things-are)).
+- **Only the senses change it.** The map has no taught synapse, so the brain's lessons and
+  rewards do not reach it: `moment` alone writes it.
 
 ### Modules the library ships
 
-From v0.99.0 the library ships basic trained modules that many brains use, and
-`cd.modules.names()` lists them. [Issue 321](https://github.com/muellerberndt/cadence/issues/321)
-holds them to a stated budget of bytes in the wheel.
-
-| Module | What it holds | Arrives | Status |
+| Module | What it holds | Size | Status |
 | --- | --- | --- | --- |
-| `place` | Where things are in a plane, held while they are out of view: the regions of a place brain ([space pieces](#space-pieces), [the space guide](space.md#a-trained-module)) | trained | Ships with v0.99.0. On a checkout of the development branch `cd.modules.names()` is empty, and `Space.save` writes a development file of the module from a place brain you teach |
-| A visual system | Sight, from the learned receptive fields of [#284](https://github.com/muellerberndt/cadence/issues/284) | trained | planned, in the backlog of [issue 321](https://github.com/muellerberndt/cadence/issues/321) |
-| The hearing of letters | Letters heard in speech, from [#304](https://github.com/muellerberndt/cadence/issues/304) | trained | planned, in the backlog of [issue 321](https://github.com/muellerberndt/cadence/issues/321) |
+| `place` | A map of things over a plane of 2 m by 1.6 m: 32 by 26 cells and 16 kinds, one code unit a kind, holding no thing ([space](space.md)) | a file of 2.0 KB | ships with the library |
+| A visual system | Sight, from the learned receptive fields of [#284](https://github.com/muellerberndt/cadence/issues/284) | | in the backlog of [#321](https://github.com/muellerberndt/cadence/issues/321) |
+| The hearing of letters | Letters heard in speech, from [#304](https://github.com/muellerberndt/cadence/issues/304) | | in the backlog of [#321](https://github.com/muellerberndt/cadence/issues/321) |
 
-A module is shipped where three readings hold on fresh hosts, declared before the runs (gates
-M1 to M3 of [issue 321](https://github.com/muellerberndt/cadence/issues/321)):
-
-1. **The skill arrives.** The grafted module does in the host what it did in its donor, before
-   any lesson.
-2. **The host reads it.** With the module held, the host learns a task that needs the module's
-   answer in fewer lessons than a host that learns the skill from birth.
-3. **The skill stays.** After the host learns a second, unrelated task, the module's skill reads
-   within its first reading.
-
-For the place module no reading of them is posted. Each module's row takes its card's readings
-when they are.
+The place module is read against gates M1 to M5 of
+[#321](https://github.com/muellerberndt/cadence/issues/321).
 
 ## What does not go together
 
@@ -1186,7 +939,6 @@ Each row below was read from the library's own refusal.
 | `graft` | A learned code's `code` region, or a joint that lands on it | Graft the regions above the code |
 | `graft` | Regions that share no synapse; regions of different sizes; a donor synapse the host lacks; another neuron model or apical compartment | Graft the regions a trained pathway runs through, into a host laid out alike |
 | `Lives` | `tied`, `memory_choice`, the efference copy, a held message, long-term records, a fixed or learned code, image inputs, an apical compartment, rehearsal, qualified teaching, `actor_entropy`, and a recall memory with several heads, a window, the command, the read of when, tokens or the cortex at unit norm | One brain's streams, or lone brains in a process pool |
-| `Lives` | `trained=[module]`: `Lives` does not step lives composed around a module in this version | Step lone hosts in turn, or in a process pool |
 | `Lives` | `backend="mlx"` and the MPS device | `backend="torch"` on CUDA or the torch CPU device, or `backend="cpu"` |
 | Learned fields | A vector brain; `code` or `learned_code` beside them; an image under 8 by 8 pixels; fewer than 2 fields | An image `inputs` with `learned_fields` alone |
 | `ports`, `fields_motor` | A brain without `learned_fields` | Add `learned_fields=features` |
@@ -1203,17 +955,11 @@ Each row below was read from the library's own refusal.
 | `actor_entropy` | An outcome on a torch device | `backend="cpu"` or `"mlx"` |
 | `retune` | A setting that builds a part: `modules`, `tied`, `message`, `history_decays`, `carried_gain`, `memory_choice`, `memory_fade`, `maturity`, `arousal`, `recall_capacity` and the other construction settings | `grow` for the parts it adds; `compose` for the rest |
 | `StreamReader` | A brain whose motor neurons do not match the alphabet | `actions=alphabet.size` |
-| `cd.load_module` | A file that is no archive of arrays, or holds a pickled object or no `module` record; another format name; a record without its name, library, regions, inputs, published regions or checksums; an array that differs from its checksum, or that the file or the record holds alone; a region the trained brain lacks at that size | Write the file again with `save_module` |
+| `cd.load_module`, `Map.load` | A file that is no archive of arrays, holds a pickled object or holds no record (a brain's checkpoint); a map record of another format; an array that differs from its checksum, or that the file or the record holds alone; arrays that do not fit the map's cells | Write the file again with `Map.save` |
+| `Map` | A plane whose low is not below its high; under 3 cells an axis; an `empty` other than `"near"`, `"clear"` and `"keep"`; codes that are not zeros and ones with a one in every row | `Map((x low, x high, y low, y high))` with 3 cells or more an axis |
 | `cd.modules.load` | A name the library ships no module by | `cd.modules.names()` lists them; `cd.load_module(path)` reads a file |
-| `save_module` | A name that is empty or holds `/`; a region that is no population of the brain; no inputs or no published regions; an input region that is no input of the brain | Name populations of the brain's own senses as inputs |
-| `compose(..., trained=)` | Image `inputs`, `ports`, `code`, `learned_code`, `learned_fields`, `tied` or `connectome=` beside it; `modules`, `observers`, `lateral` or `scales` other than the default layout's; `message` or `longterm`; anything in `trained` that is no module; two modules of one name; a module named as a region of the brain | The default layout with its own inputs, or `graft(module)` into an anatomy of your own |
-| A donor as a module | A held message, learned fields or tied projections: `compose(..., trained=)` and `graft(module)` refuse the module. A learned code: the module's brain does not load. An apical compartment: `compose(..., trained=)` refuses it, since the host's neuron model differs | A vector donor, or one with a visual cortex, without them |
-| `graft(module)` | A brain that lacks one of the module's regions, by that region's name; a region held at another size; a module whose named regions share no synapse | A brain that holds the regions as `name/region` or under their own names; name every region on the path in `regions` |
-| A brain composed around a module | `grow`: the brain records no construction | Compose it with every part it needs |
-| A space in a host | `predict(..., learn=True)` and `advance(..., learn=True)`: the regions were taught in their donor | Teach the donor, save it again, and graft the newer file |
 
-A few of them, read with the `refused` helper of
-[a file that does not fit](#a-file-that-does-not-fit-is-refused-by-name):
+A few of them, read with the `refused` helper of [a module file](#a-module-file):
 
 ```python
 tie = {("sensory", "association"): (3, 1)}
@@ -1226,7 +972,6 @@ assert "without tied synapses" in refused(lambda: tied.graft(tied, ["sensory", "
 assert "no tied projections" in refused(lambda: cd.Lives(12, 3, 2, recall=False, tied=tie))
 assert "a message is not grown" in refused(lambda: speaker.grow(slots=(3, 2)))
 assert "needs learned_code" in refused(lambda: Brain.compose(6, 3, attention=True))
-assert "records its construction" in refused(lambda: host.grow(slots=(2, 2)))   # around a module
 ```
 
 A tied brain does grow where no tied region gains neurons, and a brain with a learned code, an

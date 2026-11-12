@@ -7,8 +7,7 @@ brains they read unchanged.
   a heard history, an efference copy, new output slots.
 - `brain.graft(donor, ...)` puts trained regions of another brain into this one: a trained
   visual system into a larger brain, or a whole brain (a measured connectome, say) as one region
-  of a larger anatomy. The donor can be a trained module file in a brain's place
-  ([parts that arrive trained](modules.md#parts-that-arrive-trained)).
+  of a larger anatomy.
 
 Both start the synapses that join the new part to the rest of the brain at zero. A grown brain
 therefore settles to the states the trained brain settles to and makes the same greedy choices;
@@ -146,7 +145,7 @@ the choices can differ too.
 | `into="fly"` | The whole donor into one population of this brain, its neurons in order |
 | `joints="zero"` (founder) | Every synapse joining the graft to the rest of this brain starts at zero, with its reciprocal partner |
 | `joints="kept"` | The joints keep this brain's own weights (a newborn's founder draw, or what this brain learned): the graft is read at once, and the brain changes at once |
-| `freeze=True` | The grafted synapses and neurons stop learning; the joints and the rest of the brain learn. Unset, it is off for a donor brain and on for a module |
+| `freeze=True` | The grafted synapses and neurons stop learning; the joints and the rest of the brain learn |
 
 Each grafted pair of populations holds the same number of neurons, taken in order, and every
 synapse of the donor among the grafted neurons must be a synapse of this brain, wired alike: a
@@ -265,10 +264,6 @@ new slot what the other brain knows.
   anatomy instead.
 - **Which brains graft.** Any two brains, composed or custom, whose grafted populations match in
   size and wiring, with the same neuron model, apical compartment and apical roles.
-- **Module files.** `brain.graft(module)` grafts a trained module into the populations that hold
-  its regions, and `Brain.compose(..., trained=[module])` builds a brain around one. A brain
-  composed around a module records no construction, so it does not grow
-  ([what a hosted module does](modules.md#what-a-hosted-module-does)).
 - **Devices.** The new brain lives on the backend, device and precision of the brain whose method
   made it.
 - **Checkpoints.** A grown or grafted brain is an ordinary brain: it saves and loads like any
