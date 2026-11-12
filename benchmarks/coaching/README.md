@@ -59,6 +59,54 @@ What the readings show, at three founders:
 Three founders separate the code from the raw readings and the collapse from its absence; they do
 not rank `coach` against `mixed` at the fourth round.
 
+## Corrections beside watched episodes, and many streams
+
+Four more arms of [`cartpole.py`](cartpole.py) teach on the brain's own path, read on twelve
+founders beside `coach` and `mixed` (Cadence 0.98.0 on an x86-64 machine,
+[receipt](results/own-path.json)):
+
+```sh
+cd benchmarks/coaching && PYTHONPATH=../../src python cartpole.py \
+    --arms coach mixed streams streams-own correct correct+rehearsal \
+    --founders 0 1 2 3 4 5 6 7 8 9 10 11 --out results/own-path.json
+```
+
+- `correct`: each of the brain's own episodes is played without lessons, then taught as one
+  correction through `cadence.speech.correct.Rehearsal(rows=0)`;
+- `correct+rehearsal`: the correction heard beside three of the eight watched episodes at lesson
+  weight 0.25 (`Rehearsal(rows=3, weight=0.25)`);
+- `streams`: 32 poles as the brain's 32 streams, a lesson of 32 rows a step; 125 watched steps
+  (4,000 rows), then rounds of 250 steps with 16 poles moved by the brain and 16 by the
+  demonstrator, a fallen pole replaced on its stream;
+- `streams-own`: as `streams`, every pole moved by the brain in the rounds.
+
+Each cell: founders of twelve at 32 of 32 starts, the mean steps over the founders, and the
+lowest founder's mean steps.
+
+| Arm | After watching | Round 1 | Round 2 | Round 3 | Round 4 |
+| --- | --- | --- | --- | --- | --- |
+| `coach` | 0, 315, 102 | 0, 231, 11 | 2, 314, 39 | 6, 361, 13 | 6, 418, 12 |
+| `mixed` | 0, 315, 102 | 0, 372, 212 | 1, 357, 63 | 1, 385, 89 | 3, 409, 248 |
+| `correct` | 0, 315, 102 | 1, 273, 55 | 3, 400, 247 | 4, 412, 212 | 4, 407, 210 |
+| `correct+rehearsal` | 0, 315, 102 | 10, 460, 28 | 11, 494, 431 | 9, 474, 282 | 11, 487, 346 |
+| `streams` | 0, 231, 10 | 7, 485, 352 | 10, 494, 434 | 7, 446, 54 | 9, 489, 391 |
+| `streams-own` | 0, 231, 10 | 7, 488, 430 | 11, 492, 407 | 10, 477, 289 | 9, 473, 233 |
+
+- Corrections heard beside watched episodes hold the gain from the first round: ten founders of
+  twelve balance every start after it, against one with the correction alone and none for `coach`
+  and `mixed`.
+- Many streams reach the same level by the second round, with every pole on the brain's own path
+  (`streams-own`) as with half of them.
+- The single-stream arms `coach`, `mixed` and `correct` end with three to six founders of twelve at
+  32 of 32 after four rounds.
+
+Founders 0 to 2 of `coach` and `mixed` read differently here than in the three-founder table
+above, which was read on Cadence 0.97.0 on Apple silicon.
+
+The same twelve founders after watching, with the wide code (`code`) beside a narrow one of the
+demonstrator's states (`code+narrow`, [receipt](results/narrow.json)): 235 steps on
+average against 315 for the wide code alone and 165 for the narrow one alone.
+
 ## The scan-and-fire chamber
 
 [`imbalance.py`](imbalance.py): a field of 32 columns shows a target as a bump around its column,
@@ -100,9 +148,8 @@ the set less each in turn, and the default brain.
 cd benchmarks/coaching && PYTHONPATH=../../src python ablation.py --out results/ablation.json
 ```
 
-Starts balanced for 500 steps of 32, after watching and after each round ([receipt](results/ablation.json),
-recorded before `clamp=True` became the code's default; its ranges are the task's limits, the
-ranges of the cart-pole chamber's `code` arm):
+Starts balanced for 500 steps of 32, after watching and after each round ([receipt](results/ablation.json);
+read again with `clamp=True`, the code's default since 0.97.1, every row is the same to the bit):
 
 | Arm | Founder 0 | Founder 1 | Founder 2 |
 | --- | --- | --- | --- |
