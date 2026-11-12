@@ -41,6 +41,7 @@ from .learning import (
 from .lives import Lives
 from .longterm import LongTermMemory, LongTermRead
 from .memory import SynapticMemory
+from .modules import load_file as load_module
 from .neuron import Adaptation, NeuronModel
 from .plasticity import ActorCritic, ActorCriticConfig, Maturity
 from .receipts import Receipt, canonical_json
@@ -118,6 +119,7 @@ __all__ = [
     "seam_report",
     "load",
     "save",
+    "load_module",
 ]
 
 __version__ = "0.98.0"

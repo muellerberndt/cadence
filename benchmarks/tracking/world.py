@@ -646,7 +646,7 @@ def room_scene(
         if k == mover:
             continue
         things[k] = seen_point(rng, geometry, pose)
-        sounds[:, k] = rng.random(steps) < 0.08
+        sounds[:, k] = rng.random(steps) < 0.3
     if kind == "demo":
         what[0] = HAND
         start = np.array(OTHER_STARTS[int(rng.integers(len(OTHER_STARTS)))])

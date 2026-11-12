@@ -149,6 +149,7 @@ class Interface:
     spread: int = 16  # tuned outputs of how far off, from 2 mm to 2 m
     found: int = 24  # tuned outputs an axis of a place another sense names
     feedback: bool = False  # the outputs also drive the hidden region
+    temperature: float = 0.05  # the softmax temperature the outputs are taught and read at
 
     def __post_init__(self) -> None:
         x_low, x_high, y_low, y_high = self.plane
@@ -239,14 +240,23 @@ def anatomy(interface: Interface, seed: int = 0) -> Any:
 def compose(interface: Interface, seed: int = 0, **settings: Any) -> Any:
     """A brain of the interface's regions: its observation is the inputs side by side and its
     motor slots are the outputs. ``settings`` are ``Brain.compose``'s; unless they say
-    otherwise the brain is taught at the founder point and its slots are read at a softmax
-    temperature of 0.05. At the founder's 0.2 a slot's units saturate before its peak is sharp,
-    and a slot's mean then reads short of the value taught (a slope of .91 against 1.00)."""
+    otherwise the brain is taught at the founder point and its slots are read at the
+    interface's softmax temperature, 0.05. At the founder's 0.2 a slot's units saturate before
+    its peak is sharp, and a slot's mean then reads short of the value taught (a slope of .91
+    against 1.00)."""
     from ..generic import Brain
 
     settings.setdefault("episodic", False)
-    settings.setdefault("teaching", "founder")
-    settings.setdefault("temperature", 0.05)
+    rate = settings.pop("rate", None)
+    if rate is not None:  # normalized steps at a rate of the caller's
+        from ..learning import LearnerConfig
+
+        settings["learning"] = LearnerConfig(
+            eta=float(rate), eta_bias=float(rate) / 10.0, normalize=0.99, normalize_floor=1e-4,
+            temperature=interface.temperature, free_steps=1024, nudged_steps=12, tolerance=0.003)
+    else:
+        settings.setdefault("teaching", "founder")
+        settings.setdefault("temperature", interface.temperature)
     return Brain.compose(interface.inputs, interface.outputs,
                          connectome=anatomy(interface, seed), slots=interface.slots, seed=seed,
                          **settings)
@@ -294,18 +304,27 @@ class Space:
     stop and slow while unseen believes in both while a thing is out of view: the mean moves the
     place part of the way, the peak moves it as the likelier of the two. ``"seen"`` is the
     control a brain's answer is read against: a thing that moves by itself is moved by its last
-    seen movement as it is, whatever the brain answers. It can be set at any step."""
+    seen movement as it is, whatever the brain answers. It can be set at any step.
+
+    ``module`` names the place regions inside a host brain (``Brain.compose(..., trained=)``):
+    the space then settles the host, reads the regions there and takes no lessons. ``track``
+    keeps the synapses each lesson moved (``changed``, indices into the brain's synapses, and
+    ``changes``, how far). ``save`` writes the trained regions with what the space learned
+    beside them as a module file, and ``Space.load`` makes a space of a module."""
 
     def __init__(self, interface: Interface, brain: Any = None, *, seed: int = 0,
-                 practice: float = 0.04, span: int = 20, sight: float | None = None,
+                 practice: float = 0.04, span: int = 30, sight: float | None = None,
                  cells: int = 32, records: int = 0, smooth: bool = True, read: str = "mean",
-                 **settings: Any):
+                 module: str | None = None, track: bool = False, **settings: Any):
         if read not in ("mean", "peak", "seen"):
             raise ValueError("read is 'mean', 'peak' or 'seen'")
         self.interface = interface
         self.brain = compose(interface, seed, **settings) if brain is None else brain
         self.practice, self.span, self.sight = practice, int(span), sight
         self.smooth, self.read = bool(smooth), read
+        self.track = bool(track)
+        self.changed = np.zeros(0, dtype=np.intp)  # the synapses the latest lesson moved
+        self.changes = np.zeros(0)  # and how far each moved
         self.records: Any = None
         if records:
             from ..longterm import LongTermMemory
@@ -339,9 +358,28 @@ class Space:
         self.shift = Tuned(-f.reach, f.reach, f.shift)
         self.spread = Tuned(0.002, 2.0, f.spread, log=True)
         self.found = (Tuned(x_low, x_high, f.found), Tuned(y_low, y_high, f.found))
+        # in a host brain the regions are populations ``module/region`` and the place brain's
+        # inputs are some of the host's own: ``_columns`` says which columns of an observation
         populations = self.brain.connectome.populations
-        self._index = {name: np.asarray(populations[name], dtype=np.intp)
+        prefix = "" if module is None else f"{module}/"
+        missing = [prefix + name for name in f.regions if prefix + name not in populations]
+        if missing:
+            raise ValueError(f"this brain has no population {missing[0]!r}")
+        self._index = {name: np.asarray(populations[prefix + name], dtype=np.intp)
                        for name in (*INPUTS, "hidden", *OUTPUTS)}
+        for name, size in f.regions.items():
+            if len(self._index[name]) != size:
+                raise ValueError(f"this brain's {prefix + name!r} holds {len(self._index[name])} "
+                                 f"neurons and the interface's {name!r} {size}")
+        self.module = module
+        sensory = np.asarray(self.brain.sensory_index, dtype=np.intp)
+        column = np.full(int(sensory.max()) + 1, -1, dtype=np.intp)
+        column[sensory] = np.arange(len(sensory), dtype=np.intp)
+        self._columns = column[np.concatenate([self._index[name] for name in INPUTS])]
+        self._width = len(sensory)
+        if (self._columns < 0).any():
+            raise ValueError("the place regions' inputs are no inputs of this brain")
+        self.acted: np.ndarray | None = None  # a host brain's own action at the latest settle
         self.cells = int(cells)
         self.seen_map = np.zeros((self.cells, self.cells))  # reports of things, by cell
         self.visit_map = np.zeros((self.cells, self.cells))  # reports and unseen places, by cell
@@ -376,6 +414,7 @@ class Space:
         self._known = np.zeros(rows, dtype=bool)  # a movement was seen
         self._fitted = np.zeros(rows, dtype=np.intp)  # the reports that movement was seen over
         self._line = self.place.copy()  # the place the line gives for the latest report
+        self._carried = self.place.copy()  # where the row is if it kept its seen movement
         self._practising = np.zeros(rows, dtype=np.intp)
         self._moving = np.zeros(rows, dtype=bool)  # a seen movement above its window's noise
         self._smoothed = np.zeros(rows, dtype=bool)  # the place is a mean of carried reports
@@ -423,15 +462,23 @@ class Space:
         return np.hstack([peak.reshape(rows, -1), moved, motion, unseen, heard, felt])
 
     def predict(self, commands: np.ndarray | None = None, cues: np.ndarray | None = None,
-                joints: np.ndarray | None = None, *, learn: bool = False) -> np.ndarray:
+                joints: np.ndarray | None = None, *, learn: bool = False,
+                beside: np.ndarray | None = None) -> np.ndarray:
         """The first half of a step: where every row is predicted to be, ``(rows, 2)``, before
         the camera's reports of the step are read. The brain settles on the rows that hold
         information: an arm's own end with a command or with joint readings, a thing with a
         seen movement, a thing heard. Every other row keeps its place, and with none the brain
         is not asked. With ``learn`` every row is settled, to be taught. A row that is heard
         or felt is predicted where ``found`` names; any other live row where it was, moved by
-        ``shift``."""
+        ``shift``.
+
+        In a host brain (``module``) every row is settled at every step, as the host's own
+        streams: ``beside`` holds the host's other inputs, ``(rows, others)`` in their order,
+        the host's action is kept in ``acted``, and no lesson is taken here: the regions were
+        taught in their donor."""
         f, rows = self.interface, self.rows
+        if self.module is not None and learn:
+            raise ValueError("a space in a host brain takes no lessons: teach the donor")
         asked = np.zeros((rows, f.joints)) if commands is None else np.broadcast_to(
             np.asarray(commands, dtype=np.float64), (rows, f.joints))
         sounding = np.zeros(rows, dtype=bool) if cues is None else np.isfinite(
@@ -439,13 +486,21 @@ class Space:
         felt = self.own & (joints is not None)
         sounding = sounding | felt  # another sense names the place
         quiet = np.where(self.own, ~(asked != 0).any(axis=1), ~self._moving)
-        live = np.ones(rows, dtype=bool) if learn else (~quiet | sounding)
+        live = np.ones(rows, dtype=bool) if learn or self.module is not None else (
+            ~quiet | sounding)
         x = self.sense(asked, cues, joints)
+        given = x  # what the brain is given: in a host, the host's whole observation
+        if self.module is not None or self._width != x.shape[1]:
+            given = np.zeros((rows, self._width))
+            others = np.setdiff1d(np.arange(self._width, dtype=np.intp), self._columns)
+            if beside is not None:
+                given[:, others] = np.asarray(beside, dtype=np.float64).reshape(rows, -1)
+            given[:, self._columns] = x
         predicted, off = self.place.copy(), self.radius.copy()
         motor: dict[str, np.ndarray] = {}
         if live.any():
-            motor = self._settle(x, live)
-            t = float(self.brain.learner.config.temperature)
+            motor = self._settle(given, live)
+            t = self.interface.temperature
             d, b = f.shift, f.found
             reading = self.shift.peak if self.read == "peak" else self.shift.mean
             shift = np.stack([reading(motor["shift"][:, :d], t),
@@ -458,8 +513,11 @@ class Space:
             moved = np.where(sounding[live, None], named, self.place[live] + shift)
             predicted[live] = np.where((quiet & ~sounding)[live, None], self.place[live], moved)
             off[live] = self.spread.quantile(motor["spread"], t, RATE)
+        carried = np.where(self.own[:, None] | sounding[:, None], predicted,
+                           self._carried + self._movement * self._known[:, None])
         self._step = {"x": x, "live": live, "quiet": quiet, "sounding": sounding,
-                      "predicted": predicted, "off": off, **motor}
+                      "felt": felt, "predicted": predicted, "carried": carried, "off": off,
+                      **motor}
         return predicted.copy()
 
     def observe(self, seen: np.ndarray, reports: np.ndarray, *, learn: bool = False
@@ -506,9 +564,11 @@ class Space:
             seen_place[steady] = self._line[steady]
             self.radius[steady] = AREA * deviation * 2.0 / np.sqrt(self._count[steady])
             self._smoothed = steady
-        # a place another sense names, near the place held: the mean of the two grows sharper
-        named = ~read & sounding & (np.linalg.norm(predicted - self.place, axis=1) < self.radius)
-        self._named = np.where(named, np.minimum(self._named + 1, 50), np.where(sounding, 1, 0))
+        # a place another sense names, near the place held: the mean of up to five of them
+        # (an arm's own end only while it is asked nothing; a moving arm takes each as it is)
+        named = ~read & sounding & (~step["felt"] | quiet) & (
+            np.linalg.norm(predicted - self.place, axis=1) < self.radius)
+        self._named = np.where(named, np.minimum(self._named + 1, 5), np.where(sounding, 1, 0))
         predicted = np.where(named[:, None],
                              self.place + (predicted - self.place)
                              / np.maximum(self._named, 1)[:, None],
@@ -522,6 +582,7 @@ class Space:
             for row in np.flatnonzero(filed):
                 self.records.write(_key(int(self.looks[row])),
                                    np.array([*self.place[row], float(self._rest[row])]))
+        self._carried = np.where(read[:, None], self.place, step["carried"])
         self.since = np.where(read, 0, self.since + 1)
         if learn:
             begin = read & (self.rng.random(rows) < self.practice)
@@ -541,12 +602,13 @@ class Space:
     def assign(self, reports: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Give the camera's reports of a step to rows, after ``predict``. ``reports`` holds one
         row a report: x, y and what the thing looks like. Reports of one look go to the rows of
-        that look at the least summed distance from the rows' predicted places; a report with no
-        row of its look is left out. Gives ``seen`` and ``reports`` as ``observe`` takes
+        that look at the least summed distance from where each row is if it kept its last seen
+        movement, the likeliest place for it to come back into view; a report with no row of
+        its look is left out. Gives ``seen`` and ``reports`` as ``observe`` takes
         them."""
         reports = np.asarray(reports, dtype=np.float64).reshape(-1, 3)
         seen, z = np.zeros(self.rows, dtype=bool), np.zeros((self.rows, 2))
-        predicted = self._step["predicted"]
+        predicted = self._step["carried"]
         for look in np.unique(reports[:, 2]):
             members = np.flatnonzero(self.looks == int(look))
             points = reports[reports[:, 2] == look, :2]
@@ -583,6 +645,34 @@ class Space:
         value = self.records.values[slot]
         return np.array(value[:2], dtype=np.float64), int(value[2])
 
+    def save(self, path: Any, *, name: str = "place", card: dict[str, Any] | None = None) -> Any:
+        """Write the trained place regions as a module file (``cadence.modules``), with the
+        interface and the camera's learned noise in its record: the regions' inputs are the
+        module's inputs, and a host reads the held place and the three outputs."""
+        return self.brain.save_module(
+            path, name=name, inputs=INPUTS, published=("place", *OUTPUTS),
+            regions=(*INPUTS, "hidden", *OUTPUTS),
+            interface={"interface": self.interface.to_dict(), "noise": float(np.sqrt(self.noise))},
+            card=card)
+
+    @classmethod
+    def load(cls, module: Any, brain: Any = None, **settings: Any) -> Space:
+        """A space of a trained module (``cadence.modules.load("place")``, ``load_module``): of
+        the module's own brain, or with ``brain`` of a host composed around it
+        (``Brain.compose(..., trained=[module])``). ``settings`` are ``Space``'s."""
+        from ..modules import load_file
+
+        if not hasattr(module, "record"):
+            module = load_file(module)
+        held = module.interface
+        interface = Interface.from_dict(held["interface"])
+        if brain is None:
+            space = cls(interface, brain=module.brain(), **settings)
+        else:
+            space = cls(interface, brain=brain, module=module.name, **settings)
+        space.noise = float(held.get("noise", 0.01)) ** 2
+        return space
+
     def where(self) -> tuple[np.ndarray, np.ndarray]:
         """Every row's place and the radius of the area that holds the thing at ``RATE``."""
         return self.place.copy(), self.radius.copy()
@@ -607,7 +697,7 @@ class Space:
         out["live"] = self._last["live"].copy()
         out["refused"] = self._last["refused"].copy()
         if "hidden" in self._last:
-            t = float(self.brain.learner.config.temperature)
+            t = self.interface.temperature
             d, b = f.shift, f.found
             out["hidden"] = self._last["hidden"].copy()
             out["shift"] = np.stack([self.shift.beliefs(self._last["shift"][:, :d], t),
@@ -626,8 +716,9 @@ class Space:
         outputs read each other, so a settle that began from the step before could keep that
         step's answer; from rest an answer is a function of the inputs, in a lesson as in an
         answer."""
-        self.brain.reset()
-        self.brain.act(x[live], greedy=True)
+        if self.module is None:
+            self.brain.reset()
+        self.acted = self.brain.act(x[live], greedy=True)
         settled = self.brain.last_settlement or {}
         count = int(live.sum())
         self.work["act_sweeps_rows"] += float(settled.get("steps", 0)) * count
@@ -704,7 +795,7 @@ class Space:
         ``found`` the place. ``shift`` is taught the slope of six reports in a row: for an arm's
         own end the six around the answer, for a thing that moves by itself the six from the
         answer on."""
-        f, t = self.interface, float(self.brain.learner.config.temperature)
+        f, t = self.interface, self.interface.temperature
         sounding = step["sounding"]
         off = np.linalg.norm(z - predicted, axis=1)
         steady = read & (self.since == 0) & ~step["quiet"] & ~sounding & ~self._smoothed
@@ -744,9 +835,14 @@ class Space:
         taught = whole | wide
         if taught.any():
             self.brain.reset()  # the lesson's free phase from rest, as the answer it teaches
+            before = np.array(self.brain.brain.efficacy) if self.track else None
             report = self.brain.lesson(entry["x"], targets=targets,
                                        weights=taught.astype(np.float64))
             self.work["lesson_row_sweeps"] += float(report.get("total_row_sweeps", 0.0))
+            if before is not None:
+                moved = np.asarray(self.brain.brain.efficacy) - before
+                self.changed = np.flatnonzero(moved).astype(np.intp)
+                self.changes = moved[self.changed]
 
 
 def _key(look: int) -> np.ndarray:

@@ -827,6 +827,88 @@ def show(rows: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def gates(rows: list[dict[str, Any]]) -> str:
+    """The declared gates' readings over whole lives: for every ``space`` tag and each way its
+    shift is read, the means over founders in centimetres beside the controls of the same
+    founders, with the founder-paired standard error where a gate asks for one."""
+    whole_rows = [r for r in rows if r.get("case") == "all"]
+    by: dict[str, dict[int, dict[str, Any]]] = {}
+    for r in whole_rows:
+        name = r["arm"] + (f"/{r['tag']}" if r.get("tag") else "")
+        by.setdefault(name, {})[int(r["founder"])] = r["tables"]
+        for reading in ("peak", "seen"):
+            if reading in r:
+                by.setdefault(f"{name}:{reading}", {})[int(r["founder"])] = r[reading]
+    single: dict[tuple[str, str, str], dict[int, dict[str, Any]]] = {}
+    for r in rows:
+        if r.get("case") in ("own", "other") and not r.get("tag"):
+            single.setdefault((r["case"], r["arm"], r.get("lessons", "")), {})[
+                int(r["founder"])] = r["table"]
+
+    def mean(values: list[float | None], scale: float = 100.0) -> str:
+        kept = [v for v in values if v is not None]
+        return f"{scale * float(np.mean(kept)):.2f}" if kept else "."
+
+    def paired(a: dict[int, float], b: dict[int, float]) -> str:
+        both = sorted(set(a) & set(b))
+        if len(both) < 2:
+            return "."
+        d = np.array([100.0 * (a[f] - b[f]) for f in both])
+        return f"{d.mean():+.2f} ({d.std(ddof=1) / np.sqrt(len(d)):.2f})"
+
+    def cell(tables: dict[int, dict[str, Any]], *path: str) -> dict[int, float]:
+        out = {}
+        for founder, t in tables.items():
+            value: Any = t
+            for key in path:
+                value = value.get(key) if isinstance(value, dict) else None
+            if value is not None:
+                out[founder] = float(value)
+        return out
+
+    lines: list[str] = []
+    kalman = by.get("kalman", {})
+    for name in sorted(by):
+        t = by[name]
+        lines.append(f"== {name} ({len(t)} founders)")
+        for case in ("own", "other", "varied"):
+            lines.append(
+                f"  {case:6}: in view {mean(list(cell(t, case, 'in_view').values()))}"
+                f" (camera {mean(list(cell(t, case, 'camera').values()))})"
+                f"  out of view {mean(list(cell(t, case, 'out_of_view').values()))}"
+                f"  held in/out {mean(list(cell(t, case, 'held', 'in_view').values()), 1.0)}"
+                f"/{mean(list(cell(t, case, 'held', 'out_of_view').values()), 1.0)}")
+        for name_panel in PANELS:
+            mine = cell(t, "other", "panels", name_panel, "error")
+            theirs = cell(kalman, "other", "panels", name_panel, "error")
+            line = (f"  {name_panel:8}: {mean(list(mine.values()))}  Kalman "
+                    f"{mean(list(theirs.values()))}  difference {paired(mine, theirs)}")
+            for (case, arm, lessons), tables in sorted(single.items()):
+                if case == "other" and "offline" in arm:
+                    line += (f"  {arm.split('-')[0]}/{lessons} "
+                             f"{mean(list(cell(tables, 'panels', name_panel, 'error').values()))}")
+            lines.append(line)
+        for stays_name in ("stays_own", "stays_other"):
+            lines.append(
+                f"  {stays_name}: moved {mean(list(cell(t, stays_name, 'moved').values()))}"
+                f"  seen {mean(list(cell(t, stays_name, 'seen').values()))}"
+                f"  rest begins {mean(list(cell(t, stays_name, 'rest_begins').values()))}"
+                f"  unseen end {mean(list(cell(t, stays_name, 'unseen_end').values()))}")
+        lines.append(f"  heard: after {mean(list(cell(t, 'heard', 'after').values()))}"
+                     f"  cue {mean(list(cell(t, 'heard', 'cue').values()))}"
+                     f"  before {mean(list(cell(t, 'heard', 'before').values()))}")
+        lines.append(f"  crossing: kept {mean(list(cell(t, 'crossing', 'kept').values()), 1.0)}"
+                     f"  rest error {mean(list(cell(t, 'crossing', 'rest_error').values()))}")
+    for (case, arm, lessons), tables in sorted(single.items()):
+        lines.append(f"== {case} {arm} {lessons} ({len(tables)} founders): in view "
+                     f"{mean(list(cell(tables, 'in_view').values()))}  out of view "
+                     f"{mean(list(cell(tables, 'out_of_view').values()))}")
+    cost = [f"{r['arm']}/{r.get('tag') or ''} {r.get('parameters', 0):,} parameters, "
+            f"{r.get('macs', 0.0):.2e} multiply-accumulates, {r.get('milliseconds', 0.0):.2f} ms"
+            for r in whole_rows if int(r["founder"]) == min(int(x["founder"]) for x in whole_rows)]
+    return "\n".join(lines + sorted(cost))
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     commands = parser.add_subparsers(dest="command", required=True)
@@ -860,6 +942,8 @@ def main(argv: list[str] | None = None) -> int:
     made.add_argument("--out", type=Path, required=True)
     shown = commands.add_parser("table", help="the lives of a directory as a table")
     shown.add_argument("directory", type=Path)
+    read = commands.add_parser("gates", help="the declared gates' readings over a directory")
+    read.add_argument("directory", type=Path, nargs="+")
     args = parser.parse_args(argv)
     if args.command == "life":
         spec = {k: v for k, v in vars(args).items() if k not in ("command", "out")}
@@ -884,6 +968,9 @@ def main(argv: list[str] | None = None) -> int:
         w.save(scene, args.out)
         print(f"{args.out}: {scene.case} {scene.kind}, {scene.steps} steps, things: "
               f"{scene.things}, the hand's steps out of view: {int((~scene.in_view[:, 0]).sum())}")
+    elif args.command == "gates":
+        rows = [json.loads(p.read_text()) for d in args.directory for p in sorted(d.glob("*.json"))]
+        print(gates(rows))
     else:
         rows = [json.loads(p.read_text()) for p in sorted(args.directory.glob("*.json"))]
         print(show(rows))
