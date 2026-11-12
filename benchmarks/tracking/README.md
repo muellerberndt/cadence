@@ -159,6 +159,14 @@ beside it, with the error in view, out of view and by the steps since the hand w
 `--empty` and `--reach` name the rule for a thing whose place is seen empty. With `keep` the map
 answers as last seen does, from its own carried activity.
 
+`mapped.py --stays 8 --heard 60 --own 200 --per` adds a thing at rest out of view for 1,000
+moments, rooms where a thing is heard moving out of view (each cue's place a report of
+`heard=`), and the arm's own hand fed the place its joint readings name. A recorded scene of the
+arm's own hand is fed its joint readings the same way. [`rooms.py`](rooms.py) reads rooms of
+things under a camera that turns, [`hosts.py`](hosts.py) the map held by a host brain, and
+[`gates_map.py`](gates_map.py) reads a run's files against the declared gates of
+[`PROTOCOL.md`](PROTOCOL.md).
+
 `--physics '{"per": 3}' --train 800 --watched 0 50 200` raises learned physics on a nursery of
 the founder's scenes (`nursery`, the shares in `MIX`) and reads it after each number of scenes
 watched. [`belief.py`](belief.py) is a classical grid filter, a control.

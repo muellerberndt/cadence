@@ -36,22 +36,38 @@ composed, acts, learns and saves as on 0.98.0.
   potentials are the next moment's drive on the same neurons, and with no sensory information
   the last known place stays to the bit: eight things, two of one kind, read within 0.004 cm
   after 1,000 moments unseen. `where_is(kind)` and `what_is_at(place)` ask by settling,
-  `things()` reads the inventory (kind, place, cells, moments since sensed, state), and `save`,
-  `Map.load` and `reset` keep and empty the carried state. A cell the camera sees loses what the
-  map carried into it. A thing whose place is seen empty is driven onto the cells out of sight
-  within `reach` (0.15 m) of where it was held (`empty="near"`, the founder; `"clear"` and
-  `"keep"` are the other rules). On the chamber's two recorded scenes of a hand that rests behind
-  a pillar the founder reads 11.8 cm over the hidden moments, where last seen reads 15.5 cm
+  `things()` reads the inventory (kind, place, cells, pieces, moments since sensed, state),
+  `area(kind, rate)` the smallest set of cells holding that share, and `save`, `Map.load` and
+  `reset` keep and empty the carried state.
+- **Sight that only takes away.** A thing whose held place the camera sees, with no report of its
+  kind, is driven once onto the cells out of sight within `reach` (0.15 m) of where it was held
+  (`empty="near"`, the founder; `"clear"` and `"keep"` are the other rules); after that, sight
+  only takes cells away from it, and with none left it is "not known where". A place reported
+  the moment before is seen empty where the camera still sees all it saw around it (within
+  `margin`, the camera's error); any other held place where the camera sees all of it within the
+  margin, so a camera turning past a thing at rest leaves it held. A report of a kind finds a
+  thing of it that is in doubt. On the chamber's two recorded scenes of a hand that rests behind
+  a pillar the map reads 10.7 cm over the hidden moments, where last seen reads 15.5 cm
   ([`benchmarks/tracking/mapped.py`](benchmarks/tracking/mapped.py)). The map's graph has no
   taught synapse.
-- **`cadence.space.physics.Physics`** (the second stage, `Map(physics=)`): learned physics on
-  the map. Velocity cells beside each cell, one kernel a velocity tied across cells and kinds,
-  born to stay (an untaught map with physics answers as the map, moment for moment) and taught
-  by the library's free and nudged phases whenever a thing is seen at two moments in a row.
+- **A brain that holds a map** (`brain.space = Map(...)`): `Brain.save` writes it under `space/`
+  and `Brain.load` restores it; `Map.observation()` gives the brain `where` and `what`. A brain
+  without a map saves the same keys as before.
+- **The map as a module**: map files hold a checksum of every array and a card, and are refused
+  by name for a pickled object, a changed array or arrays that do not fit; `cadence.load_module`
+  and `cadence.modules.load("place")` read a map file as a `Map` (the built-in `place.npz`, 3.5
+  KB). `Lives(trained=)` is refused by name.
+- **`cadence.space.physics.Physics`** (`Map(physics=)`, opt-in): learned physics on the map.
+  Velocity cells beside each cell, one kernel a velocity tied across cells and kinds, born to stay
+  (an untaught map with physics answers as the map, moment for moment) and taught by the
+  library's free and nudged phases whenever a thing is seen at two moments in a row.
 - **The chamber**: hands that visit a shadow and come back, pause, hop and go slowly
   (`kind="visit"`, `"pause"`, `"hops"`, `"slowhand"`), the recorded scene with the arm folded
-  (`scenes/promise-folded.json`), and `mapped.py`, which scores a scene file with the map beside
-  last seen and the Kalman filter.
+  (`scenes/promise-folded.json`); `mapped.py` scores scene files with the map beside last seen
+  and the Kalman filter (the arm's own hand fed its joint readings by kinematics), and reads a
+  thing at rest out of view and a thing heard; `rooms.py` reads rooms of things whose camera
+  turns (kinds, a thing moved unseen, many things, things that arrive and leave, the state);
+  `hosts.py` the map in a host brain; `gates_map.py` the declared gates.
 - **`Space`** below is the earlier form, kept as the baseline. A module file states whether its
   regions were raised with joint readings, and a space of a file raised without them leaves
   joint readings out.
