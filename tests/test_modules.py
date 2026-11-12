@@ -14,7 +14,7 @@ from cadence.space.place import INPUTS, OUTPUTS
 
 PLANE = (-1.0, 1.0, -0.2, 1.4)
 SMALL = dict(place=8, moved=5, motion=9, counted=3, unseen=4, heard=(6, 4), felt=4, hidden=16,
-             shift=12, spread=6, found=8)
+             shift=12, spread=6, found=8, keep=4)
 PUBLISHED = ("place", *OUTPUTS)
 
 

@@ -13,7 +13,7 @@ from cadence.space.place import AREA, INPUTS, OUTPUTS
 
 PLANE = (-1.0, 1.0, -0.2, 1.4)
 SMALL = dict(place=8, moved=5, motion=9, counted=3, unseen=4, heard=(6, 4), felt=4, hidden=16,
-             shift=12, spread=6, found=8)
+             shift=12, spread=6, found=8, keep=4)
 
 
 def small(**settings) -> Space:
@@ -59,11 +59,12 @@ def test_an_interface_names_its_regions_and_reads_back():
     regions = interface.regions
     assert list(regions) == [*INPUTS, "hidden", *OUTPUTS]
     assert regions == {"place": 32, "moved": 27, "motion": 56, "unseen": 8, "heard": 320,
-                       "felt": 512, "hidden": 128, "shift": 64, "spread": 16, "found": 48}
-    assert interface.inputs == 955 and interface.outputs == 128
+                       "felt": 512, "hidden": 128, "shift": 64, "spread": 16, "found": 48,
+                       "keep": 8}
+    assert interface.inputs == 955 and interface.outputs == 136
     assert Interface(plane=PLANE).regions["felt"] == 256  # two joints: 16 readings each
     assert interface.limits == ((-np.pi, np.pi),) * 3
-    assert interface.slots == (32, 32, 16, 24, 24)
+    assert interface.slots == (32, 32, 16, 24, 24, 8)
     assert Interface.from_dict(interface.to_dict()) == interface
     with pytest.raises(ValueError, match="low below high"):
         Interface(plane=(1.0, -1.0, 0.0, 1.0))
@@ -146,6 +147,7 @@ def test_the_state_holds_every_regions_activity_as_plain_arrays():
     assert state["at"].shape == (1, 2) and state["radius"].shape == (1,)
     assert state["hidden"].shape == (1, 16) and state["spread"].shape == (1, 6)
     assert state["found"].shape == (1, 2, 8) and state["heard"].any()
+    assert state["keep"].shape == (1, 4) and np.isclose(state["keep"].sum(), 1.0)
     # the place region held a peak on each axis around the position before the step
     peak = state["place"].reshape(2, interface.place)
     centers = np.linspace(PLANE[0], PLANE[1], interface.place)

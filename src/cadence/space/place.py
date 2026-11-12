@@ -38,7 +38,7 @@ from ..tuning import PopulationCode
 RATE = 0.90  # the rate a place's area is stated at
 AREA = float(np.sqrt(-2.0 * np.log(1.0 - RATE)))  # that area's radius, in standard deviations
 INPUTS = ("place", "moved", "motion", "unseen", "heard", "felt")
-OUTPUTS = ("shift", "spread", "found")
+OUTPUTS = ("shift", "spread", "found", "keep")
 # The movement a step that six reports in a row give, by least squares: their slope.
 SLOPE = np.array([-5.0, -3.0, -1.0, 1.0, 3.0, 5.0]) / 35.0
 KEY = 64  # the width of a record's key: a code of what a thing looks like
@@ -122,8 +122,9 @@ class Interface:
     them; dark while silent) and ``felt`` (the arm's joint readings, one unit a posture; dark
     for a thing that is no arm's end and where no readings are given). ``hidden`` reads them
     all. Outputs, one softmax each: ``shift`` (how far the place moves in this step, an axis a
-    slot), ``spread`` (how far off a place predicted here is found to be) and ``found`` (the
-    place a cue or the joint readings name, an axis a slot)."""
+    slot), ``spread`` (how far off a place predicted here is found to be), ``found`` (the
+    place a cue or the joint readings name, an axis a slot) and ``keep`` (the share of its seen
+    movement a thing that moves by itself keeps in this step, from 0 to 1)."""
 
     plane: tuple[float, float, float, float]  # x low, x high, y low, y high, in metres
     joints: int = 2
@@ -148,6 +149,7 @@ class Interface:
     reach: float = 0.06  # the largest movement a step, in metres
     spread: int = 16  # tuned outputs of how far off, from 2 mm to 2 m
     found: int = 24  # tuned outputs an axis of a place another sense names
+    keep: int = 8  # tuned outputs of the share of its seen movement a thing keeps
     feedback: bool = False  # the outputs also drive the hidden region
     temperature: float = 0.05  # the softmax temperature the outputs are taught and read at
 
@@ -182,6 +184,7 @@ class Interface:
             "heard": self.heard[0] * self.heard[1], "felt": self.felt**self.joints,
             "hidden": self.hidden,
             "shift": 2 * self.shift, "spread": self.spread, "found": 2 * self.found,
+            "keep": self.keep,
         }
 
     @property
@@ -194,7 +197,7 @@ class Interface:
 
     @property
     def slots(self) -> tuple[int, ...]:
-        return (self.shift, self.shift, self.spread, self.found, self.found)
+        return (self.shift, self.shift, self.spread, self.found, self.found, self.keep)
 
     def to_dict(self) -> dict[str, Any]:
         return {k: [list(x) if isinstance(x, tuple) else x for x in v]
@@ -212,10 +215,11 @@ def anatomy(interface: Interface, seed: int = 0) -> Any:
     """The connectome of a place brain: the interface's regions by name, every input read by
     ``hidden`` through one-way synapses, every output reading ``hidden`` (and driving it too
     with ``feedback``), and one-way synapses that start at zero from ``motion`` and ``moved`` to
-    ``shift``, from ``unseen`` and ``motion`` to ``spread`` and from ``heard`` and ``felt`` to
-    ``found``. ``sensory`` names the inputs, ``association`` the hidden region and ``motor`` the
-    outputs. Without ``feedback`` every synapse runs from the inputs toward the outputs, so a
-    settle has one answer whatever it began from."""
+    ``shift``, from ``unseen`` and ``motion`` to ``spread`` and to ``keep``, and from ``heard``
+    and ``felt`` to ``found``. ``sensory`` names the inputs, ``association`` the hidden region
+    and ``motor`` the outputs. Without ``feedback`` every synapse runs from the inputs toward
+    the outputs, so a settle has one answer whatever it began from: that arm is the baseline
+    the reciprocal brain is read against."""
     from ..connectome import Connectome
     from ..genome import Genome, Projection, develop
     from ..regions import Region
@@ -228,7 +232,8 @@ def anatomy(interface: Interface, seed: int = 0) -> Any:
     projections += [Projection(pre, post, scale=0.0, reciprocal=False)
                     for pre, post in (("motion", "shift"), ("moved", "shift"),
                                       ("unseen", "spread"), ("motion", "spread"),
-                                      ("heard", "found"), ("felt", "found"))]
+                                      ("heard", "found"), ("felt", "found"),
+                                      ("unseen", "keep"), ("motion", "keep"))]
     grown: Connectome = develop(Genome(regions, tuple(projections), label="place"), seed=seed)
     held = grown.populations
     return grown.with_populations(
@@ -296,10 +301,11 @@ class Space:
     ``patience`` steps in a row was not seen where it would have been: it goes back to where it
     was before those steps and rests there, its seen movement dropped.
 
-    ``course`` (off unless given): ``shift`` is taught for a thing that moves by itself only at
-    the steps its report was read, so it learns the movement of a thing on its course, and the
-    reports left unread in practice teach ``spread`` alone. Without it the unread reports teach
-    ``shift`` too, which then holds how things slow, stop and turn while unseen.
+    ``course`` (off unless given): a thing that moves by itself is moved by its seen movement
+    times the brain's ``keep``, in place of the brain's ``shift``. ``keep`` is taught the share
+    of a thing's seen movement that the six reports from the answer on show, at the steps its
+    seen movement is above its noise. A thing on its course is then moved by its seen movement
+    as it is, and the brain says when to hold it back.
 
     A thing's seen movement is the slope of the line through its reports in a row, up to
     ``Interface.memory`` of them, by least squares. Where the latest ``Interface.check`` reports
@@ -387,6 +393,7 @@ class Space:
         self.shift = Tuned(-f.reach, f.reach, f.shift)
         self.spread = Tuned(0.002, 2.0, f.spread, log=True)
         self.found = (Tuned(x_low, x_high, f.found), Tuned(y_low, y_high, f.found))
+        self.keep = Tuned(0.0, 1.0, f.keep)
         # in a host brain the regions are populations ``module/region`` and the place brain's
         # inputs are some of the host's own: ``_columns`` says which columns of an observation
         populations = self.brain.connectome.populations
@@ -538,9 +545,13 @@ class Space:
                               reading(motor["shift"][:, d:], t)], axis=1)
             named = np.stack([self.found[0].mean(motor["found"][:, :b], t),
                               self.found[1].mean(motor["found"][:, b:], t)], axis=1)
+            seen_move = (self._movement * self._known[:, None])[live]
             if self.read == "seen":  # the control: the seen movement itself
-                shift = np.where(self.own[live, None], shift,
-                                 (self._movement * self._known[:, None])[live])
+                shift = np.where(self.own[live, None], shift, seen_move)
+            elif self.course:  # the seen movement, as much of it as the brain keeps
+                kept = (self.keep.peak(motor["keep"], t, reach=1) if self.read == "peak"
+                        else self.keep.mean(motor["keep"], t))
+                shift = np.where(self.own[live, None], shift, kept[:, None] * seen_move)
             moved = np.where(sounding[live, None], named, self.place[live] + shift)
             predicted[live] = np.where((quiet & ~sounding)[live, None], self.place[live], moved)
             off[live] = self.spread.quantile(motor["spread"], t, RATE)
@@ -760,6 +771,7 @@ class Space:
             out["found"] = np.stack([self.found[0].beliefs(self._last["found"][:, :b], t),
                                      self.found[1].beliefs(self._last["found"][:, b:], t)],
                                     axis=1)
+            out["keep"] = self.keep.beliefs(self._last["keep"], t)
         return out
 
     # -- inside
@@ -859,7 +871,9 @@ class Space:
         np.add.at(self.visit_map, (i, j), 1.0)
         np.add.at(self.seen_map, (i[seen], j[seen]), 1.0)
         self._pending.append({"x": step["x"], "seen": seen.copy(), "z": z.copy(), "off": off,
-                              "sounding": sounding.copy(), "fresh": self.since == 0,
+                              "sounding": sounding.copy(),
+                              "m": self._movement * self._known[:, None],
+                              "loud": self._moving & self._known & ~self.own,
                               **{name: step[name] for name in OUTPUTS}})
         if len(self._pending) < len(SLOPE):
             return
@@ -868,15 +882,20 @@ class Space:
         entry = {key: np.where(_wide(self.own, around[key]), around[key], ahead[key])
                  for key in around}
         whole = np.all([e["seen"] & ~e["sounding"] for e in held], axis=0)
-        if self.course:  # a thing on its course: the answer was given from a report read
-            whole &= self.own | entry["fresh"]
         slope = np.tensordot(SLOPE, np.stack([e["z"] for e in held]), axes=1)
         d, b = f.shift, f.found
         targets = np.hstack([self.shift.beliefs(entry["shift"][:, :d], t),
                              self.shift.beliefs(entry["shift"][:, d:], t),
                              self.spread.beliefs(entry["spread"], t),
                              self.found[0].beliefs(entry["found"][:, :b], t),
-                             self.found[1].beliefs(entry["found"][:, b:], t)])
+                             self.found[1].beliefs(entry["found"][:, b:], t),
+                             self.keep.beliefs(entry["keep"], t)])
+        kept = whole & entry["loud"]
+        if kept.any():  # the share of its seen movement the reports show the thing kept
+            m = entry["m"][kept]
+            share = np.clip((slope[kept] * m).sum(axis=1) / np.maximum((m * m).sum(axis=1), 1e-12),
+                            0.0, 1.0)
+            targets[kept, -f.keep :] = self.keep.targets(share)
         if whole.any():
             targets[whole, :d] = self.shift.targets(slope[whole, 0])
             targets[whole, d : 2 * d] = self.shift.targets(slope[whole, 1])
@@ -888,7 +907,7 @@ class Space:
             at = 2 * d + f.spread
             targets[both, at : at + b] = self.found[0].targets(entry["z"][both, 0], width=1.0)
             targets[both, at + b :] = self.found[1].targets(entry["z"][both, 1], width=1.0)
-        taught = whole | wide
+        taught = whole | wide | kept
         if taught.any():
             self.brain.reset()  # the lesson's free phase from rest, as the answer it teaches
             before = np.array(self.brain.brain.efficacy) if self.track else None
