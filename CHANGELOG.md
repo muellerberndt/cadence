@@ -47,6 +47,97 @@
   reference gains a section for `cadence.speech.frontend`, `align` and `decode`, and the speech
   guide a line each for `LogMel`, `mel_bank`, `windows`, `even_path` and `greedy`.
 
+### Space: a map of what is where (#320)
+
+`cadence.space` is imported by name, and `import cadence` loads none of it. The guide is
+[docs/space.md](docs/space.md). No default changes: with every new option unset a brain is
+composed, acts, learns and saves as on 0.98.0.
+
+- **`cadence.space.map.Map`**: a map of things held in a sheet's own settled activity, cells of
+  a plane by units of a kind's code. No list of things is given to it and none is kept beside
+  it. A thing enters when a sense reports it (`moment(seen=, heard=, felt=, lit=)`), the sheet's
+  potentials are the next moment's drive on the same neurons, and with no sensory information
+  the last known place stays to the bit: eight things, two of one kind, read within 0.004 cm
+  after 1,000 moments unseen. `where_is(kind)` and `what_is_at(place)` ask by settling,
+  `things()` reads the inventory (kind, place, cells, pieces, moments since sensed, state),
+  `area(kind, rate)` the smallest set of cells holding that share, and `save`, `Map.load` and
+  `reset` keep and empty the carried state.
+- **Sight that only takes away.** A thing whose held place the camera sees, with no report of its
+  kind, is driven once onto the cells out of sight within `reach` (0.15 m) of where it was held
+  (`empty="near"`, the founder; `"clear"` and `"keep"` are the other rules); after that, sight
+  only takes cells away from it, and with none left it is "not known where". A place reported
+  the moment before is seen empty where the camera still sees all it saw around it (within
+  `margin`, the camera's error); any other held place where the camera sees all of it within the
+  margin, so a camera turning past a thing at rest leaves it held. A report of a kind finds a
+  thing of it that is in doubt. On the chamber's two recorded scenes of a hand that rests behind
+  a pillar the map reads 10.7 cm over the hidden moments, where last seen reads 15.5 cm
+  ([`benchmarks/tracking/mapped.py`](benchmarks/tracking/mapped.py)). The map's graph has no
+  taught synapse.
+- **A brain that holds a map** (`brain.space = Map(...)`): `Brain.save` writes it under `space/`
+  and `Brain.load` restores it; `Map.observation()` gives the brain `where` and `what`. A brain
+  without a map saves the same keys as before.
+- **The map as a module**: map files hold a checksum of every array and a card, and are refused
+  by name for a pickled object, a changed array or arrays that do not fit; `cadence.load_module`
+  and `cadence.modules.load("place")` read a map file as a `Map` (the built-in `place.npz`, 2.0
+  KB). `Lives(trained=)` is refused by name.
+- **The chamber**: hands that visit a shadow and come back, pause, hop and go slowly
+  (`kind="visit"`, `"pause"`, `"hops"`, `"slowhand"`), the recorded scene with the arm folded
+  (`scenes/promise-folded.json`); `mapped.py` scores scene files with the map beside last seen
+  and the Kalman filter (the arm's own hand fed its joint readings by kinematics), and reads a
+  thing at rest out of view and a thing heard; `rooms.py` reads rooms of things whose camera
+  turns (kinds, a thing moved unseen, many things, things that arrive and leave, the state);
+  `hosts.py` the map in a host brain; `gates_map.py` the declared gates.
+- **`Space`** below is the earlier form, kept as the baseline. A module file states whether its
+  regions were raised with joint readings, and a space of a file raised without them leaves
+  joint readings out.
+
+- **`Space`**: a program beside a brain that holds a place for every thing between moments, one
+  row a thing. A camera's report writes the place; a thing at rest takes the mean of its reports;
+  a row with no report, no command, no seen movement and no cue is left as it is, and the brain
+  is not asked. `where()` gives each place and the radius of its area at .90.
+- **A place brain** (`Interface`, `anatomy`, `compose`): named regions for the held place, the
+  copy of the arm's command, the thing's last seen movement, the moments since it was seen, a
+  cue's sheet and the joints' sheet, a hidden region, and three answers, each one softmax:
+  `shift` (how far the place moves in this step), `spread` (how far off) and `found` (the place a
+  cue or a posture names). Every synapse runs from the inputs toward the outputs.
+- **Lessons that hold only reports** (`advance(..., learn=True)`): the movement the camera
+  reports teaches `shift`, the distance from a predicted place to the report that followed
+  teaches `spread`, and a thing heard while seen teaches `found`. The space leaves reports unread
+  over spans (`practice`, `span`) and is taught there by the reports it did not read.
+- **Several things**: reports carry a position and a look and no name. `assign` gives each
+  report to a row of its look, `hear` each cue; `where_is(kind)` answers a kind with its places
+  and `what_is_at(point)` a place with the kind held there; `records=n` files things at rest in
+  a `cadence.LongTermMemory` by what they look like.
+- **Readable state**: `state()` gives every region's activity and every answer's belief as plain
+  arrays, and `Space(track=True)` the synapses each lesson moved.
+
+### Trained modules (#321)
+
+- **A module file** (`cadence-module/1`): arrays and one JSON record (the regions and their
+  sizes, the inputs, the published regions, the module's own record, a card, the library
+  version and a checksum for every array), floats in 32 bits, no pickled object. Loading runs no
+  code from the file and refuses a malformed one by what is wrong with it.
+- **`cadence.load_module(path)`**, **`cadence.modules.names()`** and
+  **`cadence.modules.load(name)`** read a module; **`Brain.save_module(path, name=, inputs=,
+  published=, regions=, interface=, card=)`** writes one.
+- **`Brain.compose(..., trained=[module])`** (opt-in) builds a brain around a module: the
+  module's regions stand beside the brain's own as `name/region`, its inputs follow the brain's
+  own in the observation, the first module region reads what it publishes through one-way
+  synapses that start at zero, and its synapses are grafted in and held.
+  **`Brain.graft(module)`** grafts a module into a brain that holds its regions and refuses a
+  brain that lacks one by that region's name. `graft`'s `freeze` is off for a brain and on for a
+  module unless given.
+- `Space.save(path)` writes a trained place brain as a module and `Space.load(module,
+  brain=host)` runs a space on the regions inside a host.
+
+### The tracking chamber (#320)
+
+[`benchmarks/tracking`](benchmarks/tracking/README.md): a plane with an arm, things, a camera
+with a blind spot and an ear, in plain NumPy; scenes of the arm's own hand, a person's hand and
+rooms of several things; a scene file (`cadence-tracking-scene/1`) scored as a generated scene
+is; the controls (last seen, a constant-velocity Kalman filter, the arm's true kinematics, a
+matched LSTM and transformer) and the floors (a default brain asked the position at every step).
+
 ## 0.98.0 - 2026-11-12
 
 A recogniser trained from recordings and their transcripts (`cadence.speech`), the read-speech

@@ -1888,6 +1888,10 @@ class Lives:
         if not isinstance(inputs, (int, np.integer)):
             raise ValueError("Lives takes a vector of inputs, its length")
         options = dict(options)  # the default composition, the store among it (``Brain.compose``)
+        if options.get("trained"):
+            raise ValueError("Lives composes no brain around a trained module (trained=): its "
+                             "lives step one anatomy together and a module's regions are a "
+                             "brain of their own; compose each brain with Brain.compose")
         self.inputs, self.actions, self.backend = int(inputs), int(actions), backend
         self._options = options
         with warnings.catch_warnings():
