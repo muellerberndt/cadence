@@ -56,6 +56,7 @@ def test_a_module_file_holds_arrays_and_one_record(taught: Space, written) -> No
         assert all(held[name].dtype != object for name in held.files)
     assert module.arrays["efficacy"].dtype == np.float32
     donor = module.brain()
+    assert module.brain() is not donor  # a brain of its own each call
     assert np.allclose(donor.brain.efficacy, taught.brain.brain.efficacy, atol=1e-6)
     assert donor.connectome.populations.keys() == taught.brain.connectome.populations.keys()
 

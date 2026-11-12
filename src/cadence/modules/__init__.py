@@ -77,7 +77,10 @@ class Module:
     def brain(self, *, backend: Any = None, device: str | None = None,
               precision: str | None = None) -> Any:
         """The brain the module was trained in, loaded from the file's arrays: on the CPU
-        unless a backend is named."""
+        unless a backend is named. Every call gives a brain of its own, as the file holds it:
+        lessons given to one never reach another."""
+        import copy
+
         from ..generic import Brain
 
         key = (backend, device, precision)
@@ -89,7 +92,7 @@ class Module:
                     np.savez(handle, **held)
                 self._brains[key] = Brain.load(path, backend=backend, device=device,
                                                precision=precision)
-        return self._brains[key]
+        return copy.deepcopy(self._brains[key])
 
     def columns(self, brain: Any, prefix: str | None = None) -> np.ndarray:
         """Where the module's inputs lie in ``brain``'s observation: one column an input

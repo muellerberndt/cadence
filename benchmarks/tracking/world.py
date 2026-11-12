@@ -39,7 +39,7 @@ UNITS = {"length": "m", "time": "s", "angle": "rad"}
 CASES = ("own", "other", "room")
 KINDS = {
     "own": ("sweep", "stays"),
-    "other": ("straight", "slow", "stop", "turn", "stays"),
+    "other": ("straight", "slow", "stop", "turn", "stays", "left"),
     "room": ("heard", "crossing", "demo"),
 }
 HAND = 0  # what a hand looks like; every thing that is no hand has a ``what`` of its own
@@ -555,7 +555,8 @@ def other_scene(
     """A person's hand leaves one of ``starts`` while the arm holds one of ``poses`` (``reach``
     says how it moves; ``kind`` is drawn where omitted). ``stays``: a thing rests in view for 30
     steps, the arm then moves until its shadow holds the thing, and the thing rests there unseen
-    for ``hold`` steps."""
+    for ``hold`` steps. ``left``: a hand on a straight reach rests from a step drawn 2 to 20
+    steps after it first goes out of view, and stays there."""
     geometry = geometry or Geometry()
     starts = starts or OTHER_STARTS
     poses = poses or POSES[geometry.joints]
@@ -563,6 +564,24 @@ def other_scene(
     if kind not in KINDS["other"]:
         raise ValueError(f"a person's-hand scene is one of {KINDS['other']}, got {kind!r}")
     pose = np.array(poses[int(rng.integers(len(poses)))], dtype=np.float64)
+    if kind == "left":
+        # a hand that goes out of view and is left there: it rests from a step drawn 2 to 20
+        # steps after it is first hidden (10 or more steps into the scene)
+        for _ in range(10_000):
+            start = np.array(starts[int(rng.integers(len(starts)))], dtype=np.float64)
+            moves, _ = reach(rng, geometry, start, steps, "straight", dt)
+            path = start + np.cumsum(moves, axis=0)
+            hidden = np.flatnonzero(~visible(geometry, path[:, None, :],
+                                             np.tile(pose, (steps, 1)))[:, 0])
+            hidden = hidden[hidden >= 10]
+            if len(hidden) and hidden[0] < steps - 30:
+                event = int(hidden[0]) + int(rng.integers(2, 21))
+                moves[event + 1 :] = 0.0
+                world = World(geometry, pose, start[None].copy(), camera_noise=noise)
+                return record(world, np.zeros((steps, geometry.joints)), moves[:, None, :],
+                              np.zeros((steps, 1), dtype=bool), rng, case="other", kind=kind,
+                              event=event, dt=dt)
+        raise ValueError("no reach from these starts goes out of this camera's view")
     if kind == "stays":
         steps = 60 + hold
         second, point = _shading(rng, geometry, pose)

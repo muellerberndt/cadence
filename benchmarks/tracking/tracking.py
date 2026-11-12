@@ -638,14 +638,18 @@ def test_scenes(case: str, founder: int, count: int = 200, quota: int = 40) -> l
     return out
 
 
-def curriculum(founder: int, count: int, vary: bool = True) -> list[w.Scene]:
+def curriculum(founder: int, count: int, vary: bool = True, left: float = 0.0
+               ) -> list[w.Scene]:
     """A founder's training scenes of every kind, shuffled: of ``count``, 25% the arm's own
     hand and 35% a person's hand in the chamber's geometry, 5% and 20% of them with discs and
     dark spans of their own (``vary``; in the chamber's geometry without it), 10% a thing
-    heard and 5% two hands that cross."""
-    shares = (("own", None, False, 0.25), ("other", None, False, 0.35), ("own", None, vary, 0.05),
-              ("other", None, vary, 0.20), ("room", "heard", False, 0.10),
-              ("room", "crossing", False, 0.05))
+    heard and 5% two hands that cross. ``left`` gives that share of the count, taken from the
+    person's hand in equal parts, to hands that go out of view and are left there, two thirds
+    of them among discs of their own."""
+    shares = (("own", None, False, 0.25), ("other", None, False, 0.35 - left / 2),
+              ("own", None, vary, 0.05), ("other", None, vary, 0.20 - left / 2),
+              ("room", "heard", False, 0.10), ("room", "crossing", False, 0.05),
+              ("other", "left", False, left / 3), ("other", "left", vary, 2 * left / 3))
     out: list[w.Scene] = []
     for index, (case, kind, varied, share) in enumerate(shares):
         out += w.scenes(case, seed(founder, "train") + 100 * (index + 1), round(share * count),
@@ -703,7 +707,8 @@ def whole(spec: dict[str, Any]) -> dict[str, Any]:
     radius: dict[str, list[np.ndarray]] | None = None
     if arm == "space":
         settings = dict(spec.get("settings") or {})
-        training = curriculum(founder, count, vary=bool(settings.pop("vary", True)))
+        training = curriculum(founder, count, vary=bool(settings.pop("vary", True)),
+                              left=float(settings.pop("left", 0.0)))
         placed = Placed(training[0].geometry, founder, settings)
         placed.train(training, rows)
         if spec.get("save"):  # the trained brain, before the panels are read

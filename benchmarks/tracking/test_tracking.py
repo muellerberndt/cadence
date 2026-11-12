@@ -123,6 +123,18 @@ def test_a_persons_hand_goes_straight_slows_stops_or_turns():
         assert (scene.commands == 0).all() and np.ptp(scene.joints, axis=0).max() < 0.01
 
 
+def test_a_hand_left_out_of_view_rests_where_it_was_left():
+    for seed in range(3):
+        scene = w.other_scene(np.random.default_rng(seed), kind="left")
+        e = scene.event
+        assert not scene.in_view[e, 0] and scene.in_view[:10, 0].all()
+        assert (np.diff(scene.truth[e:, 0], axis=0) == 0).all()
+        first = int(np.flatnonzero(~scene.in_view[10:, 0])[0]) + 10
+        assert 2 <= e - first <= 20
+    mixed = tr.curriculum(0, 60, left=0.3)
+    assert sum(s.kind == "left" for s in mixed) == 18 and len(mixed) == 60
+
+
 def test_a_thing_at_rest_is_shaded_for_as_long_as_asked():
     for scene in (w.other_scene(np.random.default_rng(2), kind="stays", hold=120),
                   w.own_scene(np.random.default_rng(2), kind="stays", hold=120)):
