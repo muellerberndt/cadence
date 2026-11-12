@@ -12,7 +12,7 @@ A part joins a brain in one of four ways:
 | An option of `Brain.compose` | at birth | `Brain.compose(inputs=4, actions=2, memory_choice=True)` |
 | `brain.grow(...)` | later, on a trained brain, which keeps what it learned | `brain.grow(recall=True)` |
 | `brain.graft(donor, ...)` | later, as trained regions of another brain | `host.graft(donor, ["sensory", "association", "motor"])` |
-| A package beside the brain | around the brain's moments, in your own program | `PopulationCode`, `cd.LongTermMemory`, `cadence.speech` |
+| A package beside the brain | around the brain's moments, in your own program | `cd.PopulationCode`, `cd.LongTermMemory`, `cadence.speech` |
 
 A word on names: `modules=` sets the widths of the association regions, one row of the tables
 below. Packaged modules that arrive with their synapses trained are planned
