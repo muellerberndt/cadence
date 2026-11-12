@@ -149,6 +149,22 @@ def test_a_room_holds_a_thing_heard_moving_and_two_hands_that_cross_unseen():
     assert demo.things == 4 and demo.what[0] == w.HAND
 
 
+def test_varied_scenes_have_discs_of_their_own_and_spans_with_the_camera_off():
+    plain = w.scenes("other", 21, 12)
+    many = w.scenes("other", 21, 12, vary=True)
+    assert len({s.geometry.occluders for s in plain}) == 1
+    assert len({s.geometry.occluders for s in many}) == 12
+    for scene in many:
+        radii = [r for _, _, r in scene.geometry.occluders]
+        assert 1 <= len(radii) <= 3 and 0.05 <= min(radii) and max(radii) <= 0.15
+        assert scene.in_view[0, 0] and np.isnan(scene.report[~scene.in_view]).all()
+    scene = w.other_scene(np.random.default_rng(3), kind="straight")
+    dark = w.darkened(scene, np.random.default_rng(3))
+    off = scene.in_view[:, 0] & ~dark.in_view[:, 0]
+    assert 1 <= off.sum() <= 100 and not off[:10].any() and scene.in_view[:, 0].sum() > 0
+    assert np.array_equal(dark.truth, scene.truth) and np.isnan(dark.report[off]).all()
+
+
 def test_a_scene_file_reads_back_as_the_scene(tmp_path):
     one = w.other_scene(np.random.default_rng(1), kind="stop", steps=40)
     many = w.room_scene(np.random.default_rng(1), kind="heard", steps=60)
@@ -263,8 +279,9 @@ def test_the_scores_read_the_true_answers_as_exact():
     assert {"stop", "straight"} <= set(got["panels"]) and got["panels"]["stop"]["scenes"] >= 2
     off = [s.truth + [0.03, 0.04] for s in scenes]
     assert np.isclose(tr.table(scenes, off)["out_of_view"], 0.05)
-    rest = w.scenes("other", 9, 2, kind="stays", hold=150)
-    assert tr.stays(rest, [s.truth for s in rest])["unseen_end"] == 0.0
+    rest = w.scenes("other", 9, 2, kind="stays")
+    held = tr.stays(rest, [s.truth for s in rest])
+    assert held["unseen_end"] == 0.0 and held["moved"] == 0.0 and held["unseen_steps"] >= 1000
     rooms = w.scenes("room", 9, 2, kind="crossing")
     kept = tr.crossing(rooms, [s.truth for s in rooms])
     swapped = tr.crossing(rooms, [s.truth[:, [1, 0, 2, 3, 4, 5, 6, 7]] for s in rooms])

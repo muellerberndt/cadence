@@ -287,15 +287,20 @@ def _mean(values: np.ndarray) -> float | None:
 
 
 def stays(scenes: list[w.Scene], answers: list[np.ndarray]) -> dict[str, Any]:
-    """A thing at rest out of view: its error while it was seen, and over the last 100 of its
-    steps out of view."""
-    seen, late = [], []
+    """A thing at rest out of view: its error while it was seen, at the step its rest out of
+    view begins (the last step before its final 1,000) and over the last 100 of its steps, and
+    how far the answer moved over those 1,000 steps."""
+    seen, begins, late, moved = [], [], [], []
     for s, a in zip(scenes, answers, strict=True):
         e, v = errors(s, a)[:, 0], s.in_view[:, 0].copy()
         v[0] = False
         seen.append(float(e[v].mean()))
+        begins.append(float(e[-1001]))
         late.append(float(e[-100:].mean()))
-    return {"scenes": len(scenes), "seen": float(np.mean(seen)), "unseen_end": float(np.mean(late)),
+        moved.append(float(np.linalg.norm(a[-1, 0] - a[-1001, 0])))
+    return {"scenes": len(scenes), "seen": float(np.mean(seen)),
+            "rest_begins": float(np.mean(begins)), "unseen_end": float(np.mean(late)),
+            "moved": float(np.mean(moved)),
             "unseen_steps": int(scenes[0].unseen()[-1, 0]) if scenes else 0}
 
 
@@ -484,6 +489,120 @@ class Floor:
         return (self.work["lesson_row_sweeps"] + self.work["act_sweeps_rows"]) * self.synapses
 
 
+class Placed:
+    """The space arm: ``cadence.space`` holds the hand's place, one row a scene. Its lessons
+    hold only what the camera reports."""
+
+    def __init__(self, geometry: w.Geometry, founder: int,
+                 settings: dict[str, Any] | None = None):
+        from cadence.space import Interface, Space
+
+        settings = dict(settings or {})
+        self.felt = bool(settings.pop("joints", False))  # the joint readings are given
+        shape = {k: settings.pop(k) for k in list(settings) if k in Interface.__dataclass_fields__}
+        shape = {k: tuple(v) if isinstance(v, list) else v for k, v in shape.items()}
+        self.interface = Interface(plane=geometry.plane, joints=geometry.joints,
+                                   ear=geometry.ear, limits=geometry.limits, **shape)
+        self.space = Space(self.interface, seed=founder, backend="cpu", **settings)
+        self.synapses = int(self.space.brain.describe()["layout"]["synapses"])
+
+    def run(self, scenes: list[w.Scene], teach: bool, space: Any = None
+            ) -> tuple[np.ndarray, np.ndarray]:
+        """Scenes of one length side by side: answers ``(scenes, steps, 2)`` and each answer's
+        radius at ``RATE``."""
+        space = self.space if space is None else space
+        feeds = [given(s) for s in scenes]
+        steps = scenes[0].steps
+        answers = np.zeros((len(scenes), steps, 2))
+        radius = np.zeros((len(scenes), steps))
+        space.begin(np.stack([f["report"][0] for f in feeds]),
+                    own=np.array([s.case == "own" for s in scenes]))
+        answers[:, 0], radius[:, 0] = space.where()
+        for t in range(1, steps):
+            seen, report, commands, joints = (np.stack([f[name][t] for f in feeds])
+                                              for name in ("seen", "report", "commands",
+                                                           "joints"))
+            answers[:, t] = space.advance(seen, report, commands,
+                                          joints=joints if self.felt else None, learn=teach)
+            radius[:, t] = space.where()[1]
+        return answers, radius
+
+    def follow(self, scene: w.Scene, teach: bool = False, space: Any = None
+               ) -> tuple[np.ndarray, np.ndarray]:
+        """A scene of several things, one row a thing: answers ``(steps, things, 2)`` and each
+        answer's radius. The reports carry no names: the space gives each to a row of its
+        look, and each cue likewise."""
+        assert scene.start is not None and scene.what is not None
+        space = self.space if space is None else space
+        answers = np.zeros((scene.steps, scene.things, 2))
+        radius = np.zeros((scene.steps, scene.things))
+        own = np.zeros(scene.things, dtype=bool)
+        own[0] = scene.case == "own"
+        space.begin(scene.start, own=own, looks=scene.what)
+        answers[0], radius[0] = space.where()
+        for t in range(1, scene.steps):
+            space.predict(scene.commands[t], space.hear(sounds(scene, t)),
+                          scene.joints[t] if self.felt else None, learn=teach)
+            seen, reports = space.assign(detections(scene, t))
+            answers[t] = space.observe(seen, reports, learn=teach)
+            radius[t] = space.where()[1]
+        return answers, radius
+
+    def train(self, scenes: list[w.Scene], rows: int) -> None:
+        """Scenes of one thing side by side, ``rows`` at a time; a scene of several things by
+        itself, in the order given."""
+        batch: list[w.Scene] = []
+        for scene in scenes:
+            if scene.things > 1:
+                self.follow(scene, teach=True)
+                continue
+            batch.append(scene)
+            if len(batch) == rows:
+                self.run(batch, teach=True)
+                batch = []
+        if batch:
+            self.run(batch, teach=True)
+
+    def answer(self, scenes: list[w.Scene], rows: int = 32
+               ) -> tuple[list[np.ndarray], list[np.ndarray]]:
+        """Answers of a frozen copy: nothing taught, scenes of one thing and one length side by
+        side, a scene of several things by itself."""
+        frozen = copy.deepcopy(self.space)
+        answers: list[np.ndarray] = [np.zeros(0)] * len(scenes)
+        radius: list[np.ndarray] = [np.zeros(0)] * len(scenes)
+        by_length: dict[int, list[int]] = {}
+        for i, s in enumerate(scenes):
+            if s.things > 1:
+                answers[i], radius[i] = self.follow(s, space=frozen)
+            else:
+                by_length.setdefault(s.steps, []).append(i)
+        for members in by_length.values():
+            for begin in range(0, len(members), rows):
+                group = members[begin : begin + rows]
+                got, wide = self.run([scenes[i] for i in group], teach=False, space=frozen)
+                for i, a, r in zip(group, got, wide, strict=True):
+                    answers[i], radius[i] = a[:, None, :], r[:, None]
+        return answers, radius
+
+    def milliseconds(self, scene: w.Scene, steps: int = 200) -> float:
+        """The median wall time of one step on one row, in milliseconds."""
+        frozen = copy.deepcopy(self.space)
+        feed = given(scene)
+        frozen.begin(feed["report"][:1], own=scene.case == "own")
+        times = []
+        for t in range(1, min(steps, scene.steps)):
+            began = time.perf_counter()
+            frozen.advance(feed["seen"][t : t + 1], feed["report"][t : t + 1],
+                           feed["commands"][t : t + 1],
+                           joints=feed["joints"][t : t + 1] if self.felt else None)
+            times.append(time.perf_counter() - began)
+        return float(np.median(times) * 1000.0)
+
+    def macs(self) -> float:
+        work = self.space.work
+        return float((work["lesson_row_sweeps"] + work["act_sweeps_rows"]) * self.synapses)
+
+
 # -- lives
 
 
@@ -498,6 +617,113 @@ def test_scenes(case: str, founder: int, count: int = 200, quota: int = 40) -> l
     if case == "other":
         out += w.scenes(case, seed(founder, "panels"), quota={name: quota for name in PANELS})
     return out
+
+
+def curriculum(founder: int, count: int, vary: bool = True) -> list[w.Scene]:
+    """A founder's training scenes of every kind, shuffled: of ``count``, 25% the arm's own
+    hand and 35% a person's hand in the chamber's geometry, 5% and 20% of them with discs and
+    dark spans of their own (``vary``; in the chamber's geometry without it), 10% a thing
+    heard and 5% two hands that cross."""
+    shares = (("own", None, False, 0.25), ("other", None, False, 0.35), ("own", None, vary, 0.05),
+              ("other", None, vary, 0.20), ("room", "heard", False, 0.10),
+              ("room", "crossing", False, 0.05))
+    out: list[w.Scene] = []
+    for index, (case, kind, varied, share) in enumerate(shares):
+        out += w.scenes(case, seed(founder, "train") + 100 * (index + 1), round(share * count),
+                        kind=kind, vary=varied)
+    order = np.random.default_rng(seed(founder, "train")).permutation(len(out))
+    return [out[i] for i in order]
+
+
+def panels(founder: int, sizes: dict[str, int] | None = None) -> dict[str, list[w.Scene]]:
+    """A founder's held-out scenes by panel: ``own`` and ``other`` (``test_scenes``),
+    ``varied`` (a person's hand among discs and dark spans of the scene's own),
+    ``stays_own`` and ``stays_other`` (the arm's own hand and another thing at rest out of view
+    for 1,000 steps), ``heard`` and ``crossing``."""
+    n = {"own": 200, "other": 200, "quota": 40, "varied": 100, "stays": 8, "heard": 60,
+         "crossing": 100, **(sizes or {})}
+    base = seed(founder, "test")
+    return {
+        "own": test_scenes("own", founder, n["own"]),
+        "other": test_scenes("other", founder, n["other"], n["quota"]),
+        "varied": w.scenes("other", base + 1000, n["varied"], vary=True),
+        "stays_own": w.scenes("own", seed(founder, "stays"), n["stays"], kind="stays"),
+        "stays_other": w.scenes("other", seed(founder, "stays"), n["stays"], kind="stays"),
+        "heard": w.scenes("room", seed(founder, "heard"), n["heard"], kind="heard"),
+        "crossing": w.scenes("room", seed(founder, "crossing"), n["crossing"], kind="crossing"),
+    }
+
+
+def readings(held_out: dict[str, list[w.Scene]], answers: dict[str, list[np.ndarray]],
+             radius: dict[str, list[np.ndarray]] | None = None) -> dict[str, Any]:
+    """Every panel's scores (``table``, ``stays``, ``heard``, ``crossing``)."""
+    out: dict[str, Any] = {}
+    for name, scenes in held_out.items():
+        if name in ("own", "other", "varied"):
+            out[name] = table(scenes, answers[name], None if radius is None else radius[name])
+        else:
+            score = {"stays_own": stays, "stays_other": stays, "heard": heard,
+                     "crossing": crossing}[name]
+            out[name] = score(scenes, answers[name])
+    return out
+
+
+def whole(spec: dict[str, Any]) -> dict[str, Any]:
+    """One whole life: an arm taught on a founder's ``curriculum`` (``space``) or fitted on it
+    (``kalman``) and read on every panel. ``spec``: ``arm``, ``founder``, ``train``, ``rows``,
+    ``settings``, ``sizes`` (the panels' sizes), ``save``."""
+    warnings.simplefilter("ignore")
+    arm, founder = str(spec["arm"]), int(spec["founder"])
+    count, rows = int(spec.get("train", 2000)), int(spec.get("rows", 8))
+    started = time.monotonic()
+    held_out = panels(founder, spec.get("sizes"))
+    row: dict[str, Any] = {"arm": arm, "case": "all", "founder": founder, "train": count,
+                           "rows": rows, "lessons": "camera", "tag": spec.get("tag"),
+                           "settings": spec.get("settings")}
+    answers: dict[str, list[np.ndarray]] = {}
+    radius: dict[str, list[np.ndarray]] | None = None
+    if arm == "space":
+        settings = dict(spec.get("settings") or {})
+        training = curriculum(founder, count, vary=bool(settings.pop("vary", True)))
+        placed = Placed(training[0].geometry, founder, settings)
+        placed.train(training, rows)
+        radius = {}
+        for name, scenes in held_out.items():
+            answers[name], radius[name] = placed.answer(scenes)
+        for reading in ("peak", "seen"):  # the same brain's shift read otherwise
+            placed.space.read = reading
+            other = {name: placed.answer(scenes) for name, scenes in held_out.items()}
+            row[reading] = readings(held_out, {k: a for k, (a, _) in other.items()},
+                                    {k: r for k, (_, r) in other.items()})
+        placed.space.read = "mean"
+        row.update(parameters=int(placed.space.brain.parameters()), synapses=placed.synapses,
+                   macs=placed.macs(), work=placed.space.work,
+                   milliseconds=placed.milliseconds(held_out["other"][0]),
+                   milliseconds_own=placed.milliseconds(held_out["own"][0]),
+                   noise=float(np.sqrt(placed.space.noise)))
+        if spec.get("save"):
+            placed.space.brain.save(str(spec["save"]))
+    elif arm in ("last_seen", "kalman"):
+        fitted = {"own": {}, "other": {}}
+        if arm == "kalman":
+            fitted = {case: fit_kalman(w.scenes(case, seed(founder, "train"), 200))
+                      for case in ("own", "other")}
+            row["fitted"] = fitted
+            radius = {}
+        make = Still if arm == "last_seen" else ConstantVelocity
+        for name, scenes in held_out.items():
+            both = [follow(s, make, fitted["own" if s.case == "own" else "other"],
+                           hear=name == "heard") for s in scenes]
+            answers[name] = [a for a, _ in both]
+            if radius is not None:
+                radius[name] = [r for _, r in both]
+        row.update(parameters=0 if arm == "last_seen" else 2, macs=0.0)
+    else:
+        raise ValueError(f"a whole life is of space, last_seen or kalman, got {arm!r}")
+    row["tables"] = readings(held_out, answers, radius)
+    row["table"] = row["tables"]["other"]
+    row["seconds"] = round(time.monotonic() - started, 1)
+    return row
 
 
 def life(spec: dict[str, Any]) -> dict[str, Any]:
@@ -535,6 +761,20 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
                    milliseconds=floor.milliseconds(held_out[0]))
         if spec.get("save"):
             floor.brain.save(str(spec["save"]))
+    elif arm == "space":
+        placed = Placed(training[0].geometry, founder, spec.get("settings"))
+        placed.train(training, rows)
+        answers, radius = placed.answer(held_out)
+        for reading in ("peak", "seen"):  # the same brain's shift read otherwise
+            placed.space.read = reading
+            row[reading] = table(held_out, *placed.answer(held_out))
+        placed.space.read = "mean"
+        row.update(parameters=int(placed.space.brain.parameters()), synapses=placed.synapses,
+                   macs=placed.macs(), work=placed.space.work,
+                   milliseconds=placed.milliseconds(held_out[0]),
+                   noise=float(np.sqrt(placed.space.noise)), settings=spec.get("settings"))
+        if spec.get("save"):
+            placed.space.brain.save(str(spec["save"]))
     elif arm.split("-")[0] in ("lstm", "transformer"):
         import controls
 
@@ -560,6 +800,11 @@ def show(rows: list[dict[str, Any]]) -> str:
     groups: dict[tuple[str, str, str, Any], list[dict[str, Any]]] = {}
     for r in rows:
         groups.setdefault((r["case"], r["arm"], r.get("lessons", ""), r.get("tag")), []).append(r)
+        for reading in ("peak", "seen"):  # the same life's shift read otherwise
+            if reading in r and "in_view" in r[reading]:
+                groups.setdefault((r["case"], r["arm"], r.get("lessons", ""),
+                                   f"{r.get('tag') or ''}:{reading}"), []).append(
+                    {**r, "table": r[reading]})
 
     def cm(values: list[float | None]) -> str:
         kept = [v for v in values if v is not None]
@@ -587,7 +832,7 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     one = commands.add_parser("life", help="one arm on one case for one founder")
     one.add_argument("--arm", required=True)
-    one.add_argument("--case", choices=("own", "other"), required=True)
+    one.add_argument("--case", choices=("own", "other", "all"), required=True)
     one.add_argument("--founder", type=int, required=True)
     one.add_argument("--train", type=int, default=1000)
     one.add_argument("--rows", type=int, default=8)
@@ -598,6 +843,7 @@ def main(argv: list[str] | None = None) -> int:
     one.add_argument("--quota", type=int, default=40)
     one.add_argument("--tag")
     one.add_argument("--save")
+    one.add_argument("--settings", type=json.loads, help="an arm's settings, as JSON")
     one.add_argument("--out", type=Path, required=True)
     scored = commands.add_parser("score", help="score one scene file")
     scored.add_argument("--scene", type=Path, required=True)
@@ -617,7 +863,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "life":
         spec = {k: v for k, v in vars(args).items() if k not in ("command", "out")}
-        row = life(spec)
+        row = whole(spec) if args.case == "all" else life(spec)
         args.out.mkdir(parents=True, exist_ok=True)
         name = "-".join(str(x) for x in (args.case, args.arm, args.lessons, args.tag or "x",
                                          args.founder))

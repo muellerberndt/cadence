@@ -723,14 +723,42 @@ def panel(scene: Scene) -> str:
     return scene.kind if e >= 1 and e + 9 <= scene.steps and bool(out[e : e + 9].all()) else ""
 
 
+def varied(rng: np.random.Generator, geometry: Geometry | None = None) -> Geometry:
+    """``geometry`` with other occluding discs: one to three of them anywhere in the plane, a
+    quarter of a metre or more from the camera, with radii of 0.05 to 0.15 metres."""
+    from dataclasses import replace
+
+    geometry = geometry or Geometry()
+    x_low, x_high, y_low, y_high = geometry.plane
+    discs: list[tuple[float, float, float]] = []
+    while len(discs) < int(rng.integers(1, 4)):
+        x, y = float(rng.uniform(x_low, x_high)), float(rng.uniform(y_low, y_high))
+        if np.hypot(x - geometry.camera[0], y - geometry.camera[1]) >= 0.25:
+            discs.append((x, y, float(rng.uniform(0.05, 0.15))))
+    return replace(geometry, occluders=tuple(discs))
+
+
+def darkened(scene: Scene, rng: np.random.Generator) -> Scene:
+    """``scene`` with the camera off for a span of 20 to 100 steps: no report of any thing
+    there. The span begins at step 10 or later."""
+    from dataclasses import replace
+
+    begin = int(rng.integers(10, max(scene.steps - 20, 11)))
+    off = np.zeros(scene.steps, dtype=bool)
+    off[begin : begin + int(rng.integers(20, 101))] = True
+    return replace(scene, in_view=scene.in_view & ~off[:, None], report=scene.report.copy())
+
+
 def scenes(
     case: str, seed: int, count: int = 0, *, geometry: Geometry | None = None,
     kind: str | None = None, quota: dict[str, int] | None = None, steps: int = 150,
-    noise: float = 0.01, hold: int = 1000,
+    noise: float = 0.01, hold: int = 1000, vary: bool = False,
 ) -> list[Scene]:
     """``count`` scenes of ``case`` from one seed. ``quota`` (person's-hand scenes) asks for
     that many scenes of each panel in place of ``count``: scenes are drawn until every panel
-    holds its number."""
+    holds its number. With ``vary`` every scene has occluding discs of its own (``varied``; a
+    scene whose hand starts out of view is drawn again) and one scene in three has the camera
+    off for a span (``darkened``)."""
     rng = np.random.default_rng(np.random.SeedSequence([int(seed), CASES.index(case)]))
     out: list[Scene] = []
     if quota:
@@ -742,14 +770,22 @@ def scenes(
                 held[name] += 1
                 out.append(scene)
         return out
-    for _ in range(count):
+
+    def one(place: Geometry | None) -> Scene:
         if case == "own":
-            out.append(own_scene(rng, geometry, steps=steps, kind=kind or "sweep", hold=hold,
-                                 noise=noise))
-        elif case == "other":
-            out.append(other_scene(rng, geometry, steps=steps, kind=kind, hold=hold, noise=noise))
-        else:
-            out.append(room_scene(rng, geometry, kind=kind or "heard", steps=steps, noise=noise))
+            return own_scene(rng, place, steps=steps, kind=kind or "sweep", hold=hold,
+                             noise=noise)
+        if case == "other":
+            return other_scene(rng, place, steps=steps, kind=kind, hold=hold, noise=noise)
+        return room_scene(rng, place, kind=kind or "heard", steps=steps, noise=noise)
+
+    while len(out) < count:
+        if not vary:
+            out.append(one(geometry))
+            continue
+        scene = one(varied(rng, geometry))
+        if scene.in_view[0, 0]:
+            out.append(darkened(scene, rng) if rng.random() < 1 / 3 else scene)
     return out
 
 
