@@ -828,9 +828,6 @@ assert again.space.what_is_at([0.3, 0.6]) == APPLE
 The camera sees none of the places where the apple and the bread were last seen, so each stays
 at its last known place for any number of moments. The brain reads `where` and `what` at every
 moment; what it does with them is its own task, taught by lessons or rewards as any brain's is.
-The map in a host brain is read against gates M1 to M4 of
-[#321](https://github.com/muellerberndt/cadence/issues/321) by
-[`hosts.py`](../benchmarks/tracking/hosts.py).
 
 ## Modules: parts that arrive as files
 
@@ -920,7 +917,8 @@ assert "ships no module 'kitchen'" in refused(lambda: cd.modules.load("kitchen")
 | The hearing of letters | Letters heard in speech, from [#304](https://github.com/muellerberndt/cadence/issues/304) | | in the backlog of [#321](https://github.com/muellerberndt/cadence/issues/321) |
 
 The place module is read against gates M1 to M5 of
-[#321](https://github.com/muellerberndt/cadence/issues/321).
+[#321](https://github.com/muellerberndt/cadence/issues/321), the map in a host brain by
+[`hosts.py`](../benchmarks/tracking/hosts.py).
 
 ## What does not go together
 

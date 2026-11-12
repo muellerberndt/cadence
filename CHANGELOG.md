@@ -6,20 +6,23 @@
 
 - **[Parts of a brain](docs/modules.md)** (#321): the catalogue of every part a brain is built
   from, in tables by role (senses, association regions, the motor, short-term state, memories,
-  learning, many lives, the speech pieces, growing and grafting, an anatomy of your own). Each
-  part has its purpose, the option or call that joins it, what it holds between moments,
-  whether it learns, how it arrives, what `grow` and `graft` do with it, and a reading with its
-  benchmark or issue. Every group has a runnable example, and five brains are composed for a
-  purpose: a transcriber, an agent that answers from facts it read once, a body taught by a
-  demonstrator, a creature that lives on reward and a body that knows where its hand is. The
-  refusals between parts are listed as the library states them.
-- **Parts that arrive trained** ([docs/modules.md](docs/modules.md#parts-that-arrive-trained),
-  #321): the module file and why loading one runs no code, `save_module`, `load_module`,
-  `compose(..., trained=)` and `graft(module)` with runnable examples (a skill saved, loaded
-  and arriving in a host before any lesson; a host that learns its own task while the module
-  stays to the bit; files and hosts refused by name), what a hosted module does, and the
-  `cadence.space` pieces with the place module in the catalogue's tables. The API reference
-  gains `trained=`, `save_module` and a section for `cadence.modules`.
+  learning, many lives, the speech pieces, the space pieces, growing and grafting, an anatomy of
+  your own). Each part has its purpose, the option or call that joins it, what it holds between
+  moments, whether it learns, how it arrives, what `grow` and `graft` do with it, and a reading
+  with its benchmark or issue. Every group has a runnable example, and five brains are composed
+  for a purpose: a transcriber, an agent that answers from facts it read once, a body taught by a
+  demonstrator, a creature that lives on reward and a brain that knows where things are while
+  its camera looks away. The refusals between parts are listed as the library states them.
+- **Modules: parts that arrive as files**
+  ([docs/modules.md](docs/modules.md#modules-parts-that-arrive-as-files), #320, #321): the map
+  of things in the space pieces (a thing enters when it is sensed; with no sensory input its last
+  known place stays; sight, sound and the body's own readings update a place; a place seen empty
+  sends a thing out of sight near where it was last seen; learned physics follows in the next
+  release); what a module file holds and why loading one runs no code;
+  `cadence.modules.names()`, `cadence.modules.load("place")`, `cadence.load_module(path)`,
+  `Map.save` with a card, and the refusals by name; a brain that holds the map (`brain.space`,
+  saved and loaded with it, its `observation()` the brain's input). The API reference gains a
+  section for `cadence.modules`.
 
 - **Corrections to the guides, read against the code**: `retune` changes a tied brain's settings
   and refuses only `retune(tied=...)`; the `Brain(connectome, ...)` signature lists `longterm`
