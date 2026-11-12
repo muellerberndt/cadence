@@ -520,9 +520,11 @@ class Map:
                 # a place a sense wrote the moment before is a report, as far off as the
                 # camera's error: it is seen empty where the camera sees around it, within
                 # ``margin``, all it saw there when it reported it (where the field moved off
-                # it, the thing stays); any other place where the camera sees it
+                # it, the thing stays); a place physics carried on, or any other place, where
+                # the camera sees it
                 views = [(p, f) for p, f in self._views if np.linalg.norm(p - at) <= self.step]
-                if sensed[piece].any() and views:
+                carried_on = acting and bool(physics.mass[np.ix_(piece, units)].any())
+                if sensed[piece].any() and views and not carried_on:
                     place, then = min(views, key=lambda v: float(np.linalg.norm(v[0] - at)))
                     now = looks(place, self.margin)
                     seen_empty = bool(now.any()) and not (then & ~now).any()

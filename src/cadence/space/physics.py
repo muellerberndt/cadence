@@ -114,6 +114,10 @@ class Physics:
         self.graph = self._graph_class(
             self.connectome, self._model, efficacy=self.kernel.ravel()[self.groups],
             backend=self._backend)
+        self._velocity_graphs()
+
+    def _velocity_graphs(self) -> None:
+        """Each velocity's graph of its own, at the kernels as taught."""
         self._graphs = [self._graph_class(self._one, self._model,
                                           efficacy=self.kernel[v][self._one_groups],
                                           backend=self._backend)
@@ -248,6 +252,7 @@ class Physics:
         if (efficacy < 0.0).any() or (whole > PASS).any():
             learner.brain = learner.brain.with_parameters(efficacy=self.kernel.ravel()[self.groups])
         self.graph = learner.brain
+        self._velocity_graphs()
         self.lessons += rows
         answer = np.asarray(free.activation)[:, self._moving.ravel()]
         wanted = target[:, self._moving.ravel()]
