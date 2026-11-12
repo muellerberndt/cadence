@@ -570,7 +570,7 @@ class Map:
 
     def _present(self, activity: np.ndarray) -> list[int]:
         """The kinds whose every code unit holds activity somewhere."""
-        held = (activity > self._floor).any(axis=0)
+        held = np.asarray((activity > self._floor).any(axis=0))
         return [kind for kind in range(len(self.codes)) if held[self.codes[kind] > 0].all()]
 
     def _velocities(self, kind: int, place: np.ndarray, near: list[np.ndarray],
