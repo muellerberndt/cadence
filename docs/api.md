@@ -688,7 +688,7 @@ own name) and refuses a brain that lacks one or holds it at another size.
 A `Module` has `name`, `regions` (each region's size), `inputs` and `published` (region names),
 `width` (the inputs it adds to an observation), `interface` and `card` (the record's two free
 entries), `record` and `arrays`. `brain(*, backend=None, device=None, precision=None)` is the brain
-it was trained in, on the CPU unless a backend is named, the same object at every call.
+it was trained in, on the CPU unless a backend is named, a brain of its own at every call.
 `columns(brain, prefix=None)` gives where its inputs lie in a brain's observation.
 `Brain.compose(..., trained=[module])` builds a brain around it and `Brain.graft(module)` grafts
 it. Guide: [parts that arrive trained](modules.md#parts-that-arrive-trained); the place module:

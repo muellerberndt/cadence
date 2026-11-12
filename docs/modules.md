@@ -930,7 +930,7 @@ assert isinstance(built_in, list)
 | `width` | The inputs the module adds to a brain's observation |
 | `interface`, `card` | The module's own record, and its card |
 | `record`, `arrays` | The whole JSON record, and the trained brain's arrays |
-| `brain()` | The brain the module was trained in, loaded from the arrays, on the CPU unless a backend is named. Every call returns the same brain: take `copy.deepcopy(module.brain())` before you teach it |
+| `brain()` | The brain the module was trained in, loaded from the arrays, on the CPU unless a backend is named. Every call gives a brain of its own, as the file holds it: lessons given to one reach neither the module nor another |
 | `columns(host)` | Where the module's inputs lie in a host's observation, one column an input neuron |
 
 `cd.modules.names()` lists the modules that ship inside the library, and `cd.modules.load(name)`
@@ -988,8 +988,8 @@ What `compose(..., trained=[module])` builds, and what it leaves to you:
   neurons do not move between the phases of a lesson or of a reward. The host's learning moves
   the host's own synapses and the synapses that read the module. The module's synapses stay to
   the bit, held or released.
-- **To teach a module further**, teach its donor (`copy.deepcopy(module.brain())`), save it
-  again, and graft the newer file with `joints="kept"`
+- **To teach a module further**, teach its donor (`module.brain()` gives one), save it again,
+  and graft the newer file with `joints="kept"`
   ([graft a module](#graft-a-module-into-a-brain-that-holds-its-regions)).
 
 ```python
