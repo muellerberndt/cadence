@@ -1,76 +1,24 @@
 # Changelog
 
-## Unreleased
+## 0.99.0 - 2026-11-13
 
-### Fixed
-
-- **`grow` and `retune` name a construction setting as one** (#322): `grow` answers a setting a
-  brain is composed with and keeps (`message`, `longterm`, `learned_fields`, `ports`,
-  `fields_motor`, `carried_gain`, the `message_*` and `longterm_*` settings,
-  `learned_code_fields`, `dense_limit`, `precision`) with `<name> is a construction choice grow
-  does not add; compose the brain with it`, and keeps its pointer to `retune` for the settings
-  `retune` changes. `retune(learned_fields=...)`, `retune(ports=...)`, `retune(fields_motor=...)`,
-  `retune(features=...)` and `retune(field=...)` raise `ValueError` as construction settings, in
-  place of `TypeError: unknown brain setting`. What either call accepts is unchanged.
-- **The acquisition protocol's tests read the same case on a loaded machine** (#317): the
-  fixture runs of `benchmarks/acquisition/test_protocol.py` take the protocol's largest budget
-  (300 seconds) in place of ten. They end at their first stage in about a second, so the cases
-  they write follow their updates whatever the machine's speed, and the fixture asserts the
-  case it wrote.
-
-### Documentation
-
-- **A reloaded brain and BLAS threads** (#315): the backends guide and the save section of
-  the first guide state that on the NumPy path (`CADENCE_FUSED=0`) a reloaded brain's
-  continued life repeats to the bit at one BLAS thread count, with the reading that located
-  it (four compositions of 35 continue to other last bits with the thread variables unset
-  than at one thread), and that the thread variables at 1 give a reloaded life that repeats
-  on another run or machine.
-
-- **[Parts of a brain](docs/modules.md)** (#321): the catalogue of every part a brain is built
-  from, in tables by role (senses, association regions, the motor, short-term state, memories,
-  learning, many lives, the speech pieces, the space pieces, growing and grafting, an anatomy of
-  your own). Each part has its purpose, the option or call that joins it, what it holds between
-  moments, whether it learns, how it arrives, what `grow` and `graft` do with it, and a reading
-  with its benchmark or issue. Every group has a runnable example, and five brains are composed
-  for a purpose: a transcriber, an agent that answers from facts it read once, a body taught by a
-  demonstrator, a creature that lives on reward and a brain that knows where things are while
-  its camera looks away. The refusals between parts are listed as the library states them.
-- **Modules: parts that arrive as files**
-  ([docs/modules.md](docs/modules.md#modules-parts-that-arrive-as-files), #320, #321): the map
-  of things in the space pieces (a thing enters when it is sensed; with no sensory input its last
-  known place stays; sight, sound and the body's own readings update a place; a place seen empty
-  sends a thing out of sight near where it was last seen; learned physics follows in the next
-  release); the two kinds of module file, a map file and a trained brain's regions with their
-  interface, both read by `cadence.load_module(path)`, and why loading one runs no code;
-  `cadence.modules.names()` and `cadence.modules.load("place")`; a trained module made with
-  `save_module` and built into a new brain with `compose(..., trained=[module])`, its skill
-  arriving before any lesson; what a hosted module does (held unless `freeze=False`, read by the
-  host through synapses that start at zero, untouched by the host's lessons) and `graft(module)`;
-  a brain that holds the map (`brain.space`, saved and loaded with it, its `observation()` the
-  brain's input); every refusal by name. The API reference gains `trained=`, `save_module`,
-  `graft(module)` and a section for `cadence.modules`.
-
-- **Corrections to the guides, read against the code**: `retune` changes a tied brain's settings
-  and refuses only `retune(tied=...)`; the `Brain(connectome, ...)` signature lists `longterm`
-  and the `ActorCriticConfig` signature `hold` and `entropy`; what `Lives` refuses includes a
-  held message, long-term records, tied projections, `actor_entropy` and the read's cortex at
-  unit norm; `grow(recall=True)` also gives a brain without a heard history the one block a new
-  brain's memory holds, and `recall_founder=True` grows the memory without it; the API
-  reference gains a section for `cadence.speech.frontend`, `align` and `decode`, and the speech
-  guide a line each for `LogMel`, `mel_bank`, `windows`, `even_path` and `greedy`.
+A map of what is where, held in the brain's own carried activity (`cadence.space.map.Map`,
+the built-in module `cadence.modules.load("place")`, `brain.space`), modules that arrive
+as files (a map file, or a trained brain's regions written by `Brain.save_module` and built
+into a new brain by `Brain.compose(trained=)` or `Brain.graft(module)`), and the catalogue of
+every part a brain is built from ([docs/modules.md](docs/modules.md)). No default changes:
+with every new option unset a brain is composed, acts, learns and saves as on 0.98.0.
 
 ### Space: a map of what is where (#320)
 
 `cadence.space` is imported by name, and `import cadence` loads none of it. The guide is
-[docs/space.md](docs/space.md). No default changes: with every new option unset a brain is
-composed, acts, learns and saves as on 0.98.0.
+[docs/space.md](docs/space.md).
 
 - **`cadence.space.map.Map`**: a map of things held in a sheet's own settled activity, cells of
   a plane by units of a kind's code. No list of things is given to it and none is kept beside
   it. A thing enters when a sense reports it (`moment(seen=, heard=, felt=, lit=)`), the sheet's
   potentials are the next moment's drive on the same neurons, and with no sensory information
-  the last known place stays to the bit: eight things, two of one kind, read within 0.004 cm
+  the last known place stays to the bit: eight things, two of one kind, read within 0.0035 cm
   after 1,000 moments unseen. `where_is(kind)` and `what_is_at(place)` ask by settling,
   `things()` reads the inventory (kind, place, cells, pieces, moments since sensed, state),
   `area(kind, rate)` the smallest set of cells holding that share, and `save`, `Map.load` and
@@ -79,7 +27,7 @@ composed, acts, learns and saves as on 0.98.0.
   kind, is driven once onto the cells out of sight within `reach` (0.15 m) of where it was held
   (`empty="near"`, the founder; `"clear"` and `"keep"` are the other rules); after that, sight
   only takes cells away from it, and with none left it is "not known where". A place reported
-  the moment before is seen empty where the camera still sees all it saw around it (within
+  the moment before is seen empty where the camera sees all it saw around it (within
   `margin`, the camera's error); any other held place where the camera sees all of it within the
   margin, so a camera turning past a thing at rest leaves it held. A report of a kind finds a
   thing of it that is in doubt. On the chamber's two recorded scenes of a hand that rests behind
@@ -100,9 +48,12 @@ composed, acts, learns and saves as on 0.98.0.
   thing at rest out of view and a thing heard; `rooms.py` reads rooms of things whose camera
   turns (kinds, a thing moved unseen, many things, things that arrive and leave, the state);
   `hosts.py` the map in a host brain; `gates_map.py` the declared gates.
-- **`Space`** below is the earlier form, kept as the baseline. A module file states whether its
-  regions were raised with joint readings, and a space of a file raised without them leaves
-  joint readings out.
+
+#### The baseline: places held by a program
+
+`Space` is the earlier form, kept as the baseline. A module file states whether its regions
+were raised with joint readings, and a space of a file raised without them leaves joint
+readings out.
 
 - **`Space`**: a program beside a brain that holds a place for every thing between moments, one
   row a thing. A camera's report writes the place; a thing at rest takes the mean of its reports;
@@ -150,6 +101,64 @@ with a blind spot and an ear, in plain NumPy; scenes of the arm's own hand, a pe
 rooms of several things; a scene file (`cadence-tracking-scene/1`) scored as a generated scene
 is; the controls (last seen, a constant-velocity Kalman filter, the arm's true kinematics, a
 matched LSTM and transformer) and the floors (a default brain asked the position at every step).
+
+### Fixed
+
+- **`grow` and `retune` name a construction setting as one** (#322): `grow` answers a setting a
+  brain is composed with and keeps (`message`, `longterm`, `learned_fields`, `ports`,
+  `fields_motor`, `carried_gain`, the `message_*` and `longterm_*` settings,
+  `learned_code_fields`, `dense_limit`, `precision`) with `<name> is a construction choice grow
+  does not add; compose the brain with it`, and `trained` with the same sentence and a pointer
+  to `graft(module)`; it keeps its pointer to `retune` for the settings `retune` changes. `retune(learned_fields=...)`, `retune(ports=...)`, `retune(fields_motor=...)`,
+  `retune(features=...)`, `retune(field=...)` and `retune(trained=...)` raise `ValueError` as
+  construction settings, in place of `TypeError: unknown brain setting`. What either call accepts is unchanged.
+- **The acquisition protocol's tests read the same case on a loaded machine** (#317): the
+  fixture runs of `benchmarks/acquisition/test_protocol.py` take the protocol's largest budget
+  (300 seconds) in place of ten. They end at their first stage in about a second, so the cases
+  they write follow their updates whatever the machine's speed, and the fixture asserts the
+  case it wrote.
+
+### Documentation
+
+- **A reloaded brain and BLAS threads** (#315): the backends guide and the save section of
+  the first guide state that on the NumPy path (`CADENCE_FUSED=0`) a reloaded brain's
+  continued life repeats to the bit at one BLAS thread count, with the reading that located
+  it (four compositions of 35 continue to other last bits with the thread variables unset
+  than at one thread), and that the thread variables at 1 give a reloaded life that repeats
+  on another run or machine.
+
+- **[Parts of a brain](docs/modules.md)** (#321): the catalogue of every part a brain is built
+  from, in tables by role (senses, association regions, the motor, short-term state, memories,
+  learning, many lives, the speech pieces, the space pieces, growing and grafting, an anatomy of
+  your own). Each part has its purpose, the option or call that joins it, what it holds between
+  moments, whether it learns, how it arrives, what `grow` and `graft` do with it, and a reading
+  with its benchmark or issue. Every group has a runnable example, and five brains are composed
+  for a purpose: a transcriber, an agent that answers from facts it read once, a body taught by a
+  demonstrator, a creature that lives on reward and a brain that knows where things are while
+  its camera looks away. The refusals between parts are listed as the library states them.
+- **Modules: parts that arrive as files**
+  ([docs/modules.md](docs/modules.md#modules-parts-that-arrive-as-files), #320, #321): the map
+  of things in the space pieces (a thing enters when it is sensed; with no sensory input its last
+  known place stays; sight, sound and the body's own readings update a place; a place seen empty
+  sends a thing out of sight near where it was last seen; learned physics follows in the next
+  release); the two kinds of module file, a map file and a trained brain's regions with their
+  interface, both read by `cadence.load_module(path)`, and why loading one runs no code;
+  `cadence.modules.names()` and `cadence.modules.load("place")`; a trained module made with
+  `save_module` and built into a new brain with `compose(..., trained=[module])`, its skill
+  arriving before any lesson; what a hosted module does (held unless `freeze=False`, read by the
+  host through synapses that start at zero, untouched by the host's lessons) and `graft(module)`;
+  a brain that holds the map (`brain.space`, saved and loaded with it, its `observation()` the
+  brain's input); every refusal by name. The API reference gains `trained=`, `save_module`,
+  `graft(module)` and a section for `cadence.modules`.
+
+- **Corrections to the guides, read against the code**: `retune` changes a tied brain's settings
+  and refuses only `retune(tied=...)`; the `Brain(connectome, ...)` signature lists `longterm`
+  and the `ActorCriticConfig` signature `hold` and `entropy`; what `Lives` refuses includes a
+  held message, long-term records, tied projections, `actor_entropy` and the read's cortex at
+  unit norm; `grow(recall=True)` also gives a brain without a heard history the one block a new
+  brain's memory holds, and `recall_founder=True` grows the memory without it; the API
+  reference gains a section for `cadence.speech.frontend`, `align` and `decode`, and the speech
+  guide a line each for `LogMel`, `mel_bank`, `windows`, `even_path` and `greedy`.
 
 ## 0.98.0 - 2026-11-12
 
