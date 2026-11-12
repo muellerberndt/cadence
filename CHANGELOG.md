@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Fixed
+
+- **`grow` and `retune` name a construction setting as one** (#322): `grow` answers a setting a
+  brain is composed with and keeps (`message`, `longterm`, `learned_fields`, `ports`,
+  `fields_motor`, `carried_gain`, the `message_*` and `longterm_*` settings,
+  `learned_code_fields`, `dense_limit`, `precision`) with `<name> is a construction choice grow
+  does not add; compose the brain with it`, and keeps its pointer to `retune` for the settings
+  `retune` changes. `retune(learned_fields=...)`, `retune(ports=...)`, `retune(fields_motor=...)`,
+  `retune(features=...)` and `retune(field=...)` raise `ValueError` as construction settings, in
+  place of `TypeError: unknown brain setting`. What either call accepts is unchanged.
+
 ### Documentation
 
 - **[Parts of a brain](docs/modules.md)** (#321): the catalogue of every part a brain is built

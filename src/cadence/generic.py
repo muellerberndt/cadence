@@ -729,6 +729,22 @@ _LONGTERM_FOUNDERS: dict[str, Any] = {
     "distinct": None, "best": False, "rest": False,
     "pairs": 0, "expansion": None, "winners": None, "candidates": None, "fade": True,
 }
+# The settings a brain is composed with and keeps for its life: ``retune`` refuses each of them
+# as a construction setting, and ``grow`` names those it does not add as construction choices.
+_CONSTRUCTION = frozenset({
+    "inputs", "actions", "modules", "observers", "lateral", "scales", "slots", "seed",
+    "features", "field", "learned_fields", "ports", "fields_motor",
+    "episodic", "backend", "device", "precision", "dense_limit", "connectome",
+    "history_decays",
+    "message", "message_phases", "message_winners", "message_fan_in", "message_gains",
+    "message_boundary", "message_boundary_holds", "message_roles", "message_read",
+    "longterm", *(f"longterm_{name}" for name in _LONGTERM_FOUNDERS),
+    "carried_gain",
+    *_EPISODIC_SETTINGS, "recall", *(f"recall_{name}" for name in Recall.CONSTRUCTION),
+    *(f"recall_{name}" for name in Recall.CONSTRUCTION_OPTIONS), "code",
+    "learned_code", *(f"learned_code_{name}" for name in LearnedCode.GENES),
+    "attention", "apical", "maturity", "tied",
+})
 
 
 def _longterm_genes(longterm: Any, genes: Mapping[str, Any]) -> dict[str, Any]:
@@ -3547,24 +3563,11 @@ class Brain:
         and reward references and keeps its age and work counters. Returns this same brain.
         """
         options = dict(genes)
-        construction = {
-            "inputs", "actions", "modules", "observers", "lateral", "scales", "slots", "seed",
-            "episodic", "backend", "device", "precision", "dense_limit", "connectome",
-            "history_decays",
-            "message", "message_phases", "message_winners", "message_fan_in", "message_gains",
-            "message_boundary", "message_boundary_holds", "message_roles", "message_read",
-            "longterm", *(f"longterm_{name}" for name in _LONGTERM_FOUNDERS),
-            "carried_gain",
-            *_EPISODIC_SETTINGS, "recall", *(f"recall_{name}" for name in Recall.CONSTRUCTION),
-            *(f"recall_{name}" for name in Recall.CONSTRUCTION_OPTIONS), "code",
-            "learned_code", *(f"learned_code_{name}" for name in LearnedCode.GENES),
-            "attention", "apical", "maturity", "tied",
-        }
         for name in options:
             refusal = rescaled(name)
             if refusal is not None:
                 raise ValueError(refusal)
-            if name in construction:
+            if name in _CONSTRUCTION:
                 raise ValueError(f"{name} is a construction setting; retune preserves the brain")
         point = options.pop("teaching", None)
         if point is not None and "learning" in options:
@@ -7641,6 +7644,10 @@ def _grow_parts(brain: Brain, settings: Mapping[str, Any]) -> dict[str, Any]:
             raise ValueError(
                 f"{name}: the hippocampus and its episodic memory are a construction choice grow "
                 "does not add or change; compose the brain with them"
+            )
+        if name in _CONSTRUCTION:
+            raise ValueError(
+                f"{name} is a construction choice grow does not add; compose the brain with it"
             )
         raise ValueError(f"{name} is not a part; retune changes a living brain's settings")
     return changes
