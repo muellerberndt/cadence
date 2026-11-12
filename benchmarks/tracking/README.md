@@ -10,6 +10,10 @@ answers that matter most are the ones given while the thing is out of view.
 - [`tracking.py`](tracking.py): what a learner is given, the controls that learn nothing, the
   floors (a default brain asked the position at every step), the scores and the command line.
 - [`controls.py`](controls.py): the matched LSTM and transformer.
+- [`belief.py`](belief.py): a belief over places as a control, a grid filter with a sheet of
+  mass that moves and a sheet at rest, given where the camera would see a thing at each step.
+- [`scenes/promise.json`](scenes/promise.json): a recorded scene, a hand that goes behind a
+  pillar at 0.5 m/s, rests there for 70 moments and comes back.
 - [`scenes/example.json`](scenes/example.json): one small scene file.
 
 ```sh

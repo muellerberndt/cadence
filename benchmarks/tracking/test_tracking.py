@@ -123,6 +123,22 @@ def test_a_persons_hand_goes_straight_slows_stops_or_turns():
         assert (scene.commands == 0).all() and np.ptp(scene.joints, axis=0).max() < 0.01
 
 
+def test_the_belief_control_holds_a_hand_left_behind_a_pillar():
+    belief = _load("belief")
+    scene = w.load(HERE / "scenes" / "promise.json")
+    assert scene.steps == 323 and int((~scene.in_view[:, 0]).sum()) == 91
+    out = ~scene.in_view[:, 0]
+    still = tr.errors(scene, tr.follow(scene, tr.Still)[0])[out, 0].mean()
+    answers, held, size, _ = belief.follow(scene, hazard=0.03)
+    error = tr.errors(scene, answers)[:, 0]
+    assert error[out].mean() < 0.5 * still and error[~out][1:].mean() < 0.02
+    assert 0.85 <= held[out].mean() <= 0.95 and size[out].mean() < 60
+    grid = belief.Belief(scene.geometry.plane)
+    assert grid.cells == 2000
+    moved, lost = grid._shift(np.eye(grid.nx, grid.ny), np.array([0.05, -0.02]))
+    assert np.isclose(moved.sum() + lost.sum(), min(grid.nx, grid.ny))  # no mass is made or lost
+
+
 def test_a_hand_left_out_of_view_rests_where_it_was_left():
     for seed in range(3):
         scene = w.other_scene(np.random.default_rng(seed), kind="left")
