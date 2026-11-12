@@ -88,6 +88,13 @@ class Map:
     kind with none of it within ``step``: the nearest piece of the kind within ``stride`` is
     that thing, moved unseen; with none, it is a new thing).
 
+    With ``trace`` every settle runs two sweeps and is kept by sweep in ``trajectory``:
+    ``asked`` (``"moment"``, ``"where_is"`` or ``"what_is_at"``), ``sweeps`` (2) and the
+    activity above rest of ``map`` ``(sweeps + 1, cells x, cells y, units)``, ``where``
+    ``(sweeps + 1, cells x, cells y)`` and ``what`` ``(sweeps + 1, units)``: row 0 is the state
+    the settle begins from (the inputs at their potentials, the sheet at rest), row 1 the sheet
+    settled and row 2 ``where`` and ``what`` settled on it.
+
     ``moment`` takes one moment's reports and the cells in sight. ``where_is`` and
     ``what_is_at`` ask by settling, ``things`` reads the inventory off the map and ``reset``
     empties it. ``arrays`` is the carried state, ``save`` and ``load`` write and read it."""
@@ -96,7 +103,8 @@ class Map:
                  cells: tuple[int, int] = (32, 26), *, units: int = 16, kinds: int | None = None,
                  weight: int = 3, codes: np.ndarray | None = None, level: float = 0.02,
                  empty: str = "near", reach: float = 0.3, step: float = 0.15,
-                 stride: float = 0.5, seed: int = 0, backend: Any = "cpu"):
+                 stride: float = 0.5, seed: int = 0, trace: bool = False,
+                 backend: Any = "cpu"):
         from ..brain import Apical
         from ..brain import Brain as Graph
         from ..connectome import Connectome
@@ -161,6 +169,8 @@ class Map:
                 np.isin(np.asarray(self.connectome.post), sheet), pools, fraction=self.level,
                 floor=1e-6))
         self._floor = 1e-3 * self.level  # activity under this is no thing
+        self.trace = bool(trace)
+        self.trajectory: dict[str, Any] = {}  # the latest settle by sweep, with ``trace``
         self.work = {"moments": 0, "questions": 0}
         self.reset()
 
@@ -288,7 +298,7 @@ class Map:
                 carried: np.ndarray | None = None, clock: np.ndarray | None = None,
                 fresh: np.ndarray | None = None, kept: np.ndarray | None = None,
                 doubt: np.ndarray | None = None, sure: np.ndarray | None = None,
-                sweeps: int = 1) -> np.ndarray:
+                sweeps: int = 1, asked: str = "moment") -> np.ndarray:
         """Settle the graph: every neuron's potential. ``reference`` drives the pools'
         references, ``carried`` (flags on ``held``, ``(cells, units)``) is the settle's mask on
         what the map carried, ``write`` drives the sheet, ``fresh`` (flags on cells) holds
@@ -325,8 +335,21 @@ class Map:
             begun *= mask
         state = BrainState(v=begun, activation=self._model.activation(begun),
                            adaptation=np.zeros_like(begun), steps=0)
-        state = self.graph.settle_batch(drive, steps=sweeps, tolerance=None, mask=mask,
-                                        state=state)
+        if self.trace:  # the settle by sweep, for a reader who watches it
+            first = np.maximum(np.asarray(state.activation)[0], 0.0)
+            state = self.graph.settle_batch(drive, steps=2, tolerance=None, mask=mask,
+                                            state=state, trajectory=True)
+            rows = np.maximum(np.concatenate(
+                [first[None], np.asarray(state.trajectory)[:, 0]], axis=0), 0.0)
+            nx, ny = self.cells
+            self.trajectory = {
+                "asked": asked, "sweeps": 2,
+                "map": rows[:, run["map"]].reshape(3, nx, ny, self.units),
+                "where": rows[:, run["where"]].reshape(3, nx, ny),
+                "what": rows[:, run["what"]].copy()}
+        else:
+            state = self.graph.settle_batch(drive, steps=sweeps, tolerance=None, mask=mask,
+                                            state=state)
         return np.asarray(np.asarray(state.v, dtype=np.float64)[0])
 
     def moment(self, seen: Any = (), heard: Any = (), felt: Any = (), lit: Any = None) -> None:
@@ -425,7 +448,7 @@ class Map:
         where every one of them is active, and the least of them is read there. Each connected
         piece is one place, the mean of its activity."""
         code = self.codes[int(kind)]
-        v = self._settle(code * self._lengths(), sweeps=2)
+        v = self._settle(code * self._lengths(), sweeps=2, asked="where_is")
         self.work["questions"] += 1
         if code.sum() == 1:
             found = np.maximum(np.tanh(v[self._runs["where"]] / 2.0), 0.0)
@@ -442,7 +465,7 @@ class Map:
         hold no thing."""
         reach = 1.5 * float(self.size.max()) if within is None else float(within)
         near = np.linalg.norm(self.centers - np.asarray(place, dtype=np.float64), axis=1) <= reach
-        v = self._settle(self._lengths(), sweeps=2, kept=near)
+        v = self._settle(self._lengths(), sweeps=2, kept=near, asked="what_is_at")
         self.work["questions"] += 1
         code = np.maximum(np.tanh(v[self._runs["what"]] / 2.0), 0.0)
         return self.kind_of(code) if code.max() > self._floor else None
@@ -451,27 +474,38 @@ class Map:
 
     def things(self) -> list[dict[str, Any]]:
         """Every thing the map holds, read off its carried activity: ``kind``, ``place`` (the
-        mean of its piece of activity), ``cells`` (the piece's cells, numbers into
-        ``centers``), ``since`` (the moments since a sense wrote it) and ``state``: ``"seen"``,
-        ``"heard"`` or ``"felt"`` at the moment a sense wrote it, ``"held"`` at its last known
-        place, ``"near"`` on the cells out of sight around where it was seen to be missing. A
-        kind known with no place is listed with ``place`` None and ``"not known where"``."""
+        mean of its activity), ``cells`` (its cells, numbers into ``centers``), ``pieces``
+        (the cells by connected piece), ``since`` (the moments since a sense wrote it) and
+        ``state``: ``"seen"``, ``"heard"`` or ``"felt"`` at the moment a sense wrote it,
+        ``"held"`` at its last known place, ``"near"`` on the cells out of sight around where it
+        was seen to be missing. A thing in doubt that lies in several pieces of unseen cells,
+        driven there at one moment, is one entry with every piece. A kind known with no place
+        is listed with ``place`` None and ``"not known where"``."""
         activity = self._activity()
         out: list[dict[str, Any]] = []
         for kind in range(len(self.codes)):
             own = self._of_kind(kind, activity)
-            for piece in self._pieces(own > self._floor):
-                place = (own[piece] @ self.centers[piece]) / own[piece].sum()
+            doubted: dict[int, list[np.ndarray]] = {}
+            for piece in self._pieces(np.asarray(own > self._floor)):
                 since = int(round(float(self.clock[piece[int(np.argmax(own[piece]))]])))
-                state = "near" if self.doubt[piece].mean() > 0.5 else "held"
+                if self.doubt[piece].mean() > 0.5:  # one thing may lie in several such pieces
+                    doubted.setdefault(since, []).append(piece)
+                    continue
+                state = "held"
                 if since == 0:
                     state = next((sense for k, sense in self._sensed if k == kind), "seen")
-                out.append({"kind": kind, "place": place, "cells": piece, "since": since,
-                            "state": state})
+                out.append({"kind": kind, "place": (own[piece] @ self.centers[piece])
+                            / own[piece].sum(), "cells": piece, "pieces": [piece],
+                            "since": since, "state": state})
+            for since, pieces in doubted.items():
+                cells = np.concatenate(pieces)
+                out.append({"kind": kind, "place": (own[cells] @ self.centers[cells])
+                            / own[cells].sum(), "cells": cells, "pieces": pieces,
+                            "since": since, "state": "near"})
             if self.lost[np.flatnonzero(self.codes[kind])].min() > 0.5 and not (
                     own > self._floor).any():
                 out.append({"kind": kind, "place": None, "cells": np.zeros(0, dtype=np.intp),
-                            "since": None, "state": "not known where"})
+                            "pieces": [], "since": None, "state": "not known where"})
         return out
 
     def sheet(self, kind: int | None = None) -> np.ndarray:

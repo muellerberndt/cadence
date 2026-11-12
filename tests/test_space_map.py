@@ -132,3 +132,26 @@ def test_many_kinds_on_few_units():
                for kind, place in enumerate(at))
     assert right >= 122 and near >= 122                           # .95 of 128
     assert len(held.things()) >= 122
+
+
+def test_a_thing_in_two_pieces_of_doubt_is_one_entry_and_a_settle_is_kept_by_sweep():
+    held = Map(PLANE, trace=True)
+
+    def lit(points):                                              # two shadows, left and right
+        return np.abs(points[:, 0]) < 0.15
+
+    held.moment(seen=[(HAND, [0.0, 0.6])], lit=lit)
+    held.moment(lit=lit)                                          # seen empty between them
+    (hand,) = held.things()
+    assert hand["state"] == "near" and len(hand["pieces"]) == 2
+    assert sum(len(p) for p in hand["pieces"]) == len(hand["cells"]) and abs(hand["place"][0]) < 0.05
+    seen = held.trajectory
+    assert seen["asked"] == "moment" and seen["sweeps"] == 2
+    assert seen["map"].shape == (3, 32, 26, 16) and seen["where"].shape == (3, 32, 26)
+    assert seen["map"][0].sum() == 0 and seen["map"][1].sum() > 0     # the sheet settles first
+    assert seen["where"][1].sum() == 0 and seen["where"][2].sum() > 0  # then where and what
+    assert np.array_equal(seen["map"][1], seen["map"][2])
+    held.where_is(HAND)
+    assert held.trajectory["asked"] == "where_is" and held.trajectory["what"][2, HAND] > 0
+    held.moment(seen=[(HAND, [0.3, 0.6])], lit=lit)               # a report ends the doubt
+    assert [t["state"] for t in held.things()] == ["seen"]

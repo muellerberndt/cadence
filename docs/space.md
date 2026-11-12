@@ -32,7 +32,7 @@ The pieces are opt-in: a program that does not import `cadence.space` gets a lib
 | Where things are held between moments | Copies the sheet's potentials to the next moment's input | In the settled activity of `map`, with `clock`, `doubt` and `lost` |
 | The list of things | None: no cast, no rows | The peaks of the sheet |
 | A report from a sense | Turns the kind and the place into a drive on four cells | The cells settle on it |
-| Holding a place | Drives each pool's reference with the length of what the pool carries in | The pool's gain inside the settle holds that length, so a peak neither fades nor floods |
+| Holding a place | Drives each pool's reference with the length of what the pool carries in (one number a code unit) | The pool's gain inside the settle holds that length, so a peak neither fades nor floods |
 | A place seen empty | Passes the cells in sight as the settle's mask; finds a piece of activity with no report of its kind and drives it onto the unseen cells within reach | A seen cell is held at zero in every sweep |
 | Which report is which thing | Compares a report's place with the pieces of its kind (`step`, `stride`) | Two things of a kind are two peaks |
 | Questions | Sets the cue: the kind's code gates the pools' references, or the mask keeps the cells around a place | `where` and `what` settle on the answer |
@@ -151,12 +151,19 @@ half of the place unless `within` says otherwise.
 | --- | --- |
 | `kind` | The kind's number |
 | `place` | The mean of the thing's piece of activity, `(x, y)` in metres; `None` for a thing with no place |
-| `cells` | The piece's cells, as numbers into `centers` (each cell is `size` metres around its middle) |
+| `cells` | The thing's cells, as numbers into `centers` (each cell is `size` metres around its middle) |
+| `pieces` | The cells by connected piece. A thing in doubt that was driven onto two shadows is one entry with two pieces |
 | `since` | The moments since a sense wrote it; 0 at the moment it is sensed |
 | `state` | `"seen"`, `"heard"` or `"felt"` at the moment a sense writes it; `"held"` at its last known place; `"near"` on cells of doubt; `"not known where"` |
 
 `sheet(kind)` gives the kind's activity as a picture, `(cells x, cells y)`, and `sheet()` every
 unit summed.
+
+`Map(..., trace=True)` keeps every settle by sweep in `trajectory`, for a reader who watches the
+brain: `asked` (`"moment"`, `"where_is"` or `"what_is_at"`), `sweeps` and the activity of `map`,
+`where` and `what` at each sweep. A settle takes two sweeps: the synapses run from the carried
+input to the sheet and from the sheet to `where` and `what`, so the first sweep settles the
+sheet and the second settles the two regions that read it.
 
 ## A place seen empty
 

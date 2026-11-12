@@ -2,7 +2,8 @@
 
 A scene of one thing (generated, or a ``cadence-tracking-scene/1`` file) is given to the map as
 the camera gives it: a report of the hand while it is seen, and at every step the cells the
-camera sees. The map's answer at a step is the mean place of the hand's activity; at a step
+camera sees. The map's answer at a step is the mean place of the hand's activity (of the
+thing a sense wrote last, where the map holds two of the kind); at a step
 where the map holds the hand with no place, the last place it held is scored and the step is
 counted. Printed beside it: last seen and the constant-velocity Kalman filter.
 
@@ -59,6 +60,8 @@ def follow(scene: w.Scene, settings: dict[str, Any] | None = None
         seen = [(HAND, feed["report"][t])] if feed["seen"][t] else []
         held.moment(seen=seen, lit=lit_cells(scene, t, held.centers))
         mass = held.sheet(HAND).ravel()
+        if (mass > 0).any():  # of several things of the kind, the one a sense wrote last
+            mass = mass * (held.clock <= held.clock[mass > 0].min() + 0.5)
         placed[t] = bool(mass.sum() > 0)
         answers[t, 0] = (mass @ held.centers) / mass.sum() if placed[t] else answers[t - 1, 0]
         at = np.floor((scene.truth[t, 0] - held._low) / held.size).astype(np.intp)
