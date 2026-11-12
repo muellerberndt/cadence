@@ -39,7 +39,8 @@ UNITS = {"length": "m", "time": "s", "angle": "rad"}
 CASES = ("own", "other", "room")
 KINDS = {
     "own": ("sweep", "stays"),
-    "other": ("straight", "slow", "stop", "turn", "stays", "left"),
+    "other": ("straight", "slow", "stop", "turn", "stays", "left", "visit", "pause", "hops",
+              "slowhand"),
     "room": ("heard", "crossing", "demo"),
 }
 HAND = 0  # what a hand looks like; every thing that is no hand has a ``what`` of its own
@@ -481,6 +482,56 @@ def reach(
     return moves, event
 
 
+ERRANDS = ("visit", "pause", "hops", "slowhand")
+
+
+def errand(
+    rng: np.random.Generator, geometry: Geometry, start: np.ndarray, pose: np.ndarray,
+    steps: int, kind: str, dt: float,
+) -> tuple[np.ndarray, int]:
+    """What a visitor's or a worker's hand does: its displacement at every step and the step
+    its movement first changes (-1 where the draw does not fit the view, to be drawn again).
+
+    - ``visit``: a straight reach goes out of view, rests from a step drawn 2 to 20 steps after
+      it is first hidden, stays for 30 to 120 steps and comes back along its line.
+    - ``pause``: a straight reach rests for 12 to 40 steps from a step drawn in its first half,
+      then goes on.
+    - ``hops``: the hand moves for 4 to 10 steps and rests for 4 to 12, again and again.
+    - ``slowhand``: a straight reach at 0.10 to 0.15 metres a second."""
+    moves, _ = reach(rng, geometry, start, steps, "straight", dt)
+    if kind == "slowhand":
+        speed = float(np.linalg.norm(moves[1]))
+        return moves * (float(rng.uniform(0.10, 0.15)) * dt / max(speed, 1e-12)), 0
+    if kind == "pause":
+        event = int(rng.integers(8, max(steps // 2, 9)))
+        held = int(rng.integers(12, 41))
+        out = np.zeros_like(moves)
+        out[1 : event + 1] = moves[1 : event + 1]
+        rest = moves[event + 1 : steps - held]
+        out[event + 1 + held : event + 1 + held + len(rest)] = rest
+        return out, event
+    if kind == "hops":
+        out, t, source = np.zeros_like(moves), 1, 1
+        while t < steps and source < steps:
+            go = int(rng.integers(4, 11))
+            out[t : t + go] = moves[source : source + go][: max(steps - t, 0)]
+            source += go
+            t += go + int(rng.integers(4, 13))
+        return out, 0
+    path = start + np.cumsum(moves, axis=0)
+    hidden = np.flatnonzero(~visible(geometry, path[:, None, :], np.tile(pose, (steps, 1)))[:, 0])
+    hidden = hidden[hidden >= 10]
+    if not len(hidden) or hidden[0] >= steps - 60:
+        return moves, -1
+    event = int(hidden[0]) + int(rng.integers(2, 21))
+    back = event + 1 + int(rng.integers(30, 121))
+    out = np.zeros_like(moves)
+    out[1 : event + 1] = moves[1 : event + 1]
+    span = min(event, max(steps - back, 0))
+    out[back : back + span] = -moves[event - span + 1 : event + 1][::-1]
+    return out, event
+
+
 def _hidden_pose(rng: np.random.Generator, geometry: Geometry) -> np.ndarray:
     """Joint angles within the limits whose hand the camera does not see."""
     low, high = _bounds(geometry)
@@ -564,6 +615,16 @@ def other_scene(
     if kind not in KINDS["other"]:
         raise ValueError(f"a person's-hand scene is one of {KINDS['other']}, got {kind!r}")
     pose = np.array(poses[int(rng.integers(len(poses)))], dtype=np.float64)
+    if kind in ERRANDS:
+        for _ in range(10_000):
+            start = np.array(starts[int(rng.integers(len(starts)))], dtype=np.float64)
+            moves, event = errand(rng, geometry, start, pose, steps, kind, dt)
+            if event >= 0:
+                world = World(geometry, pose, start[None].copy(), camera_noise=noise)
+                return record(world, np.zeros((steps, geometry.joints)), moves[:, None, :],
+                              np.zeros((steps, 1), dtype=bool), rng, case="other", kind=kind,
+                              event=event, dt=dt)
+        raise ValueError(f"no {kind} hand from these starts fits this camera's view")
     if kind == "left":
         # a hand that goes out of view and is left there: it rests from a step drawn 2 to 20
         # steps after it is first hidden (10 or more steps into the scene)

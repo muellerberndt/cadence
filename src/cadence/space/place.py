@@ -341,6 +341,15 @@ class Space:
     control a brain's answer is read against: a thing that moves by itself is moved by its last
     seen movement as it is, whatever the brain answers. It can be set at any step.
 
+    ``sheet`` (off unless given: ``True``, a ``cadence.space.sheet.Sheet`` or its settings)
+    holds the things that move by themselves on a settled belief sheet. A report read writes
+    the sheet, and at every other step the sheet settles one moment on: its kernels move the
+    mass it carried, and the cells the caller says are in sight (``in_sight``: a function of
+    places, or flags on the sheet's cells) are emptied. The row's place is the sheet's mean
+    (its peak with ``read="peak"``), ``area`` gives its cells, and the place brain is asked
+    only for an arm's own end and for a thing heard. ``learn="sheet"`` gives lessons to the
+    sheet alone; ``truth`` (``observe``, ``advance``) gives it the true places to learn from.
+
     ``module`` names the place regions inside a host brain (``Brain.compose(..., trained=)``):
     the space then settles the host, reads the regions there and takes no lessons. ``track``
     keeps the synapses each lesson moved (``changed``, indices into the brain's synapses, and
@@ -432,6 +441,10 @@ class Space:
         self.visit_map = np.zeros((self.cells, self.cells))  # reports and unseen places, by cell
         self.noise = 1e-4  # the camera's variance on an axis, learned from seen steps
         self.work = {"lesson_row_sweeps": 0.0, "act_sweeps_rows": 0.0, "moments": 0}
+        # from a module file: whether its regions were raised with joint readings (None for a
+        # space that is no file's: it takes what it is given)
+        self.raised_with_joints: bool | None = None
+        self._felt_taught = False
         self.rows = 0
 
     # -- a scene
@@ -505,7 +518,7 @@ class Space:
         heard = np.zeros((rows, f.heard[0] * f.heard[1]))
         if cues is not None:
             cue = np.asarray(cues, dtype=np.float64).reshape(rows, 2)
-            sounding = np.isfinite(cue).all(axis=1)
+            sounding = np.asarray(np.isfinite(cue).all(axis=1))
             turn = (np.nan_to_num(cue[:, 0]) - self._bearing + np.pi) % (2 * np.pi) - np.pi
             sheet = (self._heard[0](turn[:, None])[:, :, None]
                      * self._heard[1](np.nan_to_num(cue[:, 1:2]))[:, None, :])
@@ -538,6 +551,9 @@ class Space:
         f, rows = self.interface, self.rows
         if self.module is not None and learn:
             raise ValueError("a space in a host brain takes no lessons: teach the donor")
+        learn = bool(learn) and not (isinstance(learn, str) and learn == "sheet")
+        if self.raised_with_joints is False:
+            joints = None  # the file's regions took no lesson with joint readings
         asked = np.zeros((rows, f.joints)) if commands is None else np.broadcast_to(
             np.asarray(commands, dtype=np.float64), (rows, f.joints))
         sounding = np.zeros(rows, dtype=bool) if cues is None else np.isfinite(
@@ -612,6 +628,7 @@ class Space:
             raise ValueError("a space in a host brain takes no lessons: teach the donor")
         seen = np.asarray(seen, dtype=bool).reshape(rows)
         z = np.where(seen[:, None], np.asarray(reports, dtype=np.float64).reshape(rows, 2), 0.0)
+        whole = bool(learn) and not (isinstance(learn, str) and learn == "sheet")
         live, quiet, sounding = step["live"], step["quiet"], step["sounding"]
         predicted = step["predicted"]
         read = seen & ~(self._practising > 0)  # the rows whose report is read
@@ -642,7 +659,7 @@ class Space:
         predicted = np.where(refused[:, None], (self._anchor + self._seen_at) / 2.0, predicted)
         self._known[refused] = False  # it did not come out where its movement carries it
         self._moving[refused] = False
-        if learn:
+        if whole:
             self._teach(step, seen, z, predicted, read)
         deviation = np.sqrt(self.noise)
         near = np.linalg.norm(z - self.place, axis=1) < 4.0 * deviation * np.sqrt(
@@ -792,8 +809,9 @@ class Space:
         module's inputs, and a host reads the held place and the three outputs."""
         from ..modules import save
 
-        record: dict[str, Any] = {"interface": self.interface.to_dict(),
-                                  "noise": float(np.sqrt(self.noise))}
+        record: dict[str, Any] = {
+            "interface": self.interface.to_dict(), "noise": float(np.sqrt(self.noise)),
+            "raised with joint readings": bool(self._felt_taught or self.raised_with_joints)}
         extra = None
         if self.sheet is not None:  # the sheet's kernels beside the regions
             record["sheet"] = self.sheet.to_dict()
@@ -835,6 +853,7 @@ class Space:
         else:
             space = cls(interface, brain=brain, module=module.name, **settings)
         space.noise = float(held.get("noise", 0.01)) ** 2
+        space.raised_with_joints = bool(held.get("raised with joint readings", False))
         return space
 
     def where(self) -> tuple[np.ndarray, np.ndarray]:
@@ -1092,7 +1111,7 @@ class Space:
         np.add.at(self.visit_map, (i, j), 1.0)
         np.add.at(self.seen_map, (i[seen], j[seen]), 1.0)
         self._pending.append({"x": step["x"], "seen": seen.copy(), "z": z.copy(), "off": off,
-                              "sounding": sounding.copy(),
+                              "sounding": sounding.copy(), "felt": step["felt"].copy(),
                               "m": self._movement * self._known[:, None],
                               "loud": self._moving & self._known & ~self.own,
                               **{name: step[name] for name in OUTPUTS}})
@@ -1124,6 +1143,8 @@ class Space:
         if wide.any():
             targets[wide, 2 * d : 2 * d + f.spread] = self.spread.targets(entry["off"][wide])
         both = entry["seen"] & entry["sounding"]
+        if (both & entry["felt"]).any():
+            self._felt_taught = True
         if both.any():
             at = 2 * d + f.spread
             targets[both, at : at + b] = self.found[0].targets(entry["z"][both, 0], width=1.0)
