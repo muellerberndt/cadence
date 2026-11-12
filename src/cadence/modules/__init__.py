@@ -15,6 +15,14 @@ no code from the file: it checks the record and every checksum and refuses a fil
 wrong with it. ``Brain.graft(module)`` grafts a module into a brain that holds its regions, and
 ``Brain.compose(..., trained=[module])`` builds a brain around it. Both keep the module's
 synapses as they are unless asked otherwise.
+
+A host holds the module's whole trained brain, every population of it as ``name/...``; the
+record's ``regions`` are the ones it describes. A hosted module hears nothing of its host: the
+host reads what the module publishes through one-way synapses and no synapse leads into the
+module, so its answers in a host are its answers alone, and ``freeze=False`` moves nothing in
+it. ``graft(module)`` with ``joints="zero"`` (the founder) starts the host's synapses onto the
+module at zero, also where the host had learned to read an older file; ``joints="kept"`` keeps
+them. A brain composed around a module records no construction, so ``grow`` refuses it.
 """
 
 from __future__ import annotations
@@ -101,6 +109,10 @@ class Module:
         populations = brain.connectome.populations
         lead = self.name if prefix is None else prefix
         lead = f"{lead}/" if lead else ""
+        for name in self.inputs:
+            if lead + name not in populations:
+                raise ValueError(f"this brain has no population {lead + name!r}: it does not "
+                                 f"hold the module {self.name!r}")
         sensory = np.asarray(brain.sensory_index, dtype=np.intp)
         column = np.full(int(sensory.max()) + 1, -1, dtype=np.intp)
         column[sensory] = np.arange(len(sensory), dtype=np.intp)
@@ -135,6 +147,9 @@ def save(brain: Any, path: str | Path, *, name: str, inputs: Any, published: Any
     path = Path(path)
     if not isinstance(name, str) or not name or "/" in name:
         raise ValueError("a module needs a nonempty name without '/'")
+    if getattr(brain, "learned_code", None) is not None:
+        raise ValueError("a module takes a brain without a learned code in this version: the "
+                         "code's dictionary does not keep its unit lengths in 32 bits")
     populations = brain.connectome.populations
     inputs, published = [str(n) for n in inputs], [str(n) for n in published]
     named = [str(n) for n in regions] if regions is not None else []
@@ -182,8 +197,9 @@ def load_file(path: str | Path) -> Module:
     try:
         with np.load(path, allow_pickle=False) as held:
             arrays = {key: held[key] for key in held.files}
-    except ValueError as error:
-        raise ValueError(f"{path.name} is no module file: {error}") from None
+    except Exception:  # a text file, a pickled object, a broken archive: nothing of it is run
+        raise ValueError(f"{path.name} is no module file: a module file is a NumPy archive of "
+                         "arrays and one JSON record, with no pickled object") from None
     if "module" not in arrays:
         raise ValueError(f"{path.name} is no module file: it holds no 'module' record")
     try:

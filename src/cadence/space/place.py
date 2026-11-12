@@ -587,6 +587,8 @@ class Space:
         halfway between where it was last seen and where it was before those steps, and rests.
         Gives every row's place."""
         rows, step = self.rows, self._step
+        if self.module is not None and learn:
+            raise ValueError("a space in a host brain takes no lessons: teach the donor")
         seen = np.asarray(seen, dtype=bool).reshape(rows)
         z = np.where(seen[:, None], np.asarray(reports, dtype=np.float64).reshape(rows, 2), 0.0)
         live, quiet, sounding = step["live"], step["quiet"], step["sounding"]
@@ -678,10 +680,12 @@ class Space:
 
     def advance(self, seen: np.ndarray, reports: np.ndarray,
                 commands: np.ndarray | None = None, cues: np.ndarray | None = None,
-                joints: np.ndarray | None = None, *, learn: bool = False) -> np.ndarray:
-        """One step, ``predict`` and then ``observe``: every row's place after it."""
-        self.predict(commands, cues, joints, learn=learn)
-        return self.observe(seen, reports, learn=learn)
+                joints: np.ndarray | None = None, *, learn: bool = False,
+                beside: np.ndarray | None = None, in_sight: Any = None) -> np.ndarray:
+        """One step, ``predict`` and then ``observe``: every row's place after it. With
+        ``in_sight`` a function (``observe``)."""
+        self.predict(commands, cues, joints, learn=learn, beside=beside)
+        return self.observe(seen, reports, learn=learn, in_sight=in_sight)
 
     def assign(self, reports: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Give the camera's reports of a step to rows, after ``predict``. ``reports`` holds one

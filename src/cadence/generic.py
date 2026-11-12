@@ -3321,7 +3321,9 @@ class Brain:
 
         if trained:
             return _compose_trained(
-                cls, inputs, actions, list(trained), connectome=connectome, modules=modules,
+                cls, inputs, actions,
+                [trained] if hasattr(trained, "record") else list(trained),
+                connectome=connectome, modules=modules,
                 observers=observers, lateral=lateral, teaching=teaching, scales=scales,
                 features=features, field=field, code=code, learned_code=learned_code,
                 attention=attention, seed=seed, slots=slots, learned_fields=learned_fields,
@@ -8006,6 +8008,8 @@ def _compose_trained(
             raise ValueError(f"trained modules take a vector brain without {name} in this version")
     if isinstance(inputs, bool) or not isinstance(inputs, (int, np.integer)) or layout.get("ports"):
         raise ValueError("trained modules take a vector brain in this version: inputs is a count")
+    if inputs < 1:
+        raise ValueError("a brain around a module holds one input of its own or more")
     if not trained or any(not isinstance(m, Module) for m in trained):
         raise ValueError("trained is a list of modules (cadence.modules.load, load_module)")
     held = [m.name for m in trained]
@@ -8038,7 +8042,9 @@ def _compose_trained(
         for region in module.inputs:
             sensory.extend(populations[f"{module.name}/{region}"])
     anatomy = anatomy.with_populations(sensory=sensory)
-    brain = cls.compose(total, actions, connectome=anatomy, seed=seed, **layout, **options)
+    # the anatomy holds the layout the caller named (modules, observers, lateral, scales)
+    brain = cls.compose(total, actions, connectome=anatomy, seed=seed, slots=layout["slots"],
+                        teaching=layout["teaching"], attention=layout["attention"], **options)
     for module, donor in zip(trained, donors, strict=True):
         brain = brain.graft(donor, into=module.name, freeze=True)
     return brain

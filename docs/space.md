@@ -236,8 +236,11 @@ assert np.allclose(a, b)                               # the skill arrives as it
 
 In a host the module's inputs follow the host's own in the observation, its regions are the
 populations `place/...`, its synapses are held, and the host's first module region reads the
-held place and the three answers through one-way synapses that start at zero. A space in a host
-takes no lessons: the regions were taught in their donor.
+held place and the four answers (`shift`, `spread`, `found`, `keep`) through one-way synapses that
+start at zero. No synapse leads from the host into the module, so it answers in a host as it does
+alone. A space in a host takes no lessons (`predict`, `observe` and `advance` refuse
+`learn=True`): the regions were taught in their donor. `advance` and `predict` take the host's
+other inputs as `beside=`.
 
 ## Settings, refusals and cost
 
@@ -249,11 +252,21 @@ takes no lessons: the regions were taught in their donor.
 | `sight` | `None` | For a camera and a blind spot that stay where they are: a place out of view does not move into a cell where things are seen in more than this share of the visits |
 | `records` | `0` | Records of things at rest, by what they look like |
 | `course` | `False` | A thing that moves by itself is moved by its seen movement times the brain's `keep`, in place of the brain's `shift` |
-| `patience` | `3` | With `sight`: the steps in a row a place is predicted in sight before it goes back and rests |
+| `patience` | `3` | With `sight`, or with flags for `in_sight`: the steps in a row a place is predicted in sight with no report before it is placed halfway between where it was last seen and where it was before those steps |
+| `cells` | `32` | The cells an axis of the map of where things were seen (`sight`) |
 | `track` | `False` | Keep the synapses each lesson moved |
 | `module` | `None` | The name of the place regions inside a host brain |
 
 `Interface` refuses a plane whose low is not below its high, a region of under two units, and a
 `felt` sheet of more than 4,096 postures. A space in a host refuses lessons. The brain of the
-default interface holds about 139,000 parameters; one step on one row takes under a millisecond
-on one core.
+default interface holds 140,731 parameters; one step on one row takes under a millisecond on one
+core.
+
+**Sight that does not come.** `observe(seen, reports, in_sight=f)` takes a function of
+`(points, 2)` places that says, one flag a place, whether the camera would see a thing there at
+this step; the caller knows the camera and what stands before it. A thing that goes out of view
+while moving is then looked ahead for along its seen movement: its hidden stretch ends where it
+would come back into view, or at the plane's edge. It is carried no farther than the middle of
+that stretch and waits there, and its radius reaches .90 of the way back to where it was last
+seen. `in_sight` also takes one flag a row for the places `predict` gave; `sight=` learns the
+same from where things were seen, for a camera and a blind spot that stay where they are.
