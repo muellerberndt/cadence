@@ -218,7 +218,16 @@ class Map:
             if value.shape != getattr(out, name).shape:
                 raise ValueError(f"the map's {name!r} does not fit its cells")
             setattr(out, name, value.copy())
+        out.reading = out._read()
         return out
+
+    def _read(self) -> np.ndarray:
+        """``where`` and ``what`` as the carried state gives them: a settle on what the map
+        holds, which changes nothing in it."""
+        run = self._runs
+        v = self._settle()
+        return np.asarray(np.maximum(np.tanh(np.concatenate([v[run["where"]], v[run["what"]]])
+                                             / 2.0), 0.0))
 
     def save(self, path: str | Path, *, card: dict[str, Any] | None = None) -> Path:
         """Write the map as a file: its settings, codes and carried state as arrays and one JSON
@@ -260,13 +269,14 @@ class Map:
         sums = record.pop("checksums", None)
         record.pop("card", None)
         record.pop("library", None)
-        if sums is not None:
-            if set(sums) != set(stored):
-                odd = sorted(set(sums) ^ set(stored))[0]
-                raise ValueError(f"{name}: array {odd!r} is in the file or in the record alone")
-            for key, value in stored.items():
-                if _checksum(value) != sums[key]:
-                    raise ValueError(f"{name}: array {key!r} differs from its checksum")
+        if not isinstance(sums, dict):
+            raise ValueError(f"{name}: the map's record holds no checksums of its arrays")
+        if set(sums) != set(stored):
+            odd = sorted(set(sums) ^ set(stored))[0]
+            raise ValueError(f"{name}: array {odd!r} is in the file or in the record alone")
+        for key, value in stored.items():
+            if _checksum(value) != sums[key]:
+                raise ValueError(f"{name}: array {key!r} differs from its checksum")
         arrays = stored
         try:
             return cls.from_parts(record, arrays, **settings)

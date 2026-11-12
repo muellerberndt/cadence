@@ -370,3 +370,15 @@ def test_the_errand_hands_visit_pause_hop_and_go_slowly():
             assert 0.10 / 30 - 1e-9 <= moved[moved > 0].max() <= 0.15 / 30 + 1e-9
         if kind in ("pause", "hops", "visit"):
             assert (moved[5:] == 0).sum() >= 12                            # it rests on its way
+
+
+def test_the_map_scorer_runs_a_scene_file_end_to_end(tmp_path):
+    mapped = _load("mapped")
+    out = tmp_path / "example.json"
+    assert mapped.main(["--scenes", str(HERE / "scenes" / "example.json"),
+                        "--empty", "near", "keep", "--out", str(out)]) == 0
+    row = json.loads(out.read_text())
+    table = row["readings"]["example"]
+    assert {"last seen", "map, near, reach 0.15 m", "map, keep"} <= set(table)
+    assert table["map, near, reach 0.15 m"]["in_view"] < 0.02
+
