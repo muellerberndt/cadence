@@ -12,6 +12,11 @@
   `retune` changes. `retune(learned_fields=...)`, `retune(ports=...)`, `retune(fields_motor=...)`,
   `retune(features=...)` and `retune(field=...)` raise `ValueError` as construction settings, in
   place of `TypeError: unknown brain setting`. What either call accepts is unchanged.
+- **The acquisition protocol's tests read the same case on a loaded machine** (#317): the
+  fixture runs of `benchmarks/acquisition/test_protocol.py` take the protocol's largest budget
+  (300 seconds) in place of ten. They end at their first stage in about a second, so the cases
+  they write follow their updates and not the machine's speed, and the fixture asserts the case
+  it wrote.
 
 ### Documentation
 
