@@ -706,6 +706,11 @@ def whole(spec: dict[str, Any]) -> dict[str, Any]:
         training = curriculum(founder, count, vary=bool(settings.pop("vary", True)))
         placed = Placed(training[0].geometry, founder, settings)
         placed.train(training, rows)
+        if spec.get("save"):  # the trained brain, before the panels are read
+            placed.space.brain.save(str(spec["save"]))
+            Path(str(spec["save"]) + ".json").write_text(json.dumps(
+                {"founder": founder, "train": count, "noise": float(np.sqrt(placed.space.noise)),
+                 "settings": spec.get("settings")}) + "\n")
         radius = {}
         for name, scenes in held_out.items():
             answers[name], radius[name] = placed.answer(scenes)
@@ -720,8 +725,6 @@ def whole(spec: dict[str, Any]) -> dict[str, Any]:
                    milliseconds=placed.milliseconds(held_out["other"][0]),
                    milliseconds_own=placed.milliseconds(held_out["own"][0]),
                    noise=float(np.sqrt(placed.space.noise)))
-        if spec.get("save"):
-            placed.space.brain.save(str(spec["save"]))
     elif arm in ("last_seen", "kalman"):
         fitted = {"own": {}, "other": {}}
         if arm == "kalman":
