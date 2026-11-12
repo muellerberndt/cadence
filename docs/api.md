@@ -14,6 +14,7 @@ keyword.
 | [Wiring and instruments](#regions-and-genome-cadenceregions-cadencegenome) | `Region`, `regions`, `Projection`, `Genome`, `develop`, `evolve`, `genes`, `Receipt` |
 | [Recording](#record-every-settling-step) | `record_settlements` |
 | [Population code](#population-code-cadencetuning) | `PopulationCode` |
+| [Modules](#modules-cadencemodules), [the map of things](#the-map-of-things-cadencespacemap) | `load_module`, `Module`, `modules.names`, `modules.load`, `modules.save`, `modules.host`, `Map`, `Sense`, `sparse_codes` |
 
 `cadence.__version__` is the installed release string.
 
@@ -25,7 +26,7 @@ keyword.
 Brain.compose(inputs, actions, *, connectome=None, modules=(64,), observers=(),
               lateral=None, teaching=None, scales=None, features=8, field=3, code=None,
               learned_code=None, attention=False, seed=0, slots=1, learned_fields=None,
-              ports=0, tied=None, fields_motor=0.0, **options) -> Brain
+              ports=0, tied=None, fields_motor=0.0, trained=None, **options) -> Brain
 ```
 
 The composed System 1 brain, with optional System 2 `observers` in the same graph.
@@ -63,6 +64,12 @@ The composed System 1 brain, with optional System 2 `observers` in the same grap
   and its copies hold one efficacy; `parameters()` counts it once. With `connectome` it names
   two of the anatomy's populations (`Genome.tied`)
   ([tied projections](tune.md#tied-projections-opt-in)).
+- `trained=[module, ...]` (opt-in): builds the brain around trained modules
+  ([`cadence.modules`](#modules-cadencemodules)). Each module's populations stand beside the
+  brain's own as `name/region`, its inputs follow the brain's own in the observation, the
+  association region reads what it publishes through one-way synapses that start at zero, and
+  its synapses are grafted in and held. The brain records no construction
+  ([a trained module](modules.md#a-trained-module)).
 - `scales`: maps `"sensory"` and `"trace"` to the initial magnitudes of the projections from
   those regions (founders 1.0 and 1.2; a name left out keeps its founder), fixed at
   construction. The history's and the recall memory's projections start at 1.2, a constant.
@@ -198,7 +205,8 @@ projections start at 1.2, a constant (`scales["history"]` and `scales["recall"]`
 | `fit(observations, labels, *, epochs=30, batch=32) -> list[float]`, `predict(observations)`, `accuracy(observations, labels)` | Independent samples, without traces or recall; `fit` resets the streams first, keeping the arousal, and returns training accuracy per epoch. Noninteger labels and mismatched batches raise before any update. | [independent-sample controls](evaluate.md#independent-sample-controls) |
 | `retune(**genes) -> Brain` | Changes mutable settings in the same life, atomically, and resets nothing (`brain.arousal.reset()` resets the arousal). Refuses construction settings, absent components, and the recall address genes under `recall_address_reward` while a sampled action awaits feedback. | [retune the same life](tune.md#retune-the-same-life) |
 | `grow(**parts) -> Brain` | A new brain: this trained brain with new parts (`recall=True` with any `recall_*` setting but `recall_tokens`, `recall_heads`, `history_decays`, `efference_amplitude` above zero, `slots` extending the brain's own), everything learned, recorded and set carried, the streams afresh; the new synapses start at zero, so it settles and chooses as this brain does until learning gives them weight. Refuses a brain that records no construction (a custom anatomy), a part inside the loop (`modules`, `observers`, a code), arousal, maturity and the episodic memory, settings that `retune` changes, recall tokens, slots where a memory is laid out per action or would join an apical pool, new neurons in a region a [tied projection](tune.md#tied-projections-opt-in) cuts into blocks, tie groups and rates set by hand. A composed tie grows with the brain, its copies at one efficacy. The rates a brain's width gave it stay, and a new slot's synapses with the association take the pair's. This brain is unchanged. | [grow a brain](grow.md#grow-a-trained-brain) |
-| `graft(donor, regions=None, *, into=None, joints="zero", freeze=False) -> Brain` | A new brain: this brain with trained regions of `donor`; `regions` names or maps donor populations onto this brain's, `into` grafts the whole donor into one population. The grafted synapses keep the donor's weights, the joints start at zero (`joints="kept"` keeps this brain's), and `freeze=True` stops the graft learning. Refuses populations of other sizes or either brain lacks, regions that share no synapse, donor wiring this brain lacks among the grafted neurons or a one-way donor synapse on half of a reciprocal pair, another neuron model, apical compartment or apical role, a learned code's region or a joint landing on it, tied synapses and rates set by hand. Every synapse steps at this brain's rates. Both brains are unchanged. | [graft trained regions](grow.md#graft-trained-regions-into-a-larger-brain) |
+| `graft(donor, regions=None, *, into=None, joints="zero", freeze=None) -> Brain` | A new brain: this brain with trained regions of `donor`; `regions` names or maps donor populations onto this brain's, `into` grafts the whole donor into one population. The grafted synapses keep the donor's weights, the joints start at zero (`joints="kept"` keeps this brain's), and `freeze=True` stops the graft learning. `donor` is a brain or a trained module: a module is grafted into the populations that hold its regions (`name/region`, or the regions' own names), a brain that lacks one is refused by that region's name, and `freeze` is off for a brain and on for a module unless given ([a trained module](modules.md#a-trained-module)). Refuses populations of other sizes or either brain lacks, regions that share no synapse, donor wiring this brain lacks among the grafted neurons or a one-way donor synapse on half of a reciprocal pair, another neuron model, apical compartment or apical role, a learned code's region or a joint landing on it, tied synapses and rates set by hand. Every synapse steps at this brain's rates. Both brains are unchanged. | [graft trained regions](grow.md#graft-trained-regions-into-a-larger-brain) |
+| `save_module(path, *, name, inputs, published, regions=None, interface=None, card=None) -> Path` | Writes this brain's trained regions as a module file (`cadence-module/1`): `inputs` the populations its own senses drive, `published` those a host reads, `regions` every region of the module (where omitted, the inputs and the published), `interface` the module's own record and `card` what it was trained on. The brain is saved at rest and is unchanged. Refuses a name that is empty or holds `/`, a region that is no population, no inputs or no published regions, an input region that is no input of this brain, and a brain with a learned code. | [a trained module](modules.md#a-trained-module) |
 | `reset(*, keep=("arousal",))` | Clears per-stream state and eligibility; keeps records and weights. `keep` names what carries over: `"arousal"` (the default) the whole arousal state, `"slots"` the recall slots, ending each stream's episode; a reset that does not keep `"arousal"` begins it calm with its references cleared and its age kept. Other names raise `ValueError`, checked before anything changes; an unknown keyword raises `TypeError`. | [reset and save](start.md#reset-and-save) |
 | `placement` | Where the brain runs and why: `backend`, `device`, `precision`, `chosen_by`, `why`, `refused`, `pending`, and after a load `saved_on` ([the default backend](backends.md#the-default-backend)). | [backends](backends.md#the-default-backend) |
 | `describe() -> dict` | JSON-safe `layout` (regions, `code`, `composition`, `projection_rates` where the brain holds per-synapse rates, `tied` where it holds tied projections: each one's `pre`, `post`, `blocks` and shared `synapses`), `genes` (every setting by its `compose` name; at `teaching="custom"`, `learning` gives the six effective expert teaching settings), `memories` (each member's `to_dict()`) and `pending`, and `placement` where the brain is not on the CPU by name. | [defaults](tune.md#defaults-and-expert-overrides) |
@@ -655,6 +663,37 @@ nothing past it (`clamp=False`). `code(readings)` takes `(readings,)` or `(rows,
 below its high, `per` under 2, a `floor` outside `[0, 1)`, a `clamp` that is no bool, and readings of another width or not
 finite. It learns nothing and is not part of a checkpoint. Guide:
 [continuous readings](senses.md#continuous-readings-a-population-code).
+
+## Modules (`cadence.modules`)
+
+```text
+cadence.modules.names() -> list[str]
+cadence.modules.load(name) -> Map
+cadence.load_module(path) -> Map or Module           # cadence.modules.load_file
+cadence.modules.save(brain, path, *, name, inputs, published, regions=None, interface=None,
+                     card=None) -> Path              # Brain.save_module
+cadence.modules.host(module, brain) -> {region: population}
+Module(record, arrays)
+```
+
+A module is a part that arrives as a file, one NumPy archive of arrays and one JSON record with
+a checksum of every array and no pickled object. `load_module` reads either kind and runs
+nothing from it: a map file (`cadence-space-map/1`, written by `Map.save`) as a
+[`Map`](#the-map-of-things-cadencespacemap), a trained module (`cadence.modules.FORMAT`,
+`cadence-module/1`, written by `save`) as a `Module`. It checks the record field by field and
+every array against its checksum, and refuses a file by what is wrong with it (`ValueError`).
+`names` lists the modules the library ships and `load` returns one, a new object at every call,
+refusing a name the library ships none by; the built-in `place` is a map. `host` names the
+population of `brain` that holds each region of `module` and refuses a brain that lacks one or
+holds it at another size.
+
+A `Module` has `name`, `regions` (each region's size), `inputs` and `published` (region names),
+`width` (the inputs it adds to an observation), `interface`, `card`, `record` and `arrays`.
+`brain(*, backend=None, device=None, precision=None)` is the brain it was trained in, a brain of
+its own at every call, and `columns(brain, prefix=None)` where its inputs lie in a brain's
+observation. `Brain.compose(..., trained=[module])` builds a brain around it and
+`Brain.graft(module)` grafts it; a map joins a brain as `brain.space`. Guide:
+[modules](modules.md#modules-parts-that-arrive-as-files).
 
 ## The map of things (`cadence.space.map`)
 

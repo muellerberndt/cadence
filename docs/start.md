@@ -51,7 +51,8 @@ brain ([observers](#add-optional-observers)). `arousal=True` gives the brain the
 `brain.describe()` lists every setting a brain holds, and
 [tune and read a living brain](tune.md#defaults-and-expert-overrides) explains them. To build a
 brain for a purpose of your own, [parts of a brain](modules.md) lists every part you can add
-(senses, regions, memories, ways to learn) and composes four whole brains from them.
+(senses, regions, memories, ways to learn, modules that arrive as files) and composes five
+whole brains from them.
 
 ## 2. Observations, actions and streams
 

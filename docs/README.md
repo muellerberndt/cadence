@@ -84,8 +84,8 @@ Each idea builds on the one before. [Start here](start.md) shows each with a run
 
 Then, in this order:
 
-1. [Parts of a brain](modules.md): the catalogue of every part a brain can be built from, and
-   four whole brains composed for a purpose.
+1. [Parts of a brain](modules.md): the catalogue of every part a brain can be built from, five
+   whole brains composed for a purpose, and the modules that arrive as files.
 2. [Train a brain](teach.md): lessons, rewards, distillation, rare classes, curricula, rates,
    evaluation and what to do when training goes wrong.
 3. [Memory](memory.md): which memory serves which task, with a minimal example of each.
@@ -127,6 +127,7 @@ Then, in this order:
 | A GPU, another device or precision | `backend`, `device`, `precision` | [Backends](backends.md) |
 | A brain that keeps learning after it has acquired a skill | `maturity=True` | [Maturity](reward.md#maturity-opt-in) |
 | To give a trained brain a memory, more outputs or another brain's regions | `grow`, `graft` | [Grow and combine brains](grow.md) |
+| A module that arrives as a file: the built-in map of things, or a trained brain's regions of your own | `cd.modules.load("place")`, `cd.load_module(path)`, `brain.space`, `save_module`, `trained=[module]`, `graft(module)` | [Modules](modules.md#modules-parts-that-arrive-as-files) |
 | To show a result | baselines, controls, receipts | [Evaluate a brain](evaluate.md) |
 | To design a continuing application or a behavioural claim | observation and action boundaries, acquisition and recovery | [Task design](task-design.md), [the design direction](world-model.md) |
 | Your own regions, a connectome, evolution | `Genome`, `develop`, `compose(connectome=)`, `evolve` | [Your own anatomy](anatomy.md) |
