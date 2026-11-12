@@ -160,15 +160,18 @@ def nursery(founder: int, count: int) -> list[w.Scene]:
 def read(scenes: list[w.Scene], arms: dict[str, Any], kalman: dict[str, float] | None,
          controls: bool = True) -> dict[str, Any]:
     """Every arm's table on ``scenes``: last seen and the Kalman filter where fitted (with
-    ``controls``), and the map for each of ``arms`` (a name and the map's settings, or a map)."""
+    ``controls``), and the map for each of ``arms`` (a name and the map's settings, or a map).
+    A scene of the arm's own hand gives the map the place its joint readings name while the
+    hand is out of view, by the program's forward kinematics."""
     out: dict[str, Any] = {}
     if controls:
         out["last seen"] = score(scenes, [tr.follow(s, tr.Still)[0] for s in scenes])
         if kalman is not None:
             out["Kalman"] = score(scenes, [tr.follow(s, tr.ConstantVelocity, kalman)[0]
                                            for s in scenes])
-    for name, held in arms.items():
-        got = [follow(s, held) for s in scenes]
+    for name, held in arms.items():  # the arm's own hand: its joint readings, by kinematics
+        got = [follow(s, held, felt=kinematics(s.geometry) if s.case == "own" else None)
+               for s in scenes]
         out[name] = score(scenes, [g[0] for g in got], [g[1] for g in got])
         out[name]["milliseconds"] = float(np.mean([g[2] for g in got]))
     return out
