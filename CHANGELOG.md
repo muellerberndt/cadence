@@ -62,11 +62,17 @@ matched LSTM and transformer) and the floors (a default brain asked the position
   learning, many lives, the speech pieces, growing and grafting, an anatomy of your own). Each
   part has its purpose, the option or call that joins it, what it holds between moments,
   whether it learns, how it arrives, what `grow` and `graft` do with it, and a reading with its
-  benchmark or issue. Every group has a runnable example, and four brains are composed for a
+  benchmark or issue. Every group has a runnable example, and five brains are composed for a
   purpose: a transcriber, an agent that answers from facts it read once, a body taught by a
-  demonstrator and a creature that lives on reward. The refusals between parts are listed as
-  the library states them. Packaged trained modules are described as planned. No library code
-  changes.
+  demonstrator, a creature that lives on reward and a body that knows where its hand is. The
+  refusals between parts are listed as the library states them.
+- **Parts that arrive trained** ([docs/modules.md](docs/modules.md#parts-that-arrive-trained),
+  #321): the module file and why loading one runs no code, `save_module`, `load_module`,
+  `compose(..., trained=)` and `graft(module)` with runnable examples (a skill saved, loaded
+  and arriving in a host before any lesson; a host that learns its own task while the module
+  stays to the bit; files and hosts refused by name), what a hosted module does, and the
+  `cadence.space` pieces with the place module in the catalogue's tables. The API reference
+  gains `trained=`, `save_module` and a section for `cadence.modules`.
 
 - **Corrections to the guides, read against the code**: `retune` changes a tied brain's settings
   and refuses only `retune(tied=...)`; the `Brain(connectome, ...)` signature lists `longterm`
