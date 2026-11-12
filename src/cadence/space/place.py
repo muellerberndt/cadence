@@ -461,6 +461,8 @@ class Space:
         self._blind = np.zeros(rows, dtype=np.intp)  # steps in a row predicted in sight
         self._anchor = self.place.copy()  # the place before those steps
         self._seen_at = self.place.copy()  # the place at the latest report read
+        self._exit = np.full((rows, 2), np.nan)  # where a hidden row would come back into view
+        self._waiting = np.zeros(rows, dtype=bool)  # held at the middle of its hidden stretch
         self._pending: deque[dict[str, np.ndarray]] = deque(maxlen=len(SLOPE))
         self._push(np.ones(rows, dtype=bool), self.place)
         self._last: dict[str, np.ndarray] = {}
@@ -566,25 +568,39 @@ class Space:
         return predicted.copy()
 
     def observe(self, seen: np.ndarray, reports: np.ndarray, *, learn: bool = False,
-                in_sight: np.ndarray | None = None) -> np.ndarray:
+                in_sight: Any = None) -> np.ndarray:
         """The second half of a step. ``seen`` says which rows the camera reports and
         ``reports`` holds their positions, ``(rows, 2)``. A report read writes its row's place:
         a thing at rest takes the mean of its reports, and any other thing the report itself.
-        A row with no report read takes its predicted place. ``in_sight`` says, one flag a row,
-        whether the camera would see a thing at the row's predicted place at this step (the
-        caller knows the camera and what stands before it; ``predict`` gave the places); where
-        omitted, the map of where things were seen says it (``sight``). A row predicted in sight
-        for ``patience`` steps in a row with no report did not come out where its movement
-        carries it: it is placed halfway between where it was last seen and where it was before
-        those steps, with a radius that reaches both, and rests. Gives every row's place."""
+        A row with no report read takes its predicted place. ``in_sight`` says whether the
+        camera would see a thing at a place at this step, which the caller knows from the
+        camera and what stands before it: one flag a row for the places ``predict`` gave, or a
+        function of ``(points, 2)`` places that gives one flag a place. Where omitted, the map
+        of where things were seen says it (``sight``).
+
+        Sight that does not come is evidence. With a function, a thing that goes out of view
+        while moving is looked ahead for along its seen movement: where it would come back into
+        view ends its hidden stretch. It is carried no farther than the middle of that stretch
+        and waits there, since a thing that has not come out lies somewhere on the stretch, and
+        its radius reaches ``RATE`` of the way back to where it was last seen. With flags alone,
+        a row predicted in sight for ``patience`` steps in a row with no report is placed
+        halfway between where it was last seen and where it was before those steps, and rests.
+        Gives every row's place."""
         rows, step = self.rows, self._step
         seen = np.asarray(seen, dtype=bool).reshape(rows)
         z = np.where(seen[:, None], np.asarray(reports, dtype=np.float64).reshape(rows, 2), 0.0)
         live, quiet, sounding = step["live"], step["quiet"], step["sounding"]
         predicted = step["predicted"]
         read = seen & ~(self._practising > 0)  # the rows whose report is read
-        visible = self._in_sight(predicted) if in_sight is None else np.asarray(
-            in_sight, dtype=bool).reshape(rows)
+        looks = in_sight if callable(in_sight) else (
+            self._in_sight if in_sight is None and self.sight is not None else None)
+        if looks is not None:
+            visible = np.asarray(looks(predicted), dtype=bool).reshape(rows)
+            predicted = self._wait_midway(looks, predicted, read, live & ~quiet & ~sounding)
+        elif in_sight is None:
+            visible = np.zeros(rows, dtype=bool)
+        else:
+            visible = np.asarray(in_sight, dtype=bool).reshape(rows)
         unsighted = ~read & live & ~quiet & ~sounding & visible
         self._anchor = np.where((self._blind == 0)[:, None], self.place, self._anchor)
         self._blind = np.where(unsighted, self._blind + 1, 0)
@@ -623,6 +639,14 @@ class Space:
             self.radius[steady] = AREA * deviation * 2.0 / np.sqrt(self._count[steady])
             self._smoothed = steady
         self.radius = np.where(refused, hidden_path / 2.0 + AREA * deviation, self.radius)
+        stretch = ~read & np.isfinite(self._exit).all(axis=1)
+        if stretch.any():  # on a hidden stretch: RATE of the way back to where it was last seen
+            back_to = np.linalg.norm(predicted - self._seen_at, axis=1)
+            self.radius = np.where(stretch, RATE * back_to + AREA * deviation, self.radius)
+        self._known[self._waiting] = False  # a row that waits rests until it is seen
+        self._moving[self._waiting] = False
+        self._waiting[:] = False
+        self._exit[read] = np.nan
         # a place another sense names, near the place held: the mean of up to five of them
         # (an arm's own end only while it is asked nothing; a moving arm takes each as it is)
         named = ~read & sounding & (~step["felt"] | quiet) & (
@@ -788,6 +812,32 @@ class Space:
         return out
 
     # -- inside
+
+    def _wait_midway(self, looks: Any, predicted: np.ndarray, read: np.ndarray,
+                     moving: np.ndarray) -> np.ndarray:
+        """Hold rows on a hidden stretch at its middle. A moving row with no report read whose
+        stretch is unknown is looked ahead for along its seen movement, 400 steps at most: the
+        stretch runs from where it was last seen to the first place it would be in sight again
+        after being out of it. ``predicted`` is given back with no row past the middle of its
+        stretch; a row held there is marked to rest."""
+        rows = np.flatnonzero(moving & ~read & self._known & ~np.isfinite(self._exit).all(axis=1))
+        ahead = np.arange(1, 401)[:, None]
+        for row in rows:
+            path = self._seen_at[row] + ahead * self._movement[row]
+            inside = ((path >= self._low) & (path <= self._low + self._size)).all(axis=1)
+            seen = np.asarray(looks(path), dtype=bool) & inside
+            hidden = np.flatnonzero(~seen & inside)
+            if len(hidden) and seen[hidden[0] :].any():
+                self._exit[row] = path[hidden[0] + int(np.argmax(seen[hidden[0] :]))]
+        out = predicted.copy()
+        for row in np.flatnonzero(~read & np.isfinite(self._exit).all(axis=1)):
+            along = self._exit[row] - self._seen_at[row]
+            length = float(np.linalg.norm(along))
+            if length > 0 and float((predicted[row] - self._seen_at[row]) @ along) >= (
+                    length * length / 2.0):
+                out[row] = self._seen_at[row] + along / 2.0
+                self._waiting[row] = True
+        return out
 
     def _settle(self, x: np.ndarray, live: np.ndarray) -> dict[str, np.ndarray]:
         """Settle the brain on the live rows, from rest: each region's activity, one row a live

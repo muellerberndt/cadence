@@ -206,6 +206,32 @@ def test_a_thing_that_does_not_come_out_where_it_would_be_seen_is_held_back():
     assert np.array_equal(space.where()[0], place) and space.state()["live"].tolist() == [False]
 
 
+def test_a_thing_on_a_hidden_stretch_waits_at_its_middle():
+    space = small(read="seen")
+    start = np.array([[-0.5, 0.5]])
+    space.begin(start)
+    for t in range(1, 11):  # seen moving right at 2 cm a step, to x = -0.30
+        space.advance([True], start + [[0.02 * t, 0.0]])
+
+    def looks(points):  # a pillar's shadow hides x from -0.29 to 0.11
+        x = np.asarray(points)[:, 0]
+        return (x < -0.29) | (x > 0.11)
+
+    hidden = np.zeros(1, dtype=bool)
+    errors = []
+    for t in range(1, 41):  # the thing stops 8 cm into the shadow and rests there
+        truth = np.array([-0.30 + min(0.02 * t, 0.08), 0.5])
+        space.predict()
+        place = space.observe(hidden, np.zeros((1, 2)), in_sight=looks)
+        errors.append(np.linalg.norm(place[0] - truth))
+    place, radius = space.where()
+    assert abs(place[0, 0] - (-0.30 + 0.21)) < 0.03  # the middle of the hidden stretch
+    assert max(errors) < 0.16 and errors[-1] < 0.16 and radius[0] >= errors[-1]
+    assert space.state()["live"].tolist() == [False]  # it waits, and the brain is not asked
+    space.advance([True], np.array([[-0.22, 0.5]]))  # seen again: the report writes the place
+    assert np.allclose(space.where()[0], [[-0.22, 0.5]])
+
+
 def test_a_kind_is_answered_with_its_places_and_a_place_with_its_kind():
     space = small()
     starts = np.array([[0.0, 0.0], [0.5, 0.0], [0.0, 1.0]])
