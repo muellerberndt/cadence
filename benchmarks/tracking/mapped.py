@@ -213,6 +213,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cells", type=int, nargs=2, default=[32, 26])
     parser.add_argument("--fit", type=int, default=100, help="scenes the Kalman filter is "
                         "fitted on (with --founder)")
+    parser.add_argument("--own", type=int, default=0, help="read the arm's own hand: a sense "
+                        "of its joint readings taught on this many of --founder's scenes")
+    parser.add_argument("--per", type=int, nargs="*", default=[16],
+                        help="tuned readings a joint of the taught sense (none: kinematics alone)")
+    parser.add_argument("--stays", type=int, default=0, help="scenes of a thing at rest out of "
+                        "view for 1,000 moments (S3)")
+    parser.add_argument("--heard", type=int, default=0, help="rooms of a thing heard moving out "
+                        "of view (S4)")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
     arms: dict[str, Any] = {

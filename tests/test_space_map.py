@@ -198,6 +198,10 @@ def test_a_brain_holds_a_map_saves_it_and_reads_where_and_what(tmp_path):
     host.act(seen[None])                                          # the host reads where and what
     again = cd.Brain.load(host.save(tmp_path / "host.npz"))
     assert again.space is not None and np.array_equal(again.space.potential, held.potential)
+    assert np.allclose(again.space.observation(), seen)          # right at once after a load
+    grown = host.grow(efference_amplitude=1.0)                    # grow, retune and graft keep it
+    assert np.array_equal(grown.space.potential, held.potential)
+    assert host.retune(teaching="normalized").space is not None
     assert again.space.what_is_at([-0.6, 1.0]) == CUP
     again.space.reset()
     again.space.moment()
@@ -301,9 +305,17 @@ def test_the_built_in_place_module_and_a_file_from_outside_load_alike_and_refusa
     with pytest.raises(ValueError, match="no map file"):
         Map.load(tmp_path / "pickled.npz")
     arrays = {key: value for key, value in np.load(tmp_path / "place.npz").items()}
+    unsummed = __import__("json").loads(str(arrays["record"]))
+    unsummed.pop("checksums")                                     # a file with no checksums
+    np.savez(tmp_path / "unsummed.npz", **{**arrays, "record": np.array(
+        __import__("json").dumps(unsummed))})
+    with pytest.raises(ValueError, match="no checksums"):
+        Map.load(tmp_path / "unsummed.npz")
     arrays["potential"] = np.zeros((5, 5))                       # an interface that does not fit
     record = __import__("json").loads(str(arrays["record"]))
-    record.pop("checksums")
+    from cadence.modules import _checksum
+
+    record["checksums"]["potential"] = _checksum(arrays["potential"])
     arrays["record"] = np.array(__import__("json").dumps(record))
     np.savez(tmp_path / "unfit.npz", **arrays)
     with pytest.raises(ValueError, match="does not fit its cells"):

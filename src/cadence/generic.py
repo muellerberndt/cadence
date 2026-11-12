@@ -7930,6 +7930,9 @@ def _grown_checkpoint(
             continue
         if name.startswith("rehearsal/"):
             continue  # the reservoir's labels may lack a new slot: the grown brain starts afresh
+        if name.startswith("space/"):  # a map of things the brain holds goes with it as it is
+            data[name] = value
+            continue
         if name not in new:
             raise RuntimeError(f"grow could not lay this brain out again: {name} is missing")
         target = new[name]
