@@ -247,19 +247,36 @@ def compose(interface: Interface, seed: int = 0, **settings: Any) -> Any:
     from ..generic import Brain
 
     settings.setdefault("episodic", False)
+    # without feedback an answer is exact after one sweep a stage of the path (inputs, hidden,
+    # outputs): a budget of 8 sweeps is checked after 4, where the founder's 1,024 is checked
+    # after 32, and the answer is the same to the bit
+    budget = 1024 if interface.feedback else 8
     rate = settings.pop("rate", None)
     if rate is not None:  # normalized steps at a rate of the caller's
         from ..learning import LearnerConfig
 
         settings["learning"] = LearnerConfig(
             eta=float(rate), eta_bias=float(rate) / 10.0, normalize=0.99, normalize_floor=1e-4,
-            temperature=interface.temperature, free_steps=1024, nudged_steps=12, tolerance=0.003)
+            temperature=interface.temperature, free_steps=budget, nudged_steps=12,
+            tolerance=0.003)
     else:
         settings.setdefault("teaching", "founder")
         settings.setdefault("temperature", interface.temperature)
-    return Brain.compose(interface.inputs, interface.outputs,
-                         connectome=anatomy(interface, seed), slots=interface.slots, seed=seed,
-                         **settings)
+        settings.setdefault("learning_free_steps", budget)
+    brain = Brain.compose(interface.inputs, interface.outputs,
+                          connectome=anatomy(interface, seed), slots=interface.slots, seed=seed,
+                          **settings)
+    # the sheets' synapses into ``found`` step at 32: a sheet lights a few of its units a
+    # moment, and at a step of 1 the place a posture names reads 7.7 cm off after 24,000 rows of
+    # lessons, at 32 it reads 0.55 cm
+    grown = brain.connectome
+    held = grown.populations
+    sheets = np.isin(grown.post, held["found"]) & (
+        np.isin(grown.pre, held["heard"]) | np.isin(grown.pre, held["felt"]))
+    rates = np.ones(grown.synapses)
+    rates[sheets] = 32.0
+    brain.learner.synapse_rate = rates
+    return brain
 
 
 class Space:
@@ -274,8 +291,15 @@ class Space:
     gives what the regions hold.
 
     ``sight`` (off unless given) turns on the map of where things are seen, for a camera and a
-    blind spot that stay where they are: a place that is out of view does not move into a cell
-    whose share of reports among its visits is above ``sight``.
+    blind spot that stay where they are. A cell is in sight where the share of reports among
+    its visits is above ``sight``. A place that is out of view and is predicted in sight for
+    ``patience`` steps in a row was not seen where it would have been: it goes back to where it
+    was before those steps and rests there, its seen movement dropped.
+
+    ``course`` (off unless given): ``shift`` is taught for a thing that moves by itself only at
+    the steps its report was read, so it learns the movement of a thing on its course, and the
+    reports left unread in practice teach ``spread`` alone. Without it the unread reports teach
+    ``shift`` too, which then holds how things slow, stop and turn while unseen.
 
     A thing's seen movement is the slope of the line through its reports in a row, up to
     ``Interface.memory`` of them, by least squares. Where the latest ``Interface.check`` reports
@@ -287,13 +311,16 @@ class Space:
     they lie around the step taught. For a thing that moves by itself they are the six from the
     step taught on, which share no report with what the answer read.
 
-    Reports carry no names. ``begin`` takes what each row looks like (``looks``), ``assign``
-    gives each report to a row of its look, the nearer predicted places first, and ``hear``
-    gives each cue to a row likewise. ``records`` (off unless given) keeps the places of things
-    at rest in a ``cadence.LongTermMemory`` of that many records, keyed by what a thing looks
-    like: a thing with a look of its own is filed once its place is a mean of four reports, and
-    its record is revised as the mean sharpens and when it is seen elsewhere. The records stay
-    over ``begin``, and ``find`` reads one.
+    Reports carry no names. ``begin`` takes what each row looks like (``looks``: its kind, which
+    several things may share), ``assign`` gives each report to a row of its look, the nearer
+    places first, and ``hear`` gives each cue to a row likewise. ``where_is`` answers a kind
+    with its places and ``what_is_at`` a place with the kind held there.
+
+    ``records`` (off unless given) keeps the places of things at rest in a
+    ``cadence.LongTermMemory`` of that many records, keyed by what a thing looks like: a thing
+    with a look of its own is filed once its place is a mean of four reports, and its record is
+    revised as the mean sharpens and when it is seen elsewhere. The records stay over ``begin``,
+    and ``find`` reads one.
 
     ``smooth`` (on unless refused): a thing in steady movement takes, in view, the place its
     line through six reports or more gives for the latest one, as a thing at rest takes the mean
@@ -315,7 +342,8 @@ class Space:
     def __init__(self, interface: Interface, brain: Any = None, *, seed: int = 0,
                  practice: float = 0.04, span: int = 30, sight: float | None = None,
                  cells: int = 32, records: int = 0, smooth: bool = True, read: str = "mean",
-                 module: str | None = None, track: bool = False, **settings: Any):
+                 module: str | None = None, track: bool = False, course: bool = False,
+                 patience: int = 3, **settings: Any):
         if read not in ("mean", "peak", "seen"):
             raise ValueError("read is 'mean', 'peak' or 'seen'")
         self.interface = interface
@@ -323,6 +351,7 @@ class Space:
         self.practice, self.span, self.sight = practice, int(span), sight
         self.smooth, self.read = bool(smooth), read
         self.track = bool(track)
+        self.course, self.patience = bool(course), max(int(patience), 1)
         self.changed = np.zeros(0, dtype=np.intp)  # the synapses the latest lesson moved
         self.changes = np.zeros(0)  # and how far each moved
         self.records: Any = None
@@ -420,6 +449,8 @@ class Space:
         self._smoothed = np.zeros(rows, dtype=bool)  # the place is a mean of carried reports
         self._rest = np.ones(rows, dtype=np.intp)  # reports averaged into a place at rest
         self._named = np.zeros(rows, dtype=np.intp)  # cues averaged into a place heard at rest
+        self._blind = np.zeros(rows, dtype=np.intp)  # steps in a row predicted in sight
+        self._anchor = self.place.copy()  # the place before those steps
         self._pending: deque[dict[str, np.ndarray]] = deque(maxlen=len(SLOPE))
         self._push(np.ones(rows, dtype=bool), self.place)
         self._last: dict[str, np.ndarray] = {}
@@ -533,8 +564,13 @@ class Space:
         live, quiet, sounding = step["live"], step["quiet"], step["sounding"]
         predicted = step["predicted"]
         read = seen & ~(self._practising > 0)  # the rows whose report is read
-        refused = ~read & live & ~quiet & ~sounding & self._in_sight(predicted)
-        predicted = np.where(refused[:, None], self.place, predicted)
+        unsighted = ~read & live & ~quiet & ~sounding & self._in_sight(predicted)
+        self._anchor = np.where((self._blind == 0)[:, None], self.place, self._anchor)
+        self._blind = np.where(unsighted, self._blind + 1, 0)
+        refused = unsighted & (self._blind >= self.patience)
+        predicted = np.where(refused[:, None], self._anchor, predicted)
+        self._known[refused] = False  # it did not come out where its movement carries it
+        self._moving[refused] = False
         if learn:
             self._teach(step, seen, z, predicted, read)
         deviation = np.sqrt(self.noise)
@@ -632,6 +668,24 @@ class Space:
                                                                axis=1)))]
                 out[nearest] = direction, distance
         return out
+
+    def where_is(self, look: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Where the things of one kind are: the rows that look so, their places and each
+        place's radius at ``RATE``. Two things of one kind are two rows, kept apart by their
+        places."""
+        rows = np.flatnonzero(self.looks == int(look)).astype(np.intp)
+        return rows, self.place[rows].copy(), self.radius[rows].copy()
+
+    def what_is_at(self, point: np.ndarray, reach: float | None = None) -> tuple[int, int] | None:
+        """What is at a place: the row whose place is nearest ``point`` and what it looks like,
+        or None where no place lies within ``reach`` of it (within the row's own radius, and
+        no nearer than 5 cm, unless given)."""
+        if not self.rows:
+            return None
+        apart = np.linalg.norm(self.place - np.asarray(point, dtype=np.float64), axis=1)
+        row = int(np.argmin(apart))
+        within = max(float(self.radius[row]), 0.05) if reach is None else float(reach)
+        return (row, int(self.looks[row])) if apart[row] <= within else None
 
     def find(self, look: int) -> tuple[np.ndarray, int] | None:
         """The record of a thing by what it looks like: its place and the reports its place is
@@ -805,7 +859,7 @@ class Space:
         np.add.at(self.visit_map, (i, j), 1.0)
         np.add.at(self.seen_map, (i[seen], j[seen]), 1.0)
         self._pending.append({"x": step["x"], "seen": seen.copy(), "z": z.copy(), "off": off,
-                              "sounding": sounding.copy(),
+                              "sounding": sounding.copy(), "fresh": self.since == 0,
                               **{name: step[name] for name in OUTPUTS}})
         if len(self._pending) < len(SLOPE):
             return
@@ -814,6 +868,8 @@ class Space:
         entry = {key: np.where(_wide(self.own, around[key]), around[key], ahead[key])
                  for key in around}
         whole = np.all([e["seen"] & ~e["sounding"] for e in held], axis=0)
+        if self.course:  # a thing on its course: the answer was given from a report read
+            whole &= self.own | entry["fresh"]
         slope = np.tensordot(SLOPE, np.stack([e["z"] for e in held]), axes=1)
         d, b = f.shift, f.found
         targets = np.hstack([self.shift.beliefs(entry["shift"][:, :d], t),

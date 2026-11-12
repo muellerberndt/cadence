@@ -167,6 +167,18 @@ def test_reports_without_names_go_to_the_nearer_rows_of_their_look():
     assert np.isnan(space.hear(np.zeros((0, 3)))).all()
 
 
+def test_a_kind_is_answered_with_its_places_and_a_place_with_its_kind():
+    space = small()
+    starts = np.array([[0.0, 0.0], [0.5, 0.0], [0.0, 1.0]])
+    space.begin(starts, looks=[3, 3, 7])  # two apples and a loaf
+    rows, places, radius = space.where_is(3)
+    assert rows.tolist() == [0, 1] and np.array_equal(places, starts[:2]) and len(radius) == 2
+    assert space.where_is(9)[0].size == 0
+    assert space.what_is_at([0.49, 0.02]) == (1, 3) and space.what_is_at([0.01, 0.99]) == (2, 7)
+    assert space.what_is_at([0.25, 0.5]) is None  # nothing is held there
+    assert space.what_is_at([0.25, 0.5], reach=0.6) is not None
+
+
 def test_a_thing_at_rest_is_filed_and_found_again_by_what_it_looks_like():
     space = small(records=16)
     rng = np.random.default_rng(1)

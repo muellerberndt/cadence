@@ -123,8 +123,8 @@ def save(brain: Any, path: str | Path, *, name: str, inputs: Any, published: Any
     every region between them; where omitted, ``inputs`` and ``published`` alone), ``inputs``
     those its own senses drive and ``published`` those a host reads. ``interface`` is the
     module's own record and ``card`` says what it was trained on and reads. The brain is saved
-    as ``Brain.save`` saves it, its streams at rest, with floats in 32 bits and synapse indices
-    in 32 bits."""
+    as ``Brain.save`` saves it, its streams at rest and without per-synapse steps of its own,
+    with floats in 32 bits and synapse indices in 32 bits."""
     import copy
 
     from .. import __version__
@@ -147,6 +147,7 @@ def save(brain: Any, path: str | Path, *, name: str, inputs: Any, published: Any
             raise ValueError(f"{region!r} is no input of this brain")
     resting = copy.deepcopy(brain)
     resting.reset()
+    resting.learner.synapse_rate = None  # a module's steps are its host's (``graft``)
     with tempfile.TemporaryDirectory(prefix="cadence-module-") as folder:
         whole = Path(folder) / "brain.npz"
         resting.save(whole, compressed=False)

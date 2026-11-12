@@ -405,15 +405,22 @@ class Senses:
 class Floor:
     """A default brain asked the position at every step. ``lessons``: ``truth`` teaches every
     step of a training scene its true position; ``camera`` teaches the steps in view their
-    report and no other step."""
+    report and no other step. With ``hide`` a ``camera`` floor leaves reports unread over spans
+    it draws (a span begins at a step in view at rate 0.04 and lasts 20 steps on average) and
+    is taught there by the report it did not read. ``settings`` are ``Brain.compose``'s: with
+    ``efference_amplitude`` the brain holds the copy of its own last answer in a region of its
+    own, a place held in the brain's carried activity."""
 
     def __init__(self, geometry: w.Geometry, arm: str, founder: int, *, joints: bool = False,
-                 lessons: str = "truth", settings: dict[str, Any] | None = None):
+                 lessons: str = "truth", settings: dict[str, Any] | None = None,
+                 hide: bool = False):
         from cadence import Brain
 
         self.senses = Senses(geometry, arm, joints)
         self.tuned = Tuned(geometry)
         self.lessons = lessons
+        self.hide = bool(hide) and lessons == "camera"
+        self.rng = np.random.default_rng(np.random.SeedSequence([int(founder), 77]))
         self.brain = Brain.compose(self.senses.inputs, 2 * BINS, slots=2, seed=founder,
                                    backend="cpu", **(settings or {}))
         self.synapses = int(self.brain.describe()["layout"]["synapses"])
@@ -427,10 +434,22 @@ class Floor:
         steps = scenes[0].steps
         answers = np.zeros((len(scenes), steps, 2))
         temperature = float(brain.learner.config.temperature)
+        hidden = np.zeros((len(scenes), steps), dtype=bool)
+        if teach and self.hide:
+            for row, feed in enumerate(feeds):
+                t = 1
+                while t < steps:
+                    if feed["seen"][t] and self.rng.random() < 0.04:
+                        length = int(self.rng.geometric(1.0 / 20.0))
+                        hidden[row, t : t + length] = True
+                        t += length
+                    t += 1
         brain.reset()
         for t in range(steps):
-            x = self.senses(*(np.stack([f[name][t] for f in feeds])
-                              for name in ("report", "seen", "commands", "joints")))
+            shown = np.array([f["seen"][t] for f in feeds]) & ~hidden[:, t]
+            x = self.senses(np.stack([f["report"][t] for f in feeds]), shown,
+                            *(np.stack([f[name][t] for f in feeds])
+                              for name in ("commands", "joints")))
             if teach:
                 seen = np.array([f["seen"][t] for f in feeds])
                 if self.lessons == "truth":
@@ -753,7 +772,8 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
         row.update(parameters=0, macs=0.0)
     elif arm in ("default", "code"):
         floor = Floor(training[0].geometry, "raw" if arm == "default" else "code", founder,
-                      joints=joints, lessons=lessons, settings=spec.get("settings"))
+                      joints=joints, lessons=lessons, settings=spec.get("settings"),
+                      hide=bool(spec.get("hide")))
         floor.train(training, rows)
         answers = floor.answer(held_out)
         row.update(parameters=int(floor.brain.parameters()), synapses=floor.synapses,
@@ -920,6 +940,7 @@ def main(argv: list[str] | None = None) -> int:
     one.add_argument("--rows", type=int, default=8)
     one.add_argument("--lessons", choices=("truth", "camera"), default="truth")
     one.add_argument("--joints", action="store_true")
+    one.add_argument("--hide", action="store_true")
     one.add_argument("--parameters", type=int, default=0)
     one.add_argument("--test", type=int, default=200)
     one.add_argument("--quota", type=int, default=40)
