@@ -189,10 +189,11 @@ def save(brain: Any, path: str | Path, *, name: str, inputs: Any, published: Any
     return path
 
 
-def load_file(path: str | Path) -> Module:
+def load_file(path: str | Path) -> Any:
     """Read a module file. Nothing in the file is run: the archive is read without pickled
     objects, the record is checked field by field and every array against its checksum, and a
-    file that fails is refused by what is wrong with it."""
+    file that fails is refused by what is wrong with it. A map file (``cadence.space.map``)
+    is read as a ``Map``."""
     path = Path(path)
     try:
         with np.load(path, allow_pickle=False) as held:
@@ -200,6 +201,10 @@ def load_file(path: str | Path) -> Module:
     except Exception:  # a text file, a pickled object, a broken archive: nothing of it is run
         raise ValueError(f"{path.name} is no module file: a module file is a NumPy archive of "
                          "arrays and one JSON record, with no pickled object") from None
+    if "record" in arrays and "module" not in arrays:  # a map of things
+        from ..space.map import Map
+
+        return Map.load(path)
     if "module" not in arrays:
         raise ValueError(f"{path.name} is no module file: it holds no 'module' record")
     try:
@@ -243,8 +248,9 @@ def names() -> list[str]:
     return sorted(p.stem for p in _HERE.glob("*.npz"))
 
 
-def load(name: str) -> Module:
-    """A module the library ships, by name (``names``)."""
+def load(name: str) -> Any:
+    """A module the library ships, by name (``names``): ``place`` is the map of things
+    (``cadence.space.map.Map``), with its physics as taught."""
     path = _HERE / f"{name}.npz"
     if "/" in str(name) or not path.is_file():
         raise ValueError(f"the library ships no module {name!r}: it ships {names()}")

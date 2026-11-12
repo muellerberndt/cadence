@@ -247,27 +247,65 @@ class Map:
             setattr(out, name, value.copy())
         return out
 
-    def save(self, path: str | Path) -> Path:
-        """Write the map's settings, codes and carried state: arrays and one JSON record."""
+    def save(self, path: str | Path, *, card: dict[str, Any] | None = None) -> Path:
+        """Write the map as a file: its settings, codes and carried state (with physics, its
+        kernels as taught) as arrays and one JSON record, with a checksum of every array and a
+        ``card`` (what it was raised on and its readings). No pickled object is written."""
+        from ..modules import _checksum
+
         path = Path(path)
         record, arrays = self.parts()
-        written: dict[str, Any] = {"record": np.array(json.dumps(record)),
-                                   **{k.replace("/", "_"): v for k, v in arrays.items()}}
+        stored = {k.replace("/", "_"): np.asarray(v) for k, v in arrays.items()}
+        record["checksums"] = {k: _checksum(v) for k, v in sorted(stored.items())}
+        record["card"] = dict(card or {})
+        from .. import __version__
+
+        record["library"] = __version__
+        written: dict[str, Any] = {"record": np.array(json.dumps(record)), **stored}
         with path.open("wb") as handle:
             np.savez_compressed(handle, **written)
         return path
 
     @classmethod
     def load(cls, path: str | Path, **settings: Any) -> Map:
-        """A map from a file ``save`` wrote, with the state it carried. No code of the file is
-        run."""
-        with np.load(Path(path), allow_pickle=False) as held:
-            arrays = {key.replace("physics_", "physics/"): held[key] for key in held.files}
+        """A map from a file ``save`` wrote, with the state it carried. Nothing in the file is
+        run: the archive is read without pickled objects, every array is checked against its
+        checksum, and a file that fails is refused by what is wrong with it."""
+        from ..modules import _checksum
+
+        name = Path(path).name
         try:
-            record = json.loads(str(arrays.pop("record")))
+            with np.load(Path(path), allow_pickle=False) as held:
+                stored = {key: held[key] for key in held.files}
+        except Exception:  # a text file, a pickled object, a broken archive: nothing of it is run
+            raise ValueError(f"{name} is no map file: a map file is a NumPy archive of arrays "
+                             "and one JSON record, with no pickled object") from None
+        try:
+            record = json.loads(str(stored.pop("record")))
+        except (KeyError, json.JSONDecodeError):
+            raise ValueError(f"{name} is no map file: it holds no record") from None
+        sums = record.pop("checksums", None)
+        record.pop("card", None)
+        record.pop("library", None)
+        if sums is not None:
+            if set(sums) != set(stored):
+                odd = sorted(set(sums) ^ set(stored))[0]
+                raise ValueError(f"{name}: array {odd!r} is in the file or in the record alone")
+            for key, value in stored.items():
+                if _checksum(value) != sums[key]:
+                    raise ValueError(f"{name}: array {key!r} differs from its checksum")
+        arrays = {key.replace("physics_", "physics/"): value for key, value in stored.items()}
+        try:
             return cls.from_parts(record, arrays, **settings)
-        except (KeyError, ValueError, json.JSONDecodeError) as error:
-            raise ValueError(f"{Path(path).name} is no map file: {error}") from None
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError(f"{name} is no map file this version reads: {error}") from None
+
+    @staticmethod
+    def card_of(path: str | Path) -> dict[str, Any]:
+        """A map file's card and the library version that wrote it, read without loading it."""
+        with np.load(Path(path), allow_pickle=False) as held:
+            record = json.loads(str(held["record"]))
+        return {**dict(record.get("card") or {}), "library": record.get("library")}
 
     def observation(self) -> np.ndarray:
         """What a brain that holds the map reads of it: the activity of ``where`` (one value a

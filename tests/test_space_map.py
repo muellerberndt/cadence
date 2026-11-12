@@ -273,3 +273,40 @@ def test_a_thing_in_doubt_seen_elsewhere_is_one_thing():
     assert [t["state"] for t in held.things()] == ["near"]
     held.moment(seen=[(APPLE, [0.6, 0.2])], lit=lit)              # seen well away
     assert [(t["state"], len(t["pieces"])) for t in held.things()] == [("seen", 1)]
+
+
+def test_the_built_in_place_module_and_a_file_from_outside_load_alike_and_refusals(tmp_path):
+    import pickle
+
+    import cadence as cd
+    from cadence.modules import load, names
+
+    assert "place" in names()
+    built = load("place")                                         # from the installed package
+    assert isinstance(built, Map) and built.things() == []
+    outside = cd.load_module(built.save(tmp_path / "place.npz", card={"from": "a test"}))
+    assert isinstance(outside, Map) and Map.card_of(tmp_path / "place.npz")["from"] == "a test"
+    for held in (built, outside):
+        held.moment(seen=[(APPLE, [0.2, 0.5])])
+    assert np.array_equal(built.potential, outside.potential)    # the same bits
+    if built.physics is not None:
+        assert np.array_equal(built.physics.kernel, outside.physics.kernel)
+    with np.load(tmp_path / "place.npz") as archive:              # a changed array is refused
+        arrays = {key: archive[key] for key in archive.files}
+    arrays["potential"] = arrays["potential"] + 1.0
+    np.savez(tmp_path / "changed.npz", **arrays)
+    with pytest.raises(ValueError, match="differs from its checksum"):
+        cd.load_module(tmp_path / "changed.npz")
+    (tmp_path / "pickled.npz").write_bytes(pickle.dumps({"record": "x"}))
+    with pytest.raises(ValueError, match="no module file"):
+        cd.load_module(tmp_path / "pickled.npz")
+    with pytest.raises(ValueError, match="no map file"):
+        Map.load(tmp_path / "pickled.npz")
+    arrays = {key: value for key, value in np.load(tmp_path / "place.npz").items()}
+    arrays["potential"] = np.zeros((5, 5))                       # an interface that does not fit
+    record = __import__("json").loads(str(arrays["record"]))
+    record.pop("checksums")
+    arrays["record"] = np.array(__import__("json").dumps(record))
+    np.savez(tmp_path / "unfit.npz", **arrays)
+    with pytest.raises(ValueError, match="does not fit its cells"):
+        Map.load(tmp_path / "unfit.npz")
