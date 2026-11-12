@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- **Corrections beside watched episodes, and many streams, on the brain's own path**
+  (`benchmarks/coaching/cartpole.py`, twelve founders): each own episode corrected through
+  `cadence.speech.correct.Rehearsal` beside three watched episodes at weight 0.25 puts ten founders
+  of twelve at 32 of 32 starts after the first round, against one for the correction alone and
+  none for teaching every moment or alternating with watched episodes; 32 poles as 32 streams put
+  seven there after the first round and nine after the fourth. The teaching guide gives both
+  recipes.
+- The cart-pole chamber reads a narrow code of the demonstrator's states beside the wide one
+  (235 steps on average after watching, against 315 for the wide code alone) and writes each life
+  as it ends.
+- The tuning guide shows how to change a teaching step under a named teaching point
+  (`retune(learning=replace(config, eta=...))`).
+
 ## 0.98.0 - 2026-11-12
 
 A recogniser trained from recordings and their transcripts (`cadence.speech`), the read-speech

@@ -280,6 +280,22 @@ that a construction setting adds (the recall memory or more of its heads, a hear
 efference copy, new output slots) to a trained brain, use `grow`, which returns a new brain;
 `graft` puts trained regions of another brain into it ([grow and combine brains](grow.md)).
 
+A teaching point (`teaching=`) sets the lesson's steps together, so `retune` refuses one of them by
+name (`learning_eta`). To take smaller steps on a trained brain, retune the whole configuration
+with the steps changed; every other setting of the lesson stays:
+
+```python
+from dataclasses import replace
+
+from cadence import Brain
+
+trained = Brain.compose(inputs=4, actions=2, seed=0)
+steps = trained.learner.config
+trained.retune(learning=replace(steps, eta=steps.eta / 3, eta_bias=steps.eta_bias / 3))
+assert trained.learner.config.eta == steps.eta / 3
+assert trained.learner.config.normalize == steps.normalize
+```
+
 `retune` resets nothing. `brain.arousal.reset()` resets the arousal level and reward references
 and keeps its age and work counters; an adult brain at the founder `need=0` is then roused only
 by surprise at its own forecasts ([reset and save](start.md#reset-and-save)).

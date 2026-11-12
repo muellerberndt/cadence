@@ -411,6 +411,36 @@ Without the efference copy that brain balanced 32, 13 and 21 starts after the fi
 Taught after each act instead of before it, the whole set also balanced 32 of 32 by the third
 round on this chamber.
 
+**Corrections beside watched episodes, or many streams.** Two recipes hold the gain from the first
+round. In the first, the brain plays each of its own episodes without lessons, and the episode is
+then taught as one correction heard beside earlier watched episodes at a lower lesson weight:
+`cadence.speech.correct.Rehearsal`, the correction of the
+[speech guide](speech.md#adapting-to-a-speaker). On the cart-pole chamber (twelve founders,
+Cadence 0.98.0) three watched episodes at weight 0.25 put ten founders of twelve at 32 of 32 after
+the first round and eleven after the fourth, where the correction alone reads one and four,
+teaching every moment of its own path none and six, and its own episodes alternating with watched
+ones none and three. In the second, the brain practises on many poles at once, each pole one of its
+streams and every lesson a row per stream: 32 poles, half moved by the brain, put seven founders of
+twelve at 32 of 32 after the first round and nine after the fourth
+([the readings](../benchmarks/coaching/README.md#corrections-beside-watched-episodes-and-many-streams)).
+
+```python
+import numpy as np
+
+from cadence import Brain
+from cadence.speech.correct import Rehearsal
+
+rng = np.random.default_rng(0)
+pupil = Brain.compose(inputs=6, actions=2, seed=0)
+bank = Rehearsal(rows=3, weight=0.25)
+for _ in range(3):  # watched episodes: their moments and the demonstrator's answers
+    moments = rng.uniform(0, 1, (20, 6))
+    bank.remember(moments, (moments[:, 0] > 0.5).astype(int))
+own = rng.uniform(0, 1, (15, 6))  # one of the pupil's own episodes, played without lessons
+heard = bank.correct(pupil, own, (own[:, 0] > 0.5).astype(int))
+assert heard["streams"] == 4
+```
+
 **Read agreement per answer.** A watch that stops once the brain agrees with the demonstrator on
 a share of moments can stop on the commonest answer alone: a brain that scans everywhere agrees
 with a demonstrator that mostly scans. Count each answer's agreement apart, and let the watch run
