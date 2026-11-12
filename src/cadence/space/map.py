@@ -101,7 +101,7 @@ class Map:
                  weight: int = 3, codes: np.ndarray | None = None, level: float = 0.02,
                  empty: str = "near", reach: float = 0.15, step: float = 0.15,
                  stride: float = 0.5, seed: int = 0, trace: bool = False,
-                 backend: Any = "cpu"):
+                 physics: Any = None, backend: Any = "cpu"):
         from ..brain import Apical
         from ..brain import Brain as Graph
         from ..connectome import Connectome
@@ -168,6 +168,16 @@ class Map:
         self._floor = 1e-3 * self.level  # activity under this is no thing
         self.trace = bool(trace)
         self.trajectory: dict[str, Any] = {}  # the latest settle by sweep, with ``trace``
+        # learned physics on the map (off unless given): True, or ``Physics``'s settings
+        self.physics: Any = None
+        if physics is not None and physics is not False:
+            from .physics import Physics
+
+            told = {} if physics is True else dict(physics)
+            self.physics = Physics(self.cells, self.size, self.units, backend=backend, **told)
+            self.settings["physics"] = {k: v for k, v in self.physics.settings().items()
+                                        if k != "lessons"}
+        self._lessons: list[tuple[np.ndarray, np.ndarray]] = []
         self.work = {"moments": 0, "questions": 0}
         self.reset()
 
@@ -181,6 +191,8 @@ class Map:
         self.doubt = np.zeros(self.count)  # one where a cell holds a thing not seen to be there
         self._sensed: list[tuple[int, str]] = []
         self.reading = np.zeros(self.count + self.units)  # ``where`` and ``what``, settled
+        if getattr(self, "physics", None) is not None:
+            self.physics.reset()
 
     def arrays(self) -> dict[str, np.ndarray]:
         """The carried state: the potentials of ``map``, ``clock``, ``lost`` and ``doubt``."""
@@ -190,7 +202,13 @@ class Map:
     def parts(self) -> tuple[dict[str, Any], dict[str, np.ndarray]]:
         """The map as a record (its settings) and arrays (its codes and carried state): what a
         map file and a brain that holds a map keep."""
-        return {"format": FORMAT, **self.settings}, {"codes": self.codes, **self.arrays()}
+        arrays = {"codes": self.codes, **self.arrays()}
+        record = {"format": FORMAT, **self.settings}
+        if self.physics is not None:  # the kernels as taught and the moving mass carried
+            record["physics"] = self.physics.settings()
+            arrays["physics/kernel"] = self.physics.kernel
+            arrays["physics/mass"] = self.physics.mass
+        return record, arrays
 
     @classmethod
     def from_parts(cls, record: dict[str, Any], arrays: Any, **settings: Any) -> Map:
@@ -199,9 +217,17 @@ class Map:
         if told.pop("format", None) != FORMAT:
             raise ValueError(f"a map's record states {FORMAT!r}")
         told.update(settings)
+        taught = told.get("physics")
+        if isinstance(taught, dict):  # the kernels the file holds, as taught
+            told["physics"] = {k: v for k, v in taught.items() if k != "lessons"} | {
+                "kernel": np.asarray(arrays["physics/kernel"], dtype=np.float64)}
         out = cls(tuple(told.pop("plane")), tuple(told.pop("cells")),
                   codes=np.asarray(arrays["codes"], dtype=np.float64),
                   **{k: v for k, v in told.items() if k != "units"})
+        if out.physics is not None and isinstance(taught, dict):
+            out.physics.lessons = int(taught.get("lessons", 0))
+            if "physics/mass" in arrays:
+                out.physics.mass = np.asarray(arrays["physics/mass"], dtype=np.float64).copy()
         for name in ("potential", "clock", "lost", "doubt"):
             value = np.asarray(arrays[name], dtype=np.float64)
             if value.shape != getattr(out, name).shape:
@@ -213,7 +239,8 @@ class Map:
         """Write the map's settings, codes and carried state: arrays and one JSON record."""
         path = Path(path)
         record, arrays = self.parts()
-        written: dict[str, Any] = {"record": np.array(json.dumps(record)), **arrays}
+        written: dict[str, Any] = {"record": np.array(json.dumps(record)),
+                                   **{k.replace("/", "_"): v for k, v in arrays.items()}}
         with path.open("wb") as handle:
             np.savez_compressed(handle, **written)
         return path
@@ -223,7 +250,7 @@ class Map:
         """A map from a file ``save`` wrote, with the state it carried. No code of the file is
         run."""
         with np.load(Path(path), allow_pickle=False) as held:
-            arrays = {key: held[key] for key in held.files}
+            arrays = {key.replace("physics_", "physics/"): held[key] for key in held.files}
         try:
             record = json.loads(str(arrays.pop("record")))
             return cls.from_parts(record, arrays, **settings)
@@ -369,7 +396,8 @@ class Map:
                 "what": rows[:, run["what"]].copy()}
         return np.asarray(np.asarray(state.v, dtype=np.float64)[0])
 
-    def moment(self, seen: Any = (), heard: Any = (), felt: Any = (), lit: Any = None) -> None:
+    def moment(self, seen: Any = (), heard: Any = (), felt: Any = (), lit: Any = None,
+               *, learn: bool = False) -> None:
         """One moment. ``seen``, ``heard`` and ``felt`` hold this moment's reports by sense,
         each a kind and a place ``(kind, (x, y))``: what the camera sees, what a sound names
         and what the body's own readings name. ``lit`` says which cells the camera sees: flags
@@ -381,7 +409,14 @@ class Map:
         moved unseen, and is cleared; with none, the report is a new thing. The pieces of the
         kind that lie on cells of doubt are cleared as well: a thing of the kind is found. A
         cell in sight loses what it carried. A piece seen empty with no report of its kind is
-        treated as ``empty`` says."""
+        treated as ``empty`` says.
+
+        With ``physics`` the moving mass is first carried by the learned kernels: what the map
+        holds is then the prediction, and the senses correct it. A report also writes the
+        thing's velocities: those it carried, blended with the motion seen since the moment
+        before. A piece seen empty is cleared, and the near rule drives it out of sight only
+        where its kind holds no mass out of sight within two reaches. With ``learn`` a thing
+        seen at this moment and at the one before gives the kernels a lesson."""
         reports = [(int(kind), np.asarray(place, dtype=np.float64).reshape(2), sense)
                    for sense, given in (("seen", seen), ("heard", heard), ("felt", felt))
                    for kind, place in given]
@@ -390,6 +425,17 @@ class Map:
             sight = np.asarray(lit(self.centers), dtype=bool).reshape(self.count)
         elif lit is not None:
             sight = np.asarray(lit, dtype=bool).reshape(self.count)
+        physics = self.physics
+        before = self.potential.copy()  # the map as the moment before left it
+        sensed = self.clock < 0.5  # the cells a sense wrote the moment before
+        if physics is not None:  # the prediction: the kernels carry the moving mass
+            mass_before = physics.mass
+            self._carried_mass = mass_before
+            moved = physics.carry()
+            self.potential = self.potential + (moved - mass_before).sum(axis=2)
+            physics.mass = moved
+        motion: list[np.ndarray | None] = []  # each report's velocities, over the whole grid
+        lessons: list[tuple[np.ndarray, np.ndarray]] = []
         activity = self._activity()
         carried = np.ones((self.count, self.units), dtype=bool)
         write = np.zeros((self.count, self.units))
@@ -412,6 +458,9 @@ class Map:
                 claimed[np.ix_(self._around(piece), units)] = True
             weights = self.weights(place)
             cells = weights > 0
+            if physics is not None:
+                motion.append(self._velocities(kind, place, near, before, sensed, weights,
+                                               lessons if learn else None))
             claimed[np.ix_(np.flatnonzero(cells), units)] = True  # the report takes its cells
             write[:, units] += (self.level * weights / np.linalg.norm(weights))[:, None]
             fresh |= cells
@@ -430,6 +479,12 @@ class Map:
                 if self.empty == "keep":
                     continue  # the thing stays where the map held it
                 carried[np.ix_(piece, units)] = False
+                if physics is not None:  # the mass it holds out of sight near there is the thing
+                    rest = self._of_kind(int(kind_here), activity) if kind_here is not None else (
+                        activity[:, units].min(axis=1))
+                    apart = np.linalg.norm(self.centers - at, axis=1)
+                    if ((rest > self._floor) & ~sight & (apart <= 2.0 * self.reach)).any():
+                        continue
                 if self.empty == "near":
                     apart = np.linalg.norm(self.centers - at, axis=1)
                     wide = np.exp(-0.5 * (apart / self.reach) ** 2) * (
@@ -455,8 +510,84 @@ class Map:
         self.doubt = v[run["doubt"]].copy()
         self.reading = np.maximum(np.tanh(np.concatenate([v[run["where"]], v[run["what"]]])
                                           / 2.0), 0.0)
+        if physics is not None:  # the moving mass where the map kept it, and each report's
+            physics.mass *= (carried & (self.potential > 0))[:, :, None]
+            for (kind, place, _), whole in zip(reports, motion, strict=True):
+                weights = self.weights(place)
+                units = np.flatnonzero(self.codes[kind])
+                written = self.level * weights / np.linalg.norm(weights)
+                share = physics.moving_share(whole)
+                for unit in units:
+                    physics.mass[:, unit, :] = np.where(
+                        (weights > 0)[:, None], written[:, None] * share[None, :],
+                        physics.mass[:, unit, :])
+            if lessons:
+                self._lessons += lessons
+                if len(self._lessons) >= 32:
+                    self.teach()
         self._sensed = [(kind, sense) for kind, _, sense in reports]
         self.work["moments"] += 1
+
+    def _velocities(self, kind: int, place: np.ndarray, near: list[np.ndarray],
+                    before: np.ndarray, sensed: np.ndarray, weights: np.ndarray,
+                    lessons: list[tuple[np.ndarray, np.ndarray]] | None) -> np.ndarray:
+        """A report's velocities over the whole grid: those its thing carried (the shares of
+        its moving mass in the pieces the report claims), blended with the motion seen since
+        the moment before at the share ``blend`` where the thing was sensed then. A new thing
+        is still. With ``lessons`` a thing sensed at both moments adds a lesson: the mass it
+        carried into this moment and the same mass moved by the motion seen."""
+        physics = self.physics
+        unit = int(np.flatnonzero(self.codes[kind])[0])
+        whole = np.zeros(physics.per * physics.per)
+        whole[physics._still] = 1.0
+        if not near:
+            return whole
+        cells = np.unique(np.concatenate([self._around(p) for p in near]))
+        total = float(np.maximum(self.potential[cells, unit], 0.0).sum())
+        if total > 0:
+            share = np.clip(physics.mass[cells, unit, :].sum(axis=0) / total, 0.0, None)
+            share = share / max(1.0, float(share.sum()))
+            whole = np.insert(share, physics._still, 1.0 - share.sum())
+        was = np.maximum(np.tanh(before[cells][:, np.flatnonzero(self.codes[kind])] / 2.0),
+                         0.0).min(axis=1)
+        if was.sum() > 0 and sensed[cells][was > 0].all():  # seen the moment before as well
+            at = (was @ self.centers[cells]) / was.sum()
+            whole = (1.0 - physics.blend) * whole + physics.blend * physics.code(place - at)
+            if lessons is not None:
+                drive = np.zeros((self.count, physics.speeds))
+                drive[cells] = self._mass_before(cells, unit)
+                if drive.any():  # the mass it carried, moved by the motion seen
+                    lessons.append((drive, physics.shift(drive, place - at)))
+        return whole
+
+    def _mass_before(self, cells: np.ndarray, unit: int) -> np.ndarray:
+        """The moving mass a unit carried into this moment at ``cells``, before the kernels
+        moved it."""
+        return np.asarray(self._carried_mass[cells, unit, :])
+
+    def teach(self) -> float:
+        """Give the kernels the lessons gathered so far, as one batch. Gives the lessons' error
+        as ``Physics.teach`` gives it; 0 with none."""
+        if self.physics is None or not self._lessons:
+            return 0.0
+        drives = np.stack([d for d, _ in self._lessons])
+        targets = np.stack([t for _, t in self._lessons])
+        self._lessons = []
+        return float(self.physics.teach(drives, targets))
+
+    def motion(self) -> tuple[np.ndarray, np.ndarray]:
+        """With ``physics``: each cell's velocity, the mean of its moving mass's velocities in
+        metres a moment ``(cells x, cells y, 2)``, and the share of the cell's mass that moves
+        ``(cells x, cells y)``, over every kind."""
+        if self.physics is None:
+            raise ValueError("motion is read with physics: Map(..., physics=True)")
+        mass = np.maximum(self.physics.mass.sum(axis=1), 0.0)  # (cells, velocities)
+        moving = mass.sum(axis=1)
+        whole = np.maximum(self.potential, 0.0).sum(axis=1)
+        velocity = (mass @ self.physics.velocities) / np.maximum(moving, 1e-300)[:, None]
+        share = np.divide(moving, whole, out=np.zeros_like(moving), where=whole > 0)
+        nx, ny = self.cells
+        return velocity.reshape(nx, ny, 2), np.clip(share, 0.0, 1.0).reshape(nx, ny)
 
     # -- questions, answered by settling
 
@@ -525,6 +656,19 @@ class Map:
                     own > self._floor).any():
                 out.append({"kind": kind, "place": None, "cells": np.zeros(0, dtype=np.intp),
                             "pieces": [], "since": None, "state": "not known where"})
+        return out
+
+    def area(self, kind: int, rate: float = 0.9) -> np.ndarray:
+        """The smallest set of cells that holds ``rate`` of a kind's activity, as flags
+        ``(cells,)``: where the things of that kind are, at that rate. No cell for a kind the
+        map does not hold."""
+        own = self._of_kind(int(kind), self._activity())
+        out = np.zeros(self.count, dtype=bool)
+        if not own.sum() > 0:
+            return out
+        order = np.argsort(-own)
+        need = int(np.searchsorted(np.cumsum(own[order]), rate * own.sum())) + 1
+        out[order[:need]] = True
         return out
 
     def sheet(self, kind: int | None = None) -> np.ndarray:

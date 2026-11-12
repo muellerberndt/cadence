@@ -358,7 +358,7 @@ def test_the_map_of_things_holds_a_hand_that_rests_behind_a_pillar(name):
     answers, more, _ = mapped.follow(scene)                                # the founder's rule
     error = tr.errors(scene, answers)[:, 0]
     assert error[out].mean() < 0.8 * still[out].mean() and error[~out][1:].mean() < 0.02
-    assert more["placed"][out].all() and more["inside"][out].mean() > 0.95
+    assert more["placed"][out].all() and more["in95"][out].mean() > 0.9
 
 
 def test_the_errand_hands_visit_pause_hop_and_go_slowly():
