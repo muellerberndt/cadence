@@ -191,6 +191,11 @@ def test_a_scene_is_refused_with_its_reason():
         w.from_dict({**data, "report": report})
     with pytest.raises(ValueError, match="case"):
         w.from_dict({**data, "case": "elsewhere"})
+    with pytest.raises(ValueError, match="'truth'"):
+        w.from_dict({k: v for k, v in data.items() if k != "truth"})
+    least = w.from_dict({k: data[k] for k in ("format", "case", "report", "in_view", "truth")})
+    assert (least.commands == 0).all() and least.geometry == w.Geometry()
+    assert np.allclose(least.start, scene.truth[0]) and least.dt == scene.dt
 
 
 def test_a_learner_is_given_reports_without_names():

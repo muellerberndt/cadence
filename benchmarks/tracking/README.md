@@ -85,6 +85,9 @@ seconds and radians.
 
 - Joint 0's angle is measured from the x axis and every further joint's from the link before it,
   counter-clockwise. `commands` holds zeros at step 0.
+- A file holds `format`, `case`, `report`, `in_view` and `truth` at the least. Where it leaves
+  them out, `start` is the truth at step 0, `dt` is 1/30, `commands` and `joints` are an arm at
+  rest and `geometry` is the chamber's own.
 - Optional: `camera_noise` (the report's standard deviation on each axis), `kind`, `event` (the
   step a movement changes), `name`.
 - A scene of several things holds `report` and `truth` as `(steps, things, 2)`, `in_view` as

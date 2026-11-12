@@ -15,8 +15,9 @@ Modes. ``online``: one pass over the training scenes in the brain's order, one A
 shuffled epochs of 32 scenes a step from rate 0.002, halved whenever the loss on a tenth of the
 training scenes held aside has not fallen for 8 epochs (no lower than 0.00002), until that loss
 has not fallen for 25 epochs or 300 epochs are spent; the answers are those of the epoch whose
-held-aside loss was least. The width is the one whose parameter count is nearest the brain's. Work is counted as updates, analytic multiply-accumulates (a
-backward pass at twice the forward) and seconds.
+held-aside loss was least. The width is the one whose parameter count is nearest the brain's. Work
+is counted as updates, analytic multiply-accumulates (a backward pass at twice the forward) and
+seconds.
 """
 
 from __future__ import annotations

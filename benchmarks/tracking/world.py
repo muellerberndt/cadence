@@ -806,17 +806,22 @@ def from_dict(data: dict[str, Any]) -> Scene:
         raise ValueError(f"a scene file states format {FORMAT!r}, got {data.get('format')!r}")
     if dict(data.get("units", UNITS)) != UNITS:
         raise ValueError(f"a scene is in {UNITS}, got {dict(data['units'])}")
+    for name in ("case", "report", "in_view", "truth"):
+        if name not in data:
+            raise ValueError(f"a scene file holds {name!r}")
     truth = np.asarray(data["truth"], dtype=np.float64)
     steps, one = len(truth), truth.ndim == 2
     in_view = np.asarray(data["in_view"], dtype=bool).reshape(steps, -1)
     cue = data.get("cue")
+    geometry = Geometry.from_dict(data["geometry"]) if "geometry" in data else Geometry()
+    still = np.zeros((steps, geometry.joints))  # a scene without an arm's record: an arm at rest
     return Scene(
         case=str(data["case"]), report=_filled(data["report"], steps, one), in_view=in_view,
-        commands=np.asarray(data["commands"], dtype=np.float64),
-        joints=np.asarray(data["joints"], dtype=np.float64),
+        commands=np.asarray(data.get("commands", still), dtype=np.float64),
+        joints=np.asarray(data.get("joints", still), dtype=np.float64),
         truth=truth.reshape(steps, -1, 2), start=data.get("start"),
         cue=None if cue is None else _filled(cue, steps, one), what=data.get("what"),
-        geometry=Geometry.from_dict(data["geometry"]), dt=float(data["dt"]),
+        geometry=geometry, dt=float(data.get("dt", 1.0 / 30.0)),
         kind=str(data.get("kind", "")), event=int(data.get("event", -1)),
         camera_noise=float(data.get("camera_noise", np.nan)), name=str(data.get("name", "")),
     )
