@@ -269,4 +269,11 @@ while moving is then looked ahead for along its seen movement: its hidden stretc
 would come back into view, or at the plane's edge. It is carried no farther than the middle of
 that stretch and waits there, and its radius reaches .90 of the way back to where it was last
 seen. `in_sight` also takes one flag a row for the places `predict` gave; `sight=` learns the
-same from where things were seen, for a camera and a blind spot that stay where they are.
+same from where things were seen, for a camera and a blind spot that stay where they are. A thing
+at rest whose own place the caller says is in sight, with no report from there for `patience`
+steps, is marked gone (`state()["gone"]`) and its radius becomes the plane's until it is seen.
+Where the hidden stretch has no lit end (one shadow running into another), no such evidence
+arrives and the place follows the brain's `keep` alone.
+
+A module file made by another version of the place brain is refused by `Space.load` with the
+version that made it: make the file again with the version that loads it.

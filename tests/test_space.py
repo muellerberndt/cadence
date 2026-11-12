@@ -232,6 +232,21 @@ def test_a_thing_on_a_hidden_stretch_waits_at_its_middle():
     assert np.allclose(space.where()[0], [[-0.22, 0.5]])
 
 
+def test_a_thing_at_rest_that_is_not_where_the_camera_looks_is_marked_gone():
+    space = small()
+    space.begin(np.array([[0.2, 0.5], [-0.3, 0.9]]))
+    nothing = np.zeros(2, dtype=bool)
+    for _ in range(2):  # the camera sees the first place and no thing is reported there
+        space.advance(nothing, np.zeros((2, 2)), in_sight=[True, False])
+    assert not space.gone.any()
+    space.advance(nothing, np.zeros((2, 2)), in_sight=[True, False])
+    assert space.gone.tolist() == [True, False] and space.state()["gone"].tolist() == [True, False]
+    place, radius = space.where()
+    assert radius[0] > 2.0 and radius[1] < 0.05  # anywhere in the plane; the other as it was
+    space.advance([True, False], np.array([[-0.6, 0.1], [0.0, 0.0]]), in_sight=[True, False])
+    assert not space.gone.any() and np.allclose(space.where()[0][0], [-0.6, 0.1])
+
+
 def test_a_kind_is_answered_with_its_places_and_a_place_with_its_kind():
     space = small()
     starts = np.array([[0.0, 0.0], [0.5, 0.0], [0.0, 1.0]])

@@ -461,6 +461,8 @@ class Space:
         self._blind = np.zeros(rows, dtype=np.intp)  # steps in a row predicted in sight
         self._anchor = self.place.copy()  # the place before those steps
         self._seen_at = self.place.copy()  # the place at the latest report read
+        self.gone = np.zeros(rows, dtype=bool)  # at rest in plain sight with no report there
+        self._lit = np.zeros(rows, dtype=np.intp)  # steps in a row its resting place was in sight
         self._exit = np.full((rows, 2), np.nan)  # where a hidden row would come back into view
         self._waiting = np.zeros(rows, dtype=bool)  # held at the middle of its hidden stretch
         self._pending: deque[dict[str, np.ndarray]] = deque(maxlen=len(SLOPE))
@@ -585,7 +587,10 @@ class Space:
         its radius reaches ``RATE`` of the way back to where it was last seen. With flags alone,
         a row predicted in sight for ``patience`` steps in a row with no report is placed
         halfway between where it was last seen and where it was before those steps, and rests.
-        Gives every row's place."""
+        A thing at rest whose own place is in sight for ``patience`` steps with no report from
+        there is not where the map holds it: it is marked ``gone`` (``state()``), its radius
+        becomes the plane's, and the next report of it writes its place. Gives every row's
+        place."""
         rows, step = self.rows, self._step
         if self.module is not None and learn:
             raise ValueError("a space in a host brain takes no lessons: teach the donor")
@@ -603,6 +608,12 @@ class Space:
             visible = np.zeros(rows, dtype=bool)
         else:
             visible = np.asarray(in_sight, dtype=bool).reshape(rows)
+        # a thing at rest whose place the camera sees, with no report from there, is not there:
+        # after ``patience`` such steps its place is marked gone and its radius is the plane's
+        # (on the caller's word alone: the map of where things were seen is no such witness)
+        bare = visible & ~seen & quiet & ~sounding & (not learn) & (in_sight is not None)
+        self._lit = np.where(bare, self._lit + 1, 0)
+        self.gone = (self.gone | (self._lit >= self.patience)) & ~read
         unsighted = ~read & live & ~quiet & ~sounding & visible
         self._anchor = np.where((self._blind == 0)[:, None], self.place, self._anchor)
         self._blind = np.where(unsighted, self._blind + 1, 0)
@@ -645,6 +656,7 @@ class Space:
         if stretch.any():  # on a hidden stretch: RATE of the way back to where it was last seen
             back_to = np.linalg.norm(predicted - self._seen_at, axis=1)
             self.radius = np.where(stretch, RATE * back_to + AREA * deviation, self.radius)
+        self.radius = np.where(self.gone, float(np.linalg.norm(self._size)), self.radius)
         self._known[self._waiting] = False  # a row that waits rests until it is seen
         self._moving[self._waiting] = False
         self._waiting[:] = False
@@ -772,6 +784,13 @@ class Space:
             module = load_file(module)
         held = module.interface
         interface = Interface.from_dict(held["interface"])
+        lacking = [name for name in interface.regions if name not in module.regions]
+        if lacking or any(module.regions[name] != size
+                          for name, size in interface.regions.items()):
+            raise ValueError(
+                f"the module {module.name!r} was made with cadence {module.record['library']} "
+                f"and its regions are another version's (this version's place brain holds "
+                f"{lacking or 'other sizes'} beside them): make the file again with this version")
         if brain is None:
             space = cls(interface, brain=module.brain(), **settings)
         else:
@@ -801,6 +820,7 @@ class Space:
             out[name] = self._last["x"][:, at : at + f.regions[name]].copy()
             at += f.regions[name]
         out["live"] = self._last["live"].copy()
+        out["gone"] = self.gone.copy()
         out["refused"] = self._last["refused"].copy()
         if "hidden" in self._last:
             t = self.interface.temperature

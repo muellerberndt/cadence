@@ -180,6 +180,16 @@ def test_a_space_is_saved_as_a_module_and_made_of_one(taught: Space, tmp_path) -
     assert np.allclose(a, b, atol=1e-9) and not np.allclose(a, start)
 
 
+def test_a_module_of_another_versions_regions_is_refused_with_its_reason(taught: Space,
+                                                                         tmp_path) -> None:
+    old = taught.brain.save_module(
+        tmp_path / "old.npz", name="place", inputs=INPUTS, published=("place", "shift"),
+        regions=(*INPUTS, "hidden", "shift", "spread", "found"),  # a file from before ``keep``
+        interface={"interface": taught.interface.to_dict(), "noise": 0.01})
+    with pytest.raises(ValueError, match="was made with cadence .* another version's"):
+        Space.load(old)
+
+
 def test_a_tracked_space_keeps_the_synapses_a_lesson_moved() -> None:
     space = Space(Interface(plane=PLANE, **SMALL), seed=0, backend="cpu", track=True)
     rng = np.random.default_rng(1)
