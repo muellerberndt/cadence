@@ -229,20 +229,21 @@ holding .90 of the hand's activity holds the hand at every hidden moment, at 30 
 that is the second stage.
 
 **How the reach was chosen.** The first value, 0.3 m, was fixed before any reading. It was
-changed to 0.15 m on the development panels of one founder, before the declared run, and the two
-recorded scenes above took no part in the choice. On 140 scenes of a person's hand and 40 scenes
-of hands that visit a shadow, pause, hop, go slowly and are left, the error out of view:
+changed to 0.15 m at 880299c2, on the development panels of one founder, before the declared run,
+and the two recorded scenes above took no part in the choice. On 140 scenes of a person's hand
+and 40 scenes of hands that visit a shadow, pause, hop, go slowly and are left, the error out of
+view, read again at 829e8419:
 
 | Arm | A person's hand | Hands that visit, pause, hop, go slowly, are left |
 | --- | --- | --- |
 | Last seen | 26.8 cm | 14.9 cm |
 | The map, `empty="keep"` | 26.8 cm | 14.9 cm |
-| The map, `reach=0.15` | 23.2 cm | 11.8 cm |
-| The map, `reach=0.3` | 24.1 cm | 16.6 cm |
-| The map, `reach=0.6` | 32.4 cm | 31.2 cm |
+| The map, `reach=0.15` | 23.2 cm | 12.2 cm |
+| The map, `reach=0.3` | 24.8 cm | 17.5 cm |
+| The map, `reach=0.6` | 33.7 cm | 32.4 cm |
 
 At 0.3 m a hand that pauses, hops or goes slowly near the shadow's edge is placed deep in the
-shadow at once: in its first five moments unseen the map read 14.6 cm where last seen read
+shadow at once: in its first five moments unseen the map reads 15.0 cm where last seen reads
 4.2 cm.
 
 ## The carried state
