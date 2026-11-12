@@ -42,15 +42,18 @@ founders. A standard error is over the twelve founders, of the founder-paired di
 
 - **S1, in view.** `space`'s error in view on `own` and on `other` is at or under 1.1 times the
   camera's own error on the same steps.
-- **S2, out of view.** On `other`: `space`'s error on the `straight` panel is at or under 1.1
-  times the Kalman filter's, and on each of `slow`, `stop` and `turn` it is under the Kalman
-  filter's by two standard errors. Read for `space` at the mean; the peak, the seen movement and
-  `space-site` are reported beside it.
-  **Proposed amendment, to be declared with the run:** on `turn` the error is at or under 1.1
-  times the Kalman filter's. Its ground, on development founders 0, 1 and 2: a turn that begins
-  out of view leaves no trace in what the camera reports, and the matched LSTM and transformer
-  taught the true position at every step read 11.2 cm and 10.9 cm there against the Kalman
-  filter's 9.0 cm.
+- **S2, out of view** (as amended on the issue before any declared run). On `other`, overall:
+  `space`'s error out of view is at or under the offline LSTM's and the offline transformer's
+  taught with the same kind of lessons, and under the Kalman filter's and last seen's by two
+  standard errors. By panel: on `slow` and `stop` it is under the Kalman filter's by two
+  standard errors; `straight` and `turn` are reported beside it. On the recorded scene
+  [`scenes/promise.json`](scenes/promise.json) (a hand goes behind a pillar at 0.5 m/s, rests
+  there for 70 moments and comes back): the point error is at or under last seen's on the same
+  rows, and the stated area holds the hand on .85 to .95 of the hidden moments. The reason: a
+  thing out of view either kept going or stopped, nothing the camera reports says which, and
+  the point that is right on average lies between the two; on development founders the matched
+  learners hedge the same way (5.4 cm to 7.4 cm on straight movement against the filter's
+  1.3 cm). Lessons of both kinds are read and stated with every row.
 - **S3, it stays.** On `stays_own` and `stays_other`: the answer moves by 0 over the 1,000 steps
   at rest out of view, and on `stays_other` the error over the last 100 steps is at or under the
   error while the thing was seen.

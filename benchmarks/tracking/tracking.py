@@ -762,10 +762,18 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     lessons, joints = str(spec.get("lessons", "truth")), bool(spec.get("joints", False))
     started = time.monotonic()
     training = w.scenes(case, seed(founder, "train"), count)
+    if spec.get("vary"):  # half of the training scenes among discs and dark spans of their own
+        varied = w.scenes(case, seed(founder, "train") + 50, count - count // 2, vary=True)
+        mixed = training[: count // 2] + varied
+        order = np.random.default_rng(seed(founder, "train")).permutation(len(mixed))
+        training = [mixed[i] for i in order]
     held_out = test_scenes(case, founder, int(spec.get("test", 200)), int(spec.get("quota", 40)))
+    recorded = w.load(spec["scene"]) if spec.get("scene") else None
+    if recorded is not None:  # a scene file, answered by the same arm and scored by itself
+        held_out = [*held_out, recorded]
     row: dict[str, Any] = {"arm": arm, "case": case, "founder": founder, "train": count,
                            "rows": rows, "lessons": lessons, "joints": joints,
-                           "tag": spec.get("tag")}
+                           "tag": spec.get("tag"), "vary": bool(spec.get("vary"))}
     radius: list[np.ndarray] | None = None
     if arm == "last_seen":
         answers = [follow(s, Still)[0] for s in held_out]
@@ -812,6 +820,14 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
         row.update(extra)
     else:
         raise ValueError(f"unknown arm {arm!r}")
+    if recorded is not None:
+        held_out, answer = held_out[:-1], answers[-1]
+        answers = answers[:-1]
+        wide = None if radius is None else [radius[-1]]
+        radius = None if radius is None else radius[:-1]
+        row["scene"] = {"file": Path(str(spec["scene"])).name,
+                        "table": table([recorded], [answer], wide),
+                        "errors": [round(float(e), 5) for e in errors(recorded, answer)[:, 0]]}
     row["table"] = table(held_out, answers, radius)
     if arm in ("last_seen", "kalman"):
         began = time.perf_counter()
@@ -949,12 +965,14 @@ def main(argv: list[str] | None = None) -> int:
     one.add_argument("--lessons", choices=("truth", "camera"), default="truth")
     one.add_argument("--joints", action="store_true")
     one.add_argument("--hide", action="store_true")
+    one.add_argument("--vary", action="store_true")
     one.add_argument("--parameters", type=int, default=0)
     one.add_argument("--test", type=int, default=200)
     one.add_argument("--quota", type=int, default=40)
     one.add_argument("--tag")
     one.add_argument("--save")
     one.add_argument("--settings", type=json.loads, help="an arm's settings, as JSON")
+    one.add_argument("--scene", help="a scene file the arm also answers, scored by itself")
     one.add_argument("--out", type=Path, required=True)
     scored = commands.add_parser("score", help="score one scene file")
     scored.add_argument("--scene", type=Path, required=True)
