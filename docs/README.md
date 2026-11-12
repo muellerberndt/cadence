@@ -84,13 +84,15 @@ Each idea builds on the one before. [Start here](start.md) shows each with a run
 
 Then, in this order:
 
-1. [Train a brain](teach.md): lessons, rewards, distillation, rare classes, curricula, rates,
+1. [Parts of a brain](modules.md): the catalogue of every part a brain can be built from, and
+   four whole brains composed for a purpose.
+2. [Train a brain](teach.md): lessons, rewards, distillation, rare classes, curricula, rates,
    evaluation and what to do when training goes wrong.
-2. [Memory](memory.md): which memory serves which task, with a minimal example of each.
-3. [Learning from reward](reward.md): eligibility traces, the actor's rates, delayed credit,
+3. [Memory](memory.md): which memory serves which task, with a minimal example of each.
+4. [Learning from reward](reward.md): eligibility traces, the actor's rates, delayed credit,
    maturity.
-4. [Tune and read a living brain](tune.md): every setting, `describe`, `retune`, larger brains.
-5. [API reference](api.md): every public name with its signature and refusals.
+5. [Tune and read a living brain](tune.md): every setting, `describe`, `retune`, larger brains.
+6. [API reference](api.md): every public name with its signature and refusals.
 
 ## Words used in these docs
 
@@ -113,6 +115,7 @@ Then, in this order:
 
 | You want | Use | Page |
 | --- | --- | --- |
+| To choose the parts of a brain for a purpose: a transcriber, an agent that remembers facts, a body that reaches | the catalogue of parts, each with how it joins a brain | [Parts of a brain](modules.md) |
 | To train on a dataset, a teacher, rewards or another brain | `lesson`, `step`, `targets=`, `weights=` | [Train a brain](teach.md) |
 | The world to pay for good actions | `step(reward=...)`, `live`, `actor_eta` | [Learning from reward](reward.md) |
 | A memory for a task | the comparison table | [Memory](memory.md) |
