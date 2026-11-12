@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+### Documentation
+
+- **[Parts of a brain](docs/modules.md)** (#321): the catalogue of every part a brain is built
+  from, in tables by role (senses, association regions, the motor, short-term state, memories,
+  learning, many lives, the speech pieces, growing and grafting, an anatomy of your own). Each
+  part has its purpose, the option or call that joins it, what it holds between moments,
+  whether it learns, how it arrives, what `grow` and `graft` do with it, and a reading with its
+  benchmark or issue. Every group has a runnable example, and four brains are composed for a
+  purpose: a transcriber, an agent that answers from facts it read once, a body taught by a
+  demonstrator and a creature that lives on reward. The refusals between parts are listed as
+  the library states them. Packaged trained modules are described as planned. No library code
+  changes.
+
+- **Corrections to the guides, read against the code**: `retune` changes a tied brain's settings
+  and refuses only `retune(tied=...)`; the `Brain(connectome, ...)` signature lists `longterm`
+  and the `ActorCriticConfig` signature `hold` and `entropy`; what `Lives` refuses includes a
+  held message, long-term records, tied projections, `actor_entropy` and the read's cortex at
+  unit norm; `grow(recall=True)` also gives a brain without a heard history the one block a new
+  brain's memory holds, and `recall_founder=True` grows the memory without it; the API
+  reference gains a section for `cadence.speech.frontend`, `align` and `decode`, and the speech
+  guide a line each for `LogMel`, `mel_bank`, `windows`, `even_path` and `greedy`.
+
 ### Space: where things are while they are out of view (#320)
 
 `cadence.space` is imported by name, and `import cadence` loads none of it. The guide is
