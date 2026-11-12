@@ -236,3 +236,40 @@ def test_a_thing_stays_when_a_slowly_turning_field_passes_off_it():
         held.moment(seen=seen, lit=field)
     (thing,) = held.things()
     assert thing["state"] == "held" and np.linalg.norm(thing["place"] - apple) < 0.0005
+
+
+def test_a_field_sweeping_over_a_thing_in_doubt_takes_cells_away_and_never_moves_it():
+    held = Map(PLANE)
+    apple = np.array([0.0, 0.6])
+    held.moment(seen=[(APPLE, apple)], lit=lambda points: np.ones(len(points), dtype=bool))
+    for _ in range(3):                                            # the camera looks elsewhere
+        held.moment(lit=lambda points: points[:, 0] < -0.8)       # and the apple is taken away
+    reached, states = 0.0, []
+    for edge in np.arange(-0.8, 0.8, 0.01):                       # the field turns back, 1 cm a moment
+
+        def field(points, edge=edge):
+            return points[:, 0] < edge
+
+        held.moment(lit=field)
+        (thing,) = held.things()
+        states.append(thing["state"])
+        if len(thing["cells"]):
+            reached = max(reached, float(held.centers[thing["cells"], 0].max()))
+    assert "near" in states and states[-1] == "not known where"
+    assert reached <= apple[0] + 2 * held.reach + held.size[0]    # placed once, never pushed on
+    held.moment(seen=[(APPLE, [-0.5, 1.0])], lit=lambda points: np.ones(len(points), dtype=bool))
+    (found,) = held.things()                                      # the same apple, found
+    assert found["state"] == "seen" and np.linalg.norm(found["place"] - [-0.5, 1.0]) < 0.0005
+
+
+def test_a_thing_in_doubt_seen_elsewhere_is_one_thing():
+    held = Map(PLANE)
+    held.moment(seen=[(APPLE, [0.0, 0.6])])
+
+    def lit(points):
+        return points[:, 0] > -0.1
+
+    held.moment(lit=lit)                                          # seen empty: in doubt, near
+    assert [t["state"] for t in held.things()] == ["near"]
+    held.moment(seen=[(APPLE, [0.6, 0.2])], lit=lit)              # seen well away
+    assert [(t["state"], len(t["pieces"])) for t in held.things()] == [("seen", 1)]

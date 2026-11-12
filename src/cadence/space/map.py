@@ -522,6 +522,17 @@ class Map:
                 # ``margin``, all it saw there when it reported it (where the field moved off
                 # it, the thing stays); a place physics carried on, or any other place, where
                 # the camera sees it
+                if self.doubt[piece].mean() > 0.5 and self.empty == "near":
+                    # a thing in doubt was placed out of sight once; sight only takes away the
+                    # cells it sees, and with none left the thing is not known where
+                    seen_here = piece[sight[piece]]
+                    if len(seen_here):
+                        carried[np.ix_(seen_here, units)] = False
+                        empty[seen_here] = True
+                        if len(seen_here) == len(piece) and not (
+                                own[~sight] > self._floor).any():
+                            lost[units] = 1.0
+                    continue
                 views = [(p, f) for p, f in self._views if np.linalg.norm(p - at) <= self.step]
                 carried_on = acting and bool(physics.mass[np.ix_(piece, units)].any())
                 if sensed[piece].any() and views and not carried_on:

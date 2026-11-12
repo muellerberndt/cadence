@@ -91,14 +91,6 @@ class Physics:
         if not np.array_equal(found, (post_all * self.neurons + pre_all)[order]):
             raise RuntimeError("the physics synapses were merged or reordered")
         self.groups = group_all[order]
-        # one velocity's synapses alone (its went onto its moving region): the graph a moment
-        # settles, a velocity at a time, for the velocities that carry mass
-        one = self.groups < 9
-        self._one = Connectome.from_synapses(
-            2 * count, pre=np.asarray(self.connectome.pre)[one],
-            post=np.asarray(self.connectome.post)[one] - (b - 1) * count, label="velocity",
-            populations={"went": list(range(count)), "moving": list(range(count, 2 * count))})
-        self._one_groups = self.groups[one] % 9
         born = np.zeros((b, 9))
         born[:, 4] = PASS  # stay
         self.kernel = born if kernel is None else np.asarray(kernel, dtype=np.float64).reshape(
@@ -114,14 +106,6 @@ class Physics:
         self.graph = self._graph_class(
             self.connectome, self._model, efficacy=self.kernel.ravel()[self.groups],
             backend=self._backend)
-        self._velocity_graphs()
-
-    def _velocity_graphs(self) -> None:
-        """Each velocity's graph of its own, at the kernels as taught."""
-        self._graphs = [self._graph_class(self._one, self._model,
-                                          efficacy=self.kernel[v][self._one_groups],
-                                          backend=self._backend)
-                        for v in range(self.speeds)]
 
     def reset(self) -> None:
         """Empty the moving velocities."""
@@ -187,24 +171,24 @@ class Physics:
 
     def carry(self) -> np.ndarray:
         """Settle the kernels on the carried mass: the moving mass of the next moment,
-        ``(cells, units, velocities)``. Each velocity's synapses are a graph of their own, and
-        a velocity is settled on the code units that carry mass on it; the rest carry none (a
-        neuron with no drive rests). Before any lesson the kernels stay, and the mass is
-        carried as it is."""
+        ``(cells, units, velocities)``, one row a code unit that carries mass; the rest carry
+        none (a neuron with no drive rests). Before any lesson the kernels stay, and the mass
+        is carried as it is."""
         if not self.lessons or not self.mass.any():
             return np.array(self.mass, dtype=np.float64)
         from ..brain import BrainState
 
+        units = np.flatnonzero(self.mass.any(axis=(0, 2)))
+        drive = np.zeros((len(units), self.neurons))
+        drive[:, : self.speeds * self.count] = self.mass[:, units, :].transpose(1, 2, 0).reshape(
+            len(units), -1)
+        state = BrainState(v=drive.copy(), activation=self._model.activation(drive),
+                           adaptation=np.zeros_like(drive), steps=0)
+        state = self.graph.settle_batch(drive, steps=1, tolerance=None, state=state)
         out = np.zeros_like(self.mass)
-        count = self.count
-        for v in np.flatnonzero(self.mass.any(axis=(0, 1))):
-            units = np.flatnonzero(self.mass[:, :, v].any(axis=0))
-            drive = np.zeros((len(units), 2 * count))
-            drive[:, :count] = self.mass[:, units, v].T
-            state = BrainState(v=drive.copy(), activation=self._model.activation(drive),
-                               adaptation=np.zeros_like(drive), steps=0)
-            state = self._graphs[v].settle_batch(drive, steps=1, tolerance=None, state=state)
-            out[:, units, v] = np.asarray(state.v, dtype=np.float64)[:, count:].T
+        out[:, units, :] = np.asarray(state.v, dtype=np.float64)[
+            :, self.speeds * self.count :].reshape(len(units), self.speeds, self.count).transpose(
+                2, 0, 1)
         return out
 
     # -- lessons
@@ -252,7 +236,6 @@ class Physics:
         if (efficacy < 0.0).any() or (whole > PASS).any():
             learner.brain = learner.brain.with_parameters(efficacy=self.kernel.ravel()[self.groups])
         self.graph = learner.brain
-        self._velocity_graphs()
         self.lessons += rows
         answer = np.asarray(free.activation)[:, self._moving.ravel()]
         wanted = target[:, self._moving.ravel()]
