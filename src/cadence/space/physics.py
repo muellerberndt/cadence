@@ -148,32 +148,52 @@ class Physics:
                                               max(-dy, 0) : ny - max(dy, 0)]
         return out.reshape(np.shape(mass))
 
+    def attribute(self, drive: np.ndarray, seen: np.ndarray, total: float) -> np.ndarray:
+        """A lesson's target: the mass a thing carried on each velocity, ``(cells,
+        velocities)``, moved by that velocity and by the share of the motion seen that the
+        thing's own velocity did not hold. The thing's velocity is the mean over its whole mass
+        (``total``, the still share at no motion); the motion seen less it is what the thing did
+        that its velocity did not say, and every velocity's mass is taught to have done it.
+        Where things keep their motion the kernels learn to move each velocity's mass by that
+        velocity; where they stop or turn, by less or aside."""
+        mass = np.asarray(drive, dtype=np.float64)
+        own = (mass.sum(axis=0) @ self.velocities) / max(total, float(mass.sum()), 1e-300)
+        out = np.zeros_like(mass)
+        for v in np.flatnonzero(mass.any(axis=0)):
+            out[:, v] = self.shift(mass[:, v], self.velocities[v] + np.asarray(seen) - own)
+        return out
+
     def moving_share(self, whole: np.ndarray) -> np.ndarray:
         """Weights over the whole grid as the moving velocities' shares ``(velocities,)``."""
         return np.delete(np.asarray(whole, dtype=np.float64), self._still)
 
     # -- a moment
 
-    def carry(self) -> np.ndarray:
+    def carry(self, *also: np.ndarray) -> list[np.ndarray]:
         """Settle the kernels on the carried mass: the moving mass of the next moment,
-        ``(cells, units, velocities)``. Code units that carry none are left out of the settle (a
-        neuron with no drive rests). Before any lesson the kernels stay, and the mass is
-        carried as it is."""
+        ``(cells, units, velocities)``, and as much for each array of ``also``, shaped as the
+        mass, carried by the same kernels in the same settle (rows of their own). Code units
+        that carry none are left out of the settle (a neuron with no drive rests). Before any
+        lesson the kernels stay, and every array is carried as it is."""
+        given = [self.mass, *also]
         if not self.lessons or not self.mass.any():
-            return self.mass.copy()
+            return [np.array(a, dtype=np.float64) for a in given]
         from ..brain import BrainState
 
         units = np.flatnonzero(self.mass.any(axis=(0, 2)))
-        drive = np.zeros((len(units), self.neurons))
-        for row, unit in enumerate(units):
-            drive[row, self._went.ravel()] = self.mass[:, unit, :].T.ravel()
+        drive = np.zeros((len(given) * len(units), self.neurons))
+        for k, array in enumerate(given):
+            for row, unit in enumerate(units):
+                drive[k * len(units) + row, self._went.ravel()] = array[:, unit, :].T.ravel()
         state = BrainState(v=drive.copy(), activation=self._model.activation(drive),
                            adaptation=np.zeros_like(drive), steps=0)
         state = self.graph.settle_batch(drive, steps=1, tolerance=None, state=state)
         v = np.asarray(state.v, dtype=np.float64)
-        out = np.zeros_like(self.mass)
-        for row, unit in enumerate(units):
-            out[:, unit, :] = v[row, self._moving.ravel()].reshape(self.speeds, self.count).T
+        out = [np.zeros_like(self.mass) for _ in given]
+        for k in range(len(given)):
+            for row, unit in enumerate(units):
+                out[k][:, unit, :] = v[k * len(units) + row, self._moving.ravel()].reshape(
+                    self.speeds, self.count).T
         return out
 
     # -- lessons

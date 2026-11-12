@@ -443,13 +443,21 @@ class Map:
         looks = self._looks(lit, sight)
         physics = self.physics
         before = self.potential.copy()  # the map as the moment before left it
+        self._before = before
         sensed = self.clock < 0.5  # the cells a sense wrote the moment before
         if physics is not None:  # the prediction: the kernels carry the moving mass
             mass_before = physics.mass
             self._carried_mass = mass_before
-            moved = physics.carry()
+            # and with it the moments since it was sensed: its clock, weighted by its mass
+            top = max(float(self.clock.max()), 1.0)
+            moved, timed = physics.carry(mass_before * (self.clock / top)[:, None, None])
             self.potential = self.potential + (moved - mass_before).sum(axis=2)
             physics.mass = moved
+            still = np.maximum(before - mass_before.sum(axis=2), 0.0).sum(axis=1)
+            arrived = moved.sum(axis=(1, 2))
+            weight = still + arrived
+            self.clock = np.where(arrived > 0, (still * self.clock + timed.sum(axis=(1, 2)) * top)
+                                  / np.maximum(weight, 1e-300), self.clock)
         motion: list[np.ndarray | None] = []  # each report's velocities, over the whole grid
         lessons: list[tuple[np.ndarray, np.ndarray]] = []
         activity = self._activity()
@@ -468,8 +476,13 @@ class Map:
             if not near:  # none of its kind here: the nearest piece within a stride moved unseen
                 within = [p for p in pieces if apart[p].min() <= self.stride]
                 near = [min(within, key=lambda p: float(apart[p].min()))] if within else []
-            # a thing of the kind is sensed: the doubt about where one of it went is over
+            # a thing of the kind is sensed: the doubt about where one of it went is over, and
+            # the pieces a moving thing left, sensed last when the thing it claims was, are it
             near += [p for p in pieces if self.doubt[p].mean() > 0.5]
+            if physics is not None and near:
+                last = {round(float(self.clock[p].min())) for p in near}
+                near += [p for p in pieces if physics.mass[p].any()
+                         and round(float(self.clock[p].min())) in last]
             for piece in near:  # with the cells around it, where a weight under the floor lies
                 claimed[np.ix_(self._around(piece), units)] = True
             weights = self.weights(place)
@@ -482,13 +495,9 @@ class Map:
             fresh |= cells
             lost[units] = 0.0  # a thing of the kind with no place is found
         carried &= ~claimed
-        if physics is not None and sight.any():  # the moving mass the camera sees is not there
-            gone = physics.mass[sight].sum(axis=2)
-            self.potential[sight] = np.maximum(self.potential[sight] - gone, 0.0)
-            physics.mass[sight] = 0.0
-            activity = self._activity()
         # a thing whose held place the camera sees, with no report that claims it, is not there
         empty = np.zeros(self.count, dtype=bool)
+        driven: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []  # the near rule's writes
         for kind in self._present(activity):
             units = np.flatnonzero(self.codes[kind])
             own = self._of_kind(kind, activity) * ~claimed[:, units].any(axis=1)
@@ -497,24 +506,35 @@ class Map:
                 # a place a sense wrote the moment before is a report, as far off as the
                 # camera's error: the camera sees it where it sees a place within ``margin``
                 near_by = self.margin if sensed[piece].any() else 0.0
-                if self.empty == "keep" or not looks(at, near_by):
+                seen_empty = self.empty != "keep" and looks(at, near_by)
+                share = None
+                if physics is not None:  # its velocities, and its moving mass the camera sees
+                    share = self._share(piece, units[0])
+                    lit = piece[sight[piece]]
+                    if not seen_empty and len(lit):
+                        for unit in units:
+                            self.potential[lit, unit] = np.maximum(
+                                self.potential[lit, unit] - physics.mass[lit, unit].sum(axis=1),
+                                0.0)
+                        physics.mass[np.ix_(lit, units)] = 0.0
+                        seen_empty = not (np.maximum(self.potential[piece][:, units], 0.0)
+                                          .min(axis=1) > 0.0).any()
+                if not seen_empty:
                     continue  # the thing stays where the map held it
                 carried[np.ix_(piece, units)] = False
                 empty[piece] = True
                 if self.empty == "near":
                     apart = np.linalg.norm(self.centers - at, axis=1)
-                    if physics is not None:  # mass it holds out of sight near there is the thing
-                        rest = own > self._floor
-                        rest[piece] = False
-                        if (rest & ~sight & (apart <= 2.0 * self.reach)).any():
-                            continue
                     wide = np.exp(-0.5 * (apart / self.reach) ** 2) * (
                         ~sight & (apart <= 2.0 * self.reach))
                     if wide.any():  # onto the cells out of sight around where it was held
-                        length = float(np.linalg.norm(self.potential[piece][:, units].max(axis=1)))
-                        write[:, units] += (length * wide / np.linalg.norm(wide))[:, None]
+                        length = float(np.linalg.norm(before[piece][:, units].max(axis=1)))
+                        drive = length * wide / np.linalg.norm(wide)
+                        write[:, units] += drive[:, None]
                         clock = np.where(wide > 0, float(self.clock[piece].max()), clock)
                         doubt = np.where(wide > 0, 1.0, doubt)
+                        if share is not None:  # with the velocities it carried
+                            driven.append((drive, units, share))
                         continue
                 lost[units] = 1.0  # known by its kind, with no place
         self.lost = lost
@@ -531,6 +551,9 @@ class Map:
                                           / 2.0), 0.0)
         if physics is not None:  # the moving mass where the map kept it, and each report's
             physics.mass *= (carried & (self.potential > 0))[:, :, None]
+            for drive, units, share in driven:
+                for unit in units:
+                    physics.mass[:, unit, :] += drive[:, None] * share[None, :]
             for (kind, place, _), whole in zip(reports, motion, strict=True):
                 weights = self.weights(place)
                 units = np.flatnonzero(self.codes[kind])
@@ -573,6 +596,14 @@ class Map:
         held = np.asarray((activity > self._floor).any(axis=0))
         return [kind for kind in range(len(self.codes)) if held[self.codes[kind] > 0].all()]
 
+    def _share(self, cells: np.ndarray, unit: int) -> np.ndarray:
+        """The shares of a piece's mass on the moving velocities, ``(velocities,)``."""
+        total = float(np.maximum(self.potential[cells, unit], 0.0).sum())
+        if not total > 0:
+            return np.zeros(self.physics.speeds)
+        share = np.clip(self.physics.mass[cells, unit, :].sum(axis=0) / total, 0.0, None)
+        return np.asarray(share / max(1.0, float(share.sum())))
+
     def _velocities(self, kind: int, place: np.ndarray, near: list[np.ndarray],
                     before: np.ndarray, sensed: np.ndarray, weights: np.ndarray,
                     lessons: list[tuple[np.ndarray, np.ndarray]] | None) -> np.ndarray:
@@ -580,7 +611,8 @@ class Map:
         its moving mass in the pieces the report claims), blended with the motion seen since
         the moment before at the share ``blend`` where the thing was sensed then. A new thing
         is still. With ``lessons`` a thing sensed at both moments adds a lesson: the mass it
-        carried into this moment and the same mass moved by the motion seen."""
+        carried into this moment and, on each velocity, the same mass moved by that velocity
+        and by what the motion seen differs from the thing's own (``Physics.attribute``)."""
         physics = self.physics
         unit = int(np.flatnonzero(self.codes[kind])[0])
         whole = np.zeros(physics.per * physics.per)
@@ -588,11 +620,9 @@ class Map:
         if not near:
             return whole
         cells = np.unique(np.concatenate([self._around(p) for p in near]))
-        total = float(np.maximum(self.potential[cells, unit], 0.0).sum())
-        if total > 0:
-            share = np.clip(physics.mass[cells, unit, :].sum(axis=0) / total, 0.0, None)
-            share = share / max(1.0, float(share.sum()))
-            whole = np.insert(share, physics._still, 1.0 - share.sum())
+        total = float(np.maximum(self._before[cells, unit], 0.0).sum())
+        share = self._share(cells, unit)
+        whole = np.insert(share, physics._still, 1.0 - share.sum())
         was = np.maximum(np.tanh(before[cells][:, np.flatnonzero(self.codes[kind])] / 2.0),
                          0.0).min(axis=1)
         if was.sum() > 0 and sensed[cells][was > 0].all():  # seen the moment before as well
@@ -602,7 +632,8 @@ class Map:
                 drive = np.zeros((self.count, physics.speeds))
                 drive[cells] = self._mass_before(cells, unit)
                 if drive.any():  # the mass it carried, moved by the motion seen
-                    lessons.append((drive, physics.shift(drive, place - at)))
+                    lessons.append((drive, physics.attribute(drive, place - at,
+                                                             float(was.sum() and total))))
         return whole
 
     def _mass_before(self, cells: np.ndarray, unit: int) -> np.ndarray:
@@ -673,30 +704,37 @@ class Map:
         (the cells by connected piece), ``since`` (the moments since a sense wrote it) and
         ``state``: ``"seen"``, ``"heard"`` or ``"felt"`` at the moment a sense wrote it,
         ``"held"`` at its last known place, ``"near"`` on the cells out of sight around where it
-        was seen to be missing. A thing in doubt that lies in several pieces of unseen cells,
-        driven there at one moment, is one entry with every piece. A kind known with no place
-        is listed with ``place`` None and ``"not known where"``."""
+        was seen to be missing, ``"moving"`` where physics carries it unseen. A thing in doubt
+        or in motion that lies in several pieces, sensed last at one moment, is one entry with
+        every piece. With physics an entry holds its ``velocity``, the mean of its velocities
+        in metres a moment. A kind known with no place is listed with ``place`` None and
+        ``"not known where"``."""
         activity = self._activity()
         out: list[dict[str, Any]] = []
         for kind in range(len(self.codes)):
             own = self._of_kind(kind, activity)
-            doubted: dict[int, list[np.ndarray]] = {}
+            groups: dict[int, list[np.ndarray]] = {}
             for piece in self._pieces(np.asarray(own > self._floor)):
                 since = int(round(float(self.clock[piece[int(np.argmax(own[piece]))]])))
-                if self.doubt[piece].mean() > 0.5:  # one thing may lie in several such pieces
-                    doubted.setdefault(since, []).append(piece)
-                    continue
-                state = "held"
-                if since == 0:
-                    state = next((sense for k, sense in self._sensed if k == kind), "seen")
-                out.append({"kind": kind, "place": (own[piece] @ self.centers[piece])
-                            / own[piece].sum(), "cells": piece, "pieces": [piece],
-                            "since": since, "state": state})
-            for since, pieces in doubted.items():
+                groups.setdefault(since, []).append(piece)
+            for since, pieces in groups.items():
                 cells = np.concatenate(pieces)
-                out.append({"kind": kind, "place": (own[cells] @ self.centers[cells])
-                            / own[cells].sum(), "cells": cells, "pieces": pieces,
-                            "since": since, "state": "near"})
+                moving = self.physics is not None and bool(self.physics.mass[cells].any())
+                doubt = bool(self.doubt[cells].mean() > 0.5)
+                # the pieces a thing in doubt or in motion left, sensed last at one moment, are
+                # one thing; things at rest are a thing a piece
+                for group in ([pieces] if moving or doubt else [[p] for p in pieces]):
+                    held = np.concatenate(group)
+                    state = "near" if doubt else "moving" if moving else "held"
+                    if since == 0:
+                        state = next((sense for k, sense in self._sensed if k == kind), "seen")
+                    entry = {"kind": kind, "place": (own[held] @ self.centers[held])
+                             / own[held].sum(), "cells": held, "pieces": group, "since": since,
+                             "state": state}
+                    if self.physics is not None:  # the velocity it carries, metres a moment
+                        share = self._share(held, int(np.flatnonzero(self.codes[kind])[0]))
+                        entry["velocity"] = share @ self.physics.velocities
+                    out.append(entry)
             if self.lost[np.flatnonzero(self.codes[kind])].min() > 0.5 and not (
                     own > self._floor).any():
                 out.append({"kind": kind, "place": None, "cells": np.zeros(0, dtype=np.intp),
