@@ -24,11 +24,36 @@
   reference gains a section for `cadence.speech.frontend`, `align` and `decode`, and the speech
   guide a line each for `LogMel`, `mel_bank`, `windows`, `even_path` and `greedy`.
 
-### Space: where things are while they are out of view (#320)
+### Space: a map of what is where (#320)
 
 `cadence.space` is imported by name, and `import cadence` loads none of it. The guide is
 [docs/space.md](docs/space.md). No default changes: with every new option unset a brain is
 composed, acts, learns and saves as on 0.98.0.
+
+- **`cadence.space.map.Map`**: a map of things held in a sheet's own settled activity, cells of
+  a plane by units of a kind's code. No list of things is given to it and none is kept beside
+  it. A thing enters when a sense reports it (`moment(seen=, heard=, felt=, lit=)`), the sheet's
+  potentials are its next input under one apical pool a code unit, and with no sensory
+  information the last known place stays: eight things, two of one kind, read within a
+  millimetre after 1,000 moments unseen. `where_is(kind)` and `what_is_at(place)` ask by settling,
+  `things()` reads the inventory (kind, place, cells, moments since sensed, state), and `save`,
+  `Map.load` and `reset` keep and empty the carried state. A cell the camera sees loses what the
+  map carried into it. A thing whose place is seen empty is driven onto the cells out of sight
+  within `reach` of where it was held (`empty="near"`, the founder; `"clear"` and `"keep"` are
+  the other rules). On the chamber's two recorded scenes of a hand that rests behind a pillar the
+  founder reads 11.3 cm and 11.2 cm over the hidden moments, where last seen reads 15.5 cm
+  ([`benchmarks/tracking/mapped.py`](benchmarks/tracking/mapped.py)). The map's graph has no
+  taught synapse.
+- **`cadence.space.sheet.Sheet`** (the second stage, in work): a belief over places with a
+  moving sheet and a sheet at rest, kernels tied across positions and taught by the library's
+  free and nudged phases, opt-in beside `Space` (`sheet=`).
+- **The chamber**: hands that visit a shadow and come back, pause, hop and go slowly
+  (`kind="visit"`, `"pause"`, `"hops"`, `"slowhand"`), the recorded scene with the arm folded
+  (`scenes/promise-folded.json`), and `mapped.py`, which scores a scene file with the map beside
+  last seen and the Kalman filter.
+- **`Space`** below is the earlier form, kept as the baseline. A module file states whether its
+  regions were raised with joint readings, and a space of a file raised without them leaves
+  joint readings out.
 
 - **`Space`**: a program beside a brain that holds a place for every thing between moments, one
   row a thing. A camera's report writes the place; a thing at rest takes the mean of its reports;

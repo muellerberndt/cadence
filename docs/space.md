@@ -1,23 +1,232 @@
-# Space: where things are while they are out of view
+# Space: a map of what is where
 
-This guide gives a program a map of where things are. A camera reports a thing while it sees
-it. The map keeps the thing's place while the camera does not: it leaves a thing at rest where it
-was, moves a thing that was moving, takes a cue from another sense, and says how far off each
-place may be.
+A brain with a spatial model has a map of things. The map holds where things are, each place
+bound to what the thing is. A thing enters the map when a sense reports it. Sensory information
+updates its place. With no sensory information the last known place stays in the state, for any
+length of time.
 
-The pieces are in `cadence.space`, an opt-in package: a program that does not import it gets a
-library without it.
+The module has two stages: **the map, then learned physics on the map.**
+
+- **The map** (`cadence.space.map`, this guide) is a sheet of neurons whose settled activity is
+  the whole state. No list of things is given to it and none is kept beside it.
+- **Learned physics on the map** (the second stage, in work) lets a brain learn how things move
+  from the things it watches moving on its map, and then infer how a thing it does not see has
+  moved. The map is its control: a brain that has watched nothing answers as the map does.
+
+The pieces are opt-in: a program that does not import `cadence.space` gets a library without it.
 
 | Step | Piece | Section |
 | --- | --- | --- |
-| Name the plane and the arm | `Interface` | [the regions](#the-regions) |
-| Hold the places of things | `Space`, `begin`, `advance`, `where` | [a first map](#a-first-map) |
-| Teach it from the camera's reports | `advance(..., learn=True)` | [lessons](#lessons-hold-only-what-the-camera-reports) |
-| Reports without names, cues, kinds | `assign`, `hear`, `where_is`, `what_is_at` | [several things](#several-things) |
-| Things that stay put | `records`, `find` | [records](#records-of-things-at-rest) |
-| Save it, and build a brain around it | `save`, `Space.load`, `Brain.compose(..., trained=)` | [a trained module](#a-trained-module) |
+| Make a map of a plane | `Map` | [a first map](#a-first-map) |
+| Tell it what the senses report | `moment(seen=, heard=, felt=, lit=)` | [how a position travels](#how-a-position-travels) |
+| Ask where a thing is, or what is at a place | `where_is`, `what_is_at` | [questions](#questions-answered-by-settling) |
+| Read every thing it holds | `things`, `sheet` | [the inventory](#the-inventory) |
+| A thing that leaves view | `empty`, `reach` | [a place seen empty](#a-place-seen-empty) |
+| Keep the map | `save`, `Map.load`, `reset` | [the carried state](#the-carried-state) |
+| The earlier form, kept as a baseline | `Space`, `Interface` | [the baseline](#the-baseline-places-held-by-a-program) |
 
 ## What the brain does and what the program does
+
+| | The program beside the map | The brain (the map's graph) |
+| --- | --- | --- |
+| Where things are held between moments | Copies the sheet's potentials to the next moment's input | In the settled activity of `map`, with `clock`, `doubt` and `lost` |
+| The list of things | None: no cast, no rows | The peaks of the sheet |
+| A report from a sense | Turns the kind and the place into a drive on four cells | The cells settle on it |
+| Holding a place | Drives each pool's reference with the length of what the pool carries in | The pool's gain inside the settle holds that length, so a peak neither fades nor floods |
+| A place seen empty | Passes the cells in sight as the settle's mask; finds a piece of activity with no report of its kind and drives it onto the unseen cells within reach | A seen cell is held at zero in every sweep |
+| Which report is which thing | Compares a report's place with the pieces of its kind (`step`, `stride`) | Two things of a kind are two peaks |
+| Questions | Sets the cue: the kind's code gates the pools' references, or the mask keeps the cells around a place | `where` and `what` settle on the answer |
+| The inventory | Reads the peaks, their cells and the clock | Holds them |
+| Kinds | Takes each thing's kind from the caller as a number | Holds a kind as a code over the sheet's units |
+| Lessons | None | None: the map's graph has no taught synapse |
+
+The map is wiring and carried activity. Recognising a thing from pixels is another module's
+work: the caller says "a thing of this kind at this place".
+
+## A first map
+
+```python
+import numpy as np
+from cadence.space.map import Map
+
+APPLE, BREAD, HAND = 0, 1, 2
+things = Map((-1.0, 1.0, -0.2, 1.4))                   # a plane of 2 m by 1.6 m
+things.moment(seen=[(APPLE, [0.30, 0.62])])            # the camera reports an apple
+things.moment(seen=[(BREAD, [-0.40, 1.00])])           # then a loaf: no thing is announced
+for _ in range(100):
+    things.moment()                                    # no sensory information
+assert np.allclose(things.where_is(APPLE), [[0.30, 0.62]], atol=0.001)   # "where is the apple?"
+assert things.what_is_at([-0.40, 1.00]) == BREAD       # "what is at this place?"
+assert [t["kind"] for t in things.things()] == [APPLE, BREAD]
+assert all(t["state"] == "held" and t["since"] >= 100 for t in things.things())
+```
+
+`Map(plane, cells=(32, 26), units=16)` makes the sheet: 32 by 26 cells over the plane and 16
+units of a kind's code at each cell. A kind is a number. With 16 units the map holds 16 kinds,
+one unit a kind. `Map(plane, units=32, kinds=128)` holds 128 kinds on 32 units: each kind takes
+three units and two kinds share one unit at most. `codes=` takes a table of the caller's own.
+
+## How a position travels
+
+1. **A sense reports a thing.** A report is a kind and a place: the camera's "a hand at this
+   place", the place a sound names, the place the body's own readings name. The caller gives the
+   kind as a number.
+2. **The report enters the map.** The place becomes weights on the four cells around it, whose
+   mean is the place, and drives those cells on the units of the kind's code. A kind the map has
+   not held enters the same way. No thing is announced beforehand.
+3. **The map carries itself.** At the next moment the potentials the sheet settled to are its
+   own input, and each pool's gain holds them at the length they came with. With no report and
+   no sight of the cell nothing changes: the last known place is the place in the state.
+4. **Sight again.** A report within `step` of a piece of its kind's activity is that thing. Its
+   old cells are cleared and the report's cells are written, so in view a thing's place is the
+   latest report.
+5. **A place seen empty.** A cell the camera sees loses what the map carried into it. A thing
+   whose place is seen empty, with no report of its kind near, is not where it was seen. The map
+   drives it onto the cells out of sight within reach of that place and marks those cells as
+   doubt. With no such cell the thing is kept by its kind with no place.
+6. **It is found.** A report of the kind ends the doubt: the cells of doubt that hold the kind
+   are cleared, and so is the nearest piece of the kind within `stride`, as the same thing moved
+   unseen. With none of its kind that near, the report is a new thing.
+7. **Questions.** "Where is the apple": the apple's code gates the pools, the sheet settles on
+   the apple's units and `where` holds its places. "What is there": the settle keeps the cells
+   around the place and `what` holds the code of the thing there.
+8. **The inventory.** Every piece of activity is a thing: its kind, its place (the mean of the
+   piece), its cells, the moments since a sense wrote it, and its state.
+
+```python
+def camera_sees(points):                               # the caller knows its camera
+    return points[:, 0] > -0.1                         # a shadow lies to the left of -0.1
+
+room = Map((-1.0, 1.0, -0.2, 1.4))
+room.moment(seen=[(HAND, [0.0, 0.6])], lit=camera_sees)
+room.moment(lit=camera_sees)                           # the hand's place is seen empty
+(hand,) = room.things()
+assert hand["state"] == "near" and hand["place"][0] < -0.1       # out of sight, near there
+assert not camera_sees(room.centers[hand["cells"]]).any()        # its cells: where it may be
+room.moment(seen=[(HAND, [0.05, 0.6])], lit=camera_sees)         # it comes out
+assert np.allclose(room.where_is(HAND), [[0.05, 0.6]], atol=0.001)
+```
+
+## The regions
+
+Sizes for the founder, 32 by 26 cells and 16 code units: 29,168 neurons and 39,936 synapses.
+
+| Region | Neurons | What it holds |
+| --- | --- | --- |
+| `map` | 13,312 | The sheet: a unit at a cell is active where a thing whose kind's code holds the unit is at the cell |
+| `held` | 13,312 | The carried input: at each moment its drive is the potentials `map` settled to the moment before |
+| `reference` | 16 | One a code unit. It is driven with the length of what its pool carries in; a cue's code gates it |
+| `where` | 832 | One a cell, reading `map` over the code units |
+| `what` | 16 | One a code unit, reading `map` over the cells |
+| `clock` | 832 | One a cell: the moments since a sense wrote the cell. It carries its own potential and a bias of one |
+| `doubt` | 832 | One a cell: a one where the cell holds a thing that was not seen to be there |
+| `lost` | 16 | One a code unit: a one where a thing of the kind is known with no place |
+
+`held` projects onto `map` cell to cell, and `map` onto `where` and `what`, each synapse at an
+efficacy of 2, the inverse of the neuron's slope at rest. Each code unit's cells and its
+reference form one pool of an apical compartment ([the apical compartment](anatomy.md#the-apical-compartment)).
+The pool's gain is the library's own, set inside the settle, and it is a multiplication: a pool
+whose reference is silent passes nothing.
+
+## Questions, answered by settling
+
+```python
+kitchen = Map((-1.0, 1.0, -0.2, 1.4))
+for kind, place in ((APPLE, [0.0, 0.0]), (APPLE, [0.7, 1.1]), (BREAD, [-0.6, 0.4])):
+    kitchen.moment(seen=[(kind, place)])
+apples = kitchen.where_is(APPLE)                       # two things of one kind: two places
+assert len(apples) == 2 and kitchen.what_is_at([0.7, 1.1]) == APPLE
+assert kitchen.what_is_at([0.9, -0.1]) is None         # nothing is held there
+```
+
+A question changes nothing in the map. `where_is(kind)` gives `(things, 2)` places, one a
+connected piece of activity. `what_is_at(place, within=)` reads the cells within a cell and a
+half of the place unless `within` says otherwise.
+
+## The inventory
+
+`things()` reads every thing off the map's carried activity, with no settle:
+
+| Key | Value |
+| --- | --- |
+| `kind` | The kind's number |
+| `place` | The mean of the thing's piece of activity, `(x, y)` in metres; `None` for a thing with no place |
+| `cells` | The piece's cells, as numbers into `centers` (each cell is `size` metres around its middle) |
+| `since` | The moments since a sense wrote it; 0 at the moment it is sensed |
+| `state` | `"seen"`, `"heard"` or `"felt"` at the moment a sense writes it; `"held"` at its last known place; `"near"` on cells of doubt; `"not known where"` |
+
+`sheet(kind)` gives the kind's activity as a picture, `(cells x, cells y)`, and `sheet()` every
+unit summed.
+
+## A place seen empty
+
+A hand that goes into a shadow was last seen in a cell the camera sees, and at the next moment
+that cell is seen empty. `empty` says what the map does then:
+
+| `empty` | What becomes of a thing whose place is seen empty |
+| --- | --- |
+| `"near"` (the founder) | It is driven onto the cells out of sight around where it was held, as a peak `reach` metres wide; cells farther than two reaches take none. With no such cell it is kept by its kind with no place |
+| `"clear"` | Its seen cells are cleared. A thing with no cell left is kept by its kind with no place |
+| `"keep"` | It stays where the map held it: the last seen place, whatever the camera sees there |
+
+A reading on the two recorded scenes of the chamber, in which a hand goes behind a pillar at
+0.5 m/s, rests there for 70 moments and comes back
+([`benchmarks/tracking/mapped.py`](../benchmarks/tracking/mapped.py)); the mean distance from
+the hand over its 91 hidden moments:
+
+| Arm | Shadows joined | Arm folded |
+| --- | --- | --- |
+| Last seen | 15.5 cm | 15.5 cm |
+| The map, `empty="keep"` | 15.5 cm | 15.5 cm |
+| The map, `empty="near"`, `reach=0.15` | 11.8 cm | 11.8 cm |
+| The map, `empty="near"`, `reach=0.3` (the founder) | 11.3 cm | 11.2 cm |
+| The map, `empty="near"`, `reach=0.6` | 16.3 cm | 17.2 cm |
+
+In view the map reads 1.2 cm, the camera's own error. The founder's cells hold the hand at
+every hidden moment, at 103 and 72 cells. The map does not move a thing along its last seen
+movement: that is the second stage.
+
+## The carried state
+
+`arrays()` gives the state: the potentials of `map`, `clock`, `lost` and `doubt`. `save(path)`
+writes the map's settings, its codes and that state as arrays and one JSON record, and
+`Map.load(path)` reads them back. `reset()` empties the carried activity, and the map then
+reports no thing.
+
+```python
+import tempfile
+from pathlib import Path
+
+path = kitchen.save(Path(tempfile.mkdtemp()) / "kitchen.npz")
+again = Map.load(path)
+assert np.allclose(again.where_is(APPLE), apples) and len(again.things()) == 3
+again.reset()
+again.moment()
+assert again.things() == [] and len(again.where_is(APPLE)) == 0
+```
+
+## Settings and cost
+
+| Setting | Founder | What it sets |
+| --- | --- | --- |
+| `cells` | `(32, 26)` | The cells an axis: 6 cm cells on a plane of 2 m by 1.6 m |
+| `units`, `kinds`, `weight`, `codes` | 16, none, 3, none | The code units a cell, and the kinds' codes |
+| `level` | 0.02 | The length a thing's potentials are written at. The neuron's curve bends a place by under a millimetre in 1,000 moments at this level |
+| `empty`, `reach` | `"near"`, 0.3 m | What becomes of a thing whose place is seen empty |
+| `step` | 0.15 m | A report within this distance of a piece of its kind is that thing, seen again |
+| `stride` | 0.5 m | A report of a kind with none of it within `step`: the nearest piece within this distance is that thing, moved unseen |
+
+One moment settles one row whatever the number of things. Under Pyodide the founder takes 4.8 ms
+a moment with four things, 1.0 ms for the inventory and 5.5 ms a question; on one core natively
+1.3 ms a moment. A map of 50 by 40 cells takes about twice that.
+
+## The baseline: places held by a program
+
+`Space` is the earlier form: a program holds a place for every thing of a cast given at
+`begin`, and a feed-forward brain answers how a place moves in a step. It stays in the library
+as the baseline the map and the second stage are read against. Its sections follow as they were.
+
+### What the baseline's brain does and what its program does
 
 `Space` is a program beside a brain, as `cadence.LongTermMemory` is. The two share the work:
 
@@ -36,7 +245,7 @@ library without it.
 So the peak a reader sees in the `place` region is the program's place, shown to the brain. The
 brain's own states are the hidden region and the three answers.
 
-## A first map
+### A first baseline space
 
 ```python
 import numpy as np
@@ -66,7 +275,7 @@ for _ in range(1000):
 assert np.allclose(space.where()[0], where) and space.work["moments"] == 0
 ```
 
-## Lessons hold only what the camera reports
+### Lessons hold only what the camera reports
 
 With `learn=True` every step also teaches the brain, from the reports alone:
 
@@ -102,7 +311,7 @@ Two readings of the brain's `shift` and one control (`read=`, which can be set a
 | `"peak"` | The value at the belief's highest peak: the likeliest movement. |
 | `"seen"` | The control: the thing's last seen movement as it is, whatever the brain answers. |
 
-## The regions
+### The baseline's regions
 
 `Interface` is the record of the brain's regions and what their units stand for, and
 `cadence.space.compose(interface)` composes the brain. Sizes for an arm of two joints:
@@ -142,7 +351,7 @@ name, `live` (the rows the brain settled on) and for those rows `hidden` and the
 `shift`, `spread` and `found`. `Space(track=True)` keeps the synapses the latest lesson moved in
 `changed` and how far in `changes`.
 
-## How a position travels
+### How a position travels in the baseline
 
 1. **The camera's report.** A report is a position in the plane. The program writes it into the
    thing's place. The `place` region shows that place to the brain as a peak on each axis: the
@@ -173,7 +382,7 @@ name, `live` (the rows the brain settled on) and for those rows `hidden` and the
 8. **The answer.** `where()` gives each place and its radius. `where_is(kind)` answers a kind
    with its places, and `what_is_at(point)` answers a place with the kind held there.
 
-## Several things
+### Several things
 
 A camera's report carries a position and what the thing looks like, and no name. `begin` takes
 each row's look (its kind, which several things may share). `assign` gives the reports of a step
@@ -196,7 +405,7 @@ assert room.what_is_at([0.5, 0.0]) == (1, 3)           # "what is at this place?
 the least summed distance from where each row is if it kept its last seen movement, so two hands
 that cross out of view are told apart when they come back.
 
-## Records of things at rest
+### Records of things at rest
 
 ```python
 keeper = Space(interface, seed=2, backend="cpu", records=64)
@@ -209,7 +418,7 @@ keeper.begin(np.array([[np.nan, np.nan]]), looks=[4])  # a new scene: the record
 assert np.linalg.norm(keeper.where()[0][0] - [0.2, 0.3]) < 0.01
 ```
 
-## A trained module
+### A trained module
 
 `space.save(path)` writes the trained regions as a module file (`cadence.modules`: arrays and
 one JSON record, with a checksum for every array), with the interface and the camera's learned
@@ -242,7 +451,7 @@ alone. A space in a host takes no lessons (`predict`, `observe` and `advance` re
 `learn=True`): the regions were taught in their donor. `advance` and `predict` take the host's
 other inputs as `beside=`.
 
-## Settings, refusals and cost
+### Settings, refusals and cost
 
 | Setting | Default | What it sets |
 | --- | --- | --- |

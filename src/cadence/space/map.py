@@ -25,8 +25,10 @@ activity is the whole state: no list of things is given to the map and none is k
   silent passes nothing, and ``where`` (a neuron a cell) settles on the places of that kind. A
   place as a cue keeps the cells around it (the settle's mask on the rest) and ``what`` (a
   neuron a code unit) settles on the code of the thing there.
-- **Time.** ``clock`` (a neuron a cell) carries its own potential and a bias of one, so it
-  counts the moments since a sense last wrote its cell.
+- **Time and doubt.** ``clock`` (a neuron a cell) carries its own potential and a bias of
+  one, so it counts the moments since a sense last wrote its cell. ``doubt`` (a neuron a cell)
+  carries a one where the cell holds a thing that was not seen to be there: the cells a thing
+  is driven onto when its place is seen empty.
 
 The map's graph has no taught synapse: it is wiring and carried activity. The program beside
 it turns a report into the drive on four cells, passes the camera's seen cells as the mask,
@@ -130,10 +132,11 @@ class Map:
         xs = x_low + (np.arange(nx) + 0.5) * self.size[0]
         ys = y_low + (np.arange(ny) + 0.5) * self.size[1]
         self.centers = np.stack(np.meshgrid(xs, ys, indexing="ij"), axis=-1).reshape(-1, 2)
-        # neurons, each region one run: reference | held | map | where | what | clock | lost
-        ends = np.cumsum([d, count * d, count * d, count, d, count, d])
+        # neurons, each region one run:
+        # reference | held | map | where | what | clock | lost | doubt
+        ends = np.cumsum([d, count * d, count * d, count, d, count, d, count])
         self._runs = {name: slice(int(a), int(b)) for name, a, b in zip(
-            ("reference", "held", "map", "where", "what", "clock", "lost"),
+            ("reference", "held", "map", "where", "what", "clock", "lost", "doubt"),
             np.concatenate([[0], ends[:-1]]), ends, strict=True)}
         self.neurons = n = int(ends[-1])
         held = np.arange(ends[0], ends[1], dtype=np.int64)
@@ -168,12 +171,13 @@ class Map:
         self.potential = np.zeros((self.count, self.units))  # the sheet's carried potentials
         self.clock = np.zeros(self.count)  # the moments since a sense wrote each cell
         self.lost = np.zeros(self.units)  # the code units of things known with no place
+        self.doubt = np.zeros(self.count)  # one where a cell holds a thing not seen to be there
         self._sensed: list[tuple[int, str]] = []
 
     def arrays(self) -> dict[str, np.ndarray]:
-        """The carried state: the potentials of ``map``, ``clock`` and ``lost``."""
+        """The carried state: the potentials of ``map``, ``clock``, ``lost`` and ``doubt``."""
         return {"potential": self.potential.copy(), "clock": self.clock.copy(),
-                "lost": self.lost.copy()}
+                "lost": self.lost.copy(), "doubt": self.doubt.copy()}
 
     def save(self, path: str | Path) -> Path:
         """Write the map's settings, codes and carried state: arrays and one JSON record."""
@@ -197,7 +201,7 @@ class Map:
         told = {**record, **settings}
         out = cls(tuple(told.pop("plane")), tuple(told.pop("cells")), codes=arrays["codes"],
                   **{k: v for k, v in told.items() if k != "units"})
-        for name in ("potential", "clock", "lost"):
+        for name in ("potential", "clock", "lost", "doubt"):
             value = np.asarray(arrays[name], dtype=np.float64)
             if value.shape != getattr(out, name).shape:
                 raise ValueError(f"{Path(path).name}: {name!r} does not fit the map's cells")
@@ -283,12 +287,15 @@ class Map:
     def _settle(self, reference: np.ndarray, *, write: np.ndarray | None = None,
                 carried: np.ndarray | None = None, clock: np.ndarray | None = None,
                 fresh: np.ndarray | None = None, kept: np.ndarray | None = None,
+                doubt: np.ndarray | None = None, sure: np.ndarray | None = None,
                 sweeps: int = 1) -> np.ndarray:
         """Settle the graph: every neuron's potential. ``reference`` drives the pools'
         references, ``carried`` (flags on ``held``, ``(cells, units)``) is the settle's mask on
         what the map carried, ``write`` drives the sheet, ``fresh`` (flags on cells) holds
         those cells' clocks at zero and ``kept`` (flags on cells) is the mask on the sheet
-        itself: a cell that is not kept is held at zero after the pools' gains are set. The
+        itself: a cell that is not kept is held at zero after the pools' gains are set.
+        ``doubt`` drives the cells' doubt in place of what they carried and ``sure`` (flags on
+        cells) holds it at zero. The
         settle begins with every input at the potential its drive gives it; one sweep brings
         the sheet to its fixed point and a second ``where`` and ``what``."""
         from ..brain import BrainState
@@ -299,13 +306,16 @@ class Map:
         drive[0, run["held"]] = self.potential.ravel()
         drive[0, run["clock"]] = self.clock if clock is None else clock
         drive[0, run["lost"]] = self.lost
+        drive[0, run["doubt"]] = self.doubt if doubt is None else doubt
         begun = drive.copy()
         begun[0, run["clock"]] += 1.0
         if write is not None:
             drive[0, run["map"]] = write.ravel()
         mask = None
-        if carried is not None or fresh is not None or kept is not None:
+        if carried is not None or fresh is not None or kept is not None or sure is not None:
             mask = np.ones((1, self.neurons))
+            if sure is not None:
+                mask[0, run["doubt"]] = ~sure
             if kept is not None:
                 mask[0, run["map"]] = np.repeat(kept, self.units)
             if carried is not None:
@@ -328,7 +338,8 @@ class Map:
         A report writes its place on its kind's units, in place of what its cells carried, and
         the pieces of its kind's activity within ``step`` of it are that thing: they are
         cleared. With none there, the nearest piece of the kind within ``stride`` is the thing,
-        moved unseen, and is cleared; with none, the report is a new thing. A cell in sight
+        moved unseen, and is cleared; with none, the report is a new thing. The pieces of the
+        kind that lie on cells of doubt are cleared as well: a thing of the kind is found. A cell in sight
         loses what it carried. A piece seen empty with no report of its kind is treated as
         ``empty`` says."""
         reports = [(int(kind), np.asarray(place, dtype=np.float64).reshape(2), sense)
@@ -344,6 +355,7 @@ class Map:
         write = np.zeros((self.count, self.units))
         clock = self.clock.copy()
         fresh = np.zeros(self.count, dtype=bool)
+        doubt = self.doubt.copy()
         lost = self.lost.copy()
         claimed = np.zeros((self.count, self.units), dtype=bool)
         for kind, place, _ in reports:
@@ -354,6 +366,8 @@ class Map:
             if not near:  # none of its kind here: the nearest piece within a stride moved unseen
                 within = [p for p in pieces if apart[p].min() <= self.stride]
                 near = [min(within, key=lambda p: float(apart[p].min()))] if within else []
+            # a thing of the kind is sensed: the doubt about where one of it went is over
+            near += [p for p in pieces if self.doubt[p].mean() > 0.5]
             for piece in near:  # with the cells around it, where a weight under the floor lies
                 claimed[np.ix_(self._around(piece), units)] = True
             weights = self.weights(place)
@@ -384,17 +398,21 @@ class Map:
                         length = float(np.linalg.norm(self.potential[piece][:, units].max(axis=1)))
                         write[:, units] += (length * wide / np.linalg.norm(wide))[:, None]
                         clock = np.where(wide > 0, float(self.clock[piece].max()), clock)
+                        doubt = np.where(wide > 0, 1.0, doubt)
                         continue
                 lost[units] = 1.0  # known by its kind, with no place
         if self.empty != "keep":
             carried &= ~sight[:, None]  # a seen cell loses what it carried
         self.lost = lost
+        # a cell a sense writes, or one seen with nothing carried into it, holds no doubt
+        sure = fresh | claimed.any(axis=1) | (sight if self.empty != "keep" else False)
         v = self._settle(self._lengths(carried), write=write if write.any() else None,
-                         carried=carried, clock=clock, fresh=fresh)
+                         carried=carried, clock=clock, fresh=fresh, doubt=doubt, sure=sure)
         run = self._runs
         self.potential = v[run["map"]].reshape(self.count, self.units).copy()
         self.clock = v[run["clock"]].copy()
         self.lost = v[run["lost"]].copy()
+        self.doubt = v[run["doubt"]].copy()
         self._sensed = [(kind, sense) for kind, _, sense in reports]
         self.work["moments"] += 1
 
@@ -445,7 +463,7 @@ class Map:
             for piece in self._pieces(own > self._floor):
                 place = (own[piece] @ self.centers[piece]) / own[piece].sum()
                 since = int(round(float(self.clock[piece[int(np.argmax(own[piece]))]])))
-                state = "near" if len(piece) > 4 else "held"
+                state = "near" if self.doubt[piece].mean() > 0.5 else "held"
                 if since == 0:
                     state = next((sense for k, sense in self._sensed if k == kind), "seen")
                 out.append({"kind": kind, "place": place, "cells": piece, "since": since,

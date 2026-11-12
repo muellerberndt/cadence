@@ -144,3 +144,20 @@ Distances in the plane between an answer and the true position, over held-out sc
 
 Every table states parameters, analytic multiply-accumulates of the training and milliseconds per
 answer on one core.
+
+## The map of things
+
+[`mapped.py`](mapped.py) scores a scene with `cadence.space.map`, the map of things held in a
+sheet's own settled activity ([the guide](../../docs/space.md)). The map is given what the camera
+gives: a report of the hand while it is seen and, at every step, the cells the camera sees. Its
+answer is the mean place of the hand's activity. Last seen and the Kalman filter are printed
+beside it, with the error in view, out of view and by the steps since the hand was seen:
+
+    python benchmarks/tracking/mapped.py --scenes benchmarks/tracking/scenes/promise.json
+    python benchmarks/tracking/mapped.py --founder 0 --reach 0.15 0.3 0.6 --empty near keep
+
+`--empty` and `--reach` name the rule for a thing whose place is seen empty. With `keep` the map
+answers as last seen does, from its own carried activity.
+
+[`belief.py`](belief.py) is a classical grid filter and [`sheet.py`](sheet.py) the nursery of
+the second stage (movement learned on the map); both are read against the map.

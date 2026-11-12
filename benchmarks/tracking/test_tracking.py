@@ -344,3 +344,29 @@ def test_the_matched_baselines_train_and_answer():
                                        joints=False, parameters=5000, rows=4)
         assert len(answers) == 4 and answers[0].shape == (30, 1, 2)
         assert extra["macs"] > 0 and extra["milliseconds"] > 0
+
+
+@pytest.mark.parametrize("name", ["promise", "promise-folded"])
+def test_the_map_of_things_holds_a_hand_that_rests_behind_a_pillar(name):
+    mapped = _load("mapped")
+    scene = w.load(HERE / "scenes" / f"{name}.json")
+    out = ~scene.in_view[:, 0]
+    out[0] = False
+    still = tr.errors(scene, tr.follow(scene, tr.Still)[0])[:, 0]
+    kept, _, _ = mapped.follow(scene, {"empty": "keep"})
+    assert np.allclose(tr.errors(scene, kept)[1:, 0], still[1:], atol=0.0005)   # last seen
+    answers, more, _ = mapped.follow(scene)                                # the founder's rule
+    error = tr.errors(scene, answers)[:, 0]
+    assert error[out].mean() < 0.8 * still[out].mean() and error[~out][1:].mean() < 0.02
+    assert more["placed"][out].all() and more["inside"][out].mean() > 0.95
+
+
+def test_the_errand_hands_visit_pause_hop_and_go_slowly():
+    for kind in w.ERRANDS:
+        (scene,) = w.scenes("other", 11, 1, kind=kind)
+        moved = np.linalg.norm(np.diff(scene.truth[:, 0], axis=0), axis=1)
+        assert scene.kind == kind and scene.steps == 150 and moved.max() < 0.03
+        if kind == "slowhand":
+            assert 0.10 / 30 - 1e-9 <= moved[moved > 0].max() <= 0.15 / 30 + 1e-9
+        if kind in ("pause", "hops", "visit"):
+            assert (moved[5:] == 0).sum() >= 12                            # it rests on its way
