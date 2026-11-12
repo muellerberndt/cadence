@@ -2943,6 +2943,9 @@ class Brain:
         )
         self.rehearsal_seen = 0
         self.rehearsal_draws = 0
+        # a map of things this brain holds (``cadence.space.map.Map``, opt-in): a graph of its
+        # own inside the brain object, saved and loaded with it
+        self.space: Any = None
 
     @property
     def brain(self) -> NeuralGraph:
@@ -6759,7 +6762,9 @@ class Brain:
         ``history``, ``recall``, ``hippocampus``, ``episodic``) with the memory's settings
         under ``memories`` in the metadata; with ``learning_rehearsal`` the reservoir of lessons
         with their episodes and the streams' episodes (``rehearsal/...``, the counts under
-        ``rehearsal``). ``Learner.save`` saves the slow learned response alone.
+        ``rehearsal``); with a map of things (``space``, a ``cadence.space.map.Map``) its record
+        under ``space`` and its codes and carried state under ``space/``. ``Learner.save`` saves
+        the slow learned response alone.
         ``compressed=False`` writes a plain archive, as ``cadence.checkpoint.save`` does: larger
         on disk, and a large brain's is written in a small part of the time deflating takes.
         """
@@ -6892,6 +6897,10 @@ class Brain:
                 np.concatenate(moments) if moments else np.zeros((0, self.inputs))
             )
             data["rehearsal/labels"] = labels
+        if self.space is not None:  # a map of things: its record and its carried state
+            record, arrays = self.space.parts()
+            metadata["space"] = record
+            data.update({f"space/{name}": value for name, value in arrays.items()})
         data["brain"] = np.array(canonical_json(metadata))
         return _write(data, path, compressed=compressed)
 
@@ -7444,6 +7453,12 @@ class Brain:
                 result._awaiting = (acted, sensed)
             if "rehearsal" in meta or any(name.startswith("rehearsal/") for name in data):
                 _load_episodes(result, meta, data)
+            if "space" in meta:  # a map of things held in the brain object
+                from .space.map import Map
+
+                result.space = Map.from_parts(meta["space"], {
+                    name[len("space/"):]: data[name] for name in data
+                    if name.startswith("space/")})
         return result
 
 

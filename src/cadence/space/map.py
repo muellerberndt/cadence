@@ -180,18 +180,40 @@ class Map:
         self.lost = np.zeros(self.units)  # the code units of things known with no place
         self.doubt = np.zeros(self.count)  # one where a cell holds a thing not seen to be there
         self._sensed: list[tuple[int, str]] = []
+        self.reading = np.zeros(self.count + self.units)  # ``where`` and ``what``, settled
 
     def arrays(self) -> dict[str, np.ndarray]:
         """The carried state: the potentials of ``map``, ``clock``, ``lost`` and ``doubt``."""
         return {"potential": self.potential.copy(), "clock": self.clock.copy(),
                 "lost": self.lost.copy(), "doubt": self.doubt.copy()}
 
+    def parts(self) -> tuple[dict[str, Any], dict[str, np.ndarray]]:
+        """The map as a record (its settings) and arrays (its codes and carried state): what a
+        map file and a brain that holds a map keep."""
+        return {"format": FORMAT, **self.settings}, {"codes": self.codes, **self.arrays()}
+
+    @classmethod
+    def from_parts(cls, record: dict[str, Any], arrays: Any, **settings: Any) -> Map:
+        """A map from ``parts``, with the state it carried."""
+        told = dict(record)
+        if told.pop("format", None) != FORMAT:
+            raise ValueError(f"a map's record states {FORMAT!r}")
+        told.update(settings)
+        out = cls(tuple(told.pop("plane")), tuple(told.pop("cells")),
+                  codes=np.asarray(arrays["codes"], dtype=np.float64),
+                  **{k: v for k, v in told.items() if k != "units"})
+        for name in ("potential", "clock", "lost", "doubt"):
+            value = np.asarray(arrays[name], dtype=np.float64)
+            if value.shape != getattr(out, name).shape:
+                raise ValueError(f"the map's {name!r} does not fit its cells")
+            setattr(out, name, value.copy())
+        return out
+
     def save(self, path: str | Path) -> Path:
         """Write the map's settings, codes and carried state: arrays and one JSON record."""
         path = Path(path)
-        written: dict[str, Any] = {
-            "record": np.array(json.dumps({"format": FORMAT, **self.settings})),
-            "codes": self.codes, **self.arrays()}
+        record, arrays = self.parts()
+        written: dict[str, Any] = {"record": np.array(json.dumps(record)), **arrays}
         with path.open("wb") as handle:
             np.savez_compressed(handle, **written)
         return path
@@ -202,18 +224,17 @@ class Map:
         run."""
         with np.load(Path(path), allow_pickle=False) as held:
             arrays = {key: held[key] for key in held.files}
-        record = json.loads(str(arrays["record"]))
-        if record.pop("format", None) != FORMAT:
-            raise ValueError(f"{Path(path).name} is no map file: it states no {FORMAT!r}")
-        told = {**record, **settings}
-        out = cls(tuple(told.pop("plane")), tuple(told.pop("cells")), codes=arrays["codes"],
-                  **{k: v for k, v in told.items() if k != "units"})
-        for name in ("potential", "clock", "lost", "doubt"):
-            value = np.asarray(arrays[name], dtype=np.float64)
-            if value.shape != getattr(out, name).shape:
-                raise ValueError(f"{Path(path).name}: {name!r} does not fit the map's cells")
-            setattr(out, name, value.copy())
-        return out
+        try:
+            record = json.loads(str(arrays.pop("record")))
+            return cls.from_parts(record, arrays, **settings)
+        except (KeyError, ValueError, json.JSONDecodeError) as error:
+            raise ValueError(f"{Path(path).name} is no map file: {error}") from None
+
+    def observation(self) -> np.ndarray:
+        """What a brain that holds the map reads of it: the activity of ``where`` (one value a
+        cell) and of ``what`` (one a code unit) as the latest moment settled them, side by
+        side, ``(cells + units,)``."""
+        return self.reading.copy()
 
     # -- places as weights on cells
 
@@ -432,6 +453,8 @@ class Map:
         self.clock = v[run["clock"]].copy()
         self.lost = v[run["lost"]].copy()
         self.doubt = v[run["doubt"]].copy()
+        self.reading = np.maximum(np.tanh(np.concatenate([v[run["where"]], v[run["what"]]])
+                                          / 2.0), 0.0)
         self._sensed = [(kind, sense) for kind, _, sense in reports]
         self.work["moments"] += 1
 

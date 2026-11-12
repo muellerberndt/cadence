@@ -177,3 +177,27 @@ def test_a_sense_is_taught_the_place_a_reading_names():
     held.moment(felt=[(HAND, arm.named(probes[0]))])              # the reading writes the map
     (thing,) = held.things()
     assert thing["state"] == "felt" and np.linalg.norm(thing["place"] - hand(probes[0])) < 0.15
+
+
+def test_a_brain_holds_a_map_saves_it_and_reads_where_and_what(tmp_path):
+    import cadence as cd
+
+    plain = cd.Brain.compose(inputs=4, actions=2, seed=0, backend="cpu")
+    first = plain.save(tmp_path / "plain.npz")
+    with np.load(first) as archive:
+        assert not any(name.startswith("space") for name in archive.files)
+    held = Map(PLANE, cells=(16, 13), units=8)
+    host = cd.Brain.compose(inputs=held.count + held.units, actions=2, seed=0, backend="cpu")
+    host.space = held                                             # a graph of its own in the brain
+    host.space.moment(seen=[(APPLE, [0.2, 0.5]), (CUP, [-0.6, 1.0])])
+    seen = host.space.observation()
+    assert seen.shape == (held.count + held.units,) and seen[: held.count].sum() > 0
+    assert seen[held.count + APPLE] > 0 and seen[held.count + BREAD] == 0
+    host.act(seen[None])                                          # the host reads where and what
+    again = cd.Brain.load(host.save(tmp_path / "host.npz"))
+    assert again.space is not None and np.array_equal(again.space.potential, held.potential)
+    assert again.space.what_is_at([-0.6, 1.0]) == CUP
+    again.space.reset()
+    again.space.moment()
+    assert again.space.things() == [] and not again.space.observation().any()
+    assert cd.Brain.load(first).space is None
