@@ -567,6 +567,15 @@ def test_a_construction_setting_is_named_as_one_by_grow_and_by_retune(name, valu
         brain.retune(**{name: value})
 
 
+def test_a_trained_module_is_composed_or_grafted_and_never_grown_or_retuned():
+    brain = cd.Brain.compose(6, 4, modules=(16,), seed=0, backend="cpu")
+    with pytest.raises(ValueError, match=r"^trained is a construction choice grow does not add; "
+                       r"compose the brain with it, or graft a module"):
+        brain.grow(trained=[])
+    with pytest.raises(ValueError, match="^trained is a construction setting; retune preserves"):
+        brain.retune(trained=[])
+
+
 @pytest.mark.parametrize(
     "name, value", [("teaching", "normalized"), ("memory_rate", 0.3), ("temperature", 0.5)]
 )

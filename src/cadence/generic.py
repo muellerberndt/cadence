@@ -743,7 +743,7 @@ _CONSTRUCTION = frozenset({
     *_EPISODIC_SETTINGS, "recall", *(f"recall_{name}" for name in Recall.CONSTRUCTION),
     *(f"recall_{name}" for name in Recall.CONSTRUCTION_OPTIONS), "code",
     "learned_code", *(f"learned_code_{name}" for name in LearnedCode.GENES),
-    "attention", "apical", "maturity", "tied",
+    "attention", "apical", "maturity", "tied", "trained",
 })
 
 
@@ -7704,6 +7704,11 @@ def _grow_parts(brain: Brain, settings: Mapping[str, Any]) -> dict[str, Any]:
             raise ValueError(
                 f"{name}: the hippocampus and its episodic memory are a construction choice grow "
                 "does not add or change; compose the brain with them"
+            )
+        if name == "trained":
+            raise ValueError(
+                "trained is a construction choice grow does not add; compose the brain with "
+                "it, or graft a module into a brain that holds its regions (graft(module))"
             )
         if name in _CONSTRUCTION:
             raise ValueError(
