@@ -169,6 +169,30 @@ def test_reports_without_names_go_to_the_nearer_rows_of_their_look():
     assert np.isnan(space.hear(np.zeros((0, 3)))).all()
 
 
+def test_a_thing_that_does_not_come_out_where_it_would_be_seen_is_held_back():
+    space = small(read="seen")  # the seen movement itself moves the place
+    start = np.array([[-0.5, 0.5]])
+    space.begin(start)
+    for t in range(1, 11):  # seen moving right at 2 cm a step
+        space.advance([True], start + [[0.02 * t, 0.0]])
+    last = space.where()[0].copy()
+    hidden = np.zeros(1, dtype=bool)
+    for _ in range(10):  # behind a pillar: carried on along its seen movement
+        space.predict()
+        space.observe(hidden, np.zeros((1, 2)), in_sight=[False])
+    carried = space.where()[0].copy()
+    assert carried[0, 0] > last[0, 0] + 0.15
+    for _ in range(3):  # it would be seen by now if it had kept going, and no report comes
+        space.predict()
+        space.observe(hidden, np.zeros((1, 2)), in_sight=[True])
+    place, radius = space.where()
+    assert np.allclose(place, (last + carried) / 2.0, atol=0.03)  # halfway along the hidden path
+    assert radius[0] >= np.linalg.norm(carried - last) / 2.0  # the circle reaches both ends
+    space.predict()
+    space.observe(hidden, np.zeros((1, 2)), in_sight=[True])
+    assert np.array_equal(space.where()[0], place) and space.state()["live"].tolist() == [False]
+
+
 def test_a_kind_is_answered_with_its_places_and_a_place_with_its_kind():
     space = small()
     starts = np.array([[0.0, 0.0], [0.5, 0.0], [0.0, 1.0]])

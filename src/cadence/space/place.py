@@ -298,8 +298,10 @@ class Space:
     ``sight`` (off unless given) turns on the map of where things are seen, for a camera and a
     blind spot that stay where they are. A cell is in sight where the share of reports among
     its visits is above ``sight``. A place that is out of view and is predicted in sight for
-    ``patience`` steps in a row was not seen where it would have been: it goes back to where it
-    was before those steps and rests there, its seen movement dropped.
+    ``patience`` steps in a row was not seen where it would have been: it is placed halfway
+    between where it was last seen and where it was before those steps and rests there, its
+    seen movement dropped. Where the camera or what stands before it moves, the caller says at
+    each step whether each predicted place is in sight (``observe(..., in_sight=)``).
 
     ``course`` (off unless given): a thing that moves by itself is moved by its seen movement
     times the brain's ``keep``, in place of the brain's ``shift``. ``keep`` is taught the share
@@ -458,6 +460,7 @@ class Space:
         self._named = np.zeros(rows, dtype=np.intp)  # cues averaged into a place heard at rest
         self._blind = np.zeros(rows, dtype=np.intp)  # steps in a row predicted in sight
         self._anchor = self.place.copy()  # the place before those steps
+        self._seen_at = self.place.copy()  # the place at the latest report read
         self._pending: deque[dict[str, np.ndarray]] = deque(maxlen=len(SLOPE))
         self._push(np.ones(rows, dtype=bool), self.place)
         self._last: dict[str, np.ndarray] = {}
@@ -562,24 +565,32 @@ class Space:
                       **motor}
         return predicted.copy()
 
-    def observe(self, seen: np.ndarray, reports: np.ndarray, *, learn: bool = False
-                ) -> np.ndarray:
+    def observe(self, seen: np.ndarray, reports: np.ndarray, *, learn: bool = False,
+                in_sight: np.ndarray | None = None) -> np.ndarray:
         """The second half of a step. ``seen`` says which rows the camera reports and
         ``reports`` holds their positions, ``(rows, 2)``. A report read writes its row's place:
         a thing at rest takes the mean of its reports, and any other thing the report itself.
-        A row with no report read takes its predicted place, unless things are seen there (the
-        map of where things were seen), in which case it stays. Gives every row's place."""
+        A row with no report read takes its predicted place. ``in_sight`` says, one flag a row,
+        whether the camera would see a thing at the row's predicted place at this step (the
+        caller knows the camera and what stands before it; ``predict`` gave the places); where
+        omitted, the map of where things were seen says it (``sight``). A row predicted in sight
+        for ``patience`` steps in a row with no report did not come out where its movement
+        carries it: it is placed halfway between where it was last seen and where it was before
+        those steps, with a radius that reaches both, and rests. Gives every row's place."""
         rows, step = self.rows, self._step
         seen = np.asarray(seen, dtype=bool).reshape(rows)
         z = np.where(seen[:, None], np.asarray(reports, dtype=np.float64).reshape(rows, 2), 0.0)
         live, quiet, sounding = step["live"], step["quiet"], step["sounding"]
         predicted = step["predicted"]
         read = seen & ~(self._practising > 0)  # the rows whose report is read
-        unsighted = ~read & live & ~quiet & ~sounding & self._in_sight(predicted)
+        visible = self._in_sight(predicted) if in_sight is None else np.asarray(
+            in_sight, dtype=bool).reshape(rows)
+        unsighted = ~read & live & ~quiet & ~sounding & visible
         self._anchor = np.where((self._blind == 0)[:, None], self.place, self._anchor)
         self._blind = np.where(unsighted, self._blind + 1, 0)
         refused = unsighted & (self._blind >= self.patience)
-        predicted = np.where(refused[:, None], self._anchor, predicted)
+        hidden_path = np.linalg.norm(self._anchor - self._seen_at, axis=1)
+        predicted = np.where(refused[:, None], (self._anchor + self._seen_at) / 2.0, predicted)
         self._known[refused] = False  # it did not come out where its movement carries it
         self._moving[refused] = False
         if learn:
@@ -611,6 +622,7 @@ class Space:
             seen_place[steady] = self._line[steady]
             self.radius[steady] = AREA * deviation * 2.0 / np.sqrt(self._count[steady])
             self._smoothed = steady
+        self.radius = np.where(refused, hidden_path / 2.0 + AREA * deviation, self.radius)
         # a place another sense names, near the place held: the mean of up to five of them
         # (an arm's own end only while it is asked nothing; a moving arm takes each as it is)
         named = ~read & sounding & (~step["felt"] | quiet) & (
@@ -630,6 +642,7 @@ class Space:
                 self.records.write(_key(int(self.looks[row])),
                                    np.array([*self.place[row], float(self._rest[row])]))
         self._carried = np.where(read[:, None], self.place, step["carried"])
+        self._seen_at = np.where(read[:, None], self.place, self._seen_at)
         self.since = np.where(read, 0, self.since + 1)
         if learn:
             begin = read & (self.rng.random(rows) < self.practice)
