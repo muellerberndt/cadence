@@ -18,11 +18,15 @@
   of things in the space pieces (a thing enters when it is sensed; with no sensory input its last
   known place stays; sight, sound and the body's own readings update a place; a place seen empty
   sends a thing out of sight near where it was last seen; learned physics follows in the next
-  release); what a module file holds and why loading one runs no code;
-  `cadence.modules.names()`, `cadence.modules.load("place")`, `cadence.load_module(path)`,
-  `Map.save` with a card, and the refusals by name; a brain that holds the map (`brain.space`,
-  saved and loaded with it, its `observation()` the brain's input). The API reference gains a
-  section for `cadence.modules`.
+  release); the two kinds of module file, a map file and a trained brain's regions with their
+  interface, both read by `cadence.load_module(path)`, and why loading one runs no code;
+  `cadence.modules.names()` and `cadence.modules.load("place")`; a trained module made with
+  `save_module` and built into a new brain with `compose(..., trained=[module])`, its skill
+  arriving before any lesson; what a hosted module does (held unless `freeze=False`, read by the
+  host through synapses that start at zero, untouched by the host's lessons) and `graft(module)`;
+  a brain that holds the map (`brain.space`, saved and loaded with it, its `observation()` the
+  brain's input); every refusal by name. The API reference gains `trained=`, `save_module`,
+  `graft(module)` and a section for `cadence.modules`.
 
 - **Corrections to the guides, read against the code**: `retune` changes a tied brain's settings
   and refuses only `retune(tied=...)`; the `Brain(connectome, ...)` signature lists `longterm`
