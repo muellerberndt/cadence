@@ -289,8 +289,6 @@ def test_the_built_in_place_module_and_a_file_from_outside_load_alike_and_refusa
     for held in (built, outside):
         held.moment(seen=[(APPLE, [0.2, 0.5])])
     assert np.array_equal(built.potential, outside.potential)    # the same bits
-    if built.physics is not None:
-        assert np.array_equal(built.physics.kernel, outside.physics.kernel)
     with np.load(tmp_path / "place.npz") as archive:              # a changed array is refused
         arrays = {key: archive[key] for key in archive.files}
     arrays["potential"] = arrays["potential"] + 1.0

@@ -61,12 +61,8 @@ composed, acts, learns and saves as on 0.98.0.
   without a map saves the same keys as before.
 - **The map as a module**: map files hold a checksum of every array and a card, and are refused
   by name for a pickled object, a changed array or arrays that do not fit; `cadence.load_module`
-  and `cadence.modules.load("place")` read a map file as a `Map` (the built-in `place.npz`, 3.5
+  and `cadence.modules.load("place")` read a map file as a `Map` (the built-in `place.npz`, 2.0
   KB). `Lives(trained=)` is refused by name.
-- **`cadence.space.physics.Physics`** (`Map(physics=)`, opt-in): learned physics on the map.
-  Velocity cells beside each cell, one kernel a velocity tied across cells and kinds, born to stay
-  (an untaught map with physics answers as the map, moment for moment) and taught by the
-  library's free and nudged phases whenever a thing is seen at two moments in a row.
 - **The chamber**: hands that visit a shadow and come back, pause, hop and go slowly
   (`kind="visit"`, `"pause"`, `"hops"`, `"slowhand"`), the recorded scene with the arm folded
   (`scenes/promise-folded.json`); `mapped.py` scores scene files with the map beside last seen

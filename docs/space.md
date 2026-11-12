@@ -9,10 +9,8 @@ The module has two stages: **the map, then learned physics on the map.**
 
 - **The map** (`cadence.space.map`, this guide) is a sheet of neurons whose settled activity is
   the whole state. No list of things is given to it and none is kept beside it.
-- **Learned physics on the map** (`cadence.space.physics`, `Map(physics=)`) lets a brain learn
-  how things move from the things it watches moving on its map, and then infer how a thing it
-  does not see has moved. The map is its control: a brain that has watched nothing answers as
-  the map does, moment for moment.
+- **Learned physics on the map** follows in the next release
+  ([below](#learned-physics-on-the-map)).
 
 The pieces are opt-in: a program that does not import `cadence.space` gets a library without it.
 
@@ -26,7 +24,6 @@ The pieces are opt-in: a program that does not import `cadence.space` gets a lib
 | Keep the map | `save`, `Map.load`, `reset` | [the carried state](#the-carried-state) |
 | Hold it in a brain, or load the built-in one | `Brain.space`, `cadence.modules.load("place")` | [a brain that holds a map](#a-brain-that-holds-a-map) |
 | The arm's own hand and sounds | `felt=`, `heard=`, `Sense` | [other senses](#other-senses) |
-| Learn how things move | `Map(physics=)`, `moment(learn=True)` | [learned physics](#learned-physics-on-the-map) |
 | The earlier form, kept as a baseline | `Space`, `Interface` | [the baseline](#the-baseline-places-held-by-a-program) |
 
 ## What the brain does and what the program does
@@ -43,8 +40,6 @@ The pieces are opt-in: a program that does not import `cadence.space` gets a lib
 | The inventory | Reads the peaks, their cells and the clock | Holds them |
 | Kinds | Takes each thing's kind from the caller as a number | Holds a kind as a code over the sheet's units |
 | Lessons | None | None: the map's graph has no taught synapse |
-| With physics: a thing's motion | Passes in the motion seen: a report less the place held the moment before, as direction-selective cells give it; blends it into the thing's velocities at `blend` | Holds the velocities beside the place, on velocity cells |
-| With physics: how things move unseen | Makes each lesson's target from what was seen | Moves the mass by kernels it learned, one a velocity, tied across cells and kinds |
 
 The map is wiring and carried activity. Recognising a thing from pixels is another module's
 work: the caller says "a thing of this kind at this place".
@@ -189,8 +184,7 @@ half of the place unless `within` says otherwise.
 | `cells` | The thing's cells, as numbers into `centers` (each cell is `size` metres around its middle) |
 | `pieces` | The cells by connected piece. A thing in doubt that was driven onto two shadows is one entry with two pieces |
 | `since` | The moments since a sense wrote it; 0 at the moment it is sensed |
-| `state` | `"seen"`, `"heard"` or `"felt"` at the moment a sense writes it; `"held"` at its last known place; `"near"` on cells of doubt; `"moving"` where physics carries it unseen; `"not known where"` |
-| `velocity` | With physics: the mean of its velocities, metres a moment |
+| `state` | `"seen"`, `"heard"` or `"felt"` at the moment a sense writes it; `"held"` at its last known place; `"near"` on cells of doubt; `"not known where"` |
 
 `sheet(kind)` gives the kind's activity as a picture, `(cells x, cells y)`, and `sheet()` every
 unit summed.
@@ -252,8 +246,8 @@ shadow at once: in its first five moments unseen the map read 14.6 cm where last
 ## The carried state
 
 `arrays()` gives the state: the potentials of `map`, `clock`, `lost` and `doubt`.
-`save(path, card=)` writes the map's settings, its codes and that state (with physics, its
-kernels as taught and its moving mass) as arrays and one JSON record, with a checksum of every
+`save(path, card=)` writes the map's settings, its codes and that state as arrays and one JSON
+record, with a checksum of every
 array and a card. `Map.load(path)` reads them back, and refuses by name a file with a pickled
 object, an array that differs from its checksum, or arrays that do not fit the map's cells.
 `reset()` empties the carried activity, and the map then reports no thing.
@@ -310,39 +304,9 @@ joint and 8.8 cm at 24: the tuned sheet is too coarse for the arm's forward map 
 
 ## Learned physics on the map
 
-`Map(physics=...)` gives each cell velocity cells: a thing's mass at a cell is shared among
-velocities on a grid of `per` by `per` velocities over `top` metres a moment on each axis. The
-still velocity is the map's own sheet, carried exactly as the map carries it; every other
-velocity is a region of its own.
-
-- **Sight.** A report writes the thing's place, as the map does. Its velocity is what the brain
-  sees of its motion: the report less the place the map held the moment before, as
-  direction-selective cells give it. The brain sees motion; it does not compute a line. The seen
-  motion is written as weights on the four velocities around it and blended into the velocities
-  the thing carried, at the share `blend`.
-- **Carry.** One kernel of three by three cells for each velocity, tied across every cell and
-  every kind, moves the mass each moment. The kernels are born to stay: a brain that has watched
-  nothing answers as the map does, moment for moment.
-- **Lessons** (`moment(learn=True)`). Whenever a thing is seen at two moments in a row, the mass
-  it carried the moment before is the drive, and the target is that mass moved, on each velocity,
-  by that velocity and by what the motion seen differs from the thing's own velocity. The
-  library's free and nudged phases with a quadratic nudge step the kernels. Where things keep
-  their motion the kernels learn to move each velocity's mass by that velocity; where things
-  stop or turn, by less or aside.
-- **Out of view.** The kernels move the mass. A thing whose predicted place the camera sees,
-  with no report, is not there; of a thing whose predicted place is out of sight, the moving
-  mass the camera sees is taken away. `motion()` gives each cell's velocity and the share of its
-  mass that moves.
-
-Nothing about movement is given: the kernels hold what the brain learned.
-
-```python
-moving = Map((-1.0, 1.0, -0.2, 1.4), physics={"per": 3})
-for step in range(30):                                 # a hand seen moving right, 1.5 cm a moment
-    moving.moment(seen=[(HAND, [-0.6 + 0.015 * step, 0.6])], learn=True)
-moving.teach()
-assert moving.physics.lessons > 0 and moving.things()[0]["velocity"][0] > 0.01
-```
+The second stage, learned physics on the map, follows in the next release: the brain predicts
+the next moment of its map, and the next moment's sight teaches the prediction, so that it infers
+how a thing it does not see has moved.
 
 ## Settings and cost
 

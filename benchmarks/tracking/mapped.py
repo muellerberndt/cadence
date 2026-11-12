@@ -41,15 +41,15 @@ def seeing(scene: w.Scene, t: int) -> Any:
                                      dtype=bool)
 
 
-def follow(scene: w.Scene, held: Any = None, learn: bool = False, felt: Any = None
+def follow(scene: w.Scene, held: Any = None, felt: Any = None
            ) -> tuple[np.ndarray, dict[str, np.ndarray], float]:
     """A scene of one thing through a map (``held``, a ``Map`` or its settings; a new map
     where omitted): answers ``(steps, 1, 2)``, per step whether the map held a place and, for
     the smallest sets of cells holding .90 and .95 of the hand's activity, whether each held the
-    true place and how many cells it was, and milliseconds a step. With ``learn`` a map with
-    physics takes its lessons. ``felt`` names the place the arm's joint readings name while
-    the hand is out of view, a function of the readings: the program's forward kinematics
-    (``kinematics``) or a ``Sense`` taught on the arm (``Sense.named``)."""
+    true place and how many cells it was, and milliseconds a step. ``felt`` names the place
+    the arm's joint readings name while the hand is out of view, a function of the readings:
+    the program's forward kinematics (``kinematics``) or a ``Sense`` taught on the arm
+    (``Sense.named``)."""
     from cadence.space.map import Map
 
     feed = tr.given(scene)
@@ -60,14 +60,14 @@ def follow(scene: w.Scene, held: Any = None, learn: bool = False, felt: Any = No
     placed = np.ones(scene.steps, dtype=bool)
     more = {name: np.ones(scene.steps) for name in ("in90", "cells90", "in95", "cells95")}
     answers[0, 0] = feed["report"][0]
-    held.moment(seen=[(HAND, feed["report"][0])], learn=learn)
+    held.moment(seen=[(HAND, feed["report"][0])])
     nx, ny = held.cells
     began = time.perf_counter()
     for t in range(1, scene.steps):
         seen = [(HAND, feed["report"][t])] if feed["seen"][t] else []
         named = None if felt is None or feed["seen"][t] else felt(feed["joints"][t])
         held.moment(seen=seen, felt=[] if named is None else [(HAND, named)],
-                    lit=seeing(scene, t), learn=learn)
+                    lit=seeing(scene, t))
         mass = held.sheet(HAND).ravel()
         if (mass > 0).any():  # of several things of the kind, the one a sense wrote last
             mass = mass * (held.clock <= held.clock[mass > 0].min() + 0.5)
@@ -181,24 +181,6 @@ def heard(scenes: list[w.Scene], settings: dict[str, Any]) -> dict[str, Any]:
     return tr.heard(scenes, answers)
 
 
-MIX = (("straight", 0.10), ("slow", 0.10), ("stop", 0.10), ("turn", 0.10), ("left", 0.15),
-       ("visit", 0.15), ("pause", 0.10), ("hops", 0.10), ("slowhand", 0.10))
-
-
-def nursery(founder: int, count: int) -> list[w.Scene]:
-    """A founder's nursery of ``count`` scenes of a person's hand in the shares of ``MIX``
-    (declared in PROTOCOL.md), shuffled: half of each kind in the chamber's geometry and half
-    among discs of the scene's own."""
-    out: list[w.Scene] = []
-    base = tr.seed(founder, "train") + 5000
-    for index, (kind, share) in enumerate(MIX):
-        n = round(share * count)
-        out += w.scenes("other", base + 10 * index, n // 2, kind=kind)
-        out += w.scenes("other", base + 10 * index + 1, n - n // 2, kind=kind, vary=True)
-    order = np.random.default_rng(base).permutation(len(out))
-    return [out[i] for i in order]
-
-
 def read(scenes: list[w.Scene], arms: dict[str, Any], kalman: dict[str, float] | None,
          controls: bool = True) -> dict[str, Any]:
     """Every arm's table on ``scenes``: last seen and the Kalman filter where fitted (with
@@ -231,20 +213,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cells", type=int, nargs=2, default=[32, 26])
     parser.add_argument("--fit", type=int, default=100, help="scenes the Kalman filter is "
                         "fitted on (with --founder)")
-    parser.add_argument("--physics", type=json.loads, help="learned physics: its settings, "
-                        "trained on --train nursery scenes of --founder")
-    parser.add_argument("--train", type=int, default=800)
-    parser.add_argument("--watched", type=int, nargs="+", default=[],
-                        help="read the physics after these numbers of scenes watched")
-    parser.add_argument("--save", type=Path, help="write the trained map here")
-    parser.add_argument("--own", type=int, default=0, help="read the arm's own hand: a sense "
-                        "of its joint readings taught on this many of --founder's scenes")
-    parser.add_argument("--per", type=int, nargs="*", default=[16],
-                        help="tuned readings a joint of the taught sense (none: kinematics alone)")
-    parser.add_argument("--stays", type=int, default=0, help="scenes of a thing at rest out of "
-                        "view for 1,000 moments (S3)")
-    parser.add_argument("--heard", type=int, default=0, help="rooms of a thing heard moving out "
-                        "of view (S4)")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
     arms: dict[str, Any] = {
@@ -292,33 +260,10 @@ def main(argv: list[str] | None = None) -> int:
         rows["heard"] = heard(w.scenes("room", tr.seed(args.founder, "heard"), args.heard,
                                        kind="heard"), arms[next(iter(arms))])
         print("== heard", rows["heard"], flush=True)
-    curve: list[dict[str, Any]] = []
-    if args.physics is not None and args.founder is not None:  # learned physics, as it watches
-        from cadence.space.map import Map
-
-        training = nursery(args.founder, args.train)
-        held = Map(training[0].geometry.plane, cells=tuple(args.cells), physics=args.physics)
-        began = time.monotonic()
-        watched = 0
-        for mark in sorted(set([*args.watched, args.train])):
-            while watched < min(mark, len(training)):
-                follow(training[watched], held, learn=True)
-                watched += 1
-            held.teach()
-            name = f"map with physics, {watched} scenes watched"
-            point = {"watched": watched, "lessons": int(held.physics.lessons),
-                     "seconds": time.monotonic() - began, "readings": {}}
-            for panel, scenes in panels.items():
-                point["readings"][panel] = read(scenes, {name: held}, kalman, controls=False)
-                print(line(f"{panel}: {watched} watched", point["readings"][panel][name]),
-                      flush=True)
-            curve.append(point)
-        if args.save:
-            held.save(args.save)
     if args.out:
         args.out.write_text(json.dumps({"founder": args.founder, "arms": {
-            k: {**v, "cells": list(v["cells"])} for k, v in arms.items()}, "readings": rows,
-            "physics": args.physics, "curve": curve}, indent=1, default=float))
+            k: {**v, "cells": list(v["cells"])} for k, v in arms.items()}, "readings": rows},
+            indent=1, default=float))
     return 0
 
 
