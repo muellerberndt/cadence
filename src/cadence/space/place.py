@@ -919,7 +919,8 @@ class Space:
         if both.any():
             at = 2 * d + f.spread
             targets[both, at : at + b] = self.found[0].targets(entry["z"][both, 0], width=1.0)
-            targets[both, at + b :] = self.found[1].targets(entry["z"][both, 1], width=1.0)
+            targets[both, at + b : at + 2 * b] = self.found[1].targets(entry["z"][both, 1],
+                                                                       width=1.0)
         taught = whole | wide | kept
         if taught.any():
             self.brain.reset()  # the lesson's free phase from rest, as the answer it teaches

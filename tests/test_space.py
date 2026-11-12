@@ -169,6 +169,19 @@ def test_reports_without_names_go_to_the_nearer_rows_of_their_look():
     assert np.isnan(space.hear(np.zeros((0, 3)))).all()
 
 
+def test_a_thing_heard_while_seen_teaches_the_place_a_cue_names():
+    space = small()
+    rng = np.random.default_rng(4)
+    start = np.array([[0.1, 0.6], [-0.4, 0.9]])
+    ear = np.array(space.interface.ear)
+    space.begin(start, looks=[1, 2])
+    for _ in range(12):
+        away = start - ear
+        cues = np.column_stack([np.arctan2(away[:, 1], away[:, 0]), np.linalg.norm(away, axis=1)])
+        space.advance([True, True], start + rng.normal(0.0, 0.01, (2, 2)), cues=cues, learn=True)
+    assert space.work["lesson_row_sweeps"] > 0 and space.state()["heard"].any()
+
+
 def test_a_thing_that_does_not_come_out_where_it_would_be_seen_is_held_back():
     space = small(read="seen")  # the seen movement itself moves the place
     start = np.array([[-0.5, 0.5]])
