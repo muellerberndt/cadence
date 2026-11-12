@@ -436,8 +436,8 @@ class Map:
         is seen empty where the camera sees around it, within ``margin``, everything it saw
         there the moment before, and something. A hand last seen at a shadow's edge may have
         been reported just past it, and the camera that did not move sees it empty; a camera
-        turning away from a thing it reported no longer sees some of what it saw around it, and
-        the thing stays. Any other held place is seen empty where the camera sees all of it
+        turning away from a thing it reported sees less of what it saw around it, and the thing
+        stays. Any other held place is seen empty where the camera sees all of it
         within ``margin``: the camera's error never decides it.
 
         A report writes its place on its kind's units, in place of what its cells carried, and

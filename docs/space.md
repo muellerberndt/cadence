@@ -86,9 +86,9 @@ three units and two kinds share one unit at most. `codes=` takes a table of the 
    no report of its kind claims it: the thing is not where it was held. The map drives it, once,
    onto the cells out of sight within reach of that place and marks those cells as doubt. With
    no such cell the thing is kept by its kind with no place. A place reported the moment before
-   is a report, as far off as the camera's error: it is seen empty where the camera still sees
-   all it saw around it (within `margin`) when it reported it. A camera turning off a thing
-   leaves it held; a hand that walks into a shadow, which a still camera sees gone, is placed
+   is a report, as far off as the camera's error: it is seen empty where the camera sees all it
+   saw around it (within `margin`) when it reported it. A camera turning off a thing leaves it
+   held; a hand that walks into a shadow, which a camera that did not move sees gone, is placed
    out of sight near there. Any other held place is seen empty only where the camera sees all
    of it within `margin`, so the camera's error never decides it.
 6. **Sight only takes away.** A thing in doubt is never moved again by sight: the cells of its
