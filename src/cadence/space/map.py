@@ -465,7 +465,8 @@ class Map:
         there the moment before, and something. A hand last seen at a shadow's edge may have
         been reported just past it, and the camera that did not move sees it empty; a camera
         turning away from a thing it reported no longer sees some of what it saw around it, and
-        the thing stays.
+        the thing stays. Any other held place is seen empty where the camera sees all of it
+        within ``margin``: the camera's error never decides it.
 
         A report writes its place on its kind's units, in place of what its cells carried, and
         the pieces of its kind's activity within ``step`` of it are that thing: they are
@@ -535,8 +536,11 @@ class Map:
                 last = {round(float(self.clock[p].min())) for p in near}
                 near += [p for p in pieces if physics.mass[p].any()
                          and round(float(self.clock[p].min())) in last]
-            for piece in near:  # with the cells around it, where a weight under the floor lies
-                claimed[np.ix_(self._around(piece), units)] = True
+            for piece in near:  # its cells, and around them those its kind alone holds
+                around = self._around(piece)
+                alone = around[(activity[around][:, units] > 0).any(axis=1)
+                               & ~np.isin(around, self._other_kinds(kind, activity))]
+                claimed[np.ix_(np.union1d(piece, alone), units)] = True
             weights = self.weights(place)
             cells = weights > 0
             if physics is not None:
@@ -558,8 +562,8 @@ class Map:
                 # a place a sense wrote the moment before is a report, as far off as the
                 # camera's error: it is seen empty where the camera sees around it, within
                 # ``margin``, all it saw there when it reported it (where the field moved off
-                # it, the thing stays); a place physics carried on, or any other place, where
-                # the camera sees it
+                # it, the thing stays); a place physics carried on where the camera sees it;
+                # any other held place where the camera sees all of it within ``margin``
                 if self.doubt[piece].mean() > 0.5 and self.empty == "near":
                     # a thing in doubt was placed out of sight once; sight only takes away the
                     # cells it sees, and with none left the thing is not known where
@@ -577,8 +581,8 @@ class Map:
                     place, then = min(views, key=lambda v: float(np.linalg.norm(v[0] - at)))
                     now = looks(place, self.margin)
                     seen_empty = bool(now.any()) and not (then & ~now).any()
-                else:
-                    seen_empty = bool(looks(at, 0.0).any())
+                else:  # a held place: the camera sees all of it, as far as its own error
+                    seen_empty = bool(looks(at, self.margin).all())
                 seen_empty = seen_empty and self.empty != "keep"
                 share = None
                 if acting:  # its velocities, and its moving mass the camera sees
@@ -669,6 +673,14 @@ class Map:
 
         return seen
 
+    def _other_kinds(self, kind: int, activity: np.ndarray) -> np.ndarray:
+        """The cells where a kind other than ``kind`` holds a thing."""
+        others = np.zeros(self.count, dtype=bool)
+        for other in self._present(activity):
+            if other != kind:
+                others |= self._of_kind(other, activity) > self._floor
+        return np.flatnonzero(others)
+
     def _present(self, activity: np.ndarray) -> list[int]:
         """The kinds whose every code unit holds activity somewhere."""
         held = np.asarray((activity > self._floor).any(axis=0))
@@ -699,7 +711,10 @@ class Map:
             return whole
         cells = np.unique(np.concatenate([self._around(p) for p in near]))
         total = float(np.maximum(self._before[cells, unit], 0.0).sum())
-        share = self._share(cells, unit)
+        # the velocities it carried, as the moment before left them (the kernels keep each
+        # velocity's mass, and the still share is the rest)
+        carried = np.clip(self._carried_mass[cells, unit, :].sum(axis=0), 0.0, None)
+        share = carried / max(total, float(carried.sum()), 1e-300)
         whole = np.insert(share, physics._still, 1.0 - share.sum())
         was = np.maximum(np.tanh(before[cells][:, np.flatnonzero(self.codes[kind])] / 2.0),
                          0.0).min(axis=1)

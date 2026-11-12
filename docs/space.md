@@ -94,7 +94,8 @@ three units and two kinds share one unit at most. `codes=` takes a table of the 
    is a report, as far off as the camera's error: it is seen empty where the camera still sees
    all it saw around it (within `margin`) when it reported it. A camera turning off a thing
    leaves it held; a hand that walks into a shadow, which a still camera sees gone, is placed
-   out of sight near there.
+   out of sight near there. Any other held place is seen empty only where the camera sees all
+   of it within `margin`, so the camera's error never decides it.
 6. **Sight only takes away.** A thing in doubt is never moved again by sight: the cells of its
    patch that the camera sees are taken away, and with none left it is kept by its kind with
    no place.
@@ -353,6 +354,7 @@ assert moving.physics.lessons > 0 and moving.things()[0]["velocity"][0] > 0.01
 | `empty`, `reach` | `"near"`, 0.15 m | What becomes of a thing whose place is seen empty |
 | `step` | 0.15 m | A report within this distance of a piece of its kind is that thing, seen again |
 | `stride` | 0.5 m | A report of a kind with none of it within `step`: the nearest piece within this distance is that thing, moved unseen |
+| `margin` | 0.02 m | The camera's error: the distance around a held place over which sight decides whether it is seen empty |
 
 One moment settles one row whatever the number of things. Under Pyodide the founder takes 1.9 ms
 a moment with four things, 0.3 ms for the inventory and 1.8 ms a question; on one core natively
