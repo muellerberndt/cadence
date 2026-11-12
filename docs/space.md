@@ -29,13 +29,13 @@ The pieces are opt-in: a program that does not import `cadence.space` gets a lib
 
 | | The program beside the map | The brain (the map's graph) |
 | --- | --- | --- |
-| Where things are held between moments | Copies the sheet's potentials to the next moment's input | In the settled activity of `map`, with `clock`, `doubt` and `lost` |
+| Where things are held between moments | Copies the sheet's potentials to the next moment's drive on the same neurons | In the settled activity of `map`, with `clock`, `doubt` and `lost` |
 | The list of things | None: no cast, no rows | The peaks of the sheet |
 | A report from a sense | Turns the kind and the place into a drive on four cells | The cells settle on it |
-| Holding a place | Drives each pool's reference with the length of what the pool carries in (one number a code unit) | The pool's gain inside the settle holds that length, so a peak neither fades nor floods |
+| Holding a place | Nothing beyond the copy | A neuron driven by its own last potential, with no synapse into it, settles at that potential: the place stays exactly |
 | A place seen empty | Passes the cells in sight as the settle's mask; finds a piece of activity with no report of its kind and drives it onto the unseen cells within reach | A seen cell is held at zero in every sweep |
 | Which report is which thing | Compares a report's place with the pieces of its kind (`step`, `stride`) | Two things of a kind are two peaks |
-| Questions | Sets the cue: the kind's code gates the pools' references, or the mask keeps the cells around a place | `where` and `what` settle on the answer |
+| Questions | Sets the cue: the kind's code drives the pools' references, or the mask keeps the cells around a place | `where` and `what` settle on the answer |
 | The inventory | Reads the peaks, their cells and the clock | Holds them |
 | Kinds | Takes each thing's kind from the caller as a number | Holds a kind as a code over the sheet's units |
 | Lessons | None | None: the map's graph has no taught synapse |
@@ -74,9 +74,10 @@ three units and two kinds share one unit at most. `codes=` takes a table of the 
 2. **The report enters the map.** The place becomes weights on the four cells around it, whose
    mean is the place, and drives those cells on the units of the kind's code. A kind the map has
    not held enters the same way. No thing is announced beforehand.
-3. **The map carries itself.** At the next moment the potentials the sheet settled to are its
-   own input, and each pool's gain holds them at the length they came with. With no report and
-   no sight of the cell nothing changes: the last known place is the place in the state.
+3. **The map carries itself.** At the next moment the potentials the sheet settled to drive
+   the same neurons, and a neuron with that drive and no synapse into it settles at that
+   potential. With no report and no sight of the cell nothing changes, to the bit: the last
+   known place is the place in the state.
 4. **Sight again.** A report within `step` of a piece of its kind's activity is that thing. Its
    old cells are cleared and the report's cells are written, so in view a thing's place is the
    latest report.
@@ -87,8 +88,9 @@ three units and two kinds share one unit at most. `codes=` takes a table of the 
 6. **It is found.** A report of the kind ends the doubt: the cells of doubt that hold the kind
    are cleared, and so is the nearest piece of the kind within `stride`, as the same thing moved
    unseen. With none of its kind that near, the report is a new thing.
-7. **Questions.** "Where is the apple": the apple's code gates the pools, the sheet settles on
-   the apple's units and `where` holds its places. "What is there": the settle keeps the cells
+7. **Questions.** "Where is the apple": the carried potentials drive `held`, the apple's code
+   opens the pools of its units, the sheet settles on those units alone and `where` holds the
+   apple's places. "What is there": the settle keeps the cells
    around the place and `what` holds the code of the thing there.
 8. **The inventory.** Every piece of activity is a thing: its kind, its place (the mean of the
    piece), its cells, the moments since a sense wrote it, and its state.
@@ -113,9 +115,9 @@ Sizes for the founder, 32 by 26 cells and 16 code units: 29,168 neurons and 39,9
 
 | Region | Neurons | What it holds |
 | --- | --- | --- |
-| `map` | 13,312 | The sheet: a unit at a cell is active where a thing whose kind's code holds the unit is at the cell |
-| `held` | 13,312 | The carried input: at each moment its drive is the potentials `map` settled to the moment before |
-| `reference` | 16 | One a code unit. It is driven with the length of what its pool carries in; a cue's code gates it |
+| `map` | 13,312 | The sheet: a unit at a cell is active where a thing whose kind's code holds the unit is at the cell. At each moment its drive is its own potentials of the moment before |
+| `held` | 13,312 | The question's input: for "where is" it is driven by the sheet's carried potentials and projects onto the sheet cell to cell |
+| `reference` | 16 | One a code unit; a question's kind drives the references of its code |
 | `where` | 832 | One a cell, reading `map` over the code units |
 | `what` | 16 | One a code unit, reading `map` over the cells |
 | `clock` | 832 | One a cell: the moments since a sense wrote the cell. It carries its own potential and a bias of one |
@@ -126,7 +128,25 @@ Sizes for the founder, 32 by 26 cells and 16 code units: 29,168 neurons and 39,9
 efficacy of 2, the inverse of the neuron's slope at rest. Each code unit's cells and its
 reference form one pool of an apical compartment ([the apical compartment](anatomy.md#the-apical-compartment)).
 The pool's gain is the library's own, set inside the settle, and it is a multiplication: a pool
-whose reference is silent passes nothing.
+whose reference is silent passes nothing. The pools serve the question by kind alone; the carry
+uses none of them.
+
+**What was tried for the carry.** Two other forms were read before this one. With the sheet's
+potentials driving `held` and the pools' gains holding each pool at the length its reference was
+driven with, the program drove each reference with the length of what its pool carried in: a
+place moved by 0.02 cm in 1,000 moments, from the neuron's curve. A reference neuron that sums
+the carried activity in place of that number holds no place: the length a thing needs is the
+root of its summed squares, which is its summed activity for a thing on a cell's middle and half
+of it for a thing between four cells. The length held, in units of the length written, after
+1, 5, 10 and 20 moments:
+
+| Reference | A thing on a cell's middle | A thing between four cells |
+| --- | --- | --- |
+| A neuron summing the carried activity at a weight of 1 | 1, 1, 1, 1 | 2, 32, 368, 383 |
+| The same at a weight of 0.5 | .25, .016, .0005, 5e-7 | 1, 1, 1, 1 |
+| The length, set by the program | 1, 1, 1, 1 | 1, 1, 1, 1 |
+
+The carry on the sheet's own neurons needs no gain and no set point, and it moves nothing.
 
 ## Questions, answered by settling
 
@@ -161,9 +181,8 @@ unit summed.
 
 `Map(..., trace=True)` keeps every settle by sweep in `trajectory`, for a reader who watches the
 brain: `asked` (`"moment"`, `"where_is"` or `"what_is_at"`), `sweeps` and the activity of `map`,
-`where` and `what` at each sweep. A settle takes two sweeps: the synapses run from the carried
-input to the sheet and from the sheet to `where` and `what`, so the first sweep settles the
-sheet and the second settles the two regions that read it.
+`where` and `what` at each sweep. A watched settle begins with the sheet at rest and takes two
+sweeps: the first settles the sheet on its drive, the second the two regions that read it.
 
 ## A place seen empty
 
@@ -185,13 +204,30 @@ the hand over its 91 hidden moments:
 | --- | --- | --- |
 | Last seen | 15.5 cm | 15.5 cm |
 | The map, `empty="keep"` | 15.5 cm | 15.5 cm |
-| The map, `empty="near"`, `reach=0.15` | 11.8 cm | 11.8 cm |
-| The map, `empty="near"`, `reach=0.3` (the founder) | 11.3 cm | 11.2 cm |
+| The map, `empty="near"`, `reach=0.15` (the founder) | 11.8 cm | 11.8 cm |
+| The map, `empty="near"`, `reach=0.3` | 11.3 cm | 11.2 cm |
 | The map, `empty="near"`, `reach=0.6` | 16.3 cm | 17.2 cm |
 
 In view the map reads 1.2 cm, the camera's own error. The founder's cells hold the hand at
-every hidden moment, at 103 and 72 cells. The map does not move a thing along its last seen
-movement: that is the second stage.
+every hidden moment, at 34 cells. The map does not move a thing along its last seen movement:
+that is the second stage.
+
+**How the reach was chosen.** The first value, 0.3 m, was fixed before any reading. It was
+changed to 0.15 m on the development panels of one founder, before the declared run, and the two
+recorded scenes above took no part in the choice. On 140 scenes of a person's hand and 40 scenes
+of hands that visit a shadow, pause, hop, go slowly and are left, the error out of view:
+
+| Arm | A person's hand | Hands that visit, pause, hop, go slowly, are left |
+| --- | --- | --- |
+| Last seen | 26.8 cm | 14.9 cm |
+| The map, `empty="keep"` | 26.8 cm | 14.9 cm |
+| The map, `reach=0.15` | 23.2 cm | 11.8 cm |
+| The map, `reach=0.3` | 24.1 cm | 16.6 cm |
+| The map, `reach=0.6` | 32.4 cm | 31.2 cm |
+
+At 0.3 m a hand that pauses, hops or goes slowly near the shadow's edge is placed deep in the
+shadow at once: in its first five moments unseen the map read 14.6 cm where last seen read
+4.2 cm.
 
 ## The carried state
 
@@ -218,14 +254,14 @@ assert again.things() == [] and len(again.where_is(APPLE)) == 0
 | --- | --- | --- |
 | `cells` | `(32, 26)` | The cells an axis: 6 cm cells on a plane of 2 m by 1.6 m |
 | `units`, `kinds`, `weight`, `codes` | 16, none, 3, none | The code units a cell, and the kinds' codes |
-| `level` | 0.02 | The length a thing's potentials are written at. The neuron's curve bends a place by under a millimetre in 1,000 moments at this level |
-| `empty`, `reach` | `"near"`, 0.3 m | What becomes of a thing whose place is seen empty |
+| `level` | 0.02 | The length a report's potentials are written at on each of its units |
+| `empty`, `reach` | `"near"`, 0.15 m | What becomes of a thing whose place is seen empty |
 | `step` | 0.15 m | A report within this distance of a piece of its kind is that thing, seen again |
 | `stride` | 0.5 m | A report of a kind with none of it within `step`: the nearest piece within this distance is that thing, moved unseen |
 
-One moment settles one row whatever the number of things. Under Pyodide the founder takes 4.8 ms
-a moment with four things, 1.0 ms for the inventory and 5.5 ms a question; on one core natively
-1.3 ms a moment. A map of 50 by 40 cells takes about twice that.
+One moment settles one row whatever the number of things. Under Pyodide the founder takes 1.9 ms
+a moment with four things, 0.3 ms for the inventory and 1.8 ms a question; on one core natively
+1.3 ms a moment and 1.6 ms a question.
 
 ## The baseline: places held by a program
 

@@ -4,27 +4,25 @@ The map is one sheet of neurons, ``cells`` of a plane by ``units`` of a kind's c
 cell is active where a thing whose kind's code holds that unit is at that cell. The sheet's
 activity is the whole state: no list of things is given to the map and none is kept beside it.
 
-- **Carry.** The potentials the sheet settled to are the next moment's drive onto the input
-  region ``held``, one for one, and ``held`` projects onto the sheet cell to cell. Each code
-  unit's cells and one reference neuron form a pool of an apical compartment
-  (``cadence.brain.Apical``), whose gain inside the settle holds the pool's potentials at the
-  length its reference is driven with: the length they came with. With no sensory information
-  the activity stays as it is, so a thing's last known place stays, for any number of
-  moments.
+- **Carry.** The potentials the sheet settled to are the next moment's drive onto the sheet's
+  own neurons, one for one. A neuron under a drive and no synapse settles at that drive, so
+  with no sensory information the activity stays exactly as it is, and a thing's last known
+  place stays, for any number of moments. Nothing sets a gain or a height in the carry.
 - **A thing enters when it is sensed.** A report is a kind and a place. It drives the four
   cells around the place on the units of the kind's code. Two things of one kind are two peaks
   on the same units.
-- **Sight of an empty place.** What the map carried into a cell the camera sees is held at
-  zero by the settle's mask (a multiplication in every sweep), unless a report writes the cell
-  at this moment. ``empty`` says what becomes of a thing whose place is seen empty with no
-  report of its kind nearby: ``"near"`` drives it onto the cells out of sight around where it
-  was held, ``"clear"`` leaves it known by its kind with no place, ``"keep"`` leaves it where it
-  was.
-- **Reading by settling, both ways.** A kind's code as a cue gates the pools' reference
-  neurons. A pool's gain is a multiplication by its reference, so a pool whose reference is
-  silent passes nothing, and ``where`` (a neuron a cell) settles on the places of that kind. A
-  place as a cue keeps the cells around it (the settle's mask on the rest) and ``what`` (a
-  neuron a code unit) settles on the code of the thing there.
+- **Sight of an empty place.** A cell the camera sees is held at zero by the settle's mask (a
+  multiplication in every sweep), unless a report writes the cell at this moment. ``empty``
+  says what becomes of a thing whose place is seen empty with no report of its kind nearby:
+  ``"near"`` drives it onto the cells out of sight around where it was held, ``"clear"`` leaves
+  it known by its kind with no place, ``"keep"`` leaves it where it was.
+- **Reading by settling, both ways.** For a kind as a cue the carried potentials drive the
+  input region ``held``, which projects onto the sheet cell to cell. Each code unit's cells and
+  one reference neuron form a pool of an apical compartment (``cadence.brain.Apical``), and
+  the kind's code drives the references. A pool's gain is a multiplication by its reference,
+  so a pool whose reference is silent passes nothing, and ``where`` (a neuron a cell) settles
+  on the places of that kind. A place as a cue keeps the cells around it (the settle's mask on
+  the rest) and ``what`` (a neuron a code unit) settles on the code of the thing there.
 - **Time and doubt.** ``clock`` (a neuron a cell) carries its own potential and a bias of
   one, so it counts the moments since a sense last wrote its cell. ``doubt`` (a neuron a cell)
   carries a one where the cell holds a thing that was not seen to be there: the cells a thing
@@ -32,8 +30,7 @@ activity is the whole state: no list of things is given to the map and none is k
 
 The map's graph has no taught synapse: it is wiring and carried activity. The program beside
 it turns a report into the drive on four cells, passes the camera's seen cells as the mask,
-carries the potentials forward and drives each reference with their length, sets a question's
-cue and reads the peaks.
+carries the potentials forward, sets a question's cue and reads the peaks.
 """
 
 from __future__ import annotations
@@ -79,7 +76,7 @@ class Map:
     ``codes``. Without ``kinds`` the codes are one unit a kind (``units`` kinds, one sheet a
     kind); with ``kinds`` above ``units`` each kind takes ``weight`` units and any two kinds
     share one unit at most; ``codes`` gives a table of the caller's own. ``level`` is the
-    length each pool's potentials are held at.
+    length a report's potentials are written at on each of its units.
 
     Settings of the rules, each stated with its reading in the guide: ``empty`` (above),
     ``reach`` (the width in metres of the peak a thing is driven by when its place is seen
@@ -88,12 +85,12 @@ class Map:
     kind with none of it within ``step``: the nearest piece of the kind within ``stride`` is
     that thing, moved unseen; with none, it is a new thing).
 
-    With ``trace`` every settle runs two sweeps and is kept by sweep in ``trajectory``:
-    ``asked`` (``"moment"``, ``"where_is"`` or ``"what_is_at"``), ``sweeps`` (2) and the
-    activity above rest of ``map`` ``(sweeps + 1, cells x, cells y, units)``, ``where``
-    ``(sweeps + 1, cells x, cells y)`` and ``what`` ``(sweeps + 1, units)``: row 0 is the state
-    the settle begins from (the inputs at their potentials, the sheet at rest), row 1 the sheet
-    settled and row 2 ``where`` and ``what`` settled on it.
+    With ``trace`` every settle begins with the sheet at rest, runs two sweeps and is kept
+    by sweep in ``trajectory``: ``asked`` (``"moment"``, ``"where_is"`` or ``"what_is_at"``),
+    ``sweeps`` (2) and the activity above rest of ``map`` ``(sweeps + 1, cells x, cells y,
+    units)``, ``where`` ``(sweeps + 1, cells x, cells y)`` and ``what`` ``(sweeps + 1,
+    units)``: row 0 is the state the settle begins from, row 1 the sheet settled and row 2
+    ``where`` and ``what`` settled on it.
 
     ``moment`` takes one moment's reports and the cells in sight. ``where_is`` and
     ``what_is_at`` ask by settling, ``things`` reads the inventory off the map and ``reset``
@@ -102,7 +99,7 @@ class Map:
     def __init__(self, plane: tuple[float, float, float, float],
                  cells: tuple[int, int] = (32, 26), *, units: int = 16, kinds: int | None = None,
                  weight: int = 3, codes: np.ndarray | None = None, level: float = 0.02,
-                 empty: str = "near", reach: float = 0.3, step: float = 0.15,
+                 empty: str = "near", reach: float = 0.15, step: float = 0.15,
                  stride: float = 0.5, seed: int = 0, trace: bool = False,
                  backend: Any = "cpu"):
         from ..brain import Apical
@@ -285,71 +282,70 @@ class Map:
 
     # -- one moment
 
-    def _lengths(self, carried: np.ndarray | None = None) -> np.ndarray:
-        """What drives each pool's reference: the length of the potentials the pool carries in
-        (those ``carried`` keeps), in units of ``level``. The pool's gain then holds its
-        potentials at the length they came with: it undoes the bend of the neuron's curve, a
-        thing keeps the height it was written at whatever else the map holds, and a pool that
-        carries nothing passes nothing."""
-        held = self.potential if carried is None else self.potential * carried
-        return np.asarray(np.linalg.norm(held, axis=0) / self.level)
+    def _settle(self, *, write: np.ndarray | None = None, carried: np.ndarray | None = None,
+                clock: np.ndarray | None = None, fresh: np.ndarray | None = None,
+                kept: np.ndarray | None = None, doubt: np.ndarray | None = None,
+                sure: np.ndarray | None = None, cue: np.ndarray | None = None,
+                asked: str = "moment") -> np.ndarray:
+        """Settle the graph: every neuron's potential.
 
-    def _settle(self, reference: np.ndarray, *, write: np.ndarray | None = None,
-                carried: np.ndarray | None = None, clock: np.ndarray | None = None,
-                fresh: np.ndarray | None = None, kept: np.ndarray | None = None,
-                doubt: np.ndarray | None = None, sure: np.ndarray | None = None,
-                sweeps: int = 1, asked: str = "moment") -> np.ndarray:
-        """Settle the graph: every neuron's potential. ``reference`` drives the pools'
-        references, ``carried`` (flags on ``held``, ``(cells, units)``) is the settle's mask on
-        what the map carried, ``write`` drives the sheet, ``fresh`` (flags on cells) holds
-        those cells' clocks at zero and ``kept`` (flags on cells) is the mask on the sheet
-        itself: a cell that is not kept is held at zero after the pools' gains are set.
-        ``doubt`` drives the cells' doubt in place of what they carried and ``sure`` (flags on
-        cells) holds it at zero. The
-        settle begins with every input at the potential its drive gives it; one sweep brings
-        the sheet to its fixed point and a second ``where`` and ``what``."""
+        Without ``cue`` the sheet's own neurons are driven by the potentials they carried
+        (those ``carried`` keeps, flags ``(cells, units)``) and by ``write``; a unit that keeps
+        nothing and is written nothing is held at zero by the settle's mask, and so is every
+        cell ``kept`` (flags on cells) leaves out. With ``cue``, a kind's code, the carried
+        potentials drive ``held`` in place of the sheet, the code drives the pools' references
+        and the sheet settles on the pools the code opens. ``clock`` and ``doubt`` drive those
+        regions in place of what they carried; ``fresh`` and ``sure`` (flags on cells) hold
+        them at zero.
+
+        The settle begins with every driven neuron at the potential its drive gives it and
+        takes one sweep for ``where`` and ``what`` (two with a cue: the sheet, then the two
+        regions that read it). With ``trace`` it begins with the sheet at rest and takes two
+        sweeps, kept by sweep."""
         from ..brain import BrainState
 
         run = self._runs
         drive = np.zeros((1, self.neurons))
-        drive[0, run["reference"]] = reference
-        drive[0, run["held"]] = self.potential.ravel()
+        held = self.potential if carried is None else self.potential * carried
+        mask = np.ones((1, self.neurons))
+        if cue is not None:
+            drive[0, run["reference"]] = cue
+            drive[0, run["held"]] = held.ravel()
+        else:
+            drive[0, run["map"]] = (held if write is None else held + write).ravel()
+            if carried is not None:
+                alive = carried if write is None else carried | (write != 0)
+                mask[0, run["map"]] = alive.ravel()
+        if kept is not None:
+            mask[0, run["map"]] *= np.repeat(kept, self.units)
         drive[0, run["clock"]] = self.clock if clock is None else clock
         drive[0, run["lost"]] = self.lost
         drive[0, run["doubt"]] = self.doubt if doubt is None else doubt
+        if fresh is not None:
+            mask[0, run["clock"]] = ~fresh
+        if sure is not None:
+            mask[0, run["doubt"]] = ~sure
         begun = drive.copy()
         begun[0, run["clock"]] += 1.0
-        if write is not None:
-            drive[0, run["map"]] = write.ravel()
-        mask = None
-        if carried is not None or fresh is not None or kept is not None or sure is not None:
-            mask = np.ones((1, self.neurons))
-            if sure is not None:
-                mask[0, run["doubt"]] = ~sure
-            if kept is not None:
-                mask[0, run["map"]] = np.repeat(kept, self.units)
-            if carried is not None:
-                mask[0, run["held"]] = carried.ravel()
-            if fresh is not None:
-                mask[0, run["clock"]] = ~fresh
-            begun *= mask
+        sweeps = 2 if cue is not None else 1
+        if self.trace or cue is not None:
+            begun[0, run["map"]] = 0.0  # the sheet at rest: the settle is watched from there
+            sweeps = 2
+        begun *= mask
         state = BrainState(v=begun, activation=self._model.activation(begun),
                            adaptation=np.zeros_like(begun), steps=0)
+        first = np.maximum(np.asarray(state.activation)[0], 0.0)
+        state = self.graph.settle_batch(drive, steps=sweeps, tolerance=None, mask=mask,
+                                        state=state, trajectory=self.trace)
         if self.trace:  # the settle by sweep, for a reader who watches it
-            first = np.maximum(np.asarray(state.activation)[0], 0.0)
-            state = self.graph.settle_batch(drive, steps=2, tolerance=None, mask=mask,
-                                            state=state, trajectory=True)
             rows = np.maximum(np.concatenate(
                 [first[None], np.asarray(state.trajectory)[:, 0]], axis=0), 0.0)
             nx, ny = self.cells
             self.trajectory = {
-                "asked": asked, "sweeps": 2,
-                "map": rows[:, run["map"]].reshape(3, nx, ny, self.units),
-                "where": rows[:, run["where"]].reshape(3, nx, ny),
+                "asked": asked, "sweeps": sweeps,
+                "map": rows[:, run["map"]].reshape(sweeps + 1, nx, ny, self.units),
+                "where": rows[:, run["where"]].reshape(sweeps + 1, nx, ny),
                 "what": rows[:, run["what"]].copy()}
-        else:
-            state = self.graph.settle_batch(drive, steps=sweeps, tolerance=None, mask=mask,
-                                            state=state)
         return np.asarray(np.asarray(state.v, dtype=np.float64)[0])
 
     def moment(self, seen: Any = (), heard: Any = (), felt: Any = (), lit: Any = None) -> None:
@@ -429,8 +425,8 @@ class Map:
         self.lost = lost
         # a cell a sense writes, or one seen with nothing carried into it, holds no doubt
         sure = fresh | claimed.any(axis=1) | (sight if self.empty != "keep" else False)
-        v = self._settle(self._lengths(carried), write=write if write.any() else None,
-                         carried=carried, clock=clock, fresh=fresh, doubt=doubt, sure=sure)
+        v = self._settle(write=write if write.any() else None, carried=carried, clock=clock,
+                         fresh=fresh, doubt=doubt, sure=sure)
         run = self._runs
         self.potential = v[run["map"]].reshape(self.count, self.units).copy()
         self.clock = v[run["clock"]].copy()
@@ -442,13 +438,13 @@ class Map:
     # -- questions, answered by settling
 
     def where_is(self, kind: int) -> np.ndarray:
-        """Where the things of a kind are, ``(things, 2)``: the kind's code gates the pools'
+        """Where the things of a kind are, ``(things, 2)``: the kind's code drives the pools'
         references, so the sheet settles on that kind's units alone. For a code of one unit
         ``where`` then holds the kind's places. For a code of several units a place is a cell
         where every one of them is active, and the least of them is read there. Each connected
         piece is one place, the mean of its activity."""
         code = self.codes[int(kind)]
-        v = self._settle(code * self._lengths(), sweeps=2, asked="where_is")
+        v = self._settle(cue=code, asked="where_is")
         self.work["questions"] += 1
         if code.sum() == 1:
             found = np.maximum(np.tanh(v[self._runs["where"]] / 2.0), 0.0)
@@ -465,7 +461,7 @@ class Map:
         hold no thing."""
         reach = 1.5 * float(self.size.max()) if within is None else float(within)
         near = np.linalg.norm(self.centers - np.asarray(place, dtype=np.float64), axis=1) <= reach
-        v = self._settle(self._lengths(), sweeps=2, kept=near, asked="what_is_at")
+        v = self._settle(kept=near, asked="what_is_at")
         self.work["questions"] += 1
         code = np.maximum(np.tanh(v[self._runs["what"]] / 2.0), 0.0)
         return self.kind_of(code) if code.max() > self._floor else None
@@ -516,4 +512,116 @@ class Map:
         return np.asarray(held.reshape(self.cells))
 
 
-__all__ = ["FORMAT", "PASS", "Map", "sparse_codes"]
+class Sense:
+    """A sense's projection onto a map's cells: a reading that names a place, settled into it.
+
+    The reading (a sound's direction and distance, the arm's joint readings) lights a sheet of
+    tuned inputs, one unit a combination of the readings' tuned values, and every unit projects
+    onto ``cells``, one neuron a cell of the map. The settled activity of ``cells`` is the place
+    the reading names, read as the mean within a cell and a half of its peak. The synapses
+    start at zero and are taught by the library's free and nudged phases with a quadratic
+    nudge, at the moments a thing is heard or felt while the camera sees it: the target is the
+    seen place as weights on its four cells. ``Map.moment(heard=...)`` and ``felt=`` take the
+    place ``named`` gives.
+
+    ``ranges`` holds each reading's ``(low, high)`` and ``per`` the tuned inputs of each;
+    ``rate`` is the share of a lesson's error one lesson closes."""
+
+    def __init__(self, held: Map, ranges: Any, per: Any, *, rate: float = 0.3,
+                 efficacy: np.ndarray | None = None, backend: Any = "cpu"):
+        from ..brain import Brain as Graph
+        from ..connectome import Connectome
+        from ..learning import learning_neuron_model
+        from ..tuning import PopulationCode
+
+        self.map, self.rate = held, float(rate)
+        self.ranges = [(float(a), float(b)) for a, b in ranges]
+        self.per = [int(n) for n in per]
+        if len(self.ranges) != len(self.per) or not self.per or min(self.per) < 2:
+            raise ValueError("a sense takes a (low, high) range and 2 tuned inputs or more a "
+                             "reading")
+        self._codes = [PopulationCode([r], per=n)
+                       for r, n in zip(self.ranges, self.per, strict=True)]
+        self.units = units = int(np.prod(self.per))
+        count = held.count
+        self.neurons = units + count
+        self.connectome = Connectome.from_synapses(
+            self.neurons, label="sense", pre=np.repeat(np.arange(units), count),
+            post=np.tile(units + np.arange(count), units),
+            populations={"sheet": list(range(units)), "cells": list(range(units, self.neurons))})
+        self._model = learning_neuron_model(dt=1.0)
+        start = np.zeros(self.connectome.synapses) if efficacy is None else np.asarray(
+            efficacy, dtype=np.float64).reshape(self.connectome.synapses)
+        self.graph = Graph(self.connectome, self._model, efficacy=start, backend=backend)
+        self._learner: Any = None
+        self.lessons = 0
+
+    def code(self, readings: np.ndarray) -> np.ndarray:
+        """``(rows, readings)`` readings as the sheet's drive ``(rows, units)``: each unit the
+        product of its tuned inputs' responses."""
+        given = np.asarray(readings, dtype=np.float64).reshape(-1, len(self.per))
+        out = np.ones((len(given), 1))
+        for k, tuned in enumerate(self._codes):
+            out = (out[:, :, None] * tuned(given[:, k : k + 1])[:, None, :]).reshape(len(given), -1)
+        return out
+
+    def named(self, reading: np.ndarray) -> np.ndarray | None:
+        """The place a reading names: ``cells`` settled on the sheet, read as the mean within
+        a cell and a half of the most active cell; None where no cell is above rest."""
+        drive = np.zeros((1, self.neurons))
+        drive[0, : self.units] = self.code(reading)[0]
+        state = self._learner.free(drive) if self._learner is not None else (
+            self.graph.settle_batch(drive, steps=2, tolerance=None))
+        found = np.maximum(np.asarray(state.activation)[0, self.units :], 0.0)
+        if not found.max() > 1e-6:
+            return None
+        centers = self.map.centers
+        near = np.linalg.norm(centers - centers[int(found.argmax())], axis=1) <= (
+            1.5 * float(self.map.size.max()))
+        return np.asarray((found * near) @ centers / (found * near).sum())
+
+    def teach(self, readings: np.ndarray, places: np.ndarray) -> float:
+        """Lessons: ``(rows, readings)`` readings taken while the camera saw the thing at
+        ``(rows, 2)`` places. Gives the mean distance between the free answer and the target,
+        as a share of the target."""
+        import dataclasses
+
+        from ..learning import Learner, LearnerConfig
+
+        code = self.code(readings)
+        at = np.asarray(places, dtype=np.float64).reshape(len(code), 2)
+        drive = np.zeros((len(code), self.neurons))
+        drive[:, : self.units] = code
+        target = np.zeros_like(drive)
+        for row, place in enumerate(at):
+            weights = self.map.weights(place)
+            target[row, self.units :] = 0.5 * weights / np.linalg.norm(weights)
+        if self._learner is None:
+            self._learner = Learner(
+                self.graph, list(range(self.units, self.neurons)),
+                LearnerConfig(nudge="quadratic", beta=0.1, eta=1.0, eta_bias=0.0, free_steps=2,
+                              nudged_steps=4, tolerance=None),
+                reciprocal=False, plastic_neurons=np.zeros(self.neurons, dtype=bool))
+        learner = self._learner
+        lit = np.tanh(code / 2.0)
+        # a synapse steps by its batch-mean contrast. The step that closes ``rate`` of the
+        # batch's error: the rows' summed activity over the sheet squared, a row
+        shared = float((lit.sum(axis=0) ** 2).sum()) / len(code)
+        learner.config = dataclasses.replace(
+            learner.config, eta=self.rate / (0.25 * max(shared, 1e-12)))
+        free = learner.free(drive)
+        plus = learner.nudged(drive, free, target)
+        minus = learner.nudged(drive, free, target, sign=-1.0)
+        learner.update(free, plus, minus)
+        self.graph = learner.brain
+        self.lessons += len(code)
+        answer = np.asarray(free.activation)[:, self.units :]
+        wanted = target[:, self.units :]
+        return float(np.abs(answer - wanted).sum() / np.abs(wanted).sum())
+
+    def arrays(self) -> dict[str, np.ndarray]:
+        """What a file keeps of a sense: its taught efficacies."""
+        return {"efficacy": np.asarray(self.graph.efficacy, dtype=np.float32).copy()}
+
+
+__all__ = ["FORMAT", "PASS", "Map", "Sense", "sparse_codes"]

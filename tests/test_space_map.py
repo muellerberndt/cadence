@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from cadence.space.map import Map, sparse_codes
+from cadence.space.map import Map, Sense, sparse_codes
 
 PLANE = (-1.0, 1.0, -0.2, 1.4)
 APPLE, BREAD, CUP, HAND = 0, 1, 2, 3
@@ -155,3 +155,25 @@ def test_a_thing_in_two_pieces_of_doubt_is_one_entry_and_a_settle_is_kept_by_swe
     assert held.trajectory["asked"] == "where_is" and held.trajectory["what"][2, HAND] > 0
     held.moment(seen=[(HAND, [0.3, 0.6])], lit=lit)               # a report ends the doubt
     assert [t["state"] for t in held.things()] == ["seen"]
+
+
+def test_a_sense_is_taught_the_place_a_reading_names():
+    held = Map(PLANE, cells=(16, 13))
+    arm = Sense(held, ranges=[(0.3, 2.8), (-1.2, 1.2)], per=(10, 10), rate=0.5)
+
+    def hand(joints):                                             # an arm of two links
+        a, b = joints[..., 0], joints[..., 0] + joints[..., 1]
+        return np.stack([0.45 * np.cos(a) + 0.35 * np.cos(b),
+                         0.45 * np.sin(a) + 0.35 * np.sin(b)], axis=-1)
+
+    assert arm.named([1.0, 0.2]) is None                          # before any lesson
+    rng = np.random.default_rng(0)
+    probes = np.stack([rng.uniform(0.5, 2.6, 20), rng.uniform(-1.0, 1.0, 20)], axis=1)
+    for _ in range(150):                                          # felt while it is seen
+        joints = np.stack([rng.uniform(0.3, 2.8, 16), rng.uniform(-1.2, 1.2, 16)], axis=1)
+        arm.teach(joints, hand(joints))
+    off = [np.linalg.norm(arm.named(q) - hand(q)) for q in probes]
+    assert arm.lessons == 150 * 16 and np.mean(off) < 0.08       # 5.7 cm on cells of 12 cm
+    held.moment(felt=[(HAND, arm.named(probes[0]))])              # the reading writes the map
+    (thing,) = held.things()
+    assert thing["state"] == "felt" and np.linalg.norm(thing["place"] - hand(probes[0])) < 0.15

@@ -8,7 +8,7 @@ where the map holds the hand with no place, the last place it held is scored and
 counted. Printed beside it: last seen and the constant-velocity Kalman filter.
 
     python benchmarks/tracking/mapped.py --scenes benchmarks/tracking/scenes/promise.json
-    python benchmarks/tracking/mapped.py --founder 0 --reach 0.15 0.3 0.6
+    python benchmarks/tracking/mapped.py --founder 0 --reach 0.15 0.3 0.6 --empty near keep
 """
 
 from __future__ import annotations
@@ -121,7 +121,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--test", type=int, default=100)
     parser.add_argument("--quota", type=int, default=10)
     parser.add_argument("--each", type=int, default=8, help="scenes of each errand kind")
-    parser.add_argument("--reach", type=float, nargs="+", default=[0.3])
+    parser.add_argument("--reach", type=float, nargs="+", default=[0.15])
     parser.add_argument("--empty", nargs="+", default=["near"])
     parser.add_argument("--cells", type=int, nargs=2, default=[32, 26])
     parser.add_argument("--fit", type=int, default=100, help="scenes the Kalman filter is "
@@ -130,7 +130,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     arms = {f"map, {empty}" + (f", reach {reach:g} m" if empty == "near" else ""):
             {"cells": tuple(args.cells), "empty": empty, "reach": reach}
-            for empty in args.empty for reach in (args.reach if empty == "near" else [0.3])}
+            for empty in args.empty for reach in (args.reach if empty == "near" else [0.15])}
     panels: dict[str, list[w.Scene]] = {path.stem: [w.load(path)] for path in args.scenes}
     kalman = None
     if args.founder is not None:
