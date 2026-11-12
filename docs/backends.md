@@ -8,7 +8,7 @@ NumPy float64 unless you pick another. Start from the NumPy-only
 [installation](../README.md#get-started) and add an extra:
 
 ```bash
-python -m pip install "cadence-net[fast]==0.98.0"
+python -m pip install "cadence-net[fast]==0.99.0"
 ```
 
 `[fast]` installs Numba and SciPy, `[accel]` PyTorch and `[apple]` MLX (0.21.1 or later); from a checkout, use
@@ -80,6 +80,15 @@ an apical compartment or a learned code ([`tests/test_mlx_backend.py`](../tests/
 [`tests/test_mlx_launch.py`](../tests/test_mlx_launch.py), [`tests/test_mlx_memory.py`](../tests/test_mlx_memory.py)).
 On a float32 backend a brain reloaded from its checkpoint continues within that rounding, not
 bit for bit; on the CPU the reloaded brain is exact.
+
+<a id="a-reloaded-brain-and-blas-threads"></a>
+On the NumPy path (`CADENCE_FUSED=0`) a reloaded brain's continued life repeats to the bit at
+one BLAS thread count. In a reading of 35 compositions on an x86-64 machine, four continued after
+a load to other last bits with the thread variables unset than at one thread, where the life
+before the save read the same at either count, and each count repeated its own bits (#315). For
+a reloaded life that repeats to the bit on another run or machine, set
+`OMP_NUM_THREADS=OPENBLAS_NUM_THREADS=MKL_NUM_THREADS=1` before NumPy is imported. The fused
+path read one set of bits at either count.
 
 `available_backends()` asks MLX for its device in a child interpreter, once per process, so an
 unsupported Metal or system configuration that aborts MLX's discovery ends only the child. MLX

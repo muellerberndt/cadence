@@ -9,6 +9,7 @@ new synapses weight. A brain composed from its own recorded construction is the 
 from __future__ import annotations
 
 import copy
+import re
 import tempfile
 from pathlib import Path
 
@@ -543,6 +544,47 @@ def test_grow_refuses_with_the_reason(base, parts, message):
     trained = taught(**base, lessons=2)
     with pytest.raises(ValueError, match=message):
         trained.grow(**parts)
+
+
+@pytest.mark.parametrize(
+    "name, value",
+    [
+        ("message", 12), ("message_read", True), ("message_phases", 3), ("longterm", 8),
+        ("longterm_turn", 3), ("learned_fields", 4), ("ports", 2), ("fields_motor", 1.0),
+        ("carried_gain", 0.01), ("learned_code_fields", (3, 3)), ("dense_limit", 64),
+        ("precision", "float32"),
+    ],
+)
+def test_a_construction_setting_is_named_as_one_by_grow_and_by_retune(name, value):
+    """#322: grow names a construction setting it does not add and says to compose the brain
+    with it; retune refuses the same name as a construction setting."""
+    brain = cd.Brain.compose(6, 4, modules=(16,), seed=0, backend="cpu")
+    grown = f"{name} is a construction choice grow does not add; compose the brain with it"
+    with pytest.raises(ValueError, match=f"^{re.escape(grown)}$"):
+        brain.grow(**{name: value})
+    retuned = f"{name} is a construction setting; retune preserves the brain"
+    with pytest.raises(ValueError, match=f"^{re.escape(retuned)}$"):
+        brain.retune(**{name: value})
+
+
+def test_a_trained_module_is_composed_or_grafted_and_never_grown_or_retuned():
+    brain = cd.Brain.compose(6, 4, modules=(16,), seed=0, backend="cpu")
+    with pytest.raises(ValueError, match=r"^trained is a construction choice grow does not add; "
+                       r"compose the brain with it, or graft a module"):
+        brain.grow(trained=[])
+    with pytest.raises(ValueError, match="^trained is a construction setting; retune preserves"):
+        brain.retune(trained=[])
+
+
+@pytest.mark.parametrize(
+    "name, value", [("teaching", "normalized"), ("memory_rate", 0.3), ("temperature", 0.5)]
+)
+def test_grow_points_to_retune_for_a_setting_retune_changes(name, value):
+    brain = cd.Brain.compose(6, 4, modules=(16,), seed=0, backend="cpu")
+    pointer = f"{name} is not a part; retune changes a living brain's settings"
+    with pytest.raises(ValueError, match=f"^{re.escape(pointer)}$"):
+        brain.grow(**{name: value})
+    assert brain.retune(**{name: value}) is brain
 
 
 def test_a_plain_archive_saves_and_loads_the_same_brain(tmp_path):

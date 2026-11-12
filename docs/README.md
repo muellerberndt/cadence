@@ -25,7 +25,7 @@ compares it with networks trained by backpropagation.
 ## Install
 
 ```sh
-python -m pip install cadence-net==0.98.0
+python -m pip install cadence-net==0.99.0
 ```
 
 Cadence needs Python 3.11 or later and NumPy. Optional extras add speed and hardware:
@@ -36,10 +36,10 @@ Cadence needs Python 3.11 or later and NumPy. Optional extras add speed and hard
 | `[accel]` | PyTorch | NVIDIA GPUs (CUDA) |
 | `[apple]` | MLX | Apple silicon GPUs |
 
-For example `python -m pip install "cadence-net[fast]==0.98.0"`. From a checkout of the
+For example `python -m pip install "cadence-net[fast]==0.99.0"`. From a checkout of the
 repository, run `python -m pip install -e .` at its root. A new brain picks the fastest backend
 the machine has for its size by itself ([backends](backends.md)). The
-[v0.98.0 documentation](https://github.com/muellerberndt/cadence/blob/v0.98.0/docs/README.md)
+[v0.99.0 documentation](https://github.com/muellerberndt/cadence/blob/v0.99.0/docs/README.md)
 is pinned to the release tag.
 
 ## Your first brain
@@ -84,8 +84,8 @@ Each idea builds on the one before. [Start here](start.md) shows each with a run
 
 Then, in this order:
 
-1. [Parts of a brain](modules.md): the catalogue of every part a brain can be built from, and
-   four whole brains composed for a purpose.
+1. [Parts of a brain](modules.md): the catalogue of every part a brain can be built from, five
+   whole brains composed for a purpose, and the modules that arrive as files.
 2. [Train a brain](teach.md): lessons, rewards, distillation, rare classes, curricula, rates,
    evaluation and what to do when training goes wrong.
 3. [Memory](memory.md): which memory serves which task, with a minimal example of each.
@@ -121,11 +121,13 @@ Then, in this order:
 | A memory for a task | the comparison table | [Memory](memory.md) |
 | Wide inputs: images, codes | image `inputs`, `code=units`, `learned_code=units` | [Wide inputs](senses.md) |
 | A speech recogniser from recordings and transcripts, adapted to a speaker, on live audio | `cadence.speech` (opt-in) | [Speech](speech.md) |
+| A map of where things are while they are out of view, by kind and by place | `cadence.space` (opt-in) | [Space](space.md) |
 | To read or change a living brain | `describe`, `retune`, `last_settlement` | [Tune and read a living brain](tune.md) |
 | A deep or wide brain | `modules=(64, 32, 32)`, `apical=0.25`, `teaching="deep"` | [Larger brains](tune.md#larger-brains) |
 | A GPU, another device or precision | `backend`, `device`, `precision` | [Backends](backends.md) |
 | A brain that keeps learning after it has acquired a skill | `maturity=True` | [Maturity](reward.md#maturity-opt-in) |
 | To give a trained brain a memory, more outputs or another brain's regions | `grow`, `graft` | [Grow and combine brains](grow.md) |
+| A module that arrives as a file: the built-in map of things, or a trained brain's regions of your own | `cd.modules.load("place")`, `cd.load_module(path)`, `brain.space`, `save_module`, `trained=[module]`, `graft(module)` | [Modules](modules.md#modules-parts-that-arrive-as-files) |
 | To show a result | baselines, controls, receipts | [Evaluate a brain](evaluate.md) |
 | To design a continuing application or a behavioural claim | observation and action boundaries, acquisition and recovery | [Task design](task-design.md), [the design direction](world-model.md) |
 | Your own regions, a connectome, evolution | `Genome`, `develop`, `compose(connectome=)`, `evolve` | [Your own anatomy](anatomy.md) |
