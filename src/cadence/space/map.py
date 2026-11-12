@@ -339,9 +339,9 @@ class Map:
         the pieces of its kind's activity within ``step`` of it are that thing: they are
         cleared. With none there, the nearest piece of the kind within ``stride`` is the thing,
         moved unseen, and is cleared; with none, the report is a new thing. The pieces of the
-        kind that lie on cells of doubt are cleared as well: a thing of the kind is found. A cell in sight
-        loses what it carried. A piece seen empty with no report of its kind is treated as
-        ``empty`` says."""
+        kind that lie on cells of doubt are cleared as well: a thing of the kind is found. A
+        cell in sight loses what it carried. A piece seen empty with no report of its kind is
+        treated as ``empty`` says."""
         reports = [(int(kind), np.asarray(place, dtype=np.float64).reshape(2), sense)
                    for sense, given in (("seen", seen), ("heard", heard), ("felt", felt))
                    for kind, place in given]
