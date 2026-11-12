@@ -1,74 +1,80 @@
-# The tracking chamber's declared run (issue #320): a draft
+# The map of things: the declared run of its core gates (issue #320)
 
-This page is a draft. The run is declared on the issue, with the commit of this page, before the
-first life of a declared founder, and it is declared once the development readings clear the
-bars. A gate is changed only by a declared amendment, never after a reading. Gates S9 to S12 of
-the issue (kinds and places both ways, the body's own turning and moving, a change unseen, many
-things) have no panel in the chamber, and this page gains them before the declaration.
+This page is declared on the issue, with the commit that holds it, before the first life of a
+declared founder. A gate is changed only by a declared amendment, never after a reading.
+
+## What is read
+
+The map of things, `cadence.space.map.Map`, at its founder settings: 32 by 26 cells of the
+chamber's plane, 16 code units (64 for 128 kinds, three units a kind), `empty="near"`,
+`reach=0.15`, `step=0.15`, `stride=0.5`, `margin=0.02`, no physics. The map has no taught
+synapse: a founder seeds the scenes it is read on and nothing else. Learned physics on the map
+is read apart (the second stage) and is no part of this run.
 
 ## Founders and scenes
 
 Twelve fresh founders, 3200 to 3211; development used founders 0, 1 and 2. A founder's number
-seeds its brain and every scene it trains on and is read on (`tracking.seed`).
+seeds every scene (`tracking.seed`). Each founder runs two commands at the declared commit:
 
-- **Training.** `space` arms: the founder's `curriculum` of 3,000 scenes, shuffled: 25% the
-  arm's own hand and 35% a person's hand in the chamber's geometry, 5% and 20% of them among
-  occluding discs and dark spans of the scene's own, 10% a thing heard moving and 5% two hands
-  that cross. Controls on one case: the founder's 2,000 training scenes of that case.
-- **Reading.** `panels(founder)`: `own` (200 scenes), `other` (200 scenes as they come and 40 of
-  each panel `straight`, `slow`, `stop`, `turn`), `varied` (100 scenes of a person's hand among
-  discs and dark spans of the scene's own), `stays_own` and `stays_other` (8 scenes each, 1,000
-  steps at rest out of view), `heard` (60 scenes) and `crossing` (100 scenes). Every answer is
-  given by a frozen copy; nothing is taught while a panel is read.
+    python benchmarks/tracking/mapped.py --founder F --test 200 --quota 40 --each 12 \
+        --own 200 --per --stays 8 --heard 60 --out mapped-F.json
+    python benchmarks/tracking/rooms.py --founder F --rooms 20 --out rooms-F.json
 
-## Arms
+- **A person's hand** (`other`): 200 scenes as they come and 40 of each panel `straight`, `slow`,
+  `stop`, `turn`. **Errands**: 12 scenes each of hands left out of view, that visit a shadow and
+  come back, pause, hop and go slowly. The camera's sight is given as a function of places.
+- **The arm's own hand** (`own`): 200 scenes; the map is given the place the arm's joint readings
+  name by the program's forward kinematics while the hand is out of view.
+- **At rest** (`stays`): 8 scenes of a thing at rest out of view for 1,000 moments.
+- **Heard** (`heard`): 60 rooms in which a thing at rest out of view is heard moving to another
+  hidden place; each cue's place (the ear's direction and distance) is a report of `heard=`.
+- **Rooms** (`rooms.py`): a camera whose field of 40 degrees turns over the room once and then
+  over one half. `kinds` (eight things of four kinds), `moved` (a thing moved while the camera
+  looks away), `many` (8, 32 and 128 things of as many kinds), `arrive` (things arrive, one is
+  taken away unseen and put back elsewhere), and the state check.
 
-| Arm | What it is |
-| --- | --- |
-| `space` | `cadence.space` at its settings: lessons that hold only reports, the curriculum above, no map of where things are seen. Its `shift` is read at its mean. |
-| `space`, read at the peak | The same lives, `shift` read at its highest peak (`read="peak"`). |
-| `space`, the seen movement | The same lives, a thing that moves by itself moved by its last seen movement as it is (`read="seen"`): the control the brain's answer is read against. |
-| `space-site` | As `space`, taught on the chamber's geometry alone (`vary` off) with the map of where things are seen (`sight=0.9`), read at the mean and at the peak. |
-| `space-report` | As `space`, a moving thing in view taking the report itself (`smooth=False`). |
-| `space-joints` | As `space`, given the arm's joint readings. |
-| `last_seen`, `kalman` | The controls that learn nothing, on every panel. The Kalman filter's two noise terms are fitted on 200 training scenes a case; on `heard` it takes a cue as a report. |
-| `reckoning`, `encoders` | The arm's true kinematics, on `own`. |
-| `lstm-offline`, `lstm-online`, `transformer-offline`, `transformer-online` | At the `space` brain's parameter count, on `own` and on `other`, with `camera` lessons and with `truth` lessons. |
+Controls on the hand panels: last seen and the constant-velocity Kalman filter (its two noise
+terms fitted on 100 training scenes of the founder). The map at `empty="keep"` is read beside it.
 
 ## Gates
 
-Errors are distances in the plane, a mean over a founder's scenes and then over the twelve
-founders. A standard error is over the twelve founders, of the founder-paired difference.
+Means over a founder's scenes, then over the twelve founders; a standard error is over the
+founders.
 
-- **S1, in view.** `space`'s error in view on `own` and on `other` is at or under 1.1 times the
+- **S1, in view.** On `other` and on `own`, the map's error in view is at or under 1.1 times the
   camera's own error on the same steps.
-- **S2, out of view** (as amended on the issue before any declared run). On `other`, overall:
-  `space`'s error out of view is at or under the offline LSTM's and the offline transformer's
-  taught with the same kind of lessons, and under the Kalman filter's and last seen's by two
-  standard errors. By panel: on `slow` and `stop` it is under the Kalman filter's by two
-  standard errors; `straight` and `turn` are reported beside it. On the recorded scene
-  [`scenes/promise.json`](scenes/promise.json) (a hand goes behind a pillar at 0.5 m/s, rests
-  there for 70 moments and comes back): the point error is at or under last seen's on the same
-  rows, and the stated area holds the hand on .85 to .95 of the hidden moments. The reason: a
-  thing out of view either kept going or stopped, nothing the camera reports says which, and
-  the point that is right on average lies between the two; on development founders the matched
-  learners hedge the same way (5.4 cm to 7.4 cm on straight movement against the filter's
-  1.3 cm). Lessons of both kinds are read and stated with every row.
-- **S3, it stays.** On `stays_own` and `stays_other`: the answer moves by 0 over the 1,000 steps
-  at rest out of view, and on `stays_other` the error over the last 100 steps is at or under the
-  error while the thing was seen.
-- **S4, another sense.** On `heard`: the error after the last cue is at or under the cues' own
-  error (the distance from the point a cue names to the true position).
-- **S5, uncertainty.** On `own` and on `other`, in view and out of view: the area at .90 holds
-  the true position on .85 to .95 of the steps.
-- **S6, several things.** On `crossing`: the last answers name each hand's own position in .95
-  of the scenes or more.
-- **S7, cost.** Milliseconds a step on one core, stated beside a camera's 33 ms, natively and
-  under Pyodide.
-- **S8, beside the learners.** On each of the four `other` panels, `space`'s error is at or
-  under the matched LSTM's and the matched transformer's, offline, with `camera` lessons; the
-  `truth` rows and the online rows are reported. The matched learners are built for scenes of
-  one thing, so S6 is read beside the Kalman filter alone.
+- **S3, it stays.** On `stays`, the answer moves by 0 over the hidden moments, and the error over
+  the last 100 of them is at or under the error while the thing was seen.
+- **S4, another sense.** On `heard`, the error after the last cue is at or under the cues' own
+  error (the distance of the last three cues' points from the true place).
+- **S7, cost.** Milliseconds a moment natively on one core and under Pyodide, stated beside a
+  camera's 33 ms; the page's bar is 30 ms under Pyodide with four things.
+- **S9, what is where.** In `kinds`, for the things in view and for those last seen 500 moments
+  before: "where is" each kind holds each of its things within 5 cm at .95, the mean distance of
+  the nearest place is at or under 1.5 times the seen error (the camera's mean error, 1.25 cm),
+  and "what is at" each thing's place names its kind at .95. Two things of one kind are two
+  places.
+- **S10, the turning camera.** The things last seen 500 moments before in `kinds` are those the
+  turning camera left behind: they are read as S9 says. The body that moves is not built and is
+  reported open.
+- **S11, a change unseen (as amended).** In `moved`, the old place is held until the camera sees
+  there again (.95), and within five moments of the camera having seen both the new place and
+  the old place the new place is reported and nothing is at the old (.95).
+- **S12, many things.** In `many`, 8, 32 and 128 things are each held by kind (where within
+  5 cm) and by place (what) at .95.
+- **S13, what there is.** In `arrive`, the inventory lists the things present within 5 cm, with
+  no extra and none missed, at .95 of the things at every reading; the thing taken away is "not
+  known where" after the camera has swept over its place; put back elsewhere it is found as one
+  thing.
+- **S14, the state.** On `stays` the hidden answer moves by 0 for 1,000 moments; in the state
+  check the map after 1,000 moments with nothing seen holds its eight things within 5 cm, a
+  file written and read back answers alike, and the emptied map reports no thing.
 
-Every table states parameters, analytic multiply-accumulates of the training and milliseconds a
-step. A gate that fails is reported with the term that fails it.
+Reported beside the gates, no gate: the hand's error out of view by panel and by steps unseen,
+the area (the smallest set of cells holding .90 and .95 of the hand's activity) and its coverage,
+beside last seen and the Kalman filter; the two recorded scenes `scenes/promise.json` and
+`scenes/promise-folded.json`, which took no part in any choice.
+
+Dropped from this run, with the reason: S2, S5, S6 and S8 are gates of the second stage (learned
+physics) and of anticipation; the map does not move a thing it does not see. S10's moving body is
+not built.

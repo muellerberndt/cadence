@@ -139,6 +139,48 @@ def taught(scenes: list[w.Scene], held: Any, per: int = 16, rows: int = 32) -> A
     return arm.named
 
 
+def stays(scenes: list[w.Scene], settings: dict[str, Any]) -> dict[str, Any]:
+    """S3: each scene's hidden stretch at rest: how far the map's answer moved over it, and its
+    error over the last 100 moments against its error while the thing was seen."""
+    moved, last, seen = [], [], []
+    for scene in scenes:
+        answers, _, _ = follow(scene, settings)
+        err = tr.errors(scene, answers)[:, 0]
+        hidden = np.flatnonzero(~scene.in_view[:, 0])
+        hidden = hidden[hidden > 0]
+        moved.append(float(np.ptp(answers[hidden[-1000:], 0], axis=0).max()))
+        last.append(float(err[hidden[-100:]].mean()))
+        seen.append(float(err[1:][scene.in_view[1:, 0]].mean()))
+    return {"scenes": len(scenes), "moved": float(np.max(moved)), "last 100": float(
+        np.mean(last)), "while seen": float(np.mean(seen))}
+
+
+def heard(scenes: list[w.Scene], settings: dict[str, Any]) -> dict[str, Any]:
+    """S4: rooms where a thing at rest out of view is heard moving to another hidden place.
+    The map takes each report and each cue's place (``heard=``, by the ear's direction and
+    distance); the answer for a thing is the place its kind holds."""
+    from cadence.space.map import Map
+
+    answers = []
+    for scene in scenes:
+        assert scene.start is not None and scene.what is not None
+        held = Map(scene.geometry.plane, **settings)
+        held.moment(seen=[(int(k), p) for k, p in zip(scene.what, scene.start, strict=True)])
+        out = np.zeros((scene.steps, scene.things, 2))
+        out[0] = scene.start
+        for t in range(1, scene.steps):
+            seen = [(int(r[2]), r[:2]) for r in tr.detections(scene, t)]
+            cues = [(int(c[2]), w.cartesian(scene.geometry, c[None, :2])[0])
+                    for c in tr.sounds(scene, t)]
+            held.moment(seen=seen, heard=cues, lit=seeing(scene, t))
+            for k, kind in enumerate(scene.what):
+                got = held.where_is(int(kind))
+                out[t, k] = got[np.argmin(np.linalg.norm(got - out[t - 1, k], axis=1))] if len(
+                    got) else out[t - 1, k]
+        answers.append(out)
+    return tr.heard(scenes, answers)
+
+
 MIX = (("straight", 0.10), ("slow", 0.10), ("stop", 0.10), ("turn", 0.10), ("left", 0.15),
        ("visit", 0.15), ("pause", 0.10), ("hops", 0.10), ("slowhand", 0.10))
 
@@ -197,8 +239,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--save", type=Path, help="write the trained map here")
     parser.add_argument("--own", type=int, default=0, help="read the arm's own hand: a sense "
                         "of its joint readings taught on this many of --founder's scenes")
-    parser.add_argument("--per", type=int, nargs="+", default=[16],
-                        help="tuned readings a joint of the taught sense")
+    parser.add_argument("--per", type=int, nargs="*", default=[16],
+                        help="tuned readings a joint of the taught sense (none: kinematics alone)")
+    parser.add_argument("--stays", type=int, default=0, help="scenes of a thing at rest out of "
+                        "view for 1,000 moments (S3)")
+    parser.add_argument("--heard", type=int, default=0, help="rooms of a thing heard moving out "
+                        "of view (S4)")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
     arms: dict[str, Any] = {
@@ -224,7 +270,7 @@ def main(argv: list[str] | None = None) -> int:
 
         scenes = tr.test_scenes("own", args.founder, args.test)
         geometry = scenes[0].geometry
-        training = w.scenes("own", tr.seed(args.founder, "train"), args.own)
+        training = w.scenes("own", tr.seed(args.founder, "train"), args.own if args.per else 0)
         held = Map(geometry.plane, cells=tuple(args.cells))
         rows["own"] = read(scenes, {"map, near, reach 0.15 m": arms[next(iter(arms))]}, None)
         for name, felt in [("map, felt by the program's forward kinematics",
@@ -238,6 +284,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"== the arm's own hand ({len(scenes)} scenes)", flush=True)
         for arm, table in rows["own"].items():
             print(line(arm, table), flush=True)
+    if args.stays and args.founder is not None:  # S3: at rest out of view for 1,000 moments
+        rows["stays"] = stays(w.scenes("other", tr.seed(args.founder, "stays"), args.stays,
+                                       kind="stays"), arms[next(iter(arms))])
+        print("== stays", rows["stays"], flush=True)
+    if args.heard and args.founder is not None:  # S4: a thing heard moving out of view
+        rows["heard"] = heard(w.scenes("room", tr.seed(args.founder, "heard"), args.heard,
+                                       kind="heard"), arms[next(iter(arms))])
+        print("== heard", rows["heard"], flush=True)
     curve: list[dict[str, Any]] = []
     if args.physics is not None and args.founder is not None:  # learned physics, as it watches
         from cadence.space.map import Map

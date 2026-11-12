@@ -8,8 +8,9 @@ reports and the sector as a function of places; the room's truth is kept beside 
 
 - ``kinds`` (S9): eight things of four kinds, two of each; asked "where is" each kind and "what
   is at" each thing's place, for things in view and things last seen 500 moments before.
-- ``moved`` (S11): a thing on the unswept half is moved there while the camera looks away; read
-  before the camera sweeps there again and five moments after it sees the thing anew.
+- ``moved`` (S11, as amended): a thing on the unswept half is moved there while the camera looks
+  away; read before the camera sweeps there again and five moments after it has seen both the
+  new place and the old.
 - ``many`` (S12): 8, 32 and 128 things of as many kinds, one sweep, then 500 moments of the
   camera looking at the floor beside the room; read by kind and by place.
 - ``arrive`` (S13): things arrive in view, a second thing of a kind arrives apart, a thing is
@@ -131,38 +132,43 @@ def kinds_panel(rng: np.random.Generator, settings: dict[str, Any]) -> dict[str,
 
 
 def moved_panel(rng: np.random.Generator, settings: dict[str, Any]) -> dict[str, Any]:
-    """S11: a thing on the right half is moved there at moment 300 while the camera sweeps the
-    left; at moment 500 the camera turns to the right half. Read at 499 (the old place held,
-    nothing at the new) and five moments after the camera first sees it at the new place."""
+    """S11 (as amended): a thing on the right half is moved there at moment 300 while the camera
+    sweeps the left; at moment 500 the camera turns to the right half. Read at 499 (the old
+    place held) and five moments after the camera has seen both the new place and the old
+    place (the new place reported, nothing at the old)."""
     from cadence.space.map import Map
 
-    truth = places(rng, 6, 0.25, None)
-    right = int(np.argmax(truth[:, 0]))
-    new = places(rng, 1, 0.0, "right")[0]
-    while np.linalg.norm(new - truth[right]) < 0.3 or np.min(
-            np.linalg.norm(np.delete(truth, right, 0) - new, axis=1)) < 0.2:
-        new = places(rng, 1, 0.0, "right")[0]
+    others = places(rng, 5, 0.25, None)
+    old, new = places(rng, 2, 0.3, "right")
+    def angle(point: np.ndarray) -> float:  # from the camera: the left sweep reaches 75 degrees
+        return float(np.degrees(np.arctan2(point[1] - EYE[1], point[0] - EYE[0])))
+
+    while np.min(np.linalg.norm(others - old, axis=1)) < 0.25 or np.min(
+            np.linalg.norm(others - new, axis=1)) < 0.25 or max(angle(old), angle(new)) > 65:
+        old, new = places(rng, 2, 0.3, "right")
+    truth = np.vstack([others, old])
     kinds = np.arange(6)
-    steps = 800
+    steps = 900
     where = np.broadcast_to(truth, (steps, 6, 2)).copy()
-    where[300:, right] = new
+    where[300:, 5] = new
     heading = headings(steps)
     heading[500:] = headings(steps - 500 + 120, half="right")[120:]
     held = Map(PLANE, **settings)
     present = np.ones((steps, 6), dtype=bool)
     run(held, kinds, where[:500], present[:500], heading[:500], rng)
-    before = held.where_is(int(kinds[right]))
-    old_held = bool(len(before) and np.linalg.norm(before - truth[right], axis=1).min() < 0.05)
-    first = next(t for t in range(500, steps) if sees(heading[t])(new[None])[0])
-    run(held, kinds, where[500 : first + 6], present[500 : first + 6], heading[500 : first + 6],
-        rng)
-    after = held.where_is(int(kinds[right]))
+    before = held.where_is(5)
+    old_held = bool(len(before) and np.linalg.norm(before - old, axis=1).min() < 0.05)
+    seen_new = next(t for t in range(500, steps) if sees(heading[t])(new[None])[0])
+    seen_old = next(t for t in range(500, steps) if sees(heading[t])(old[None])[0])
+    last = max(seen_new, seen_old) + 6
+    run(held, kinds, where[500:last], present[500:last], heading[500:last], rng)
+    after = held.where_is(5)
     return {"old place held before": old_held,
-            "new place within 5 moments": bool(len(after) and np.linalg.norm(
+            "new place reported": bool(len(after) and np.linalg.norm(
                 after - new, axis=1).min() < 0.05),
             "nothing at the old place": bool(not len(after) or np.linalg.norm(
-                after - truth[right], axis=1).min() > 0.15),
-            "seen at": int(first)}
+                after - old, axis=1).min() > 0.15),
+            "moments to both seen": int(last - 6 - 500)}
 
 
 def many_panel(rng: np.random.Generator, count: int, settings: dict[str, Any]
@@ -171,9 +177,9 @@ def many_panel(rng: np.random.Generator, count: int, settings: dict[str, Any]
     camera on the floor beside it (nothing seen); read by kind and by place."""
     from cadence.space.map import Map
 
-    truth = places(rng, count, 0.10 if count > 32 else 0.2)
+    truth = places(rng, count, 0.11 if count > 32 else 0.2)
     kinds = np.arange(count)
-    units = 16 if count <= 16 else 32
+    units = 16 if count <= 16 else 32 if count <= 32 else 64
     held = Map(PLANE, units=units, kinds=max(count, units), **settings)
     steps = 120
     run(held, kinds, np.broadcast_to(truth, (steps, count, 2)),
@@ -221,6 +227,30 @@ def arrive_panel(rng: np.random.Generator, settings: dict[str, Any]) -> dict[str
     return marks
 
 
+def state_check(rng: np.random.Generator, settings: dict[str, Any]) -> dict[str, Any]:
+    """S14: a room read from the map's carried state alone: the map after a room, written to a
+    file and read back, answers as before; emptied, it reports no thing."""
+    import tempfile
+
+    from cadence.space.map import Map
+
+    truth = places(rng, 8, 0.2)
+    kinds = np.arange(8)
+    held = Map(PLANE, **settings)
+    run(held, kinds, np.broadcast_to(truth, (120, 8, 2)), np.ones((120, 8), dtype=bool),
+        headings(120), rng)
+    for _ in range(1000):
+        held.moment(lit=sees(-np.pi / 2))
+    with tempfile.TemporaryDirectory() as folder:
+        again = Map.load(held.save(Path(folder) / "map.npz"))
+    same = all(np.array_equal(held.where_is(k), again.where_is(k)) for k in kinds)
+    after = match(again, kinds, truth)
+    again.reset()
+    again.moment()
+    return {"after 1,000 moments": after, "file answers alike": same,
+            "emptied reports nothing": again.things() == []}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--founder", type=int, default=0)
@@ -235,6 +265,7 @@ def main(argv: list[str] | None = None) -> int:
     out["many"] = {str(n): [many_panel(rng, n, args.settings)
                             for _ in range(max(args.rooms // 4, 2))] for n in (8, 32, 128)}
     out["arrive"] = [arrive_panel(rng, args.settings) for _ in range(args.rooms)]
+    out["state"] = state_check(rng, args.settings)
     k = out["kinds"]
     print(f"S9 kinds: in view where {np.mean([r['in view']['where'] for r in k]):.2f} what "
           f"{np.mean([r['in view']['what'] for r in k]):.2f} error "
@@ -244,7 +275,7 @@ def main(argv: list[str] | None = None) -> int:
           f"{100 * np.mean([r['seen 500 before']['error'] for r in k]):.2f} cm", flush=True)
     m = out["moved"]
     print("S11 moved: " + ", ".join(f"{key} {np.mean([r[key] for r in m]):.2f}" for key in (
-        "old place held before", "new place within 5 moments", "nothing at the old place")),
+        "old place held before", "new place reported", "nothing at the old place")),
         flush=True)
     for n, rows in out["many"].items():
         print(f"S12 {n} things: where {np.mean([r['where'] for r in rows]):.2f} what "
@@ -257,6 +288,7 @@ def main(argv: list[str] | None = None) -> int:
               f"{np.mean([r[mark]['missed'] for r in a]):.2f} things "
               f"{np.mean([r[mark]['things'] for r in a]):.2f} not known where "
               f"{np.mean([1 in r[mark]['not known where'] for r in a]):.2f}", flush=True)
+    print(f"S14 state: {out['state']}", flush=True)
     if args.out:
         args.out.write_text(json.dumps(out, indent=1, default=float))
     return 0
