@@ -30,13 +30,15 @@ HAND = 0
 ERRANDS = ("left", "visit", "pause", "hops", "slowhand")
 
 
-def lit_cells(scene: w.Scene, t: int, centers: np.ndarray) -> np.ndarray:
-    """Which cells the camera sees at step ``t`` of a scene of one thing: none while the
-    camera is off (a step at which the thing lies in the camera's view with no report)."""
+def seeing(scene: w.Scene, t: int) -> Any:
+    """Whether the camera sees places at step ``t`` of a scene of one thing, a function of
+    ``(points, 2)`` places: none while the camera is off (a step at which the thing lies in the
+    camera's view with no report)."""
     if not scene.in_view[t, 0] and bool(
             w.visible(scene.geometry, scene.truth[t, :1], scene.joints[t])[0]):
-        return np.zeros(len(centers), dtype=bool)
-    return np.asarray(w.visible(scene.geometry, centers, scene.joints[t]), dtype=bool)
+        return lambda points: np.zeros(len(points), dtype=bool)
+    return lambda points: np.asarray(w.visible(scene.geometry, points, scene.joints[t]),
+                                     dtype=bool)
 
 
 def follow(scene: w.Scene, held: Any = None, learn: bool = False, felt: Any = None
@@ -65,7 +67,7 @@ def follow(scene: w.Scene, held: Any = None, learn: bool = False, felt: Any = No
         seen = [(HAND, feed["report"][t])] if feed["seen"][t] else []
         named = None if felt is None or feed["seen"][t] else felt(feed["joints"][t])
         held.moment(seen=seen, felt=[] if named is None else [(HAND, named)],
-                    lit=lit_cells(scene, t, held.centers), learn=learn)
+                    lit=seeing(scene, t), learn=learn)
         mass = held.sheet(HAND).ravel()
         if (mass > 0).any():  # of several things of the kind, the one a sense wrote last
             mass = mass * (held.clock <= held.clock[mass > 0].min() + 0.5)

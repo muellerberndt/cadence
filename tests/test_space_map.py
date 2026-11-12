@@ -151,6 +151,8 @@ def test_a_thing_in_two_pieces_of_doubt_is_one_entry_and_a_settle_is_kept_by_swe
     assert seen["map"][0].sum() == 0 and seen["map"][1].sum() > 0     # the sheet settles first
     assert seen["where"][1].sum() == 0 and seen["where"][2].sum() > 0  # then where and what
     assert np.array_equal(seen["map"][1], seen["map"][2])
+    assert {"held", "reference", "clock", "doubt", "lost"} <= set(seen)
+    assert seen["doubt"][1].sum() > 0 and seen["clock"].shape == (3, 32, 26)
     held.where_is(HAND)
     assert held.trajectory["asked"] == "where_is" and held.trajectory["what"][2, HAND] > 0
     held.moment(seen=[(HAND, [0.3, 0.6])], lit=lit)               # a report ends the doubt
@@ -201,3 +203,22 @@ def test_a_brain_holds_a_map_saves_it_and_reads_where_and_what(tmp_path):
     again.space.moment()
     assert again.space.things() == [] and not again.space.observation().any()
     assert cd.Brain.load(first).space is None
+
+
+def test_a_thing_just_outside_the_field_stays_when_its_cell_middle_comes_into_view():
+    held = Map(PLANE)
+    apple = np.array([0.05, 0.6])                                 # its cell's middle is x 0.031
+
+    def field(points):                                            # the camera turns: edge at 0.04
+        return points[:, 0] < 0.04
+
+    held.moment(seen=[(APPLE, apple)])
+    for _ in range(3):                                            # the camera looks elsewhere
+        held.moment(lit=lambda points: points[:, 0] < -0.5)
+    assert field(held.centers)[np.argmax(held.weights(apple))]    # a cell of the apple is in view
+    for _ in range(5):
+        held.moment(lit=field)                                    # and the apple is not
+    (thing,) = held.things()
+    assert thing["state"] == "held" and np.linalg.norm(thing["place"] - apple) < 0.0005
+    held.moment(lit=lambda points: points[:, 0] < 0.2)            # the field reaches its place
+    assert held.things()[0]["state"] == "near"

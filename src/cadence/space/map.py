@@ -83,14 +83,17 @@ class Map:
     empty; cells farther than two reaches take none), ``step`` (a report within this distance
     of a piece of its kind's activity is that thing, seen again) and ``stride`` (a report of a
     kind with none of it within ``step``: the nearest piece of the kind within ``stride`` is
-    that thing, moved unseen; with none, it is a new thing).
+    that thing, moved unseen; with none, it is a new thing) and ``margin`` (a place a sense wrote
+    the moment before counts as seen where the camera sees a place this near it).
 
     With ``trace`` every settle begins with the sheet at rest, runs two sweeps and is kept
     by sweep in ``trajectory``: ``asked`` (``"moment"``, ``"where_is"`` or ``"what_is_at"``),
-    ``sweeps`` (2) and the activity above rest of ``map`` ``(sweeps + 1, cells x, cells y,
-    units)``, ``where`` ``(sweeps + 1, cells x, cells y)`` and ``what`` ``(sweeps + 1,
-    units)``: row 0 is the state the settle begins from, row 1 the sheet settled and row 2
-    ``where`` and ``what`` settled on it.
+    ``sweeps`` (2) and every region's activity above rest by sweep: ``map`` and ``held``
+    ``(sweeps + 1, cells x, cells y, units)``; ``where``, ``clock`` and ``doubt``
+    ``(sweeps + 1, cells x, cells y)``; ``what``, ``reference`` and ``lost`` ``(sweeps + 1,
+    units)``. Row 0 is the state the settle begins from, row 1 the sheet settled and row 2
+    ``where`` and ``what`` settled on it. The moments a cell's clock counts are its potential
+    (``Map.clock``), which its activity saturates over.
 
     ``moment`` takes one moment's reports and the cells in sight. ``where_is`` and
     ``what_is_at`` ask by settling, ``things`` reads the inventory off the map and ``reset``
@@ -100,7 +103,8 @@ class Map:
                  cells: tuple[int, int] = (32, 26), *, units: int = 16, kinds: int | None = None,
                  weight: int = 3, codes: np.ndarray | None = None, level: float = 0.02,
                  empty: str = "near", reach: float = 0.15, step: float = 0.15,
-                 stride: float = 0.5, seed: int = 0, trace: bool = False,
+                 stride: float = 0.5, margin: float = 0.02, seed: int = 0,
+                 trace: bool = False,
                  physics: Any = None, backend: Any = "cpu"):
         from ..brain import Apical
         from ..brain import Brain as Graph
@@ -127,9 +131,10 @@ class Map:
         self.plane, self.cells, self.units = (x_low, x_high, y_low, y_high), (nx, ny), int(units)
         self.level, self.empty = float(level), empty
         self.reach, self.step, self.stride = float(reach), float(step), float(stride)
+        self.margin = float(margin)
         self.settings = {"plane": list(self.plane), "cells": [nx, ny], "units": self.units,
                          "level": self.level, "empty": empty, "reach": self.reach,
-                         "step": self.step, "stride": self.stride}
+                         "step": self.step, "stride": self.stride, "margin": self.margin}
         self.count = count = nx * ny
         d = self.units
         self._low = np.array([x_low, y_low])
@@ -392,8 +397,13 @@ class Map:
             self.trajectory = {
                 "asked": asked, "sweeps": sweeps,
                 "map": rows[:, run["map"]].reshape(sweeps + 1, nx, ny, self.units),
+                "held": rows[:, run["held"]].reshape(sweeps + 1, nx, ny, self.units),
                 "where": rows[:, run["where"]].reshape(sweeps + 1, nx, ny),
-                "what": rows[:, run["what"]].copy()}
+                "what": rows[:, run["what"]].copy(),
+                "reference": rows[:, run["reference"]].copy(),
+                "clock": rows[:, run["clock"]].reshape(sweeps + 1, nx, ny),
+                "doubt": rows[:, run["doubt"]].reshape(sweeps + 1, nx, ny),
+                "lost": rows[:, run["lost"]].copy()}
         return np.asarray(np.asarray(state.v, dtype=np.float64)[0])
 
     def moment(self, seen: Any = (), heard: Any = (), felt: Any = (), lit: Any = None,
@@ -401,7 +411,12 @@ class Map:
         """One moment. ``seen``, ``heard`` and ``felt`` hold this moment's reports by sense,
         each a kind and a place ``(kind, (x, y))``: what the camera sees, what a sound names
         and what the body's own readings name. ``lit`` says which cells the camera sees: flags
-        ``(cells,)`` or a function of ``(points, 2)`` places; None where nothing says.
+        ``(cells,)`` or a function of ``(points, 2)`` places; None where nothing says. A thing
+        is seen empty where the camera sees its held place (the mean of its piece) and no
+        report claims it: a function judges the place itself, flags the cell that holds it. A
+        place a sense wrote the moment before counts as seen where the camera sees a place within
+        ``margin`` of it, the camera's own error: a hand last seen at a shadow's edge may have
+        been reported just past it.
 
         A report writes its place on its kind's units, in place of what its cells carried, and
         the pieces of its kind's activity within ``step`` of it are that thing: they are
@@ -425,6 +440,7 @@ class Map:
             sight = np.asarray(lit(self.centers), dtype=bool).reshape(self.count)
         elif lit is not None:
             sight = np.asarray(lit, dtype=bool).reshape(self.count)
+        looks = self._looks(lit, sight)
         physics = self.physics
         before = self.potential.copy()  # the map as the moment before left it
         sensed = self.clock < 0.5  # the cells a sense wrote the moment before
@@ -466,27 +482,32 @@ class Map:
             fresh |= cells
             lost[units] = 0.0  # a thing of the kind with no place is found
         carried &= ~claimed
-        # what the map carried into a seen cell, with no report that claims it
-        bare = activity * (sight[:, None] & ~claimed)
-        if (bare > self._floor).any():
-            for piece in self._pieces(np.asarray((bare > self._floor).any(axis=1))):
-                code = bare[piece].sum(axis=0)
-                kind_here = self.kind_of(code)
-                units = (np.flatnonzero(code > self._floor) if kind_here is None
-                         else np.flatnonzero(self.codes[kind_here]))
-                share = bare[piece][:, units].max(axis=1)
-                at = (share @ self.centers[piece]) / share.sum()
-                if self.empty == "keep":
+        if physics is not None and sight.any():  # the moving mass the camera sees is not there
+            gone = physics.mass[sight].sum(axis=2)
+            self.potential[sight] = np.maximum(self.potential[sight] - gone, 0.0)
+            physics.mass[sight] = 0.0
+            activity = self._activity()
+        # a thing whose held place the camera sees, with no report that claims it, is not there
+        empty = np.zeros(self.count, dtype=bool)
+        for kind in self._present(activity):
+            units = np.flatnonzero(self.codes[kind])
+            own = self._of_kind(kind, activity) * ~claimed[:, units].any(axis=1)
+            for piece in self._pieces(np.asarray(own > self._floor)):
+                at = (own[piece] @ self.centers[piece]) / own[piece].sum()
+                # a place a sense wrote the moment before is a report, as far off as the
+                # camera's error: the camera sees it where it sees a place within ``margin``
+                near_by = self.margin if sensed[piece].any() else 0.0
+                if self.empty == "keep" or not looks(at, near_by):
                     continue  # the thing stays where the map held it
                 carried[np.ix_(piece, units)] = False
-                if physics is not None:  # the mass it holds out of sight near there is the thing
-                    rest = self._of_kind(int(kind_here), activity) if kind_here is not None else (
-                        activity[:, units].min(axis=1))
-                    apart = np.linalg.norm(self.centers - at, axis=1)
-                    if ((rest > self._floor) & ~sight & (apart <= 2.0 * self.reach)).any():
-                        continue
+                empty[piece] = True
                 if self.empty == "near":
                     apart = np.linalg.norm(self.centers - at, axis=1)
+                    if physics is not None:  # mass it holds out of sight near there is the thing
+                        rest = own > self._floor
+                        rest[piece] = False
+                        if (rest & ~sight & (apart <= 2.0 * self.reach)).any():
+                            continue
                     wide = np.exp(-0.5 * (apart / self.reach) ** 2) * (
                         ~sight & (apart <= 2.0 * self.reach))
                     if wide.any():  # onto the cells out of sight around where it was held
@@ -496,11 +517,9 @@ class Map:
                         doubt = np.where(wide > 0, 1.0, doubt)
                         continue
                 lost[units] = 1.0  # known by its kind, with no place
-        if self.empty != "keep":
-            carried &= ~sight[:, None]  # a seen cell loses what it carried
         self.lost = lost
-        # a cell a sense writes, or one seen with nothing carried into it, holds no doubt
-        sure = fresh | claimed.any(axis=1) | (sight if self.empty != "keep" else False)
+        # a cell a sense writes, or one seen empty, holds no doubt
+        sure = fresh | claimed.any(axis=1) | empty | (sight & ~(activity > self._floor).any(axis=1))
         v = self._settle(write=write if write.any() else None, carried=carried, clock=clock,
                          fresh=fresh, doubt=doubt, sure=sure)
         run = self._runs
@@ -527,6 +546,32 @@ class Map:
                     self.teach()
         self._sensed = [(kind, sense) for kind, _, sense in reports]
         self.work["moments"] += 1
+
+    def _looks(self, lit: Any, sight: np.ndarray) -> Any:
+        """Whether the camera sees a place, or a place within a distance of it along either
+        axis: ``lit`` itself where it is a function of places; with flags on cells, the flag of
+        the cell that holds the place; never where nothing says. Flags judge a place by its
+        cell's middle, so a thing just outside the field whose cell's middle is inside it reads
+        as seen: give a function where the field's edge crosses cells."""
+        nx, ny = self.cells
+        around = np.array([[0.0, 0.0], [1.0, 0.0], [-1.0, 0.0], [0.0, 1.0], [0.0, -1.0]])
+
+        def seen(at: np.ndarray, within: float = 0.0) -> bool:
+            points = np.asarray(at, dtype=np.float64)[None] + within * around
+            if callable(lit):
+                return bool(np.asarray(lit(points), dtype=bool).any())
+            if lit is None:
+                return False
+            i = np.clip(np.floor((points - self._low) / self.size).astype(np.intp), 0,
+                        [nx - 1, ny - 1])
+            return bool(sight[i[:, 0] * ny + i[:, 1]].any())
+
+        return seen
+
+    def _present(self, activity: np.ndarray) -> list[int]:
+        """The kinds whose every code unit holds activity somewhere."""
+        held = (activity > self._floor).any(axis=0)
+        return [kind for kind in range(len(self.codes)) if held[self.codes[kind] > 0].all()]
 
     def _velocities(self, kind: int, place: np.ndarray, near: list[np.ndarray],
                     before: np.ndarray, sensed: np.ndarray, weights: np.ndarray,
