@@ -286,6 +286,10 @@ def test_the_built_in_place_module_and_a_file_from_outside_load_alike_and_refusa
     from cadence.modules import load, names
 
     assert "place" in names()
+    from importlib.resources import files
+
+    written = Map.card_of(files("cadence.modules") / "place.npz")  # by this version
+    assert written["library"] == cd.__version__, "run benchmarks/tracking/build_place.py"
     built = load("place")                                         # from the installed package
     assert isinstance(built, Map) and built.things() == []
     outside = cd.load_module(built.save(tmp_path / "place.npz", card={"from": "a test"}))
