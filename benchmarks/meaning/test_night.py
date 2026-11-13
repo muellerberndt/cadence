@@ -65,9 +65,9 @@ def test_the_page_host_steps_a_saved_brain_and_takes_a_pistachio(tmp_path):
 
 def test_the_word_records_are_kept_with_the_checkpoint_and_the_brain(tmp_path):
     nt.life(6, {"word_records": 1}, blocks=TINY, streams=2, reads=2, master=False,
-            ckpt=str(tmp_path / "ck"), save=str(tmp_path / "brains"), steps=["N0", "N0b"])
-    kept = tmp_path / "ck" / "ckpt_6.records.npz"
-    assert kept.exists() and (tmp_path / "brains" / "brain_6_N0b.records.npz").exists()
+            ckpt=str(tmp_path / "ck"), save=str(tmp_path / "brains"), steps=["N0", "N1"])
+    kept = tmp_path / "ck" / "ckpt_6.records.npz"  # a correction's answer is kept as a record
+    assert kept.exists() and (tmp_path / "brains" / "brain_6_N1.records.npz").exists()
     p = nt.Parrot(6, {"word_records": 1}, streams=2)
     assert nt.load_records(p, kept) and p.records.count > 0
 
@@ -91,3 +91,10 @@ def test_the_page_host_keeps_a_correction_and_recalls_it_at_the_turn(tmp_path):
     assert np.array_equal(m.recall(m.cue), m.code("apple"))  # the same pattern recalls it
     m.moment()  # the turn opens in the gap: the record is replayed to the ear
     assert np.array_equal(m.recalled, m.code("apple"))
+
+
+def test_a_nights_sleep_scales_every_efficacy_down():
+    p = nt.Parrot(8, streams=1)
+    before = np.asarray(p.brain.learner.brain.efficacy).copy()
+    nt.sleep(p, 0.5)
+    assert np.allclose(np.asarray(p.brain.learner.brain.efficacy), before * 0.5)

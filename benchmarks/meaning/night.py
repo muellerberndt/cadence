@@ -107,6 +107,7 @@ WORDS = (KIND_NAMES + tuple(COLOURS) + tuple(MATERIALS) + DIRECTIONS + ("round",
 # make (an animal trainer's clicker); a praise word would be imitated (the parrot said it in the
 # silent turn)
 PRAISE = "<click>"
+MOMENTS = ("velocity", "velocity_bias", "second_moment", "second_moment_bias")  # learner moments
 NEW_WORD = "zabu"  # heard and babbled from birth, never a name in training: the new-word gate's
 CATCH = 2       # moments from a right reply to the pistachio in the beak
 TURN = 3        # moments of the parrot's turn
@@ -347,6 +348,7 @@ class Parrot:
         # under the association region's settled pattern of the moment the question ended, and
         # at the parrot's turn the record its present pattern recalls is replayed to its ear
         self.vocal_period = True  # the self-hearing lesson's sensitive period (gene vocal_until)
+        self.correcting = True  # the correction lesson, from the step ``corrections_from`` on
         self.records: Any = None
         self.recalled = np.zeros((streams, self.forms.width))
         if int(self.genome.get("word_records", 0)):
@@ -450,6 +452,20 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
                 continue
             graph = snap.learner.brain
             eff, bias = np.array(graph.efficacy, copy=True), np.array(graph.bias, copy=True)
+            # the lesson's step is the living brain's: the snapshot starts from no momentum of
+            # its own (else each lesson on a copy replays the living brain's velocity as well),
+            # and what the lesson adds to the optimizer's moments is added to the living brain's
+            # (else the correction's contrast never gathers momentum: a tenth of its step)
+            sl, ll = snap.learner, brain.learner
+            synced = int(g.get("lesson_moments", 0)) == 2
+            if synced:  # the step a lesson on the living brain would take, from its moments now
+                for k in MOMENTS:
+                    setattr(sl, k, np.array(getattr(ll, k), copy=True))
+                sl.contrast_updates = ll.contrast_updates
+            elif int(g.get("lesson_moments", 0)):
+                sl.velocity = np.zeros_like(sl.velocity)
+                sl.velocity_bias = np.zeros_like(sl.velocity_bias)
+            moments = {k: np.array(getattr(sl, k), copy=True) for k in MOMENTS}
             rep = snap.lesson(xm, labels, weights=w8)
             p.work["lesson_sweeps"] += float(rep.get("total_row_sweeps", 0.0))
             after = snap.learner.brain
@@ -457,6 +473,15 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
             brain.learner.brain = live_graph.with_parameters(
                 efficacy=np.asarray(live_graph.efficacy) + (np.asarray(after.efficacy) - eff),
                 bias=np.asarray(live_graph.bias) + (np.asarray(after.bias) - bias))
+            if synced:
+                for k in MOMENTS:
+                    setattr(ll, k, np.array(getattr(sl, k), copy=True))
+                ll.contrast_updates = sl.contrast_updates
+            elif int(g.get("lesson_moments", 0)):
+                for k in MOMENTS:
+                    setattr(ll, k, np.asarray(getattr(ll, k)) + (np.asarray(getattr(sl, k))
+                                                                 - moments[k]))
+                ll.contrast_updates = max(ll.contrast_updates, sl.contrast_updates)
             taken += int((w8 > 0).sum())
         return taken
 
@@ -510,9 +535,20 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
                 report = brain.learn(reward[t], done, x)
                 p.work["reward_row_sweeps"] += n * (float(report.get("free_steps", 0.0)) + 24)
             heard_self = np.array([w is not None for w in own], float)
+            if not int(g.get("babble_in_turn", 1)):
+                # the voice's practice lesson in practice alone (babbling, saying back a heard
+                # word): a reply to a trainer's question is directed song, and is not relabelled
+                # by hearing it (its lessons are the pistachio's and the correction's)
+                heard_self *= np.array([ex.question is None or ex.question.form in (
+                    "imitate", "echo") for ex in exs], float)
             if int(g["babble_lesson"]) and heard_self.any() and p.vocal_period:
                 labels = np.stack([voiced, np.zeros(n, dtype=np.int64)], axis=1)
-                report = brain.lesson(x, labels, weights=heard_self)
+                heard_x = x
+                if not int(g.get("babble_eyes", 1)):  # the voice's lesson from hearing alone
+                    heard_x = x.copy()
+                    heard_x[:, : p.inputs - p.ear] = 0.0
+                report = brain.lesson(heard_x, labels,
+                                      weights=heard_self * float(g.get("babble_weight", 1.0)))
                 p.work["lesson_sweeps"] += float(report.get("total_row_sweeps", 0.0))
             gated = [i for i in range(n) if praise[t, i] and moment_x[i]]
             if float(g["gated_lesson"]) > 0 and gated:
@@ -525,6 +561,8 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
                             (i, unit, int(exs[i].bite), float(g["gated_lesson"])))
                     moment_x[i], moment_unit[i], moment_t[i] = [], [], []
                 p.work["gated"] += teach_at(entries)
+            if echoes and not p.correcting:
+                echoes = []  # the correction is heard (and kept as a record), not taught
             if echoes and float(g["correction_lesson"]) > 0:
                 # the trainer's correction, echoed by the parrot's own imitation, learned on the
                 # state the parrot was in when it replied
@@ -543,7 +581,12 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
                 echoes = []
             if any(ex.turn <= t < ex.turn + ex.turn_length for ex in exs):
                 snaps[t] = (copy.deepcopy(brain), x.copy())
-            action = np.asarray(brain.act(x)).reshape(n, -1)
+            # while the voice is held to hear a trainer's correction, the motor plan is the
+            # inverse model's best guess, not an exploring sample (gene listen_temperature)
+            listen = g.get("listen_temperature")
+            hearing_correction = any(t in echo_due[i] for i in range(n))
+            action = np.asarray(brain.act(x, temperature=float(listen)) if (
+                listen is not None and hearing_correction) else brain.act(x)).reshape(n, -1)
         else:
             action = np.asarray(brain.act(x, greedy=True)).reshape(n, -1)
         if assoc_idx is not None:
@@ -555,8 +598,9 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
         voiced, beak = action[:, 0].astype(np.int64), action[:, 1].astype(np.int64)
         own = []
         for i, ex in enumerate(exs):
-            hearing = t < ex.turn and ex.heard[t] is not None  # the trainer has more to say
             in_turn = ex.turn <= t < ex.turn + ex.turn_length
+            # a trainer speaks (the question, or the correction after a reply): the voice is held
+            hearing = t < len(ex.heard) and ex.heard[t] is not None and not in_turn
             w = p.said(voiced[i])
             if hearing and int(g["reply_suppression"]):
                 w = None  # the voice is held while the parrot hears a trainer
@@ -569,11 +613,16 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
                     moment_x[i], moment_unit[i], moment_t[i] = [x[i]], [p.silence], [t]
             if t in echo_due[i]:
                 k = echo_due[i][t]
-                if ex.question is not None:  # the correction, kept as a record
-                    keep(i, ex.turn - 1, ex.question.answer[k])
+                if ex.question is not None and (ex.question.form not in ("echo", "imitate")
+                                                or int(g.get("echo_records", 0))):
+                    keep(i, ex.turn - 1, ex.question.answer[k])  # the answer, kept as a record
                 heard_unit = int(voiced[i])
                 if str(g.get("correction_label", "echo")) == "given" and ex.question is not None:
                     heard_unit = p.voice.index(ex.question.answer[k])  # a diagnostic arm only
+                if ex.question is not None:  # how often the echo is the word said
+                    p.work["echo_labels"] = p.work.get("echo_labels", 0) + 1
+                    p.work["echo_labels_right"] = p.work.get("echo_labels_right", 0) + int(
+                        heard_unit == p.voice.index(ex.question.answer[k]))
                 echoes.append((i, echo_due[i].pop(t), heard_unit))
             if in_turn and not ex.bite:
                 turn_x[i].append(x[i])
@@ -701,6 +750,16 @@ def read(p: Parrot, rng: np.random.Generator, forms: list[str], held: set[tuple[
     return out
 
 
+def sleep(p: Parrot, scale: float) -> None:
+    """A night's sleep between steps: every synapse's efficacy scaled down by ``scale`` (the
+    synaptic homeostasis of sleep). The day's lessons grow the efficacies until the regions
+    saturate and a new mapping can no longer be learned; scaled down, the brain keeps what it
+    knows (each unit's ranking of its inputs is unchanged) and learns again."""
+    graph = p.brain.learner.brain
+    p.brain.learner.brain = graph.with_parameters(
+        efficacy=np.asarray(graph.efficacy) * float(scale), bias=np.asarray(graph.bias))
+
+
 def save_records(p: Parrot, path: str | Path) -> None:
     """The word records beside a brain: the store's arrays, as ``load_records`` takes them."""
     assert p.records is not None
@@ -780,13 +839,15 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
     for index, (name, mix, tests) in enumerate(STEPS):
         # the sensitive period of vocal learning: the self-hearing lesson through ``vocal_until``
         p.vocal_period = order.index(name) <= order.index(until) if until in order else True
+        since = str(p.genome.get("corrections_from", "N0"))
+        p.correcting = order.index(name) >= order.index(since) if since in order else True
         if steps is not None and name not in steps or index < start[0]:
             continue
         keys, weights = list(mix), np.array(list(mix.values()))
         first = start[1] if index == start[0] else 0
         if first == 0:
             paid = []
-        earlier = [f for _, _, ts in STEPS[:index] for f in ts]
+        earlier = [f for n_, _, ts in STEPS[:index] for f in ts if steps is None or n_ in steps]
         b = first - 1  # a life resumed past a step's budget goes on to its reading
         for b in range(first, int(budget[name])):
             if b > first and b % 250 == 0:
@@ -825,6 +886,10 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
             p.brain.save(Path(save) / f"brain_{seed}_{name}.npz")
             if p.records is not None:
                 save_records(p, Path(save) / f"brain_{seed}_{name}.records.npz")
+        if control is None and float(p.genome.get("sleep_scale", 1.0)) != 1.0:
+            sleep(p, float(p.genome["sleep_scale"]))
+            if log is not None:
+                log(f"slept after {name}: efficacies x {float(p.genome['sleep_scale'])}")
         checkpoint(index + 1, 0)
     out["work"] = dict(p.work)
     out["macs"] = float((p.work["act_sweeps"] + p.work["lesson_sweeps"]
