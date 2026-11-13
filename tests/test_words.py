@@ -179,3 +179,16 @@ def test_a_heard_form_with_no_letters() -> None:
     assert not again.written[unit] and again.say(("kind", 2)) == kinds[2]
     with pytest.raises(ValueError, match="outside the letters"):
         lexicon.enter("zuzo", written=False)  # a form of letters is a written form
+
+
+def test_the_voice_chooses_a_heard_word() -> None:
+    """The parrot's voice replays a word's heard sound: the lexicon chooses which word."""
+    lexicon, kinds, _ = _named(4, namings=120)
+    unit = lexicon.enter("~3", written=False)
+    for _ in range(3):
+        lexicon.name(["~3"], {("kind", 1): 0.5})
+    assert lexicon.choose(("kind", 1), among="heard") == unit
+    assert lexicon.forms[lexicon.choose(("kind", 1))] == kinds[1] == lexicon.say(("kind", 1))
+    assert lexicon.choose(("kind", 3), among="heard") is None  # no heard form names it
+    with pytest.raises(ValueError, match="among"):
+        lexicon.choose(("kind", 1), among="sung")
