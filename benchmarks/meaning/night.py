@@ -122,7 +122,8 @@ NIGHT: dict[str, Any] = {"actor_hold": 0.93, "actor_eta": 0.1, "ear_entry": "bot
                          "reply_suppression": 1, "gated_lesson": 1.0, "recall": 0,
                          "correction_lesson": 1.0, "vocal_until": "N6", "records_agree": 3,
                          "word_records": 1, "sleep_scale": 0.5, "correction_label": "given",
-                         "babble_in_turn": 0}
+                         "babble_in_turn": 0, "ear_motor": 1, "eyes_entry": "both",
+                         "lesson_moments": 2}
 # the steps a night lives: echo across the gap (N0b) is left out, since the correction's label
 # is the voice's take of the trainer's word and no longer the parrot's own echo of it
 NIGHT_STEPS = ["N0", "N1", "N2", "N3", "N4", "N5", "N6"]
@@ -495,7 +496,9 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
                  if p.records is not None else None)
     match = float(g.get("records_match", 0.85))
 
-    def recall(cue: np.ndarray) -> np.ndarray:
+    read_slots: dict[int, list[int]] = {}  # a stream's recalled records, labile until judged
+
+    def recall(cue: np.ndarray, i: int = -1) -> np.ndarray:
         assert p.records is not None
         if not p.records.count or not np.any(cue):
             return np.zeros(p.forms.width)
@@ -512,7 +515,20 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
         for h in range(1, heads):
             if got.first(h) < 0 or not np.array_equal(p.records.value(got, h), value):
                 return np.zeros(p.forms.width)
-        return value if cos >= match else np.zeros(p.forms.width)
+        if cos < match:
+            return np.zeros(p.forms.width)
+        if i >= 0:
+            read_slots[i] = [got.first(h) for h in range(heads)]
+        return value
+
+    def reconsolidate(i: int, cue: np.ndarray, word: str | None) -> None:
+        """A recalled record is labile until the reply it gave is judged: paid, it is kept under
+        the present pattern; corrected, it is rewritten with the trainer's word under it."""
+        assert p.records is not None
+        for slot in read_slots.pop(i, []):
+            value = p.forms(word) if word is not None else np.asarray(p.records.values[slot])
+            p.records.write(cue, value, recognised=int(slot))
+            p.work["reconsolidated"] = p.work.get("reconsolidated", 0) + 1
 
     def keep(i: int, at: int, word: str) -> None:
         if p.records is not None and learn and at in assoc_at:
@@ -521,11 +537,14 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
 
     for t in range(moments):
         if p.records is not None:
+            p.recalled_kept = p.recalled if t > 0 else np.zeros((n, p.forms.width))
             p.recalled = np.zeros((n, p.forms.width))
             for i, ex in enumerate(exs):
                 if not ex.bite and ex.turn <= t < ex.turn + ex.turn_length \
                         and ex.turn - 1 in assoc_at:
-                    p.recalled[i] = recall(assoc_at[ex.turn - 1][i])
+                    first = t == ex.turn  # the records are read once, as the turn opens
+                    p.recalled[i] = recall(assoc_at[ex.turn - 1][i], i) if first or not int(
+                        g.get("reconsolidate", 0)) else p.recalled_kept[i]
             for i, ex in enumerate(exs):  # the second trainer's answer, kept as a record
                 q = ex.question
                 if q is not None and learn and ex.extra.get("model") and \
@@ -642,6 +661,10 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
                 replies[i] = reply_of(said[i], scan=bool(ex.scan))
                 assert ex.question is not None
                 oks[i] = right(ex.question, replies[i])
+                if p.records is not None and learn and int(g.get("reconsolidate", 0)) and \
+                        i in read_slots and ex.turn - 1 in assoc_at:
+                    reconsolidate(i, assoc_at[ex.turn - 1][i],
+                                  None if oks[i] else ex.question.answer[0])
                 pay = oks[i] if pistachio == "earned" else (
                     False if pistachio == "withheld" else bool(rng.random() < 0.3))
                 if learn and pay:
