@@ -90,8 +90,38 @@ def errors(form: str, seed: int, genome: dict) -> None:
                               **breakdown(p, layout, form, rng)}), flush=True)
 
 
+def gaze(seed: int, genome: dict) -> None:
+    """The words stage, then "where" alone: read free (the parrot's own hold) and with the
+    teacher's focus (its own words), and the gaze's holds at the named thing."""
+    layout = tc.Layout.founder(seed)
+    p = tp.BrainPolicy(layout, genome, seed)
+    rng = np.random.default_rng(seed)
+    t = time.time()
+    for b in range(1, 121):
+        tc.run(p, layout, tp.batch(rng, dict(tp.STAGES)["words"], 64), mode(b, rng))
+    for b in range(1, 301):
+        m = mode(b, rng)
+        if m == "dagger" and genome.get("dagger_gaze"):
+            m = "dagger_gaze"
+        tc.run(p, layout, tp.batch(rng, ("where",), 64), m)
+        if b % 50 == 0:
+            items = [tp.draw("where", rng) for _ in range(64)]
+            free = tc.run(p, layout, items, "free", learn=False)
+            focus = tc.run(p, layout, items, "dagger", learn=False)
+            holds = [e.held for e in free]
+            right_hold = float(np.mean([h == [e.q.referent] for h, e in zip(holds, free,
+                                                                              strict=True)]))
+            print(json.dumps({"block": b, "s": round(time.time() - t),
+                              "free": float(np.mean([tc.score(e)["right"] for e in free])),
+                              "teacher_focus": float(np.mean([tc.score(e)["right"]
+                                                              for e in focus])),
+                              "held_right": right_hold}), flush=True)
+
+
 if __name__ == "__main__":
-    if sys.argv[1] == "rates":
+    if sys.argv[1] == "gaze":
+        gaze(int(sys.argv[2]), json.loads(sys.argv[3]))
+    elif sys.argv[1] == "rates":
         rates(float(sys.argv[2]), sys.argv[3], int(sys.argv[4]), sys.argv[5],
               json.loads(sys.argv[6]) if len(sys.argv) > 6 else None)
     else:

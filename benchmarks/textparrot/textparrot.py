@@ -222,7 +222,10 @@ class BrainPolicy:
                learn: bool) -> np.ndarray:
         if learn and labels is not None and mask.any():
             w = mask.astype(float)
-            self.brain.lesson(x, labels, weights=None if w.all() else w)
+            hold = float(self.genome.get("hold_weight", 1.0))
+            if hold != 1.0:  # the gaze's rare act (a hold) weighs more in its lesson
+                w = w * np.where(labels[:, 1] == tc.HOLD, hold, 1.0)
+            self.brain.lesson(x, labels, weights=None if np.all(w == 1.0) else w)
             self.lessons += 1
             report = self.brain.last_learning
             self.taught += int(report.get("demonstrations", mask.sum())
@@ -283,6 +286,11 @@ def read(policy: Any, layout: tc.Layout, rng: np.random.Generator, forms: tuple[
     return out
 
 
+def policy_gaze(policy: Any) -> bool:
+    """Whether DAgger lets the parrot's own hold move its focus (gene ``dagger_gaze``)."""
+    return bool(getattr(policy, "genome", {}).get("dagger_gaze", False))
+
+
 def life(seed: int, *, genome: dict[str, Any] | None = None, streams: int = 64,
          caps: dict[str, int] | None = None, dagger: float = 0.3, rehearsal: float = 0.3,
          check_every: int = 20, per: int = 64, backend: str = "cpu", log: Any = None,
@@ -306,7 +314,9 @@ def life(seed: int, *, genome: dict[str, Any] | None = None, streams: int = 64,
         for b in range(1, cap + 1):
             lived = b
             use = forms if (rng.random() > rehearsal or seen == forms) else seen
-            mode = "dagger" if (b > check_every and rng.random() < dagger) else "teacher"
+            mode = "teacher"
+            if b > check_every and rng.random() < dagger:
+                mode = "dagger_gaze" if policy_gaze(policy) else "dagger"
             tc.run(policy, layout, batch(rng, use, streams, stage=stage), mode)
             blocks += 1
             if b % check_every == 0:

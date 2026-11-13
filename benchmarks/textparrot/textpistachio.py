@@ -128,8 +128,13 @@ def inherit(policy: Any, rng: np.random.Generator, n: int = 32) -> dict[str, flo
     return out
 
 
+LIKE_LEMON = tuple(k for k in tw.TRAIN_KINDS
+                   if tw.KINDS[k][0] == "round" or tw.KINDS[k][1] in tw.FOOD)
+
+
 def known_alone(rng: np.random.Generator) -> tuple[tw.Scene, str]:
-    kind = str(rng.choice(tw.TRAIN_KINDS))
+    """A known thing alone, half the time one like the lemon (round or fruit)."""
+    kind = str(rng.choice(LIKE_LEMON if rng.random() < 0.5 else tw.TRAIN_KINDS))
     colours = [c for c in tw.KINDS[kind][3] if (kind, c) not in tw.HELD_PAIRS]
     colour = str(rng.choice(colours))
     place = tw.PLACES[int(rng.integers(len(tw.PLACES)))]

@@ -221,8 +221,8 @@ class Policy(Protocol):
 
 def run(policy: Policy, layout: Layout, items: list[tuple[tw.Scene, tw.Question]], mode: str,
         *, learn: bool = True, cap: int = 120) -> list[Episode]:
-    """One exchange a stream, all streams in lockstep. ``mode`` is ``teacher``, ``dagger`` or
-    ``free`` (``free`` never teaches)."""
+    """One exchange a stream, all streams in lockstep. ``mode`` is ``teacher``, ``dagger``,
+    ``dagger_gaze`` (the parrot's own hold too) or ``free`` (``free`` never teaches)."""
     eps = [Episode(layout, s, q, mode) for s, q in items]
     n = len(eps)
     policy.begin(n)
@@ -250,7 +250,7 @@ def run(policy: Policy, layout: Layout, items: list[tuple[tw.Scene, tw.Question]
         for k, e in enumerate(eps):
             if e.done:
                 continue
-            if mode == "dagger" and e.phase in ("answer", "closing"):
+            if mode.startswith("dagger") and e.phase in ("answer", "closing"):
                 # how often the parrot's own word is the teacher's label (the label is the
                 # teacher's word from where the parrot's own words left the exchange)
                 STATS["dagger_moments"] += 1
@@ -260,6 +260,9 @@ def run(policy: Policy, layout: Layout, items: list[tuple[tw.Scene, tw.Question]
             elif mode == "dagger":
                 # the parrot's own words; the teacher's hold
                 e.advance(layout.say(int(acts[k, 0])), int(labels[k, 1]))
+            elif mode == "dagger_gaze":
+                # the parrot's own words and its own hold (its focus follows its own gaze)
+                e.advance(layout.say(int(acts[k, 0])), int(acts[k, 1]))
             else:
                 e.advance(layout.say(int(acts[k, 0])), int(acts[k, 1]))
     return eps
