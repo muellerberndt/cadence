@@ -138,6 +138,10 @@ def anatomy(genome: dict[str, Any], inputs: int, ear: int, actions: int,
         sensory.append(Projection("sensory/ear", "association", reciprocal=False, scale=scale))
     if entry in ("module_0", "both") or first == "association":
         sensory.append(Projection("sensory/ear", first, reciprocal=False, scale=scale))
+    if int(g.get("ear_motor", 0)):
+        # the vocal motor pathway: what the ear hears reaches the voice directly (the song
+        # system's core, auditory input to the motor nuclei), beside the association's route
+        sensory.append(Projection("sensory/ear", "motor", reciprocal=False, scale=scale))
     rest = tuple(p for p in base.projections if p.pre != "sensory")
     return Genome(regions=regions, projections=tuple(sensory) + rest, label="parrot")
 
