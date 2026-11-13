@@ -242,3 +242,65 @@ and leave rules on a moving thing's places).
 ## Compute
 
 The box of T1, results synced to s3://cadence-0100-words-time-20261113 (`time326/gateT2`).
+
+# Words in time: declared protocol T3 (cadence#326, W8 to W10 on the part)
+
+Declared on 2026-11-13, committed to the lane branch `lane-0100-words-time` before the first
+declared life of T3. T1's and T2's readings stand as read. T3 runs T2's chamber, readings and
+gates on the form the lane's code takes inside the lead's `Words`: the part
+`cadence.words.episodes.Episodes`.
+
+## The brain, and what changed after T2
+
+`Words(map, parts=[Episodes(map, ahead=10)])` on the map of T2 (values, learned physics with
+its own defaults, the fix of two identities). The records, the clock, the forecast, the write
+and leave rules, the read by the dot product and the readings are T2's. What differs:
+
+- **`Words` is the lead's** (lane-0100-words at 7af082b4): the reads act as gains on each found
+  thing's concepts and compete for them (a softmax at `sharpness` .02); a read lesson teaches the
+  question's words of asking (those that name no concept of the senses); the motor hears a word
+  before it says it.
+- **The sources' gains compete as the reads do**: a softmax of the `when` activities at the
+  brain's `sharpness` (T2: each activity over the most active one), and a source whose gain is
+  under the brain's floor is not asked. A question that names no source asks the map alone, as
+  in T2.
+- **The lesson of time teaches the question's words of asking** (T2: every word of the
+  question).
+- **The part witnesses the map's moments** before each look and each question (T2: after each
+  moment); a map that holds nothing clears every resting place.
+
+Learned parameters: 7,424 (the lexicon: 256 word neurons by 29 concepts) and the physics' four
+numbers.
+
+## The chamber, founders and arms
+
+The chamber is T2's (`times.py`, `PROTOCOLS["T2"]`). The founders are 32610200 to 32610211 (twelve, no
+life in any lane). The arms are T2's: the brain; an LSTM (7,213) and a transformer (6,953),
+online and offline, given T2's tokens and tracks.
+
+## Readings and gates
+
+T2's readings and gates, unchanged:
+
+- **W8**: `W8_past` at .90; `W8_present` within .02 of `W8_map_rate` on every founder;
+  `W8_barred` at most .25 on every founder.
+- **W9**: `W9_future` within .02 of `W9_forecast_rate` on every founder, and `W9_map_kept`
+  1.000 on every founder.
+- **W10**: `W10_three` at .95.
+- The table of every arm with parameters and multiply-accumulates.
+
+A gate over founders holds where the mean over the twelve reaches its threshold and at least ten
+of twelve do.
+
+**Expectations, stated before the run.** From development founders 900 to 902 on this code (no
+gated life): the brain reads 1.000 on `W8_past`, `W8_present` (the map's rate 1.000),
+`W9_future` (the forecast's own rate 1.000, its error 1.9 cm), `W9_map_kept`, `W10_three`,
+`still_where` and `still_colour`; `still_will` .98 (.94 to 1.00); with the records barred the past
+reads .000, and with the forecast barred the future reads .000. The matched controls read .22 to
+.31 on the past, the present and the future (chance .25).
+
+## Compute
+
+One AWS c7a.4xlarge spot box (Name=cadence-0100-words-time, terminated on shutdown, a 24-hour
+guard), results synced to s3://cadence-0100-words-time-20261113 (`time326/gateT3`); the box is
+terminated when the readings are in the bucket.

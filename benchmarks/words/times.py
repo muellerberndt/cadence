@@ -20,7 +20,7 @@ beside the founder's other words; "is" is the founder's word of protocol 1. One 
 A question about time names the thing by its kind's word: ``where <was|is> the <kind>``.
 
     python times.py <founder> ['{"test_rooms": 4}']    one brain's life, its readings
-    python times.py run <out> <first founder> <founders> [jobs] [T1|T2]
+    python times.py run <out> <first founder> <founders> [jobs] [T1|T2]   (T3 runs T2's chamber)
     python times.py read <out>
 
 ``run`` writes one JSON file a life (``brain_<seed>.json``, ``<model>_<mode>_<seed>.json`` for
