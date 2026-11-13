@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any
@@ -118,6 +119,19 @@ def main(argv: list[str]) -> None:
     print("forms", json.dumps(out["forms"]), flush=True)
     out["owner"] = ii.exam_owner(p, rng)
     print("owner", json.dumps(out["owner"]), flush=True)
+    room = ii.owner_room()
+    texts = ["What colour has the apple?", "What is left of the apple?", "Where is the apple?",
+             "Where is the cup?", "What objects are round?"]
+    focus = [f for _, _, f in ii.OWNER]
+    out["demo"] = [{"things": [{"kind": t.kind, "colour": t.colour, "material": t.material,
+                                "direction": round(math.degrees(nt.bearing(room.heading,
+                                                                           t.place)), 1),
+                                "distance": round(float(np.linalg.norm(t.place)), 2),
+                                "focus": t.kind == focus[i]} for t in room.things],
+                    "question_text": texts[i], "question_audio": f"q{i:02d}.wav",
+                    "said": q["said"], "right": q["right"] >= 0.5}
+                   for i, q in enumerate(out["owner"])]
+    nt.export_spec(p, Path(target).with_suffix(".spec.json"))
     pr = ii.probes(p, rng, held, count=768)
     out["probes"] = {"accuracy": pr["accuracy"], "base_rate": pr.get("base_rate")}
     print("probes", json.dumps(out["probes"]), flush=True)
