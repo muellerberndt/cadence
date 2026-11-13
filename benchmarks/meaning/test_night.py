@@ -15,7 +15,7 @@ if str(HERE) not in sys.path:
 
 import night as nt  # noqa: E402
 
-TINY = {k: 1 for k in ("N0", "N1", "N2", "N3", "N4", "N5", "N6")}
+TINY = {k: 1 for k in ("N0", "N0b", "N1", "N2", "N3", "N4", "N5", "N6")}
 
 
 def test_every_question_form_has_one_right_answer_in_its_room():
@@ -33,7 +33,7 @@ def test_a_tiny_life_reads_every_step_and_resumes_from_its_checkpoint(tmp_path):
                     steps=["N0", "N1"])
     assert sorted(first["steps"]) == ["N0", "N1"]
     meta = json.loads((tmp_path / "ckpt_3.json").read_text())
-    assert meta["step"] == 2 and meta["block"] == 0
+    assert meta["step"] == 3 and meta["block"] == 0  # N0, N0b, N1 lie behind it
     again = nt.life(3, blocks=TINY, streams=2, reads=2, master=False, ckpt=str(tmp_path),
                     steps=["N0", "N1", "N2"])
     assert sorted(again["steps"]) == ["N0", "N1", "N2"]

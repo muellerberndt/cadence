@@ -110,7 +110,7 @@ TURN = 3        # moments of the parrot's turn
 TAIL = CATCH + 2
 # a step ends once a frozen greedy reading of its forms reaches this share (read every 100 blocks
 # once the parrot's own sampled turns earn SAMPLED_GATE of the pistachios)
-MASTERY = {"N0": .92, "N1": .92, "N2": .9, "N3": .88, "N4": .88, "N5": .9, "N6": .85}
+MASTERY = {"N0": .92, "N0b": .9, "N1": .92, "N2": .9, "N3": .88, "N4": .88, "N5": .9, "N6": .85}
 SAMPLED_GATE = 0.5
 REHEARSAL = 0.3  # the share of a step's blocks that revisit the earlier steps' forms
 NIGHT: dict[str, Any] = {"actor_hold": 0.93, "actor_eta": 0.1, "ear_entry": "module_0",
@@ -581,7 +581,8 @@ def block(p: Parrot, rng: np.random.Generator, form: str, mode: str,
 
 
 STEPS: list[tuple[str, dict[str, float], list[str]]] = [
-    ("N0", {"imitate": 0.4, "echo:dagger": 0.6}, ["imitate", "echo"]),
+    ("N0", {"imitate": 1.0}, ["imitate"]),
+    ("N0b", {"echo:dagger": 1.0}, ["echo"]),
     ("N1", {"name:model": 0.3, "name:dagger": 0.7}, ["name"]),
     ("N2", {"colour_of:model": .15, "colour_of:dagger": .35, "by_colour:model": .15,
             "by_colour:dagger": .35}, ["colour_of", "by_colour"]),
@@ -647,7 +648,7 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
          save: str | None = None, master: bool = True,
          control: str | None = None, ckpt: str | None = None) -> dict[str, Any]:
     """One founder's night through the steps; each step read on a frozen copy after it."""
-    budget = {"N0": 1500, "N1": 1500, "N2": 2000, "N3": 1500, "N4": 3000, "N5": 2000,
+    budget = {"N0": 1500, "N0b": 1500, "N1": 1500, "N2": 2000, "N3": 1500, "N4": 3000, "N5": 2000,
               "N6": 1500, **(blocks or {})}
     rng = np.random.default_rng(np.random.SeedSequence([int(seed), 334, 31]))
     held = held_of(rng)
