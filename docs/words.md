@@ -140,11 +140,58 @@ there (`what_is_at`). "What is behind you?" goes from a place around the body to
 map settles on what is on the cells behind the body (`what_is_at(cells=)`), one thing at a time.
 Every direction reads the same lexicon and the same map.
 
+## Time: was, is and will
+
+`cadence.words.episodes.Times(map)` is a `Words` brain that answers from three sources:
+
+| Source | What it holds | Read |
+| --- | --- | --- |
+| The records (`Records`) | The places things left, written as the brain lives | The latest record of the thing asked about |
+| The map | Where things are now | As `Words` reads it |
+| The forecast | The map `ahead` moments on, as its learned physics predicts | As the map, on the copy `Map.forecast(ahead)` gives |
+
+- **Writing the records.** Each moment (`brain.moment(seen=..., lit=...)`: the map's moment,
+  then the records') the brain compares where its map holds each thing with where the thing
+  rested. A thing that left its resting place by more than `leave` (0.3 m) is written as a
+  record of that place; it rests again where it moves less than `still` (0.02 m) in a moment.
+  The map keeps a thing's latest place alone, so the place before is in the records only.
+- **Addressed by the thing and the time.** A record's key is the thing's code (its kind's units
+  and its colour's) beside a drifting context (`Clock`: 64 units, each moment a small step), the
+  brain's sense of when. A recall is cued by the thing and the context now. The store is the
+  library's `LongTermMemory`, read by the dot product with its first choice whole, so a thing's
+  latest record scores first.
+- **The words for time.** The lexicon holds one more concept a source (`when`). In
+  `practice(question, answer)` the brain finds which of its sources give the teacher's answer
+  for the thing asked about. Where its sources disagree, the question's words are taught those
+  sources. "Was", "is" and "will" are words like every other: no word is wired to a source.
+- **An answer.** Each source finds the thing and reads it. The settled `when` activities, over
+  the most active one, are gains: a thing's drive is each source's concept at its gain, and the
+  motor says the most active word of that drive, or nothing under the word threshold. A
+  question that names no source asks the map.
+- **The records barred.** `brain.records.barred = True` bars every recall: a question about the
+  past then finds nothing at the records' gain, and the brain says the word of the read that
+  finds nothing ("I do not know", where it was taught one), or nothing.
+
+A map with no physics forecasts itself (what is at rest stays). With `Map(physics=True)` the
+forecast moves what the physics carries, and it reads only a copy: the map's own arrays are the
+same, bit for bit, after any question.
+
+| Setting | Default | What it sets |
+| --- | --- | --- |
+| `Times(ahead=)` | 8 | The moments the forecast looks ahead |
+| `leave` | 0.3 | The distance in metres from its resting place at which a thing is written as having left it |
+| `still` | 0.02 | The distance in metres under which a moving thing rests again |
+| `Records(capacity=)` | 256 | Records held; a full store replaces the most faded |
+| `thing` | 2.0 | Each unit of a thing's code in a key, beside a context of unit length |
+| `Clock(units=, drift=)` | 64, 0.99 | The context's units and how much of it a moment keeps |
+
 ## The chamber and its readings
 
 [`benchmarks/words`](../benchmarks/words/README.md) raises a brain over rooms of nonce words drawn
 for each founder and asks it every question form, beside an LSTM and a transformer given the same
-namings and questions ([the declared protocol](../benchmarks/words/PROTOCOL.md)).
+namings and questions ([the declared protocol](../benchmarks/words/PROTOCOL.md)). The rung of time
+(`benchmarks/words/times.py`) carries and rolls things while the parrot looks on and asks where
+they were, are and will be ([its protocols](../benchmarks/words/PROTOCOL_TIME.md)).
 
 ## Settings and cost
 
