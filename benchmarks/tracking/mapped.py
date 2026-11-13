@@ -9,6 +9,14 @@ counted. Printed beside it: last seen and the constant-velocity Kalman filter.
 
     python benchmarks/tracking/mapped.py --scenes benchmarks/tracking/scenes/promise.json
     python benchmarks/tracking/mapped.py --founder 0 --reach 0.15 0.3 0.6 --empty near keep
+
+Learned physics (``cadence.space.physics``): the map watches ``--watch`` scenes of the founder's
+world (``reaches``: a person's hand drawn as the test scenes are, from the training seed, half
+among discs of the scene's own) and is read after each number of ``--watched``, its learning
+paused while it is read:
+
+    python benchmarks/tracking/mapped.py --founder 0 --physics '{}' --watch 400 \
+        --watched 0 25 100 400
 """
 
 from __future__ import annotations
@@ -111,6 +119,18 @@ def line(name: str, table: dict[str, Any]) -> str:
         text += (f"  | area .90 holds {table['in90']:.2f} at {table['cells90']:.0f} cells, "
                  f".95 holds {table['in95']:.2f} at {table['cells95']:.0f}")
     return text
+
+
+def reaches(founder: int, count: int) -> list[w.Scene]:
+    """A founder's world to watch: ``count`` scenes of a person's hand drawn as the test scenes
+    are (straight, slow, stop, turn), from the training seed; half in the chamber's geometry,
+    half among discs of the scene's own (with the camera off for a span in one of three),
+    shuffled."""
+    base = tr.seed(founder, "train") + 6000
+    out = w.scenes("other", base, count // 2) + w.scenes("other", base + 1, count - count // 2,
+                                                          vary=True)
+    order = np.random.default_rng(base).permutation(len(out))
+    return [out[i] for i in order]
 
 
 def kinematics(geometry: w.Geometry) -> Any:
@@ -221,6 +241,12 @@ def main(argv: list[str] | None = None) -> int:
                         "view for 1,000 moments (S3)")
     parser.add_argument("--heard", type=int, default=0, help="rooms of a thing heard moving out "
                         "of view (S4)")
+    parser.add_argument("--physics", type=json.loads, help="learned physics: its settings (a "
+                        "JSON object), learned on --watch scenes of --founder's world")
+    parser.add_argument("--watch", type=int, default=400, help="scenes the physics watches")
+    parser.add_argument("--watched", type=int, nargs="+", default=[],
+                        help="read the map with physics after these numbers of scenes watched")
+    parser.add_argument("--save", type=Path, help="write the map with its taught physics here")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
     arms: dict[str, Any] = {
@@ -268,10 +294,34 @@ def main(argv: list[str] | None = None) -> int:
         rows["heard"] = heard(w.scenes("room", tr.seed(args.founder, "heard"), args.heard,
                                        kind="heard"), arms[next(iter(arms))])
         print("== heard", rows["heard"], flush=True)
+    curve: list[dict[str, Any]] = []
+    if args.physics is not None and args.founder is not None:  # learned physics, as it watches
+        from cadence.space.map import Map
+
+        world = reaches(args.founder, args.watch)
+        held = Map(world[0].geometry.plane, cells=tuple(args.cells), physics=args.physics)
+        began, watched = time.monotonic(), 0
+        for mark in sorted(set([*args.watched, args.watch])):
+            held.physics.learning = True
+            while watched < min(mark, len(world)):
+                follow(world[watched], held)
+                watched += 1
+            held.physics.learning = False  # read, not taught
+            name = f"map with physics, {watched} scenes watched"
+            point = {"watched": watched, "physics": held.physics.describe(),
+                     "seconds": time.monotonic() - began, "readings": {}}
+            for panel, scenes in panels.items():
+                point["readings"][panel] = read(scenes, {name: held}, kalman, controls=False)
+                print(line(f"{panel}: {watched} watched", point["readings"][panel][name]),
+                      flush=True)
+            curve.append(point)
+        if args.save:
+            held.reset()
+            held.save(args.save, card={"founder": args.founder, "watched": watched})
     if args.out:
         args.out.write_text(json.dumps({"founder": args.founder, "arms": {
-            k: {**v, "cells": list(v["cells"])} for k, v in arms.items()}, "readings": rows},
-            indent=1, default=float))
+            k: {**v, "cells": list(v["cells"])} for k, v in arms.items()}, "readings": rows,
+            "physics": args.physics, "curve": curve}, indent=1, default=float))
     return 0
 
 
