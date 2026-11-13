@@ -65,7 +65,8 @@ second write revises the first. With ``apart`` a write also takes the fact's ``s
 driven units under a second fixed projection. A write whose key a record holds revises that
 record only where the signatures agree; another signature is another fact, which takes a slot of
 its own. A read that carries its ``source`` takes, among the records that tie at its best score,
-the one whose signature it shares.
+the one whose signature it shares. Two signatures agree where they share ``same`` units (5 of
+the 8; a source told exactly, as a brain's heard moments are, takes all 8).
 
 **A table that grows (``grow=True``, cadence#310).** The table of pairs above is sized to the
 capacity. With ``grow`` it starts at 64 cells and takes a cell at a time as records are written
@@ -87,7 +88,8 @@ pairs. With ``sure`` a read of one head at temperature 0 first reads the pairs o
 ``pairs`` most driven units, then of four times as many, and ends where a record found under
 the most pairs holds a key at cosine ``sure`` or above to the cue: that record is the read's
 first choice, as the whole read would choose it. A cue no record holds so closely is read in
-full.
+full. A read or a write that carries a ``source`` ends there only where that record's signature
+agrees with the source's, so a fact whose key another fact holds is read in full.
 """
 
 from __future__ import annotations
@@ -247,7 +249,8 @@ class LongTermMemory:
     (0: a key told again is its record told again). ``grow`` lets the table of pairs grow with
     the records in place of a table sized to the capacity, ``path`` keeps every array in a file
     under that directory, and ``sure`` is the cosine at which a record found under the most
-    pairs ends a read (0: every read is read in full).
+    pairs ends a read (0: every read is read in full). ``same`` is the units of a signature two
+    sources share where they are one fact's (``apart``).
     """
 
     width: int
@@ -271,6 +274,7 @@ class LongTermMemory:
     grow: bool = False
     path: Any = None
     sure: float = 0.0
+    same: int = 5
     count: int = field(init=False, default=0)
     writes: int = field(init=False, default=0)
 
@@ -315,7 +319,7 @@ class LongTermMemory:
                 "winners", "depth", "idle", "hold", "revise", "fade", "seed", "direct", "dtype",
                 "cosine", "pairs", "apart")
     # the opt-ins a description names only where they are set
-    OPTIONS: ClassVar[dict[str, Any]] = {"grow": False, "path": None, "sure": 0.0}
+    OPTIONS: ClassVar[dict[str, Any]] = {"grow": False, "path": None, "sure": 0.0, "same": 5}
     ARRAYS = ("keys", "values", "deep", "recent", "faded")
     ADDRESS = ("units", "places", "lists", "counts")
     PAIR_ADDRESS = ("cells", "fills")
@@ -385,6 +389,11 @@ class LongTermMemory:
         self.sure = float(self.sure)
         if self.sure and not (self.coarse and self.pairs):
             raise ValueError("sure ends a read of the address of pairs: it needs pairs=units")
+        if isinstance(self.same, bool) or not isinstance(self.same, (int, np.integer)) \
+                or not 1 <= self.same <= self.SIGN:
+            raise ValueError(f"same is the units of a signature two sources share: 1 to "
+                             f"{self.SIGN}")
+        self.same = int(self.same)
         # a store on disk: its directory, the files mapped, and the threads that fetch rows
         opened = bool(getattr(self, "_opened", False))
         self._opened = False
@@ -644,15 +653,17 @@ class LongTermMemory:
         return np.asarray(np.bincount(ids, minlength=self.count))
 
     def _candidates(
-        self, key: np.ndarray, units: np.ndarray | None = None, first: bool = False
+        self, key: np.ndarray, units: np.ndarray | None = None, first: bool = False,
+        sign: np.ndarray | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         """The slots the fine stage reads for ``key`` and their keys: every held slot without a
         coarse stage, else the ``candidates`` slots its address drives most. ``first`` says the
-        caller takes the first choice alone, which a read with ``sure`` may end early for."""
+        caller takes the first choice alone, which a read with ``sure`` may end early for; with
+        a source's ``sign`` it ends only at a record that holds the signature."""
         if not self.coarse or self.count <= self.candidates:
             return np.arange(self.count), self.keys[: self.count]
         if first and self.sure and units is None:
-            sure = self._sure(key)
+            sure = self._sure(key, sign)
             if sure is not None:
                 return sure
         if units is None:
@@ -660,11 +671,13 @@ class LongTermMemory:
         chosen = self._named(units) if self.pairs else self._driven(units)
         return chosen, self._take(self.keys, chosen)
 
-    def _sure(self, key: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
+    def _sure(self, key: np.ndarray,
+              sign: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray] | None:
         """The read that ends at its record (``sure``): the pairs of the cue's ``pairs`` most
         driven units, then of four times as many. Where a slot found under the most pairs
-        (the lowest ``CHECK`` of them) holds a key at cosine ``sure`` or above to the cue, those
-        slots and their keys; None where no stage finds one, and the read is read in full."""
+        (the lowest ``CHECK`` of them) holds a key at cosine ``sure`` or above to the cue, and
+        with a source's ``sign`` shares ``same`` units of it, those slots and their keys; None
+        where no stage finds one, and the read is read in full."""
         drive = self._drive(key)
         length = float(np.linalg.norm(np.asarray(key, dtype=np.float64)))
         if not length:
@@ -683,7 +696,10 @@ class LongTermMemory:
             keys = self._take(self.keys, most)
             scores = np.asarray(keys @ np.asarray(key, dtype=self.dtype), dtype=np.float64)
             lengths = (self.norms[most] if self.cosine else _norms(keys)) * length
-            if bool(np.any((lengths > 0) & (scores >= self.sure * lengths))):
+            held = (lengths > 0) & (scores >= self.sure * lengths)
+            if sign is not None and held.any():
+                held &= self._shared(most, sign) >= self.same
+            if bool(np.any(held)):
                 return most, keys
         return None
 
@@ -987,7 +1003,8 @@ class LongTermMemory:
         if not self.count:
             return LongTermRead(np.zeros(0, dtype=np.int64), [np.zeros(0) for _ in range(heads)])
         waited = _waited() if self._gather else 0
-        slots, keys = self._candidates(cue, first=int(heads) == 1 and self.temperature == 0)
+        slots, keys = self._candidates(cue, first=int(heads) == 1 and self.temperature == 0,
+                                          sign=sign)
         if self._gather:  # whether this read waited for the disk says how the next one reads
             self._cold = _waited() - waited > self.WAITS
         if not len(slots):
@@ -1170,7 +1187,7 @@ class LongTermMemory:
             if recognised >= 0:
                 slot, revised = int(recognised), True
         elif self.revise and self.count:
-            slots, keys = self._candidates(key, units, first=True)
+            slots, keys = self._candidates(key, units, first=True, sign=sign)
             scores = np.asarray(keys @ key.astype(self.dtype), dtype=np.float64)
             if sign is not None and len(slots):
                 # every record that holds the key; the one that holds the signature is the fact
@@ -1179,7 +1196,7 @@ class LongTermMemory:
                 if len(same):
                     shared = self._shared(slots[same], sign)
                     best = int(np.argmax(shared))
-                    if shared[best] >= self.SAME:
+                    if shared[best] >= self.same:
                         slot, revised = int(slots[same[best]]), True
             elif len(slots):
                 best = int(np.argmax(self._cosines(slots, scores, key) if self.cosine
@@ -1688,8 +1705,8 @@ class LongTermRecords:
         settings: dict[str, Any] = {
             "revise": self.revise, "seed": self.seed, **self.STORE, **self.address()}
         settings.pop("path", None)
-        if self.apart:
-            settings["apart"] = self.value_width
+        if self.apart:  # the heard moments are told exactly: one fact's signature whole
+            settings.update(apart=self.value_width, same=LongTermMemory.SIGN)
         if self.path is None or probe:
             return LongTermMemory(self.width, self.value_width, self.capacity, **settings)
         if folder is None:
@@ -2189,7 +2206,7 @@ class LongTermRecords:
             else:
                 found = store.read(key, credit=False, source=source).first()
         if found >= 0 and self._holds(store, found, key, self.revise) and int(store._shared(
-                np.array([found]), store._signature(source))[0]) >= store.SAME:
+                np.array([found]), store._signature(source))[0]) >= store.same:
             if np.array_equal(np.asarray(store.values[found], dtype=np.float64), value):
                 self.counts["agreed"] += 1  # the moment says nothing the record does not
                 return

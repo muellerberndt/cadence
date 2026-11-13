@@ -796,13 +796,35 @@ def test_a_read_with_sure_ends_at_its_record_and_reads_any_other_cue_in_full():
     assert memory.read(near, credit=False).first() == 9
 
 
+def test_a_read_with_a_source_ends_only_at_a_record_that_holds_its_signature():
+    rng, keys, values, memory = growing(apart=20, sure=0.999, same=8)
+    sources, other = rng.standard_normal((3000, 20)), rng.standard_normal((50, 20))
+    memory.fill(keys, values, sources=sources)
+    for i in range(50):  # another fact under a held key: a slot of its own, both kept
+        assert memory.write(keys[i], values[i + 100], source=other[i]) == (3000 + i, False)
+    for i in range(50):
+        assert memory.read(keys[i], source=sources[i], credit=False).first() == i
+        assert memory.read(keys[i], source=other[i], credit=False).first() == 3000 + i
+    read_units = []
+    found = memory._found
+    memory._found = lambda units: read_units.append(len(units)) or found(units)
+    assert memory.read(keys[60], source=sources[60], credit=False).first() == 60
+    assert read_units == [8]  # its own fact's record: the read ends there
+    read_units.clear()
+    assert memory.read(keys[60], source=other[0], credit=False).first() == 60
+    assert read_units[0] == 8 and 32 in read_units  # a record of another source: read in full
+    assert memory.write(keys[3], values[9], source=other[3]) == (3003, True)  # told again
+    assert memory.to_dict()["same"] == 8 and "same" not in growing(apart=20)[3].to_dict()
+
+
 def test_the_growing_table_and_the_store_on_disk_are_checked_and_off_by_default(tmp_path):
     plain = LongTermMemory(8, 8, 32)
-    assert plain.grow is False and plain.path is None and plain.sure == 0.0
-    assert not {"grow", "path", "sure"} & set(plain.to_dict())
+    assert plain.grow is False and plain.path is None and plain.sure == 0.0 and plain.same == 5
+    assert not {"grow", "path", "sure", "same"} & set(plain.to_dict())
     for settings in ({"grow": True}, {"grow": 1, "pairs": 8, "direct": 0},
                      {"sure": 0.9}, {"sure": 2.0, "pairs": 8, "direct": 0},
-                     {"sure": True, "pairs": 8, "direct": 0}):
+                     {"sure": True, "pairs": 8, "direct": 0}, {"same": 0}, {"same": 9},
+                     {"same": True}):
         with pytest.raises(ValueError):
             LongTermMemory(8, 8, 3000, **settings)
     with pytest.raises(ValueError, match="address of pairs"):

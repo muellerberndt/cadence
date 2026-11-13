@@ -821,6 +821,7 @@ def test_facts_whose_keys_are_one_key_are_told_apart_by_what_was_heard(tmp_path)
     kept = apart.longterm
     store = kept.stores[0]
     assert store.apart == INPUTS and store.count == 24 and kept.counts["revisions"] == 0
+    assert store.same == store.SIGN  # the heard moments are told exactly: the signature whole
     for agent, verb, patient in FACTS:  # each question reads the record of its own fact
         ask(apart, agent, verb)
         slot = int(kept.read_slots[0, 0])
