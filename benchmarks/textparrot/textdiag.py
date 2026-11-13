@@ -33,7 +33,7 @@ def mode(b: int, rng: np.random.Generator) -> str:
 
 def rates(scale: float, form: str, seed: int, depth: str, genome: dict | None = None) -> None:
     modules = [160, 128] if depth == "d2" else [128] * 4
-    layout = tc.Layout.founder(seed)
+    layout = tc.Layout.founder(seed, page=bool((genome or {}).get("page", False)))
     p = tp.BrainPolicy(layout, {"eta_scale": scale, "modules": modules, **(genome or {})}, seed)
     forms = dict(tp.STAGES)["properties"] if form == "props" else (form,)
     rng = np.random.default_rng(seed)
@@ -79,7 +79,7 @@ def breakdown(p: tp.BrainPolicy, layout: tc.Layout, form: str, rng: np.random.Ge
 
 
 def errors(form: str, seed: int, genome: dict) -> None:
-    layout = tc.Layout.founder(seed)
+    layout = tc.Layout.founder(seed, page=bool(genome.get("page", False)))
     p = tp.BrainPolicy(layout, genome, seed)
     rng = np.random.default_rng(seed)
     t = time.time()

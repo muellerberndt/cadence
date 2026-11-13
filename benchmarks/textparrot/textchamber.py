@@ -41,13 +41,16 @@ STATS = {"dagger_moments": 0, "dagger_own_right": 0}
 
 @dataclass
 class Layout:
-    """The input and action layout of one founder."""
+    """The input and action layout of one founder. With ``page`` the question's words stay in
+    view after they are read (the written question on the screen), one channel a word form
+    after the focus."""
     forms: np.ndarray  # forms[word index] = the ear channel of that word
+    page: bool = False
 
     @classmethod
-    def founder(cls, seed: int) -> Layout:
+    def founder(cls, seed: int, page: bool = False) -> Layout:
         rng = np.random.default_rng([seed, 7])
-        return cls(rng.permutation(len(tw.VOCABULARY)))
+        return cls(rng.permutation(len(tw.VOCABULARY)), page)
 
     @property
     def words(self) -> int:
@@ -55,7 +58,7 @@ class Layout:
 
     @property
     def inputs(self) -> int:
-        return self.words + 1 + 2 * (tw.GLIMPSE + 1)
+        return self.words + 1 + 2 * (tw.GLIMPSE + 1) + (self.words if self.page else 0)
 
     @property
     def gap(self) -> int:
@@ -67,7 +70,13 @@ class Layout:
 
     @property
     def focus(self) -> slice:
-        return slice(self.words + 2 + tw.GLIMPSE, self.inputs)
+        start = self.words + 2 + tw.GLIMPSE
+        return slice(start, start + tw.GLIMPSE + 1)
+
+    @property
+    def written(self) -> slice:
+        start = self.words + 3 + 2 * tw.GLIMPSE
+        return slice(start, start + (self.words if self.page else 0))
 
     @property
     def voice(self) -> int:  # the voice slot's acts: every word and silence (the last)
@@ -124,6 +133,10 @@ class Episode:
             x[L.glimpse] = np.concatenate([t.look, [1.0]])
         if self.focus is not None:
             x[L.focus] = np.concatenate([self.focus.look, [1.0]])
+        if L.page:  # the question's words read so far, in view
+            read = self.q.words if self.phase != "question" else self.q.words[:self.i + 1]
+            for w in read:
+                x[L.written][L.forms[tw.VOCABULARY.index(w)]] = 1.0
         return x
 
     # -- the teacher -------------------------------------------------------------------------

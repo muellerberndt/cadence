@@ -165,6 +165,8 @@ class BrainPolicy:
         for name, value in g.items():
             if name.startswith("learning_"):
                 options[name] = value
+        if g.get("code"):  # a fixed random sparse code of the observation (born expansion)
+            options["code"] = int(g["code"])
         if g.get("message"):
             options.update(message=int(g["message"]), message_phases=int(g["message_phases"]),
                            message_winners=int(g["message_winners"]),
@@ -310,7 +312,7 @@ def life(seed: int, *, genome: dict[str, Any] | None = None, streams: int = 64,
          check_every: int = 20, per: int = 64, backend: str = "cpu", log: Any = None,
          policy: Any = None) -> tuple[Any, tc.Layout, dict[str, Any]]:
     """Pretraining through the curriculum; returns the policy, the layout and the record."""
-    layout = tc.Layout.founder(seed)
+    layout = tc.Layout.founder(seed, page=bool((genome or {}).get("page", False)))
     rng = np.random.default_rng([seed, 1])
     if policy is None:
         policy = BrainPolicy(layout, genome or {}, seed, backend=backend)
