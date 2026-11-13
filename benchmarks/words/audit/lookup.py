@@ -11,6 +11,10 @@ Three arms live the founder's script on one map and one body, each with its own 
 - ``table_heard_back``: the table, saying as the head's lexicon says (a word is heard before it
   is said, and gives way where its hearing names another concept than the said vector's
   largest);
+- ``delta`` and ``delta_heard_back``: a feed-forward linear readout in the lexicon's place (a
+  control by the lane's rules): hearing sums the heard words' rows, and a lesson moves each
+  heard word's row by its share of one error, the target less the heard words' sum, split among
+  them (a normalised delta rule; a word heard alone keeps the running mean of its lessons);
 - ``oracle``: the same ``Words`` with a table written by hand from the world's own lexicon (each
   kind, colour and place word on its concept, "where" on the place read, "colour" on the colour
   read, "what" and "you" on the kind read, the nothing word on nothing) and no lesson at all:
@@ -53,6 +57,7 @@ class Table:
         self.work = {"settles": 0, "macs": 0}
         self.fixed = False  # a hand-written table takes no lesson
         self.heard_back = False  # say as the lexicon of the head says: hear the word first
+        self.delta = False  # a lesson's error on the heard words' sum (a delta rule)
 
     def index(self, group: str, value: int) -> int:
         return int(self.groups[group].start) + int(value)
@@ -85,10 +90,14 @@ class Table:
                                for g in groups])
         target = self.level * self._concepts(concepts)
         counts = self.counts.setdefault(groups, np.zeros(self.capacity, dtype=np.int64))
+        heard_sum = self.rows[units][:, cols].sum(axis=0)
         for u in units:
             counts[u] += 1
             share = max(1.0 / counts[u], self.rate)
-            self.rows[u, cols] += share * (target[cols] - self.rows[u, cols])
+            if self.delta:  # one error for the words heard together, shared among them
+                self.rows[u, cols] += share * (target[cols] - heard_sum) / len(units)
+            else:  # each word's own running mean
+                self.rows[u, cols] += share * (target[cols] - self.rows[u, cols])
         self.lessons += 1
         return 0.0
 
@@ -141,6 +150,11 @@ def heard_back(table: Table) -> Table:
     return table
 
 
+def delta(table: Table) -> Table:
+    table.delta = True
+    return table
+
+
 def oracle(lex: world.Lexicon, concepts: dict[str, int]) -> Table:
     """The hand-written table of the world's lexicon."""
     out = Table(concepts)
@@ -174,6 +188,11 @@ def life(seed: int, settings: dict[str, Any]) -> dict[str, Any]:
             "table": Words(brain.map, lexicon=Table(concepts), body=brain.body),  # type: ignore[arg-type]
             "table_heard_back": Words(brain.map, lexicon=heard_back(Table(concepts)),  # type: ignore[arg-type]
                                       body=brain.body),
+            "delta": Words(brain.map, lexicon=delta(Table(concepts)),  # type: ignore[arg-type]
+                           body=brain.body),
+            "delta_heard_back": Words(brain.map,  # type: ignore[arg-type]
+                                      lexicon=heard_back(delta(Table(concepts))),
+                                      body=brain.body),
             "oracle": Words(brain.map, lexicon=oracle(lex, concepts),  # type: ignore[arg-type]
                             body=brain.body)}
     h = common.Harness(seed, brain, settings)
@@ -203,6 +222,8 @@ def life(seed: int, settings: dict[str, Any]) -> dict[str, Any]:
             "parameters": {"brain": int(brain.lexicon.connectome.synapses // 2),
                            "table": int(arms["table"].lexicon.rows.size),
                            "table_heard_back": int(arms["table"].lexicon.rows.size),
+                           "delta": int(arms["table"].lexicon.rows.size),
+                           "delta_heard_back": int(arms["table"].lexicon.rows.size),
                            "oracle": 0},
             "arms": {name: {"shares": common.shares(book), "gates": book}
                      for name, book in books.items()}}

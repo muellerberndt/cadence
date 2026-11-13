@@ -23,7 +23,9 @@ Scenes the world never builds, on the brain the life left (``after``):
   0.45 m), each asked where it is and its colour, what has its colour, what is at its place;
 - ``same_kind``: two things of one kind in two colours and two places around the robot, asked
   where the kind is (both places), its colour (both colours) and what has each colour;
-- ``crowded``: rooms of the eight trained kinds, every question form.
+- ``crowded``: rooms of the eight trained kinds, every question form;
+- ``test_after_new_words``: rooms drawn as the test's rooms are, every question form, asked
+  after the new words' namings (the chamber asks W1 before them).
 
     python adversarial.py <founder> <out> [short]
 """
@@ -273,6 +275,21 @@ def crowded_rooms(h: Harness, rng: np.random.Generator, rooms: int, book: dict[s
             _ask(h, book, words.gate_of(q), q)
 
 
+def test_rooms_again(h: Harness, rng: np.random.Generator, rooms: int,
+                     book: dict[str, Any]) -> None:
+    """Rooms drawn as the test's rooms are, asked every question form, on the brain the life
+    left: after the new words' namings, where the chamber asks W1 before them."""
+    import words
+
+    trained = list(range(world.TRAINED))
+    for _ in range(rooms):
+        r = world.room(rng, trained, int(rng.integers(4, 7)), avoid=h.unseen)
+        h.room = r
+        words.look_around(h.brain, r)
+        for q in words.room_questions(h.lex, r, rng, absent=trained, foils=list(range(6, 12))):
+            _ask(h, book, words.gate_of(q), q)
+
+
 def scenes(h: Harness) -> dict[str, Any]:
     rng = np.random.default_rng(np.random.SeedSequence([h.seed, 326, 79]))
     rooms = 4 if h.settings.get("test_rooms", 30) < 10 else 16
@@ -290,6 +307,11 @@ def scenes(h: Harness) -> dict[str, Any]:
     book = {}
     crowded_rooms(h, rng, rooms, book)
     out["crowded"] = common.shares(book)
+    out["crowded"]["examples"] = {g: r["examples"] for g, r in book.items()}
+    book = {}
+    test_rooms_again(h, rng, 2 * rooms, book)
+    out["test_after_new_words"] = common.shares(book)
+    out["test_after_new_words"]["examples"] = {g: r["examples"] for g, r in book.items()}
     return out
 
 
