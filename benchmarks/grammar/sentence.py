@@ -1129,24 +1129,34 @@ def control_plan(founders: tuple[int, ...], parameters: int, held_probes: int = 
 
 
 SECOND = tuple(range(10828600, 10828612))  # twelve fresh founders (SENTENCE_PROTOCOL_2.md)
-# the declared arm: a block takes the observation alone, lessons where the answer differs (the
-# library's default for a new brain), the full mix
-STORE = {"kind": "store", "design": "alone", "train": "all", "held_probes": 16,
-         "settings": {"learning_surprise": True},
-         "checkpoints": [1000, 2000, 3000]}
+BATCHES_2 = 8000  # the second run's lesson batches, the controls' too
+# the declared arms: the full mix, lessons where the answer differs (the library's default for
+# a new brain), a block taking the moment alone, an echo leaving the recall read's address as
+# it is; ``barred`` also leaves it at the said words of a sentence whose meaning the bar empties
+ARMS_2 = {
+    "quiet": {"design": "alone_clean", "quiet": True},
+    "barred": {"design": "alone_clean", "quiet": "barred"},
+}
+STORE = {"kind": "store", "train": "all", "held_probes": 16, "batches": BATCHES_2,
+         "settings": {"learning_surprise": True}, "checkpoints": [2000, 4000, 6000]}
 
 
 def second_plan(founders: tuple[int, ...] = SECOND) -> dict[str, list[dict[str, Any]]]:
-    """The second declared run of cadence#308 (``SENTENCE_PROTOCOL_2.md``): the store's arm on
-    the full mix, and the chamber's LSTM and transformer taught the same batches at its
-    parameter count, online and offline, and offline with the echoes and roles as well."""
-    brains = [{**STORE, "founder": f, "tag": "store"} for f in founders]
-    parameters = int(make_brain(founders[0], STORE["settings"], 256, DEPTH, True,
-                                DESIGNS["alone"]).parameters())
+    """The second declared run of cadence#308 (``SENTENCE_PROTOCOL_2.md``): each arm on the
+    full mix, and the chamber's LSTM and transformer taught the same batches at the arms'
+    parameter count, online and offline on every founder, and offline with the echoes and
+    roles on the first six."""
+    brains = [{**STORE, **spec, "founder": f, "tag": tag}
+              for tag, spec in ARMS_2.items() for f in founders]
+    counts = {int(make_brain(founders[0], STORE["settings"], 256, DEPTH, True,
+                             DESIGNS[str(spec["design"])]).parameters())
+              for spec in ARMS_2.values()}
+    assert len(counts) == 1, counts  # one set of controls serves every arm
+    parameters = counts.pop()
     controls = control_plan(founders, parameters, held_probes=16, train="all",
-                            modes=("offline", "online"))
-    controls += control_plan(founders, parameters, held_probes=16, train="all",
-                             modes=("offline",), roles=("alone",))
+                            modes=("offline", "online"), batches=BATCHES_2)
+    controls += control_plan(founders[:6], parameters, held_probes=16, train="all",
+                             modes=("offline",), roles=("alone_clean",), batches=BATCHES_2)
     return {"second": brains, "second_controls": controls}
 
 

@@ -119,10 +119,11 @@ def test_the_instruments_store_is_the_librarys_to_the_bit():
 
 def test_a_life_reads_its_gates_beside_its_controls():
     warnings.simplefilter("ignore")
-    spec = {**st.STORE, "founder": 0, "batches": 4, "module": 32, "panel_batches": 1,
-            "held_probes": 1, "checkpoints": [2], "tag": "store"}
+    spec = {**st.STORE, **st.ARMS_2["barred"], "founder": 0, "batches": 4, "module": 32,
+            "panel_batches": 1, "held_probes": 1, "checkpoints": [2], "tag": "store"}
     row = st.run_life(spec)
-    assert row["full"] and row["design"] == "alone" and set(row["more"]) == set(st.MORE)
+    assert row["full"] and row["design"] == "alone_clean" and set(row["more"]) == set(st.MORE)
+    assert row["quiet"] == "barred"
     assert row["curve"][0]["batches"] == 2 and "ask_words_held" in row["curve"][0]
     assert {"g1_to_g2", "g2_to_g1"} == set(row["probes_cross"])
     assert "joint" in row["probes_back"]["agent_noun"]["heard"]
@@ -138,8 +139,11 @@ def test_a_life_reads_its_gates_beside_its_controls():
     assert any("H1" in line and "H2" in line for line in lines)
     assert any("H3 said" in line and "H4" in line for line in lines)
     assert any("less lstm with roles" in line for line in lines)
+    assert any(line.startswith("P, parity") for line in lines)
     plan = st.second_plan((0, 1))
-    assert len(plan["second"]) == 2 and len(plan["second_controls"]) == 2 * 2 * 3
+    assert len(plan["second"]) == 2 * len(st.ARMS_2)
+    assert len(plan["second_controls"]) == 2 * 2 * 3
+    assert {s["batches"] for s in plan["second"] + plan["second_controls"]} == {st.BATCHES_2}
 
 
 def test_a_quiet_echo_leaves_the_reads_address_as_it_is():
