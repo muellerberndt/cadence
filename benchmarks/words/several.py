@@ -87,23 +87,13 @@ class Words:
 
 
 def lexicon(seed: int) -> Words:
-    """The founder's words: the chamber's, and distinct forms of two or three consonant-vowel
-    syllables for this rung's question words, number words and answers to "is there?"."""
-    held = world.lexicon(seed)
-    taken = set(held.kind + held.colour + held.place + list(held.question.values())
-                + [held.none] + held.foils)
-    rng = np.random.default_rng(np.random.SeedSequence([int(seed), 328, 1]))
-    forms: list[str] = []
-    need = len(QUESTION_WORDS) + len(NUMBER_NAMES) + len(TRUTH_NAMES)
-    while len(forms) < need:
-        form = "".join(str(rng.choice(list(world.CONSONANTS))) + str(rng.choice(list(world.VOWELS)))
-                       for _ in range(int(rng.integers(2, 4))))
-        if form not in taken and form not in forms:
-            forms.append(form)
-    order = iter(forms)
-    asked = dict(zip(QUESTION_WORDS, [next(order) for _ in QUESTION_WORDS], strict=True))
-    return Words(held, asked, [next(order) for _ in NUMBER_NAMES],
-                 [next(order) for _ in TRUTH_NAMES])
+    """The founder's words: the chamber's (``world.lexicon``), and this rung's question words,
+    number words and answers to "is there?" (``world.vocabulary``, distinct from the others)."""
+    drawn = world.vocabulary(seed, {"question": QUESTION_WORDS, "number": NUMBER_NAMES,
+                                    "truth": TRUTH_NAMES}, salt=328)
+    return Words(world.lexicon(seed), drawn["question"],
+                 [drawn["number"][n] for n in NUMBER_NAMES],
+                 [drawn["truth"][n] for n in TRUTH_NAMES])
 
 
 # -- rooms with several things of one kind
@@ -312,13 +302,14 @@ def script(seed: int, **given: Any) -> list[tuple[Any, ...]]:
 
 def make_brain(seed: int, **settings: Any) -> Any:
     """The founder's brain: the chamber's map (one unit a kind, the colours on its sheet), the
-    parrot at the middle, and a fresh lexicon with the counts and the truths."""
+    parrot at the middle, the part of several things, and a fresh lexicon."""
     from cadence.space.map import Map
+    from cadence.words import Words
     from cadence.words.several import Several
 
     held = Map(world.PLANE, world.CELLS, units=world.KINDS, values={"colour": world.COLOURS},
                seed=int(seed))
-    return Several(held, numbers=NUMBERS, **settings)
+    return Words(held, parts=[Several(numbers=NUMBERS)], seed=int(seed), **settings)
 
 
 def map_rate(brain: Any, r: world.Room) -> tuple[list[bool], list[bool]]:
@@ -339,13 +330,13 @@ def map_rate(brain: Any, r: world.Room) -> tuple[list[bool], list[bool]]:
 def ablate(brain: Any) -> Any:
     """The twin of the ablation: the brain's map and body, and its lexicon with every word it
     heard and its synapses at zero."""
-    from cadence.words import Lexicon
+    from cadence.words import Lexicon, Words
     from cadence.words.several import Several
 
     arrays = brain.lexicon.arrays()
     arrays["efficacy"] = np.zeros_like(arrays["efficacy"])
-    return Several(brain.map, numbers=brain.numbers, body=brain.body,
-                   lexicon=Lexicon.from_arrays(brain.lexicon.settings, arrays))
+    return Words(brain.map, parts=[Several(numbers=NUMBERS)], body=brain.body,
+                 lexicon=Lexicon.from_arrays(brain.lexicon.settings, arrays))
 
 
 def life(seed: int, *, record: Any = None, brain: Any = None, **given: Any) -> dict[str, Any]:
