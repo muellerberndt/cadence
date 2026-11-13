@@ -721,12 +721,62 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
+def _taught_roles(learner: Any, model: str, design: Design) -> Any:
+    """A control's update with the brain's lessons in full: beside each said word, the word an
+    echo names at a heard moment and the role of every moment a lesson names, the roles read
+    from the control's hidden state by a linear head of their own. Returns the update."""
+    import torch
+
+    ct = mn._controls()
+    net = learner.net
+    head = torch.nn.Linear(net.out.in_features, len(design.roles))
+    learner.opt.add_param_group({"params": head.parameters()})
+    learner.role_head = head
+
+    def update(rows: list[gr.Row]) -> float:
+        x, y = ct.encode(rows)
+        roles = np.full_like(y, -100)
+        for i, r in enumerate(rows):
+            for t in range(len(r.pre)):
+                label = heard_label(r, t, design)
+                if label is not None:
+                    roles[i, t] = label[2]
+                    verb = gr.NOUNS <= label[0] < gr.NOUNS + 2
+                    # an echo's word, where it names a whole one (a verb concept names a stem)
+                    if label[0] != SILENCE and not (verb and label[1] == mn.NO_FORM):
+                        y[i, t] = mn.parts_word(label[0], label[1])
+            for j in range(len(r.target)):
+                roles[i, len(r.pre) + j] = said_label(r, j, design)[2]
+        tensor = torch.from_numpy(x)
+        if model == "lstm":
+            hidden, _ = net.cell(tensor)
+            logits = net.out(hidden)
+        else:
+            logits, hidden = mn.transformer_forward(net, tensor)
+        entropy = torch.nn.functional.cross_entropy
+        loss = entropy(logits.reshape(-1, gr.ACTIONS), torch.from_numpy(y).reshape(-1),
+                       ignore_index=-100)
+        loss = loss + entropy(head(hidden).reshape(-1, len(design.roles)),
+                              torch.from_numpy(roles).reshape(-1), ignore_index=-100)
+        learner.opt.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_([*net.parameters(), *head.parameters()], ct.CLIP)
+        learner.opt.step()
+        learner.work["updates"] += 1
+        learner.work["tokens"] += x.shape[0] * x.shape[1]
+        learner.work["macs"] += 3 * x.shape[0] * net.macs(x.shape[1])
+        return float(loss.item())
+
+    return update
+
+
 def control_life(spec: dict[str, Any]) -> dict[str, Any]:
-    """One control of the full mix (``"kind": "store_control"``): the chamber's LSTM or
-    transformer at ``width``, taught the same lesson batches (``train``) online (one pass) or
-    offline (to the controls' stopping rule), its panels said and its hidden state probed as
-    the brain's is, the probes across wordings included. Its row reads as one of
-    ``meaning.sentence_control``."""
+    """One control (``"kind": "store_control"``): the chamber's LSTM or transformer at
+    ``width``, taught the same lesson batches (``train``) online (one pass) or offline (to the
+    controls' stopping rule), its panels said and its hidden state probed as the brain's is,
+    with the full mix the probes across wordings too. With ``roles`` (a design's name) its
+    lessons are the brain's in full: the echoes and every moment's role (``_taught_roles``).
+    Its row reads as one of ``meaning.sentence_control``."""
     import torch
 
     torch.set_num_threads(1)
@@ -735,6 +785,8 @@ def control_life(spec: dict[str, Any]) -> dict[str, Any]:
     train = str(spec.get("train", "all"))
     count = int(spec.get("batches", mn.BATCHES))
     learner = ct.Learner(model, int(spec["width"]), founder, ct.RATES[mode])
+    teach = (_taught_roles(learner, model, DESIGNS[str(spec["roles"])]) if spec.get("roles")
+             else learner.update)
     split = gr.Split.of(founder)
     rng = np.random.default_rng(np.random.SeedSequence([founder, gr.SEEDS["train"]]))
     lessons = [lesson_batch(train, rng, split) for _ in range(count)]
@@ -742,12 +794,12 @@ def control_life(spec: dict[str, Any]) -> dict[str, Any]:
     epochs = 1
     if mode == "online":
         for batch in lessons:
-            learner.update(batch)
+            teach(batch)
     else:
         order = np.random.default_rng(np.random.SeedSequence([founder, 99, 0]))
         best, stale, epochs = float("inf"), 0, 0
         while epochs < ct.EPOCHS and stale < ct.PATIENCE:
-            mean = float(np.mean([learner.update(lessons[int(i)])
+            mean = float(np.mean([teach(lessons[int(i)])
                                   for i in order.permutation(count)]))
             epochs += 1
             stale = 0 if mean < best - 1e-4 else stale + 1
@@ -759,9 +811,12 @@ def control_life(spec: dict[str, Any]) -> dict[str, Any]:
     if train == "all":
         tests.update(more_panels(founder, batches))
         names += MORE
+    taught = bool(spec.get("roles"))
     row: dict[str, Any] = {
-        "kind": "sentence_control", "model": model, "mode": mode, "founder": founder,
-        "train": train, "width": int(spec["width"]), "parameters": ct.count(learner.net),
+        "kind": "sentence_control", "model": model + (" with roles" if taught else ""),
+        "mode": mode, "founder": founder, "roles": spec.get("roles"),
+        "train": train, "width": int(spec["width"]),
+        "parameters": ct.count(learner.net) + (ct.count(learner.role_head) if taught else 0),
         "brain_parameters": int(spec.get("parameters", 0)), "epochs": epochs,
         "macs": float(learner.work["macs"]),
         "panels": {name: gr.read_speaker(learner.speak, None, tests[name],
@@ -802,6 +857,25 @@ def read(rows: list[dict[str, Any]], controls: list[dict[str, Any]], of: int = 1
     each word kind with the previous words and roles given, and the roles named."""
     lines = mn.sentence_verdict(rows, controls, of=of)
     arms = mn._by_tag(rows)
+    taught = sorted({c["model"] for c in controls if c.get("roles")})
+    if taught:
+        lines += ["", "each arm less the controls taught the echoes and roles, offline, paired "
+                  "by founder: mean (s.e.)"]
+    for tag, lives in arms.items():
+        for model in taught:
+            theirs = {c["founder"]: c for c in controls
+                      if c["model"] == model and c["mode"] == "offline"}
+            pairs = [r for r in lives if r["founder"] in theirs]
+            cells = []
+            for n in mn.SAID + mn.BACK:
+                mine = [mn._score((r["panels"] if n in mn.SAID else r["sayback"])[n], n) or 0.0
+                        for r in pairs]
+                other = [mn._score(theirs[r["founder"]]["panels"][n], n) or 0.0 for r in pairs]
+                if pairs:
+                    mean, error = mn.paired(mine, other)
+                    cells.append(f"{n} {mean:+.2f} ({error:.2f})")
+            if cells:
+                lines.append(f"  {tag} less {model}: " + ", ".join(cells))
     for key, title in (("kinds", "the panels' sentences"), ("kinds_held", "held-out clauses"),
                        ("kinds_back", "held-out clauses heard as words"),
                        ("kinds_long", "longer clauses")):
@@ -916,17 +990,20 @@ def dev_plan(founders: tuple[int, ...] = DEV, batches: int = mn.BATCHES,
 
 def control_plan(founders: tuple[int, ...], parameters: int, held_probes: int = 4,
                  modes: tuple[str, ...] = ("offline",), train: str = "sayback",
-                 batches: int = mn.BATCHES) -> list[dict[str, Any]]:
-    """The chamber's LSTM and transformer at ``parameters``, taught the same lesson batches:
-    the say-back mix (``meaning.sentence_control``) or the full mix (``control_life``)."""
+                 batches: int = mn.BATCHES, roles: tuple[str | None, ...] = (None,),
+                 ) -> list[dict[str, Any]]:
+    """The chamber's LSTM and transformer at ``parameters``, taught the same lesson batches
+    (``control_life``); ``roles`` names for each further set a design whose echoes and roles
+    the controls are taught as well."""
     out = []
-    kind = "store_control" if train == "all" else "sentence_control"
     for model in ("lstm", "transformer"):
         width = mn.wide_width(model, parameters, limit=1200)
         for mode in modes:
-            out += [{"kind": kind, "model": model, "mode": mode, "founder": f, "train": train,
-                     "parameters": parameters, "width": width, "held_probes": held_probes,
-                     "batches": batches} for f in founders]
+            for design in roles:
+                out += [{"kind": "store_control", "model": model, "mode": mode, "founder": f,
+                         "train": train, "parameters": parameters, "width": width,
+                         "held_probes": held_probes, "batches": batches,
+                         **({"roles": design} if design else {})} for f in founders]
     return out
 
 
