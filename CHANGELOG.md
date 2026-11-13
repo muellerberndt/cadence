@@ -20,7 +20,14 @@
 - **The relations chamber** (`benchmarks/words/relations.py`, `relations_controls.py`,
   `relations_gates.py`): nonce words per founder, naming, questions answered from the parrot
   and from things, a relation word held out of practice and taught in four answered questions,
-  held-out pairs of kinds, and the matched LSTM and transformer on the same script.
+  held-out pairs of kinds, and the matched LSTM and transformer on the same script. Declared
+  protocol R1 (twelve fresh founders) holds every gate: things .985 / .981 (from a thing / from
+  the parrot), where and how far 1.000 / 1.000, is it .997 / .994, held-out pairs .992, a word
+  taught through known words in four answered questions ("what is R the X?") .974; the matched
+  controls read things .00 to .25.
+- **A new relation word through known words.** "What is next to the apple?" answered with the
+  things: a word heard for the first time in the question, every other word known and no
+  relation word among them, takes the meaning the answer shows.
 
 ### Words for things (#326)
 

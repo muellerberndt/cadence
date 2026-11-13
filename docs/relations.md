@@ -170,3 +170,17 @@ of nonce words drawn for each founder: naming, questions answered from the parro
 things, a relation word held out of practice and taught in four answered questions, and a test
 of every form in fresh rooms, beside an LSTM and a transformer given the same script
 ([`relations_controls.py`](../benchmarks/words/relations_controls.py)).
+
+The declared run ([protocol R1](../benchmarks/words/RELATIONS_PROTOCOL.md)), twelve fresh
+founders, read at 2599c700 (means over the founders):
+
+| Arm | Parameters | Things: from a thing / the parrot | Where, how far: thing / parrot | Is it: thing / parrot | Held-out pairs | A word taught in four answered questions |
+| --- | --- | --- | --- | --- | --- | --- |
+| the parrot | 2,368 | .985 / .981 | 1.000 / 1.000 | .997 / .994 | .992 | .974 |
+| LSTM, offline | 2,392 | .174 / .086 | .576 / .537 | .474 / .457 | .344 | .128 |
+| transformer, offline | 2,424 | .157 / .063 | .513 / .501 | .472 / .464 | .310 | .177 |
+| LSTM, offline, 9x | 21,400 | .247 / .083 | .593 / .557 | .599 / .589 | .376 | .225 |
+| transformer, offline, 9x | 21,768 | .183 / .080 | .568 / .531 | .535 / .467 | .334 | .220 |
+
+With the synapses between its words and the vector cells at zero, the parrot answers none of
+the questions about things or relations whose answer is a thing or a relation word (.000).
