@@ -42,6 +42,7 @@ lemon) is the exam's new object.
 from __future__ import annotations
 
 import copy
+import json
 import math
 import sys
 import time
@@ -547,7 +548,7 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
          streams: int = 16, reads: int = 48, backend: str = "cpu", pistachio: str = "earned",
          steps: list[str] | None = None, log: Any = None, keep: bool = False,
          save: str | None = None, master: bool = True,
-         control: str | None = None) -> dict[str, Any]:
+         control: str | None = None, ckpt: str | None = None) -> dict[str, Any]:
     """One founder's night through the steps; each step read on a frozen copy after it."""
     budget = {"N0": 1500, "N1": 1500, "N2": 2000, "N3": 1500, "N4": 3000, "N5": 2000,
               "N6": 1500, **(blocks or {})}
@@ -563,12 +564,41 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
                            "pistachio": pistachio, "held": sorted(held)}
     began = time.time()
     seen: list[str] = []
-    for name, mix, tests in STEPS:
-        if steps is not None and name not in steps:
+    start = (0, 0)  # the step and block a resumed life continues from
+    paid: list[float] = []
+    meta_path = Path(ckpt) / f"ckpt_{seed}.json" if ckpt and control is None else None
+    if meta_path is not None and meta_path.exists():
+        from cadence import Brain
+
+        meta = json.loads(meta_path.read_text())
+        p.brain = Brain.load(Path(ckpt) / f"ckpt_{seed}.npz")  # type: ignore[arg-type]
+        p.work.update(meta["work"])
+        out, seen, paid = meta["out"], meta["seen"], meta["paid"]
+        start = (int(meta["step"]), int(meta["block"]))
+        rng = np.random.default_rng(np.random.SeedSequence([int(seed), 334, 31, *start]))
+        if log is not None:
+            log(f"resumed at step {start[0]} block {start[1]}")
+
+    def checkpoint(step: int, block: int) -> None:
+        if meta_path is None:
+            return
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
+        p.brain.save(meta_path.with_suffix(".npz"))
+        part = meta_path.with_suffix(".part")
+        part.write_text(json.dumps({"step": step, "block": block, "out": out, "seen": seen,
+                                    "paid": paid[-60:], "work": p.work}, default=float))
+        part.replace(meta_path)
+
+    for index, (name, mix, tests) in enumerate(STEPS):
+        if steps is not None and name not in steps or index < start[0]:
             continue
         keys, weights = list(mix), np.array(list(mix.values()))
-        paid: list[float] = []
-        for b in range(int(budget[name])):
+        first = start[1] if index == start[0] else 0
+        if first == 0:
+            paid = []
+        for b in range(first, int(budget[name])):
+            if b > first and b % 250 == 0:
+                checkpoint(index, b)
             key = keys[int(rng.choice(len(keys), p=weights / weights.sum()))]
             form, mode = key.split(":") if ":" in key else (key, "turn")
             exs = (imitate_block(p, rng, held) if form == "imitate"
@@ -594,6 +624,7 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
         if save and control is None:
             Path(save).mkdir(parents=True, exist_ok=True)
             p.brain.save(Path(save) / f"brain_{seed}_{name}.npz")
+        checkpoint(index + 1, 0)
     out["work"] = dict(p.work)
     out["macs"] = float((p.work["act_sweeps"] + p.work["lesson_sweeps"]
                          + p.work["reward_row_sweeps"]) * p.synapses)
@@ -604,15 +635,13 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
 
 
 if __name__ == "__main__":
-    import json
-
     seed = int(sys.argv[1])
     given = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {}
     target = sys.argv[3] if len(sys.argv) > 3 else None
     result = life(seed, given.get("genome"), blocks=given.get("blocks"),
                   streams=int(given.get("streams", 16)), reads=int(given.get("reads", 48)),
                   pistachio=str(given.get("pistachio", "earned")), steps=given.get("steps"),
-                  save=given.get("save"), control=given.get("control"),
+                  save=given.get("save"), control=given.get("control"), ckpt=given.get("ckpt"),
                   master=bool(given.get("master", True)), log=lambda s: print(s, flush=True))
     result["settings"] = given
     text = json.dumps(result, default=float, indent=1)
