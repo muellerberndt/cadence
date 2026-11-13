@@ -845,10 +845,9 @@ class HeldMessage(Message):
     moment settled to in its context (the brain gives ``hear`` the one or the other). The
     state is ``groups * phases`` blocks, and the region holds one block per group, its head: a
     queue's first block not shifted past, a stack's (``stacks``) last block, silence where the
-    group holds none. So the association
-    reads every group's head at once through the region's plastic synapses, and a group's
-    blocks pass one head. After each act ``hear`` runs the operations of the role the brain
-    named (or the role a lesson named for the moment).
+    group holds none. So the association reads every group's head at once through the
+    region's plastic synapses, and a group's blocks pass one head. After each act ``hear`` runs
+    the operations of the role the brain named (or the role a lesson named for the moment).
 
     With a ``port`` region the brain also reads its message one block at a time
     (``message_read``). With ``roles`` the turn's term is one per role, shared by the role's
