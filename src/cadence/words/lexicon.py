@@ -276,14 +276,20 @@ class Lexicon:
         self.work["settles"] += settles
         self.work["macs"] += settles * self.steps * int(self.connectome.synapses)
 
-    def say(self, concept: Any, floor: float = 1e-3, tries: int = 3) -> str | None:
-        """The word the motor says for a concept: the motor chooses the most active word neuron
-        of the settle and says its letters, one a part; None where no word neuron is above
-        ``floor``. The brain hears a word it is about to say: a word whose hearing settles on
-        another concept than the one said (a word for a kind that named the colour of the one
-        thing it was shown on) gives way to the next most active, up to ``tries`` words."""
+    def choose(self, concept: Any, floor: float = 1e-3, tries: int = 3, *,
+               among: str = "written") -> int | None:
+        """The word neuron the brain chooses to say for a concept: the most active word
+        neuron of the settle among ``among`` (``"written"``: forms with letters, said by the
+        letters motor; ``"heard"``: forms heard as sound, said by replaying them; ``"all"``);
+        None where none is above ``floor``. The brain hears a word it is about to say: a word
+        whose hearing settles on another concept of the groups said gives way to the next most
+        active, up to ``tries`` words."""
+        if among not in ("written", "heard", "all"):
+            raise ValueError("among is 'written', 'heard' or 'all'")
         active = self.words_for(concept)
-        active = np.where(self.written[: len(active)], active, -np.inf)  # the motor says letters
+        keep = {"written": self.written[: len(active)], "heard": ~self.written[: len(active)],
+                "all": np.ones(len(active), dtype=bool)}[among]
+        active = np.where(keep, active, -np.inf)
         if not len(active) or active.max() <= floor:
             return None
         vector = self._vector(concept)
@@ -291,15 +297,23 @@ class Lexicon:
         if vector.max() > 0:
             meant = int(np.argmax(vector))
             # the groups the concept drives: a word is heard back among them
-            among = np.concatenate([np.arange(g.start, g.stop) for g in self.groups.values()
-                                    if vector[g].max() > 0])
+            groups = np.concatenate([np.arange(g.start, g.stop) for g in self.groups.values()
+                                     if vector[g].max() > 0])
             for unit in np.argsort(-active)[: max(int(tries), 1)]:
                 if active[unit] <= floor:
                     break
                 heard = self.hear(self.forms[int(unit)])
-                if int(among[np.argmax(heard[among])]) == meant:
+                if int(groups[np.argmax(heard[groups])]) == meant:
                     chosen = int(unit)
                     break
+        return chosen
+
+    def say(self, concept: Any, floor: float = 1e-3, tries: int = 3) -> str | None:
+        """The word the motor says for a concept: the written word neuron ``choose`` gives,
+        its letters said one a part; None where no written word neuron is above ``floor``."""
+        chosen = self.choose(concept, floor, tries, among="written")
+        if chosen is None:
+            return None
         letters = self.letters[chosen].argmax(axis=1)
         return "".join(LETTERS[c] for c in letters if c < len(LETTERS))
 
