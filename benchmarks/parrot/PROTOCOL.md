@@ -40,7 +40,7 @@ Every table carries learned parameters and multiply-accumulates a moment.
 
 - **E1, seen and held.** After a 60-moment look-around by the parrot's own focus, the share of
   things the map holds within 0.10 m of their place. Then each thing so held that the neck can
-  put in the blind spot is put there for 20 moments: the share still held within 0.10 m.
+  put in the blind spot is put there for 20 moments: the share held within 0.10 m after them.
 - **E2, one thing from another view.** Each thing seen by the left eye alone, the right eye
   alone and both, as far as the neck reaches (two views or more), then 30 moments of the
   parrot's own looking: the share held as exactly one thing within 0.15 m, that one within
@@ -70,7 +70,7 @@ founders do.
 | Gate | Arm | Threshold |
 | --- | --- | --- |
 | E1 seen | Selected | .85 within 0.10 m |
-| E1 behind | Selected | .95 still held |
+| E1 behind | Selected | .95 held after 20 moments in the blind spot |
 | E2 | Selected | .85 |
 | E3 learned | Selected | both eyes in front, median error .08 or less; the last quarter of the life below the first |
 | E3 one eye | Selected | covered over both eyes 1.25 or more on the mean, above 1 on 10 of 12 |
