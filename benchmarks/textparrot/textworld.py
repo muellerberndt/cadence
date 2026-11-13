@@ -88,6 +88,7 @@ HELD_RELATIONS = frozenset({("left of", "cup"), ("behind", "apple"), ("next to",
                             ("opposite", "key"), ("right of", "book"), ("in front of", "box")})
 
 GLIMPSE = 6 + 2 + 3 + 1 + 4 + 4 + 8 + 3  # what the eyes report of one thing: 31 values
+ASKS_PRESENT = 0.8  # the share of questions about a value or relation the scene holds
 
 
 @dataclass
@@ -301,17 +302,20 @@ def question(form: str, scene: Scene, rng: np.random.Generator, *, depth: int = 
         w = word or str(rng.choice(NONCE) if rng.random() < 1 / 3 else rng.choice(CONTENT))
         return Question(form, [w], None, {0: [w]}, [], meta={"word": w})
     if form in ("which_colour", "which_shape", "which_size", "which_material", "which_food"):
+        # the teacher asks about what is there four times in five (a value of a thing in view)
+        present = things[int(rng.integers(len(things)))] if things and rng.random() < ASKS_PRESENT \
+            else None
         if form == "which_colour":
-            value = str(rng.choice(tuple(COLOURS)))
+            value = present.colour if present else str(rng.choice(tuple(COLOURS)))
             words, test = ["what", "is", value, "?"], (lambda t: t.colour == value)
         elif form == "which_shape":
-            value = str(rng.choice(tuple(SHAPES)))
+            value = present.shape if present else str(rng.choice(tuple(SHAPES)))
             words, test = ["what", "objects", "are", value, "?"], (lambda t: t.shape == value)
         elif form == "which_size":
-            value = str(rng.choice(tuple(SIZES)))
+            value = present.size if present else str(rng.choice(tuple(SIZES)))
             words, test = ["what", "objects", "are", value, "?"], (lambda t: t.size == value)
         elif form == "which_material":
-            value = str(rng.choice(tuple(MATERIALS)))
+            value = present.material if present else str(rng.choice(tuple(MATERIALS)))
             words, test = ["what", "is", "made", "of", value, "?"], (lambda t: t.material == value)
         else:
             value = "food"
@@ -339,6 +343,8 @@ def question(form: str, scene: Scene, rng: np.random.Generator, *, depth: int = 
         relation = str(rng.choice(RELATIONS))
         choices = [t for t in choices
                    if ((relation, t.kind) in HELD_RELATIONS) == held_relations]
+        if rng.random() < ASKS_PRESENT:  # four times in five, about a thing with an answer
+            choices = [t for t in choices if any(related(o, t, relation) for o in things)]
     if form == "describe":
         clauses = {idx[id(t)]: clause(t) for t in things}
         return Question(form, ["what", "do", "you", "see", "?"], None, clauses, [])

@@ -108,3 +108,12 @@ Taught on every row, a fresh brain says the majority answer ("no", .62 to .67) t
 long ?" under every message, width and memory variant; taught only where its answer differs it
 reads 1.00 by block 175 (founder 905). Every arm takes `learning_surprise=True`; the lives
 started under every-row teaching were stopped before any reading. Founders and gates unchanged.
+
+## Amendment 2 (before any gated reading)
+
+With the value of a "what is red ?" question drawn at random, 58% of the exchanges have no red
+thing, and a fresh brain stays silent at 74 of 75 matching things (block 50, founder 905). The
+teacher asks about what is there four times in five (`ASKS_PRESENT`: the value of a thing in
+view, or a relation some thing stands in): at block 50 the brain names 132 of 144 matching
+things. Training and reading scenes alike. The lives started before were stopped before any
+reading. Founders and gates unchanged.
