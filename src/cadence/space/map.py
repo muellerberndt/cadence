@@ -535,8 +535,8 @@ class Map:
         held_by_physics = np.zeros(self.count, dtype=bool)
         pending: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
         if physics is not None and physics.taught:  # things out of view that move
-            held_by_physics = self._predict(activity, claimed, sight, lit, write, clock, doubt,
-                                            lost, pending)
+            held_by_physics = self._predict(claimed, sight, lit, write, clock, doubt, lost,
+                                            pending)
         # a thing whose held place the camera sees, with no report that claims it, is not there
         empty = np.zeros(self.count, dtype=bool)
         for kind in self._present(activity):
@@ -622,12 +622,12 @@ class Map:
         ix = np.minimum(at[:, 0].astype(np.intp), nx - 2)
         iy = np.minimum(at[:, 1].astype(np.intp), ny - 2)
         ax, ay = at[:, 0] - ix, at[:, 1] - iy
-        out = np.zeros(self.count)
-        np.add.at(out, ix * ny + iy, masses * (1 - ax) * (1 - ay))
-        np.add.at(out, (ix + 1) * ny + iy, masses * ax * (1 - ay))
-        np.add.at(out, ix * ny + iy + 1, masses * (1 - ax) * ay)
-        np.add.at(out, (ix + 1) * ny + iy + 1, masses * ax * ay)
-        return out
+        cell = ix * ny + iy
+        return np.bincount(
+            np.concatenate([cell, cell + ny, cell + 1, cell + ny + 1]),
+            np.concatenate([masses * (1 - ax) * (1 - ay), masses * ax * (1 - ay),
+                            masses * (1 - ax) * ay, masses * ax * ay]),
+            minlength=self.count)
 
     def _points(self, mean: np.ndarray, var: float) -> tuple[np.ndarray, np.ndarray]:
         """A bump's places and their shares: a grid of 7 by 7 places over 2.5 standard
@@ -655,14 +655,14 @@ class Map:
         i = np.clip(np.floor((points - self._low) / self.size).astype(np.intp), 0, [nx - 1, ny - 1])
         return ~np.asarray(sight[i[:, 0] * ny + i[:, 1]])
 
-    def _trim(self, mass: float, mean: np.ndarray, var: float, lit: Any, sight: np.ndarray
+    def _trim(self, mass: float, mean: np.ndarray, var: float, dark: np.ndarray
               ) -> tuple[float, np.ndarray, float, bool]:
-        """Sight takes the share of a bump it sees; the bump is centred on what is left, no
-        wider than it was. Gives its mass, middle and variance, and whether sight took any."""
+        """Sight takes the share of a bump it sees (``dark``: whether the camera does not see
+        each of the bump's places, ``_points``); the bump is centred on what is left, no wider
+        than it was. Gives its mass, middle and variance, and whether sight took any."""
         if not mass > 0:
             return 0.0, mean, var, False
         points, shares = self._points(mean, var)
-        dark = self._dark(lit, sight, points)
         share = float(shares @ dark)
         if share <= 0.0:
             return 0.0, mean, var, True
@@ -689,8 +689,8 @@ class Map:
         ident = float(self.motion[:, :, IDENT].max()) + 1.0 if record is None else 0.0
         return self.physics.see(record, place, ident, self._inside())
 
-    def _predict(self, activity: np.ndarray, claimed: np.ndarray, sight: np.ndarray, lit: Any,
-                 write: np.ndarray, clock: np.ndarray, doubt: np.ndarray, lost: np.ndarray,
+    def _predict(self, claimed: np.ndarray, sight: np.ndarray, lit: Any, write: np.ndarray,
+                 clock: np.ndarray, doubt: np.ndarray, lost: np.ndarray,
                  pending: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]
                  ) -> np.ndarray:
         """Things out of view that move, one moment on, as the physics predicts and sight
@@ -769,10 +769,13 @@ class Map:
             # sight: the trail's cells it sees, and the share of each bump it sees
             trail = trail * ~sight
             var = px + 2 * k * pxv + k * k * pv
-            cm, cx, var2, cut = self._trim(cm, cx, var, lit, sight)
+            core_at = self._points(cx, var)[0] if cm > 0 else np.zeros((0, 2))
+            tail_at = self._points(tx, tvar)[0] if tm > 0 else np.zeros((0, 2))
+            dark = self._dark(lit, sight, np.concatenate([core_at, tail_at]))  # one look
+            cm, cx, var2, cut = self._trim(cm, cx, var, dark[:len(core_at)])
             if cut and var2 < var:  # what sight left is narrower: the line's place is surer
                 px = max(var2 - 2 * k * pxv - k * k * pv, 0.0)
-            tm, tx, tvar, _ = self._trim(tm, tx, tvar, lit, sight)
+            tm, tx, tvar, _ = self._trim(tm, tx, tvar, dark[len(core_at):])
             left = float(trail.sum()) + cm + tm
             held[cells] = True
             if not left > 1e-12:  # sight took all of it: known by its kind, with no place
@@ -805,14 +808,17 @@ class Map:
                        ) -> None:
         """The motion records follow their things: a report's record at its cells, a thing out
         of view's record at the cells it holds now; a record lives only where its thing does."""
-        self.motion[claimed] = 0.0
+        from .physics import IDENT
+
+        held = self.motion[:, :, IDENT] > 0  # the records there are
+        self.motion[claimed & held] = 0.0
         for old, now, units, rec in pending:
             self.motion[np.ix_(old, units)] = 0.0
             self.motion[np.ix_(now, units)] = rec
         for (_, place, _), (units, rec) in zip(reports, lines, strict=True):
             cells = np.flatnonzero(self.weights(place) > 0)
             self.motion[np.ix_(cells, units)] = rec
-        self.motion[self.potential <= 0] = 0.0
+        self.motion[(self.motion[:, :, IDENT] > 0) & (self.potential <= 0)] = 0.0
 
     def _looks(self, lit: Any, sight: np.ndarray) -> Any:
         """What the camera sees of a place: whether it sees the place, or with a distance which

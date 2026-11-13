@@ -59,19 +59,6 @@ def gains(n: int) -> tuple[float, float]:
     return 2.0 * (2 * n - 1) / (n * (n + 1)), 6.0 / (n * (n + 1))
 
 
-def errors(n: int, noise: float) -> tuple[float, float, float]:
-    """The line's own error, an axis, after ``n`` reports of error ``noise``: of its place
-    (m^2), of its place with its velocity (m^2 a moment) and of its velocity (m^2 a moment^2).
-    ``k`` moments on the line's place is off by ``place + 2 k with + k^2 velocity``."""
-    s2 = noise * noise
-    if n < 2:
-        return s2, 0.0, 0.0
-    if n == 2:
-        return s2, s2, 2.0 * s2
-    return (s2 * 2.0 * (2 * n - 1) / (n * (n + 1)), s2 * 6.0 / (n * (n + 1)),
-            s2 * 12.0 / (n * (n * n - 1)))
-
-
 def corrected(error: np.ndarray, a: float, b: float, noise: float) -> np.ndarray:
     """A line's own error (place, place with velocity, velocity; an axis) one moment on and
     corrected by a report of error ``noise`` with gains ``a`` and ``b``: exact for any gains."""
@@ -81,12 +68,6 @@ def corrected(error: np.ndarray, a: float, b: float, noise: float) -> np.ndarray
     return np.array([(1 - a) ** 2 * px + a * a * s2,
                      (1 - a) * (pxv - b * px) + a * b * s2,
                      pv - 2.0 * b * pxv + b * b * px + b * b * s2])
-
-
-def ahead_error(n: int, noise: float, k: Any) -> Any:
-    """The line's error ``k`` moments on, an axis (m^2)."""
-    px, pxv, pv = errors(n, noise)
-    return px + 2.0 * k * pxv + k * k * pv
 
 
 class Physics:
@@ -146,14 +127,13 @@ class Physics:
         self.ahead, self.aside = float(self.estimate[2]), float(self.estimate[3])
         self.speed = float(np.sqrt(speed2 / starts)) if starts > 0 else None
 
-    def moving(self, velocity: np.ndarray, n: int, pv: float | None = None) -> float:
+    def moving(self, velocity: np.ndarray, n: int, pv: float) -> float:
         """The share of a thing that moves: the evidence of its line (``velocity`` through ``n``
         reports, velocity error ``pv`` an axis) against a thing at rest, with velocities as
         large as the things watched."""
         if self.speed is None or n < 3:
             return 0.0
-        pv = errors(min(int(n), self.line), self.noise)[2] if pv is None else max(float(pv),
-                                                                                    1e-12)
+        pv = max(float(pv), 1e-12)
         v0 = self.speed ** 2 / 2.0  # an axis
         lbf = 0.5 * float(velocity @ velocity) / pv * (v0 / (v0 + pv)) - np.log1p(v0 / pv)
         return float(1.0 / (1.0 + np.exp(-np.clip(lbf, -50.0, 50.0))))
@@ -309,4 +289,4 @@ class Physics:
 
 
 __all__ = ["CORE", "COUNT", "ERROR", "EST", "FIELDS", "HIDDEN", "IDENT", "SLOT", "SLOTS", "TAIL",
-           "VEL", "WIDTH", "Physics", "ahead_error", "corrected", "errors", "gains"]
+           "VEL", "WIDTH", "Physics", "corrected", "gains"]

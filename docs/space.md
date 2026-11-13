@@ -9,7 +9,8 @@ The module has two stages: **the map, then learned physics on the map.**
 
 - **The map** (`cadence.space.map`, this guide) is a sheet of neurons whose settled activity is
   the whole state. No list of things is given to it and none is kept beside it.
-- **Learned physics on the map** follows in the next release
+- **Learned physics on the map** (`cadence.space.physics`, opt-in with `Map(physics=True)`):
+  the map predicts where a thing it cannot see has gone, by how it has seen things move
   ([below](#learned-physics-on-the-map)).
 
 The pieces are opt-in: a program that does not import `cadence.space` gets a library without it.
@@ -24,6 +25,7 @@ The pieces are opt-in: a program that does not import `cadence.space` gets a lib
 | Keep the map | `save`, `Map.load`, `reset` | [the carried state](#the-carried-state) |
 | Hold it in a brain, or load the built-in one | `Brain.space`, `cadence.modules.load("place")` | [a brain that holds a map](#a-brain-that-holds-a-map) |
 | The arm's own hand and sounds | `felt=`, `heard=`, `Sense` | [other senses](#other-senses) |
+| Predict where an unseen thing has gone | `Map(physics=True)`, `forecast`, `Physics` | [learned physics](#learned-physics-on-the-map) |
 | The earlier form, kept as a baseline | `Space`, `Interface` | [the baseline](#the-baseline-places-held-by-a-program) |
 
 ## What the brain does and what the program does
@@ -308,9 +310,118 @@ map at this size.
 
 ## Learned physics on the map
 
-The second stage, learned physics on the map, follows in the next release: the brain predicts
-the next moment of its map, and the next moment's sight teaches the prediction, so that it infers
-how a thing it does not see has moved.
+Without physics the map holds a thing it does not see where it was last. With physics it also
+predicts where the thing has gone, by how it has seen things move. It is one switch:
+
+```python
+held = Map((-1.0, 1.0, -0.2, 1.4), physics=True)  # learns while it watches
+held.moment(seen=[(HAND, (0.1, 0.5))], lit=camera_sees)  # as before
+held.things()                 # a hidden thing that moves: state "moving", with its "velocity"
+ahead = held.forecast(10)     # the map 10 moments on, a copy: nothing is learned from it
+ahead.where_is(HAND)          # where the hand will be
+held.physics.describe()       # what the brain has learned
+```
+
+A fresh physics has learned nothing and the map answers exactly as it does without physics. It
+learns while things move in view, and from then on predicts.
+
+### What it learns
+
+Four numbers, and nothing else about movement is given:
+
+| Number | What it says |
+| --- | --- |
+| `rest` | The share of moving things that come to rest in a moment |
+| `leave` | The share that leave their line in a moment: they slow or turn |
+| `ahead` | How far along its old line a thing that left goes, as a share of its speed |
+| `aside` | How fast it strays from where that puts it, as a share of its speed |
+
+The rule is the same at every place. The plane's edge is the map's own boundary: a thing does
+not leave the plane.
+
+### What the brain sees of motion
+
+While a thing is in view its reports are a run, and a line through the latest of them gives its
+place and its velocity. Each report's surprise (its distance from where the line put it, against
+the line's own error) corrects both. The line knows its own error exactly: of its place, of its
+velocity and of the two together, carried through every correction. A surprise beyond three
+standard deviations at two moments in a row ends the line, and it begins anew at the latest
+reports: the thing has changed its motion. Whether a thing moves at all is the evidence of its
+line against a thing at rest.
+
+### How it learns: imagined lessons
+
+Every 8 moments of a line that fits, the brain imagines the thing out of view from there, and
+for the next 30 moments compares where the imagined line puts it with where it is seen: how far
+short of its line it fell, and how far aside it went. Each lesson is explained by the outcomes
+that fit it (it kept its line; it came to rest at moment j; it left its line at moment j),
+weighted by how likely each is, and the counts of those outcomes give the four numbers (the
+expectation-maximisation step, online). A line that would leave the plane teaches nothing. A
+fresh brain counts 500 moments of things at rest before its first lesson, so it begins as the
+map and moves away from it as far as its lessons carry it.
+
+### Out of view: core, trail and tail
+
+A thing that goes out of view while moving is held in three parts, all on the map's own sheet:
+
+- **the core**, the things that kept their line: a narrow bump that moves by the thing's
+  velocity, as wide as the line's own error;
+- **the trail**, the things that came to rest: still activity where they stopped;
+- **the tail**, the things that left their line: a bump that goes `ahead` from where they left
+  and widens `aside`.
+
+Each moment a share `rest` of the core and of the tail comes to rest where it is, a share
+`leave` of the core joins the tail, and the core moves on (at the plane's edge it rests). Sight
+takes away what it sees: the cells of the trail it sees, and of each bump the share the camera
+sees, the bump then centred on what is left. The parts keep their sum, so what sight takes from
+one part goes to the others: a hand that does not come out where its line says has stopped or
+turned, and the map holds it there. The thing's whole pattern over the units moves with it.
+
+The cells that hold a thing also hold what the brain knows of its motion (its line, its lessons
+in progress and, out of view, its core and tail): the map keeps no list of things beside it.
+
+### What the brain does and what the program does
+
+| | The program beside the map | The brain (the map's graph) |
+| --- | --- | --- |
+| The line through a thing's reports | Corrects it by each report's surprise; ends it on a surprise beyond its error | Carries it at the thing's cells (`motion`) |
+| A thing out of view that moves | Moves its core and tail, leaves the shares at rest on the trail, takes away what sight sees | Holds the three parts as settled activity of `map` |
+| Lessons | Imagines the line from earlier moments and counts the outcomes that explain where the thing was seen (expectation-maximisation) | None: the four numbers are no synapses |
+
+The physics learns by a counting rule in the program, driven by what it sees go differently
+from what it imagined. It is no local repair inside the map's settle.
+
+### Readings
+
+READINGS
+
+### Settings
+
+`Map(physics=True)` takes the founder; `physics={...}` gives settings by name, and a `Physics`
+may be shared by several maps (one of them taking the lessons: `learning=False` on the others).
+
+| Setting | Founder | What it sets |
+| --- | --- | --- |
+| `noise` | 0.01 m | The camera's error, an axis |
+| `line` | 30 | The reports a line runs through |
+| `surprise` | 3.0 | Standard deviations of a surprise that end a line (two in a row) |
+| `settled` | 1.5 | The mean squared surprise under which a line fits and may teach |
+| `every`, `horizon` | 8, 30 | A lesson begins every 8 moments and runs for 30 |
+| `reports` | 10 | The reports a line needs before it teaches |
+| `prior` | 500 | Moments of things at rest counted before any lesson |
+| `learning` | True | Whether this map's physics takes lessons |
+
+### Limits
+
+- **Changes are instant in the model.** A hand in the chamber eases to rest or turns over 8
+  to 10 moments; the lessons read such a change as more than one, and the numbers read about
+  twice the world's own rate of change. A share that goes straight ahead with almost no spread
+  can sit in `leave` where nothing leaves its line: the lessons cannot tell it from keeping the
+  line.
+- **The same rule everywhere.** Where things come to rest (a table, a wall inside the room) is
+  not learned; the plane's edge is the only boundary.
+- **One thing, one record.** Two things of a kind that move out of view near each other are
+  read as the map reads them (`step`, `stride`); their crossing is not read.
 
 ## Settings and cost
 

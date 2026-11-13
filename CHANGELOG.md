@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Learned physics on the map (#324)
+
+- **`Map(physics=True)`**: the map predicts where a thing it cannot see has gone, by how it has
+  seen things move. Four numbers are learned by watching (`rest`, `leave`, `ahead`, `aside`:
+  how often a moving thing comes to rest or leaves its line, and how far ahead and aside a thing
+  that left goes), from imagined lessons: every few moments of a thing in view the brain
+  imagines it out of view and compares the imagined line with where it is seen. A thing out of
+  view that moves is held as a core on its line, a trail where it may have come to rest and a
+  tail where it may have left its line; sight takes away what it sees of each. A fresh physics
+  answers as the map. READINGS
+- **`Map.forecast(moments)`**: the map that many moments on as its physics predicts, a copy;
+  the map is left as it is and nothing is learned from it. `things()` gives a thing the physics
+  carries the state `"moving"` and its `velocity`.
+- **`cadence.space.physics.Physics`**: the learned part, shareable by several maps, kept in a
+  map's file.
+- No default changes: with physics unset the map is as on 0.99.0.
+
 ## 0.99.0 - 2026-11-13
 
 A map of what is where, held in the brain's own carried activity (`cadence.space.map.Map`,
