@@ -129,8 +129,11 @@ def control(seed: int, kind: str, out_dir: Path, brain_record: Path | None) -> d
         parameters = 160000
     exchanges = sum(b for _, _, b in plan) * 64
     t = time.time()
-    if kind in ("lstm-online", "transformer-online"):
-        policy: Any = tcl.online(kind.split("-")[0], layout, parameters, seed, plan)
+    if kind.startswith("newborn"):  # the arm's brain untaught: the probes' and codes' baseline
+        arm = kind.split(":", 1)[1] if ":" in kind else "d4a25"
+        policy: Any = tp.BrainPolicy(layout, ARMS[arm], seed)
+    elif kind in ("lstm-online", "transformer-online"):
+        policy = tcl.online(kind.split("-")[0], layout, parameters, seed, plan)
     elif kind in ("lstm-offline", "transformer-offline"):
         policy = tcl.offline(kind.split("-")[0], layout, parameters, seed,
                              max(640, min(exchanges, 20000)))
@@ -142,7 +145,8 @@ def control(seed: int, kind: str, out_dir: Path, brain_record: Path | None) -> d
                               "macs": getattr(policy, "macs", 0), "train_seconds": seconds,
                               "plan": plan}
     record["readings"] = readings(policy, layout, seed)
-    Path(out_dir / f"{kind}_{seed}.json").write_text(json.dumps(record, indent=1, default=float))
+    name = kind.replace(":", "-")
+    Path(out_dir / f"{name}_{seed}.json").write_text(json.dumps(record, indent=1, default=float))
     return record
 
 

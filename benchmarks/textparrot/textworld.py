@@ -297,7 +297,8 @@ def question(form: str, scene: Scene, rng: np.random.Generator, *, depth: int = 
     if form == "echo":  # the trainer says a word with one thing in view; the parrot says it back
         if len(things) != 1:
             return None
-        w = word or str(rng.choice(VOCABULARY[VOCABULARY.index("apple"):]))
+        # a third of the echoes are nonce words (heard and said back, never a name)
+        w = word or str(rng.choice(NONCE) if rng.random() < 1 / 3 else rng.choice(CONTENT))
         return Question(form, [w], None, {0: [w]}, [], meta={"word": w})
     if form in ("which_colour", "which_shape", "which_size", "which_material", "which_food"):
         if form == "which_colour":
