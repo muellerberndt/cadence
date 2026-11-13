@@ -28,7 +28,7 @@ heard history and the working trace, and in the present sound no longer). Its re
 words it said, in order. While a trainer has more to say the parrot's voice is held (the born
 suppression of the voice while hearing, gene ``reply_suppression``; evidence: feed-forward
 inhibition in the songbird's HVC while it listens).
-A right reply earns the trainer's praise word, heard at once, and a pistachio in the beak
+A right reply earns the trainer's click, heard at once, and a pistachio in the beak
 ``CATCH`` moments later.
 
 **The learning rules**, every one the brain's own:
@@ -102,8 +102,11 @@ QUESTION_WORDS = ("what", "is", "this", "colour", "has", "the", "objects", "are"
 ANSWER_WORDS = ("far", "yes", "no")
 WORDS = (KIND_NAMES + tuple(COLOURS) + tuple(MATERIALS) + DIRECTIONS + ("round",)
          + tuple(w for w in QUESTION_WORDS if w not in ("left", "right"))
-         + ANSWER_WORDS + ("good", "zabu"))
-PRAISE = "good"
+         + ANSWER_WORDS + ("zabu",))
+# the trainer's bridge signal: a click heard at once after a right reply, a sound the voice cannot
+# make (an animal trainer's clicker); a praise word would be imitated (the parrot said it in the
+# silent turn)
+PRAISE = "<click>"
 NEW_WORD = "zabu"  # heard and babbled from birth, never a name in training: the new-word gate's
 CATCH = 2       # moments from a right reply to the pistachio in the beak
 TURN = 3        # moments of the parrot's turn
@@ -330,6 +333,7 @@ class Parrot:
         self.silence = len(self.voice)
         for w in WORDS:
             self.forms(w)
+        self.forms(PRAISE)  # the click's code, drawn after the words'
         self.ear = self.forms.width
         # the glimpse: what the eyes report of the thing in focus, in a place of its own (the
         # tectum's winner looked at, its features gated in: born attention), then the scene
@@ -768,7 +772,7 @@ def export_spec(p: Parrot, path: str | Path) -> None:
                  "per_shape": e.per_shape, "sizes": e.sizes, "directions": e.directions,
                  "distances": e.distances, "surfaces": e.surfaces, "per_surface": e.per_surface},
         "ear_width": p.forms.width,
-        "codes": {w: p.forms(w).tolist() for w in WORDS},
+        "codes": {w: p.forms(w).tolist() for w in (*WORDS, PRAISE)},
         "voice": list(p.voice),
         "praise": PRAISE,
         "kinds": {k: {"shape": list(v[0]), "width": v[1], "materials": list(v[2])}
