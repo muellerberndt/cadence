@@ -18,8 +18,9 @@ eight patients. One token a fact favours the control: the brain hears a fact as 
 It is taught by backpropagation (Adam, cross-entropy at the questions) on windows drawn anew
 for every step from the nursery's pairs, the pairs the brain's lessons use: ``taught`` facts at
 most, a tenth told again after them, then ``asked`` questions, each of which sees every fact
-and no other question. The windows grow from 16 facts to ``taught`` over the first half of the
-budget of ``minutes``; a window's first place is drawn anywhere in ``PLACES``.
+and no other question. It is taught for ``steps`` steps, or to a budget of ``minutes`` where
+no steps are named; the windows grow from 16 facts to ``taught`` over the first half of them. A
+window's first place is drawn anywhere in ``PLACES``.
 
 It is read with the facts in its window: the N told facts and then the revisions enter in told
 order, each token attending to every token before it, and every layer's keys and values are
@@ -194,12 +195,15 @@ def teach(net: Any, world: br.World, founder: int, spec: dict[str, Any]) -> dict
     sizes = [16]
     while sizes[-1] < taught:
         sizes.append(min(4 * sizes[-1], taught))
+    total = int(spec.get("steps", 0))
     while True:
         spent = time.perf_counter() - started
-        if spent >= budget or steps >= int(spec.get("steps", 10 ** 9)):
+        if spent >= budget or (total and steps >= total):
             break
-        # the windows grow over the first half of the budget, then stay at ``taught``
-        facts = sizes[min(int(2 * len(sizes) * spent / budget), len(sizes) - 1)]
+        # the windows grow over the first half of the steps (of the budget, where no steps
+        # are named), then stay at ``taught``
+        done = steps / total if total else spent / budget
+        facts = sizes[min(int(2 * len(sizes) * done), len(sizes) - 1)]
         many = max(rows, min(64, rows * taught // facts))
         act, agent, patient, place, answer = (
             torch.from_numpy(a) for a in lesson(rng, world, facts, asked, many))
