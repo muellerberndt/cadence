@@ -1,0 +1,396 @@
+{
+ "genes": {
+  "figure_thickness": 2.2,
+  "disparity_form": "edges",
+  "disparity_channels": 36,
+  "disparity_max": 16.0,
+  "disparity_tuning": 0.37037903001952227,
+  "disparity_colour": 0.12,
+  "disparity_match": 0.15,
+  "parallax_delay": 1,
+  "parallax_channels": 11,
+  "parallax_baselines": 6,
+  "parallax_window": 8.0,
+  "parallax_least": 0.003,
+  "reach_bins": 24,
+  "reach_span": [
+   0.12,
+   1.2
+  ],
+  "reach_width": 1.5,
+  "reach_rate": 0.32214402206425774,
+  "reach_floor": 0.02,
+  "size_units": 8,
+  "elevation_units": 8,
+  "p_wulst_dl": 1,
+  "p_glimpse_dl": 1,
+  "p_both_cues": 0,
+  "wiring": "full",
+  "agreement_views": "both",
+  "agreement_scale": 0.008520497768970813,
+  "agreement_parallax": 1.0,
+  "agreement_baseline": 0.003,
+  "agreement_window": 11,
+  "agreement_lessons": 8,
+  "place_keep": "one",
+  "place_keep_angle": 4.835773934037267,
+  "place_default": 0.4,
+  "map_cells": 54,
+  "empty_rule": "keep",
+  "match_step": 0.1378456098407451,
+  "match_stride": 0.25,
+  "map_reach": 0.15,
+  "kinds_capacity": 12,
+  "kinds_vigilance": 0.24223862252276418,
+  "focus_appear": 1.0,
+  "focus_move": 2.0,
+  "novelty": 0.8903728795064699,
+  "isthmi_local": 1.2878404195823712,
+  "focus_habituate": 11.661451370063718,
+  "focus_return": 30.0,
+  "isthmi_global": 2.0,
+  "focus_explore": 0.05,
+  "focus_fixation": 5,
+  "peer_amplitude": 0.0,
+  "peer_period": 4
+ },
+ "mean_fitness_over_scorings": -3.4604259004002507,
+ "scorings": 4,
+ "confirmation": {
+  "parents_mean_over_scorings": [
+   -3.4604259004002507,
+   -3.787935827038293,
+   -3.864645491670051,
+   -3.5574297267031856,
+   -3.5451250281904474,
+   -3.935851180673317
+  ],
+  "parents_scorings": [
+   4,
+   3,
+   2,
+   2,
+   2,
+   2
+  ]
+ },
+ "generations": [
+  {
+   "generation": 0,
+   "best_fitness": -2.2774040683696968,
+   "mean_fitness": -3.3545958192326837,
+   "parents_mean_over_scorings": [
+    -2.591298996482203,
+    -2.5877560141137304,
+    -2.645816727100576,
+    -2.6601566393939375,
+    -2.69148919629114,
+    -2.88787005796246
+   ]
+  },
+  {
+   "generation": 1,
+   "best_fitness": -3.9252823838831294,
+   "mean_fitness": -4.641919509041277,
+   "parents_mean_over_scorings": [
+    -3.9252823838831294,
+    -3.9974184886046045,
+    -3.311713040596478,
+    -4.0984583552165015,
+    -4.125532291260473,
+    -4.23258444588069
+   ]
+  },
+  {
+   "generation": 2,
+   "best_fitness": -3.0072060471798765,
+   "mean_fitness": -3.457404892968731,
+   "parents_mean_over_scorings": [
+    -3.0072060471798765,
+    -3.043520967039095,
+    -3.0459956389277476,
+    -3.7165786688569558,
+    -3.6717039028159766,
+    -3.6124353849557855
+   ]
+  },
+  {
+   "generation": 3,
+   "best_fitness": -2.5337390460529288,
+   "mean_fitness": -3.452849654216145,
+   "parents_mean_over_scorings": [
+    -2.5337390460529288,
+    -2.8926017723220454,
+    -2.8926017723220454,
+    -3.075910152389625,
+    -3.078148024020649,
+    -3.475613949174486
+   ]
+  },
+  {
+   "generation": 4,
+   "best_fitness": -2.5302492690992677,
+   "mean_fitness": -3.4627191212731936,
+   "parents_mean_over_scorings": [
+    -3.239272779155682,
+    -2.574229909486742,
+    -2.7696941616901616,
+    -3.0512448654504123,
+    -3.1884816180066644,
+    -3.1702260889777243
+   ]
+  },
+  {
+   "generation": 5,
+   "best_fitness": -2.6228790023276423,
+   "mean_fitness": -3.3723306666420463,
+   "parents_mean_over_scorings": [
+    -3.115994023790074,
+    -2.934362935711495,
+    -2.935098406189628,
+    -3.1711428994134594,
+    -3.111046853154101,
+    -3.1476040853134672
+   ]
+  },
+  {
+   "generation": 6,
+   "best_fitness": -2.840727389270291,
+   "mean_fitness": -3.557431179443281,
+   "parents_mean_over_scorings": [
+    -2.840727389270291,
+    -3.133288903080942,
+    -2.9092207262592797,
+    -2.9671810515535864,
+    -2.973163866943253,
+    -2.9599940279003043
+   ]
+  },
+  {
+   "generation": 7,
+   "best_fitness": -2.697910714861462,
+   "mean_fitness": -3.311630832584759,
+   "parents_mean_over_scorings": [
+    -2.8789193592863285,
+    -2.7091791426724,
+    -2.820665535257105,
+    -2.8948675427202772,
+    -2.8789193592863285,
+    -2.930989589683006
+   ]
+  },
+  {
+   "generation": 8,
+   "best_fitness": -2.2455643686321674,
+   "mean_fitness": -3.2748532556610908,
+   "parents_mean_over_scorings": [
+    -2.5702159556762223,
+    -2.445373030891455,
+    -2.44906145104221,
+    -2.6857102167121583,
+    -2.6904931089549367,
+    -2.7233267855789998
+   ]
+  },
+  {
+   "generation": 9,
+   "best_fitness": -3.177045828655782,
+   "mean_fitness": -3.9337721968654513,
+   "parents_mean_over_scorings": [
+    -2.8112094297736183,
+    -3.3467853176651783,
+    -3.4161211909339864,
+    -3.4594212184120083,
+    -2.8785067347624547,
+    -3.515227178051685
+   ]
+  },
+  {
+   "generation": 10,
+   "best_fitness": -3.1772108694803567,
+   "mean_fitness": -3.832200119232232,
+   "parents_mean_over_scorings": [
+    -3.1772108694803567,
+    -3.316656079794138,
+    -3.370738020026902,
+    -3.330834090155214,
+    -3.438796112329019,
+    -3.4921604496973
+   ]
+  },
+  {
+   "generation": 11,
+   "best_fitness": -3.5807762697588617,
+   "mean_fitness": -4.365042422792037,
+   "parents_mean_over_scorings": [
+    -3.440750769937555,
+    -3.4547830516603373,
+    -3.7765132930028695,
+    -3.788794386609315,
+    -3.7899465314180425,
+    -3.81949605269618
+   ]
+  }
+ ],
+ "space": {
+  "disparity_channels": [
+   "int",
+   12,
+   48
+  ],
+  "disparity_max": [
+   "log",
+   0.2,
+   8.0,
+   24.0
+  ],
+  "disparity_tuning": [
+   "log",
+   0.3,
+   0.2,
+   2.0
+  ],
+  "disparity_form": [
+   "choice",
+   "edges",
+   "energy"
+  ],
+  "parallax_delay": [
+   "int",
+   1,
+   6
+  ],
+  "parallax_channels": [
+   "int",
+   4,
+   24
+  ],
+  "reach_bins": [
+   "int",
+   6,
+   36
+  ],
+  "reach_rate": [
+   "log",
+   0.3,
+   0.05,
+   1.0
+  ],
+  "reach_width": [
+   "log",
+   0.3,
+   0.5,
+   4.0
+  ],
+  "p_glimpse_dl": [
+   "choice",
+   0,
+   1
+  ],
+  "p_both_cues": [
+   "choice",
+   0,
+   1
+  ],
+  "agreement_views": [
+   "choice",
+   "before-after",
+   "binocular",
+   "both"
+  ],
+  "agreement_scale": [
+   "log",
+   0.3,
+   0.004,
+   0.04
+  ],
+  "agreement_parallax": [
+   "log",
+   0.3,
+   0.3,
+   4.0
+  ],
+  "agreement_window": [
+   "int",
+   2,
+   20
+  ],
+  "place_keep_angle": [
+   "log",
+   0.3,
+   2.0,
+   15.0
+  ],
+  "match_step": [
+   "log",
+   0.3,
+   0.05,
+   0.4
+  ],
+  "match_stride": [
+   "log",
+   0.3,
+   0.1,
+   1.0
+  ],
+  "kinds_vigilance": [
+   "linear",
+   0.05,
+   0.1,
+   0.5
+  ],
+  "novelty": [
+   "log",
+   0.3,
+   0.1,
+   3.0
+  ],
+  "isthmi_local": [
+   "log",
+   0.3,
+   0.2,
+   5.0
+  ],
+  "focus_habituate": [
+   "log",
+   0.3,
+   1.0,
+   30.0
+  ],
+  "focus_explore": [
+   "linear",
+   0.05,
+   0.0,
+   0.5
+  ],
+  "peer_amplitude": [
+   "linear",
+   0.1,
+   0.0,
+   1.0
+  ],
+  "peer_period": [
+   "int",
+   2,
+   12
+  ]
+ },
+ "reference": {
+  "m1": 5.629838264160344,
+  "m2": 4.132165308446785,
+  "m3": 0.19166666666666665,
+  "m4": 0.15119791901530188,
+  "cost": 785139.670742319
+ },
+ "random": false,
+ "selection": {
+  "script": "benchmarks/parrot/evolve.py --rescore",
+  "seed": 33292000,
+  "generations": 12,
+  "population": 24,
+  "keep": 6,
+  "worlds": 4,
+  "rate": 0.15,
+  "commit": "33c05f89"
+ }
+}

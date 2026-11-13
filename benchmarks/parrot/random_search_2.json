@@ -1,0 +1,396 @@
+{
+ "genes": {
+  "figure_thickness": 2.2,
+  "disparity_form": "edges",
+  "disparity_channels": 37,
+  "disparity_max": 16.0,
+  "disparity_tuning": 0.5,
+  "disparity_colour": 0.12,
+  "disparity_match": 0.15,
+  "parallax_delay": 2,
+  "parallax_channels": 12,
+  "parallax_baselines": 6,
+  "parallax_window": 8.0,
+  "parallax_least": 0.003,
+  "reach_bins": 24,
+  "reach_span": [
+   0.12,
+   1.2
+  ],
+  "reach_width": 1.5,
+  "reach_rate": 0.3,
+  "reach_floor": 0.02,
+  "size_units": 8,
+  "elevation_units": 8,
+  "p_wulst_dl": 1,
+  "p_glimpse_dl": 1,
+  "p_both_cues": 0,
+  "wiring": "full",
+  "agreement_views": "before-after",
+  "agreement_scale": 0.012,
+  "agreement_parallax": 1.0,
+  "agreement_baseline": 0.003,
+  "agreement_window": 10,
+  "agreement_lessons": 8,
+  "place_keep": "one",
+  "place_keep_angle": 6.0,
+  "place_default": 0.4,
+  "map_cells": 54,
+  "empty_rule": "keep",
+  "match_step": 0.1,
+  "match_stride": 0.25,
+  "map_reach": 0.15,
+  "kinds_capacity": 12,
+  "kinds_vigilance": 0.2,
+  "focus_appear": 1.0,
+  "focus_move": 2.0,
+  "novelty": 0.6,
+  "isthmi_local": 1.2,
+  "focus_habituate": 6.0,
+  "focus_return": 30.0,
+  "isthmi_global": 2.0,
+  "focus_explore": 0.05,
+  "focus_fixation": 5,
+  "peer_amplitude": 0.0,
+  "peer_period": 6
+ },
+ "mean_fitness_over_scorings": -3.4096293059765994,
+ "scorings": 13,
+ "confirmation": {
+  "parents_mean_over_scorings": [
+   -3.8738542986974687,
+   -3.4096293059765994,
+   -4.764562340688585,
+   -3.588576481700113,
+   -3.964686486706606,
+   -4.614558850941643
+  ],
+  "parents_scorings": [
+   4,
+   13,
+   2,
+   9,
+   6,
+   2
+  ]
+ },
+ "generations": [
+  {
+   "generation": 0,
+   "best_fitness": -2.2774040683696968,
+   "mean_fitness": -5.041791349836843,
+   "parents_mean_over_scorings": [
+    -2.2774040683696968,
+    -3.5637079470233117,
+    -3.7725748317036727,
+    -3.9723822587357063,
+    -3.9756701252246063,
+    -4.073690819578254
+   ]
+  },
+  {
+   "generation": 1,
+   "best_fitness": -4.098625634417968,
+   "mean_fitness": -5.799100732180558,
+   "parents_mean_over_scorings": [
+    -4.098625634417968,
+    -3.2769275387865164,
+    -4.340549417226874,
+    -4.015870337409502,
+    -4.545451470896825,
+    -4.735432224546413
+   ]
+  },
+  {
+   "generation": 2,
+   "best_fitness": -3.04125718420554,
+   "mean_fitness": -4.636697375484492,
+   "parents_mean_over_scorings": [
+    -3.5699414093117543,
+    -3.696169951113724,
+    -3.2630407088726407,
+    -3.8819615593679635,
+    -3.8309503354026764,
+    -4.212649642792559
+   ]
+  },
+  {
+   "generation": 3,
+   "best_fitness": -3.1191220825904247,
+   "mean_fitness": -4.89859286018962,
+   "parents_mean_over_scorings": [
+    -3.2270610523020866,
+    -3.283634769674737,
+    -3.5348447336821978,
+    -3.6846134212436277,
+    -4.107661616589805,
+    -4.034241883387759
+   ]
+  },
+  {
+   "generation": 4,
+   "best_fitness": -2.7408424611643714,
+   "mean_fitness": -4.870240969218454,
+   "parents_mean_over_scorings": [
+    -3.3363441655527413,
+    -2.9136539945821216,
+    -3.5015855667492364,
+    -3.2515891235517698,
+    -3.2264087442896296,
+    -3.5835976828668343
+   ]
+  },
+  {
+   "generation": 5,
+   "best_fitness": -2.8852193481414212,
+   "mean_fitness": -4.406043305865015,
+   "parents_mean_over_scorings": [
+    -3.3783123230276737,
+    -3.206891320951583,
+    -3.2951465172384586,
+    -3.5462946683341685,
+    -3.6366502180304723,
+    -3.352788676441732
+   ]
+  },
+  {
+   "generation": 6,
+   "best_fitness": -2.755782509728399,
+   "mean_fitness": -4.781210525024235,
+   "parents_mean_over_scorings": [
+    -3.205252515986782,
+    -3.1597356352249895,
+    -3.3224467238068605,
+    -3.390921464151406,
+    -3.7871934877479747,
+    -3.9118193193478987
+   ]
+  },
+  {
+   "generation": 7,
+   "best_fitness": -2.7095189520814054,
+   "mean_fitness": -5.039831117831521,
+   "parents_mean_over_scorings": [
+    -3.2348856135603667,
+    -3.3426380795450386,
+    -3.1679113765907,
+    -3.5776750132790447,
+    -3.8505557635893983,
+    -3.8878915647411807
+   ]
+  },
+  {
+   "generation": 8,
+   "best_fitness": -3.151077901497852,
+   "mean_fitness": -4.84588879390643,
+   "parents_mean_over_scorings": [
+    -3.1660409904692726,
+    -3.3743904505489937,
+    -3.5889294455486516,
+    -3.2939480294352994,
+    -3.913984897739926,
+    -4.297561491125675
+   ]
+  },
+  {
+   "generation": 9,
+   "best_fitness": -3.954875362217063,
+   "mean_fitness": -4.97748792522189,
+   "parents_mean_over_scorings": [
+    -3.4711379358270054,
+    -3.246708156822149,
+    -4.09927398660368,
+    -3.763236938078091,
+    -4.1927336442609615,
+    -3.4026872722487287
+   ]
+  },
+  {
+   "generation": 10,
+   "best_fitness": -3.239756256774384,
+   "mean_fitness": -5.044043030920245,
+   "parents_mean_over_scorings": [
+    -3.4380834102480593,
+    -3.860925683975221,
+    -3.643924859000133,
+    -3.8953147433206743,
+    -3.3001629408137187,
+    -3.8713283107027543
+   ]
+  },
+  {
+   "generation": 11,
+   "best_fitness": -4.125969924120463,
+   "mean_fitness": -5.89278684665583,
+   "parents_mean_over_scorings": [
+    -3.949273764023635,
+    -3.3727363315005534,
+    -4.9652443270880315,
+    -3.6440093870052475,
+    -4.139074844745944,
+    -5.3033692188572115
+   ]
+  }
+ ],
+ "space": {
+  "disparity_channels": [
+   "int",
+   12,
+   48
+  ],
+  "disparity_max": [
+   "log",
+   0.2,
+   8.0,
+   24.0
+  ],
+  "disparity_tuning": [
+   "log",
+   0.3,
+   0.2,
+   2.0
+  ],
+  "disparity_form": [
+   "choice",
+   "edges",
+   "energy"
+  ],
+  "parallax_delay": [
+   "int",
+   1,
+   6
+  ],
+  "parallax_channels": [
+   "int",
+   4,
+   24
+  ],
+  "reach_bins": [
+   "int",
+   6,
+   36
+  ],
+  "reach_rate": [
+   "log",
+   0.3,
+   0.05,
+   1.0
+  ],
+  "reach_width": [
+   "log",
+   0.3,
+   0.5,
+   4.0
+  ],
+  "p_glimpse_dl": [
+   "choice",
+   0,
+   1
+  ],
+  "p_both_cues": [
+   "choice",
+   0,
+   1
+  ],
+  "agreement_views": [
+   "choice",
+   "before-after",
+   "binocular",
+   "both"
+  ],
+  "agreement_scale": [
+   "log",
+   0.3,
+   0.004,
+   0.04
+  ],
+  "agreement_parallax": [
+   "log",
+   0.3,
+   0.3,
+   4.0
+  ],
+  "agreement_window": [
+   "int",
+   2,
+   20
+  ],
+  "place_keep_angle": [
+   "log",
+   0.3,
+   2.0,
+   15.0
+  ],
+  "match_step": [
+   "log",
+   0.3,
+   0.05,
+   0.4
+  ],
+  "match_stride": [
+   "log",
+   0.3,
+   0.1,
+   1.0
+  ],
+  "kinds_vigilance": [
+   "linear",
+   0.05,
+   0.1,
+   0.5
+  ],
+  "novelty": [
+   "log",
+   0.3,
+   0.1,
+   3.0
+  ],
+  "isthmi_local": [
+   "log",
+   0.3,
+   0.2,
+   5.0
+  ],
+  "focus_habituate": [
+   "log",
+   0.3,
+   1.0,
+   30.0
+  ],
+  "focus_explore": [
+   "linear",
+   0.05,
+   0.0,
+   0.5
+  ],
+  "peer_amplitude": [
+   "linear",
+   0.1,
+   0.0,
+   1.0
+  ],
+  "peer_period": [
+   "int",
+   2,
+   12
+  ]
+ },
+ "reference": {
+  "m1": 5.629838264160344,
+  "m2": 4.132165308446785,
+  "m3": 0.19166666666666665,
+  "m4": 0.15119791901530188,
+  "cost": 785139.670742319
+ },
+ "random": true,
+ "selection": {
+  "script": "benchmarks/parrot/evolve.py --rescore",
+  "seed": 33292000,
+  "generations": 12,
+  "population": 24,
+  "keep": 6,
+  "worlds": 4,
+  "rate": 0.15,
+  "commit": "33c05f89"
+ }
+}
