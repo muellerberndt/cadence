@@ -135,14 +135,14 @@ def soft_step(brain: Any, rows: Any, targets: Any) -> dict[str, float]:
     one step of the moment at the act, as in ``step``, and are held during the lesson. Returns
     the lesson's report."""
     fields = getattr(brain, "fields", None)
-    moving = fields is not None and bool(fields.learning)
-    if moving:
-        fields.learning = False
+    moving = fields if fields is not None and fields.learning else None
+    if moving is not None:
+        moving.learning = False
     try:
         report: dict[str, float] = brain.lesson(rows, targets=targets)
     finally:
-        if moving:
-            fields.learning = True
+        if moving is not None:
+            moving.learning = True
     brain.act(rows, greedy=True)
     return report
 
