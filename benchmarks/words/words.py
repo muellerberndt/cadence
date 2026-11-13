@@ -58,14 +58,14 @@ def look_around(brain: Any, r: world.Room) -> None:
     for i in range(9):
         heading = r.heading + (i % 8) * math.pi / 4 if i < 8 else r.heading
         brain.body.heading = heading
-        brain.map.moment(seen=world.seen(r, heading), lit=world.camera(heading))
+        brain.look(seen=world.seen(r, heading), lit=world.camera(heading))
 
 
 def turn(brain: Any, r: world.Room, heading: float) -> None:
     """The robot turns to ``heading``: one moment of sight there."""
     r.heading = heading
     brain.body.heading = heading
-    brain.map.moment(seen=world.seen(r, heading), lit=world.camera(heading))
+    brain.look(seen=world.seen(r, heading), lit=world.camera(heading))
 
 
 def naming_word(lex: world.Lexicon, r: world.Room, t: world.Thing,

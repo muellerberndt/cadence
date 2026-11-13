@@ -106,5 +106,5 @@ def test_a_brain_answers_about_its_room() -> None:
         assert brain.ask(f"where is {kinds[k]}") == [places[brain.body.place(p)]]
         assert brain.ask(f"what colour is {kinds[k]}") == [colours[c]]
     assert brain.ask("where is novu") == ["i do not know"]  # a word never named
-    with pytest.raises(ValueError, match="values"):
-        Words(Map((-1.0, 1.0, -1.0, 1.0)))
+    plain = Words(Map((-1.0, 1.0, -1.0, 1.0)))  # a map with no values: kinds and places
+    assert set(plain.senses.groups) == {"kind", "place"} and plain.answers == ["kind", "place"]
