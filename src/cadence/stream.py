@@ -851,8 +851,9 @@ class HeldMessage(Message):
 
     With a ``port`` region the brain also reads its message one block at a time
     (``message_read``). With ``roles`` the turn's term is one per role, shared by the role's
-    blocks, so a block no lesson filled is addressed by its content. The present moment
-    addresses the blocks,
+    blocks, so a block no lesson filled is addressed by its content. On a store worked by
+    ``operations`` the read's blocks are the groups' heads, a turn term per group, and ``c`` is
+    the moment's settle in its context. The present moment addresses the blocks,
 
         p = softmax((x W_x + c W_c + w) . block / temperature + turn_k)
 
@@ -914,10 +915,10 @@ class HeldMessage(Message):
         self.reads = self.port in populations
         self.operations = _operations(self.operations)
         if self.operations:
-            if not self.settled or self.roles or self.reads or self.boundary is not None:
+            if not self.settled or self.roles or self.boundary is not None:
                 raise ValueError(
                     "message operations work a store of settled activity: pass settled=True, "
-                    "and no roles, read port or boundary"
+                    "and no roles or boundary"
                 )
             groups = _operated_groups(self.operations)
             try:
@@ -1078,11 +1079,13 @@ class HeldMessage(Message):
         return np.asarray(out.reshape(rows, self.groups * units))
 
     def hear(self, observations: np.ndarray, cortex: np.ndarray | None = None,
-             roles: np.ndarray | None = None) -> None:
+             roles: np.ndarray | None = None, context: np.ndarray | None = None) -> None:
         """One heard moment per stream joins its block; ``cortex`` is the association's settled
         activity at that moment, which the next moment's read addresses with. With
         ``operations`` the moment runs the operations of each stream's role (``roles``, one per
-        stream; None runs none)."""
+        stream; None runs none), and ``context``, where given, is the activity the moment
+        settled to in its context, which the next moment's read addresses with in place of
+        ``cortex`` (a block may take the settle of the observation alone)."""
         if self.operations:
             x = np.asarray(observations, dtype=float)
             if x.ndim != 2 or x.shape[1] != self.inputs:
@@ -1112,6 +1115,8 @@ class HeldMessage(Message):
             super().hear(observations, now)
         else:
             super().hear(observations)
+        if self.operations and context is not None:
+            cortex = context
         if cortex is not None and np.shape(cortex) == self.previous.shape:
             self.previous = np.array(cortex, dtype=float)
         else:
@@ -1119,8 +1124,9 @@ class HeldMessage(Message):
 
     @property
     def turns(self) -> int:
-        """The terms of the read's turn: one per role, or one per block without roles."""
-        return self.groups if self.roles else self.blocks
+        """The terms of the read's turn: one per role (or per group of a store worked by
+        operations), or one per block without roles."""
+        return self.groups if self.roles or self.operations else self.blocks
 
     def streams(self) -> dict[str, np.ndarray]:
         """What the streams hold, the learned maps apart."""
@@ -1146,7 +1152,7 @@ class HeldMessage(Message):
         """``p`` over each stream's blocks for the moments ``x`` and the cortex ``c``."""
         content, turn = self.maps
         logits = _einsum("bu,bku->bk", _term(content, x, c), blocks) / self.read_temperature
-        logits = logits + np.repeat(_term(turn, x, c), self.blocks // self.turns, axis=1)
+        logits = logits + np.repeat(_term(turn, x, c), blocks.shape[1] // self.turns, axis=1)
         logits -= logits.max(axis=1, keepdims=True)
         p = np.exp(logits)
         return np.asarray(p / p.sum(axis=1, keepdims=True))
@@ -1166,7 +1172,9 @@ class HeldMessage(Message):
             if x is None or len(x) != len(out):
                 out[:, self._port_columns] = 0.0
             else:
-                blocks = self.trace.reshape(len(out), self.blocks, int(self.units))
+                # a store worked by operations is read one group's head at a time
+                held = self.heads() if self.operations else self.trace
+                blocks = held.reshape(len(out), self.shown, int(self.units))
                 c = self.previous
                 p = self.attention(x, c, blocks)
                 out[:, self._port_columns] = self.read_amplitude * _einsum(

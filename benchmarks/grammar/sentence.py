@@ -80,13 +80,17 @@ _TASKS = (
 class Design:
     """A store's design: the role slot's choices, each a name and the operations it names, and
     what a block takes (``alone``: the settle of the moment's observation alone, in place of
-    the settle in its context)."""
+    the settle in its context). With ``facts`` a path's heard facts are echoed with the role
+    ``none`` (each heard word named, nothing written), and with ``start_said`` a path's start
+    leaves the store once said (``said_start``)."""
 
     def __init__(self, name: str, brackets: tuple[tuple[str, tuple[Any, ...]], ...],
-                 alone: bool) -> None:
-        self.name, self.alone = name, alone
-        self.roles = (*_CLAUSE, *brackets, ("start", (("set", START),)), *_TASKS)
-        assert len(self.roles) - len(_TASKS) == BASE[1]
+                 alone: bool, facts: bool = False, start_said: bool = False) -> None:
+        self.name, self.alone, self.facts = name, alone, facts
+        said = (("said_start", (("shift", START),)),) if start_said else ()
+        self.roles = (*_CLAUSE, *brackets, ("start", (("set", START),)), *said, *_TASKS)
+        self.base = len(self.roles) - len(_TASKS)  # the say-back mix's roles
+        assert self.base == BASE[1] + len(said)
         self.op = {role: i for i, (role, _) in enumerate(self.roles)}
         # a bracket's echo names its word only where the heard moment settles it
         self.silent = alone
@@ -98,7 +102,7 @@ class Design:
         stems = mn.PART_SLOTS[0] + (1 if full or self.silent else 0)
         if full:
             return len(GROUPS), (stems, mn.PART_SLOTS[1], len(self.roles))
-        return BASE[0], (stems, mn.PART_SLOTS[1], BASE[1])
+        return BASE[0], (stems, mn.PART_SLOTS[1], self.base)
 
 
 # ``context``: a block takes the moment's settle in its context; a heard close is settled to the
@@ -106,6 +110,12 @@ class Design:
 # from the sequence. ``alone``: a block takes the settle of the observation alone; the heard
 # brackets join the sequence as heard, and saying them works the stack (an open said moves from
 # the sequence onto the stack, a close said takes the stack's head)
+_ALONE = (
+    ("bracket", (("write", SEQUENCE),)),
+    ("said_open", (("move", SEQUENCE, STACK),)),
+    ("said_match", (("shift", SEQUENCE), ("pop", STACK))),
+    ("said_close", (("pop", STACK),)),
+)
 DESIGNS = {
     "context": Design("context", (
         ("open", (("write", SEQUENCE), ("write", STACK))),
@@ -113,12 +123,9 @@ DESIGNS = {
         ("said_bracket", (("shift", SEQUENCE),)),
         ("said_close", (("pop", STACK),)),
     ), alone=False),
-    "alone": Design("alone", (
-        ("bracket", (("write", SEQUENCE),)),
-        ("said_open", (("move", SEQUENCE, STACK),)),
-        ("said_match", (("shift", SEQUENCE), ("pop", STACK))),
-        ("said_close", (("pop", STACK),)),
-    ), alone=True),
+    "alone": Design("alone", _ALONE, alone=True),
+    # ``alone`` with a path's facts echoed (role ``none``) and its start leaving once said
+    "alone_path": Design("alone_path", _ALONE, alone=True, facts=True, start_said=True),
 }
 
 
@@ -297,6 +304,8 @@ def heard_label(row: gr.Row, t: int, design: Design) -> tuple[int, int, int] | N
         return (*mn.word_parts(row.target[t]), OP["close" if close else "open"])
     if row.family == "path":
         if t != len(row.pre) - 1:
+            if design.facts:  # a fact's heard word, named with no role
+                return (*mn.word_parts(int(np.argmax(x[:gr.ACTIONS]))), OP["none"])
             return None
         return (*mn.word_parts(row.meta["chain"][0]), OP["start"])
     words = np.flatnonzero(x[:gr.ACTIONS])
@@ -331,6 +340,9 @@ def said_label(row: gr.Row, j: int, design: Design) -> tuple[int, int, int]:
     elif row.family == "clause":
         if _word_role(row, j) == "distractor":
             role = "said_distractor"
+    elif row.family == "path":
+        if j == 0 and "said_start" in OP:
+            role = "said_start"
     elif row.family == "dyck":
         if j < row.meta["prefix"] and design.alone:
             role = "said_open" if row.target[j] in gr.OPENS else "said_match"
@@ -639,7 +651,8 @@ def cross_batches(founder: int, per_shape: int) -> dict[str, list[list[gr.Row]]]
 
 # -------------------------------------------------------------------------------- a life
 
-LEAN = ("clause", "clause_long", "dyck", "path", "back", "back_long")  # a checkpoint's panels
+# a checkpoint's panels
+LEAN = ("clause", "clause_held", "roles", "clause_long", "dyck", "path", "back", "back_long")
 LEAN_MORE = ("para_12_held", "para_21_held", "g2_held", "ask_concepts_held", "ask_words_held")
 
 

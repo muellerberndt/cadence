@@ -539,6 +539,33 @@ def test_a_move_takes_a_head_onto_another_group_and_alone_holds_the_moment_itsel
                          message_settled=True, message_operations=[[], [("move", 0, 0)]])
 
 
+def test_a_worked_store_is_read_one_group_head_at_a_time(tmp_path):
+    brain = _worked(message_read=True)
+    told = brain.message
+    assert told.reads and told.direct and told.turns == 3
+    assert [m[0].shape[1] for m in told.maps] == [16, 3]  # the content address, a turn a group
+    stream = _stream(np.random.default_rng(4), 6)
+    a = _say(brain, stream[0], [1, 2, 4])
+    assert np.allclose(told.previous, a)  # the settle in its context addresses the next read
+    port = brain.connectome.populations["message_read"]
+    drive = brain.stimulus(stream[1])
+    heads = told.heads().reshape(3, 3, 16)
+    # a newborn's address reads the heads' mean (every map starts at zero)
+    assert np.allclose(drive[:, port], 3.0 * heads.mean(axis=1))
+    before = [a.copy() for maps in told.maps for a in maps]
+    report = brain.lesson(stream[1], np.array([[0, 1], [1, 2], [2, 4]]))
+    assert report["message_rows"] > 0
+    assert any(not np.array_equal(x, y) for x, y in zip(
+        before, [a for maps in told.maps for a in maps], strict=True))
+    brain.act(stream[1], greedy=True)
+    loaded = cd.Brain.load(brain.save(tmp_path / "read"))
+    assert all(np.array_equal(x, y) for m, n in zip(loaded.message.maps, told.maps, strict=True)
+               for x, y in zip(m, n, strict=True))
+    assert np.array_equal(loaded.act(stream[2], greedy=True), brain.act(stream[2], greedy=True))
+    silent = _worked(message_read=True, message_amplitude=0.0)  # the port alone
+    assert silent.message.reads and not silent.message.direct
+
+
 def test_a_brain_without_operations_keeps_its_bits():
     plain = _brain(message=16, message_settled=True, message_roles=((0, 1), (2,)),
                    message_phases=2, message_read=True, message_amplitude=0.0)
@@ -557,7 +584,6 @@ def test_a_brain_without_operations_keeps_its_bits():
     {"message_settled": True, "message_operations": [[], [("set", 0)]], "message_stacks": [3]},
     {"message_settled": True, "message_operations": [[], [("set", 0)]], "message_slot": 5},
     {"message_settled": True, "message_operations": [[("set", 0)]] * 7},  # more than choices
-    {"message_settled": True, "message_operations": [[], [("set", 0)]], "message_read": True},
     {"message_settled": True, "message_operations": [[], [("set", 0)]],
      "message_roles": ((0,),)},
     {"message_settled": True, "message_stacks": [0]},

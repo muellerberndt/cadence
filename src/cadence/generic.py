@@ -844,10 +844,10 @@ def _message_genes(message: Any, genes: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("message_slot must be a motor slot's index")
     out["slot"] = int(out["slot"])
     if out["operations"]:
-        if not out["settled"] or out["roles"] or out["read"] or out["boundary"] is not None:
+        if not out["settled"] or out["roles"] or out["boundary"] is not None:
             raise ValueError(
                 "message_operations work a store of settled activity: pass "
-                "message_settled=True, and no message_roles, message_read or message_boundary"
+                "message_settled=True, and no message_roles or message_boundary"
             )
         groups = _operated_groups(out["operations"])
         if any(not 0 <= g < groups for g in out["stacks"]):
@@ -1603,7 +1603,8 @@ def _validate_life_state(
                     raise ValueError("invalid saved message store counts")
         array("message/previous", (batch, association))
         if held["read"]:
-            turns = len(held["roles"]) + 1 if held["roles"] else held["blocks"]
+            turns = (len(held["roles"]) + 1 if held["roles"]
+                     else held["shown"] if held["operations"] else held["blocks"])
             for kind, outputs in (("content", held["units"]), ("turn", turns)):
                 array(f"message/{kind}_x", (sensory, outputs))
                 array(f"message/{kind}_c", (association, outputs))
@@ -6324,7 +6325,8 @@ class Brain:
                         taken = self._settled_alone(value, code)
                     else:
                         taken = None
-                    told.hear(heard_now, taken, named)
+                    told.hear(heard_now, taken, named, context=np.asarray(
+                        _on_host(phase.state.activation))[:, self.association_index])
                 elif told is not None:
                     told.hear(self._heard(value, code), None if trace is None else trace.last)
                 if kept is not None:
@@ -6555,14 +6557,16 @@ class Brain:
             # settled activity
             roles = np.asarray(action, dtype=np.int64).reshape(len(x), -1)[:, self.message.slot]
             settled: np.ndarray | None
+            context = None if state is None else np.asarray(
+                _on_host(state.activation))[:, self.association_index]
             if self.message.alone:
                 # the settle of the observations alone, where a role gives a block its activity
                 heard = self._heard(x, code)
                 settled = self._settled_alone(x, code) if self.message.takes(roles, heard) else None
             else:
-                settled = None if state is None else np.asarray(
-                    _on_host(state.activation))[:, self.association_index]
-            self.message.hear(self._heard(x, code), settled, roles)
+                settled = context
+            # the moment's settle in its context addresses the next moment's read
+            self.message.hear(self._heard(x, code), settled, roles, context=context)
         elif self.message is not None:
             # the moment acted on joins the message, and its settled cortex addresses the
             # next moment's read of it

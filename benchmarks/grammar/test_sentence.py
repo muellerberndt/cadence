@@ -58,6 +58,14 @@ def test_brackets_are_settled_when_heard_or_when_said_by_the_design():
     labels = [st.heard_label(path, t, alone) for t in range(len(path.pre))]
     assert labels[:-1] == [None] * (len(path.pre) - 1)  # the facts are heard without a lesson
     assert _names(alone, labels[-1:]) == ["start"]
+    both = st.DESIGNS["alone_path"]  # the facts echoed, the start leaving once said
+    labels = [st.heard_label(path, t, both) for t in range(len(path.pre))]
+    assert _names(both, labels) == ["none"] * (len(path.pre) - 1) + ["start"]
+    assert [label[:2] for label in labels[:4]] == [
+        mn.word_parts(int(np.argmax(path.pre[t][:gr.ACTIONS]))) for t in range(4)]
+    said = [st.said_label(path, j, both) for j in range(len(path.target))]
+    assert _names(both, said) == ["said_start"] + ["none"] * (len(path.target) - 1)
+    assert both.base == alone.base + 1 and both.inventory(False)[1][2] == both.base
 
 
 def test_two_wordings_and_questions_name_what_is_asked():
