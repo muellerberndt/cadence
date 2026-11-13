@@ -23,28 +23,30 @@ naming shows them), and for kinds that are named and never asked about in practi
 
 ## The brain
 
-`cadence.words.several.Several` with its defaults (`src/cadence/words/several.py`; nothing else
-of the library changes):
+`cadence.words.Words` with the part `cadence.words.several.Several` (`Words(map,
+parts=[Several()])`) and the defaults of both (`src/cadence/words/several.py`; in `room.py` one
+hook: a part with `takes` takes a question's lessons):
 
 - **The map** as in protocol 1 of #326: a plane of 4 m by 4 m, 32 by 32 cells, one unit a kind
   (12 kinds) and 6 colour units (`Map(values={"colour": 6})`), the identity rules unchanged.
 - **The lexicon**: 256 word neurons and 36 concept neurons (12 kinds, 6 colours, 4 places around
-  the parrot, 5 reads, the read that finds nothing, 6 counts, 2 truths), reciprocal synapses from
-  zero, as in protocol 1 of #326. Learned parameters: 9,216 (one efficacy a reciprocal pair).
-- **The number sense** is born, as the map is: one neuron a count of the places a settle of the
-  map finds, from none to five or more. No lesson changes it; the words for the counts are
-  learned.
-- **What a question names**: each of its words heard alone names its most active concept of a
-  thing (a kind, a colour, a place around the parrot) above .05; the words heard together give
-  the read (the kind, the colour or the place of each thing found, their count, whether there is
-  one).
-- **The things it names**: the map settles on one named concept, and a place is kept where the
-  map's settle at it gives every other named concept.
-- **Practice**: the question's words are taught each read whose concepts the motor would say as
-  the teacher's words. An answer of one word no naming has shown is named with what was found
-  (the count, whether there is one, the read that finds nothing for a read of a thing that found
-  none), at the gain of the most active read of the question among the reads whose concepts hold
-  no other firm word, or alike over them where none is heard.
+  the parrot, 5 reads, 6 counts, 2 truths, the read that finds nothing), reciprocal synapses from
+  zero, as in #326. Learned parameters: 9,216 (one efficacy a reciprocal pair).
+- **The number sense** is born, as the map is: one neuron a count of the things found, from none
+  to five or more. No lesson changes it; the words for the counts are learned.
+- **What a question names**: `Words` finds the things of the concept its words name most (the
+  map settles on them); each word heard alone names its most active concept of a thing (a kind,
+  a colour, a place around the parrot) above .05, and the part keeps the things the senses give
+  every named concept. The words heard together give the reads, which compete for their gains
+  (`Words`): a thing's kind, colour or place, or, where the most active read is the count or the
+  truth, the things found together as one.
+- **Practice**: answers of one word naming a shown concept are taught by `Words` (the read of the
+  group the answer names). The part takes answers of several words and answers of one word no
+  naming has shown: the words of asking are taught each read whose concepts the motor would say
+  as the teacher's words, and an answer of one word is named with what was found (the count,
+  whether there is one, the read that finds nothing for a read of a thing that found none), at
+  the gain of the most active read of the question among the reads whose concepts hold no other
+  firm word, or alike over them where none is heard.
 
 ## The chamber
 
@@ -121,11 +123,12 @@ twelve founders do.
   multiply-accumulates.
 
 **Expectations, stated before the run.** Development founders 2800 to 2811 (no gated life): the
-brain reads 1.000 on every reading and .000 with its lexicon at zero. With no order (founders
-2800 to 2807), four of eight founders read S3 and S4 at .50 to .66 (the words for none and no
-take each other's concept), and one reads never taught and never seen at .00. Development
-founders 2800 and 2801: the six control arms read S1 at .00 to .33, S2 at .01 at most, S3 at .23
-to .51 and S4 at .15 to .59 (a coin reads .50 on S4).
+brain reads 1.000 on every reading and .000 with its lexicon at zero, at 8.3e9
+multiply-accumulates a life. With no order (founders 2800 to 2807), three of eight founders read
+S3 and S4 at .50 to .61 (the words for none and no take each other's concept), and one reads
+never taught and never seen at .00. Development founders 2800 and 2801: the six control arms
+read S1 at .00 to .33, S2 at .01 at most, S3 at .38 to .50 and S4 at .00 to .61 (a coin reads
+.50 on S4).
 
 **What a failure names.** An S1 or S4 miss on a thing the map holds names what a question names
 (a word naming a second concept) or the map's settle at a place; an S3 or S4 miss on things not
