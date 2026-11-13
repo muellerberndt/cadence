@@ -1010,12 +1010,36 @@ def control_plan(founders: tuple[int, ...], parameters: int, held_probes: int = 
     return out
 
 
+SECOND = tuple(range(10828600, 10828612))  # twelve fresh founders (SENTENCE_PROTOCOL_2.md)
+# the declared arm: a block takes the observation alone, lessons where the answer differs (the
+# library's default for a new brain), the full mix
+STORE = {"kind": "store", "design": "alone", "train": "all", "held_probes": 16,
+         "settings": {"learning_surprise": True},
+         "checkpoints": [1000, 2000, 3000]}
+
+
+def second_plan(founders: tuple[int, ...] = SECOND) -> dict[str, list[dict[str, Any]]]:
+    """The second declared run of cadence#308 (``SENTENCE_PROTOCOL_2.md``): the store's arm on
+    the full mix, and the chamber's LSTM and transformer taught the same batches at its
+    parameter count, online and offline, and offline with the echoes and roles as well."""
+    brains = [{**STORE, "founder": f, "tag": "store"} for f in founders]
+    parameters = int(make_brain(founders[0], STORE["settings"], 256, DEPTH, True,
+                                DESIGNS["alone"]).parameters())
+    controls = control_plan(founders, parameters, held_probes=16, train="all",
+                            modes=("offline", "online"))
+    controls += control_plan(founders, parameters, held_probes=16, train="all",
+                             modes=("offline",), roles=("alone",))
+    return {"second": brains, "second_controls": controls}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     sub = parser.add_subparsers(dest="command", required=True)
     planner = sub.add_parser("plan", help="write plans into a folder")
     planner.add_argument("--out", type=Path, required=True)
     planner.add_argument("--dev", action="store_true", help="development lives")
+    planner.add_argument("--second", action="store_true",
+                         help="the second declared run (SENTENCE_PROTOCOL_2.md)")
     planner.add_argument("--founders", nargs="*", type=int)
     planner.add_argument("--batches", type=int, default=mn.BATCHES)
     planner.add_argument("--arms", type=json.loads, help="tag to spec, over the store's")
@@ -1032,10 +1056,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "plan":
         warnings.simplefilter("ignore")
         args.out.mkdir(parents=True, exist_ok=True)
-        founders = tuple(args.founders or DEV)
-        plans = {"dev": dev_plan(founders, args.batches, args.arms)}
-        if args.controls:
-            plans["controls"] = control_plan(founders, args.controls)
+        if args.second:
+            plans = second_plan(tuple(args.founders or SECOND))
+        else:
+            founders = tuple(args.founders or DEV)
+            plans = {"dev": dev_plan(founders, args.batches, args.arms)}
+            if args.controls:
+                plans["controls"] = control_plan(founders, args.controls)
         for name, specs in plans.items():
             (args.out / f"{name}.json").write_text(json.dumps(specs))
             print(f"{name}: {len(specs)} lives")
