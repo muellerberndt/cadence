@@ -205,7 +205,8 @@ class Map:
             from .physics import FIELDS
 
             # with physics: what the brain knows of each thing's motion, at the thing's cells
-            self.motion = np.zeros((self.count, self.units, FIELDS))
+            # (one record a cell and unit of the carried sheet, whatever units it holds)
+            self.motion = np.zeros(self.potential.shape + (FIELDS,))
 
     def arrays(self) -> dict[str, np.ndarray]:
         """The carried state: the potentials of ``map``, ``clock``, ``lost`` and ``doubt``; with
