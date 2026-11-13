@@ -1,12 +1,12 @@
-"""The words chamber's world: rooms of things, a robot that looks around, a teacher who names
+"""The words chamber's world: rooms of things, a parrot that looks around, a teacher who names
 things and asks questions, and a lexicon of nonce words drawn for each founder.
 
-A room is a plane of 4 m by 4 m with the robot at its middle. A thing is a kind, a colour and a
-place, at least 0.6 m from the robot and 0.45 m from any other thing; the kinds in a room are
-distinct. The robot's camera sees the things within 60 degrees either side of where it faces.
+A room is a plane of 4 m by 4 m with the parrot at its middle. A thing is a kind, a colour and a
+place, at least 0.6 m from the parrot and 0.45 m from any other thing; the kinds in a room are
+distinct. The parrot sees the things within 60 degrees either side of where it faces.
 
 The concepts are the kinds (8 trained, 4 new, taught live), the colours (6), the four places
-around the robot (in front, to the right, behind, to the left: quarters of the turn), the reads
+around the parrot (in front, to the right, behind, to the left: quarters of the turn), the reads
 of a question and the read that finds nothing. Every word is a nonce word drawn for the founder
 from consonant-vowel syllables, so no word can be built in, and the English names below serve
 the reader alone.
@@ -27,7 +27,7 @@ import numpy as np
 
 PLANE = (-2.0, 2.0, -2.0, 2.0)
 CELLS = (32, 32)
-VIEW = math.radians(60.0)  # the camera sees this far either side of the robot's heading
+VIEW = math.radians(60.0)  # the camera sees this far either side of the parrot's heading
 TRAINED, NEW, COLOURS = 8, 4, 6
 KINDS = TRAINED + NEW
 KIND_NAMES = ("ball", "cup", "box", "book", "shoe", "key", "apple", "lamp",
@@ -121,7 +121,7 @@ class Thing:
 @dataclass
 class Room:
     things: list[Thing]
-    heading: float = 0.0  # where the robot faces, radians from the x axis
+    heading: float = 0.0  # where the parrot faces, radians from the x axis
     extra: dict[str, Any] = field(default_factory=dict)
 
     def kinds(self) -> list[int]:
@@ -173,7 +173,7 @@ def seen(r: Room, heading: float) -> list[tuple[int, np.ndarray, dict[str, int]]
 
 
 def place_of(heading: float, point: np.ndarray) -> int:
-    """The place around the robot of a point: 0 in front, 1 to the right, 2 behind, 3 left."""
+    """The place around the parrot of a point: 0 in front, 1 to the right, 2 behind, 3 left."""
     a = float(np.angle(np.exp(1j * (math.atan2(point[1], point[0]) - heading))))
     return int(((-a + math.pi / 4) % (2 * math.pi)) // (math.pi / 2))
 

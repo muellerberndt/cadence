@@ -27,14 +27,14 @@ from cadence.words import Words
 BALL, CUP, BOX = 0, 1, 2
 RED, BLUE = 0, 1
 room = Map((-2.0, 2.0, -2.0, 2.0), (24, 24), units=3, values={"colour": 2})
-brain = Words(room)                                    # the robot stands at (0, 0)
+brain = Words(room)                                    # the parrot perches at (0, 0)
 kinds, colours = ["ball", "cup", "box"], ["red", "blue"]
 places = ["front", "right", "behind", "left"]          # the four places around the body
 rng = np.random.default_rng(0)
 
 
 def new_room():
-    """Three things around the robot, each in a drawn colour, seen once."""
+    """Three things around the parrot, each in a drawn colour, seen once."""
     turn = rng.uniform(0.0, 2 * math.pi)
     things = [(k, 1.2 * np.array([math.cos(turn + 2.1 * k), math.sin(turn + 2.1 * k)]),
                int(rng.integers(2))) for k in range(3)]
