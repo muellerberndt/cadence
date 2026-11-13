@@ -216,3 +216,22 @@ def test_a_saved_brain_with_learned_heads_continues_as_the_one_saved(tmp_path):
         np.testing.assert_array_equal(first.act(x, greedy=True), second.act(x, greedy=True))
         np.testing.assert_array_equal(first.longterm.read_slots, second.longterm.read_slots)
     assert [int(s) for s in second.longterm.read_slots[0]] == [2, 1, -1]
+
+
+def test_an_imagined_branch_reads_with_the_heads_and_counts_nothing():
+    b = brain()
+    told(b)
+    b.reset()
+    for on in (R, OF, 0, AND, 1):
+        b.act(moment(on), greedy=True)
+    kept = b.longterm
+    branch = kept.branch()
+    assert branch.attended is not kept.attended and branch.attended.records is branch
+    assert branch.attended.maps is kept.attended.maps
+    branch.hear(moment(TURN))
+    drive = np.zeros((1, b.connectome.n))
+    branch.stimulus(drive)
+    assert [int(s) for s in branch.read_slots[0]] == [0, 1, -1]
+    branch.hear(moment(None))
+    assert kept.questions == 1 and branch.questions == 1 and not kept.attended.last
+    assert kept.since[0] == -1 and len(kept._asked[0]) == 0

@@ -1729,6 +1729,10 @@ class LongTermRecords:
         out._wlists = [list(held) for held in self._wlists]
         out._asked = [held.copy() for held in self._asked]
         out.asked_in = dict(self.asked_in)
+        if self.attended is not None:  # the heads read the branch's turns; the maps are shared
+            out.attended = copy(self.attended)
+            out.attended.records = out
+            out.attended.last = {}
         out._entries, out._codes = dict(self._entries), list(self._codes)
         out.counts = dict(self.counts)
         out._cache = {}
