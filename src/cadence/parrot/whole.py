@@ -64,24 +64,34 @@ class WholeParrot:
     """The first brain and the regions of the later steps, as one brain; see the module note."""
 
     def __init__(self, parrot: Parrot | None = None, *, seed: int = 0, association: int = 256,
-                 words: int = 32, backend: Any = "cpu"):
+                 words: int = 32, ear: tuple[int, int] = (FRAMES, MELS), heads: int = 2,
+                 settle: dict[str, Any] | None = None, learn: bool = True, voice: Any = None,
+                 backend: Any = "cpu"):
         from ..generic import Brain
         from ..words.lexicon import Lexicon
 
         self.parrot = parrot if parrot is not None else Parrot(seed=seed, backend=backend)
         p = self.parrot
-        self.inputs = {"ear": MELS * FRAMES, "focus": p.kinds.capacity, "place": 2 * PLACES,
-                       "reach": p.distance.units, "body": 2 * len(NAMES)}
+        if MELS % int(ear[1]) != 0 or not 1 <= int(ear[0]) <= FRAMES:
+            raise ValueError("the ear takes 1 to 10 frames and a band count that divides 40")
+        self.ear_shape = (int(ear[0]), int(ear[1]))
+        self.learn = bool(learn)  # the association learns from outcomes (else it acts greedily)
+        # when to speak (``cadence.parrot.voice.Voice``): learns from every pistachio
+        self.voice = voice
+        self.inputs = {"ear": self.ear_shape[0] * self.ear_shape[1], "focus": p.kinds.capacity,
+                       "place": 2 * PLACES, "reach": p.distance.units, "body": 2 * len(NAMES)}
         self.slots = dict(DEFAULT_SLOTS)
         self.association = Brain.compose(
             inputs=sum(self.inputs.values()), actions=sum(self.slots.values()),
-            slots=list(self.slots.values()), modules=(int(association),), recall_heads=2,
-            arousal=True, seed=seed, backend=backend)
+            slots=list(self.slots.values()), modules=(int(association),),
+            recall_heads=int(heads), arousal=True, seed=seed, backend=backend,
+            **dict(settle or {}))
         self.lexicon = Lexicon({"kind": p.kinds.capacity}, capacity=int(words), backend=backend)
         self.ear = np.zeros((FRAMES, MELS))
         self._tail = np.zeros(0)
         self.recorded: list[dict[str, Any]] = []
         self._started = False
+        self.vocalized = False
         self.said: str | None = None
         self.reward = 0.0
         self.dopamine = 0.0  # the critic's prediction error at the latest outcome
@@ -108,8 +118,9 @@ class WholeParrot:
     def _observation(self) -> np.ndarray:
         p = self.parrot
         parts = []
-        ear = (self.ear - math.log(1e-6)) / 20.0
-        parts.append(np.clip(ear, 0.0, 1.0).reshape(-1))
+        frames, bands = self.ear_shape
+        heard = self.ear[-frames:].reshape(frames, bands, MELS // bands).mean(axis=2)
+        parts.append(np.clip((heard - math.log(1e-6)) / 20.0, 0.0, 1.0).reshape(-1))
         focus = np.zeros(self.inputs["focus"])
         place = np.zeros(self.inputs["place"])
         if p.focused is not None:
@@ -146,17 +157,28 @@ class WholeParrot:
         start_state = None
         if record:
             start_state = brain.stimulus(observation)
-        weights = np.asarray(brain.learner.brain.efficacy).copy()
-        if self._started:
-            action = brain.live(observation,
-                                reward=np.array([0.0 if reward is None else float(reward)]))
-        else:
-            action, self._started = brain.live(observation), True
-        chosen = np.asarray(action).reshape(-1)
-        report = brain.last_learning or {}
         self.reward = 0.0 if reward is None else float(reward)
-        self.dopamine = float(report.get("td_error", 0.0))
-        self.paid = self._paid(weights, np.asarray(brain.learner.brain.efficacy))
+        if self.learn:
+            weights = np.asarray(brain.learner.brain.efficacy).copy()
+            if self._started:
+                action = brain.live(observation, reward=np.array([self.reward]))
+            else:
+                action, self._started = brain.live(observation), True
+            report = brain.last_learning or {}
+            self.dopamine = float(report.get("td_error", 0.0))
+            self.paid = self._paid(weights, np.asarray(brain.learner.brain.efficacy))
+        else:
+            action = brain.act(observation, greedy=True)
+            self.dopamine, self.paid = 0.0, []
+        chosen = np.asarray(action).reshape(-1)
+        self.vocalized = False
+        if self.voice is not None:
+            before = np.asarray(self.voice.brain.learner.brain.efficacy).copy()
+            self.vocalized = bool(self.voice.moment(self.ear, reward=reward))
+            if reward is not None:
+                self.dopamine = self.voice.dopamine()
+                self.paid = self._paid(before, np.asarray(self.voice.brain.learner.brain.efficacy),
+                                       brain=self.voice.brain)
         letters = "abcdefghijklmnopqrstuvwxyz "
         voice = int(chosen[list(self.slots).index("voice")]) if chosen.size == len(
             self.slots) else 0
@@ -166,20 +188,22 @@ class WholeParrot:
             self._record(record, trace, start_state, out)
         return {"first": out, "action": chosen, "said": self.said}
 
-    def _paid(self, before: np.ndarray, after: np.ndarray, most: int = 8
-              ) -> list[dict[str, Any]]:
-        """The association's tracts the moment's outcome changed (eligibility times dopamine):
-        each from-and-to pair of its regions with its summed change, the largest ``most``."""
+    def _paid(self, before: np.ndarray, after: np.ndarray, most: int = 8,
+              brain: Any = None) -> list[dict[str, Any]]:
+        """The tracts the moment's outcome changed (eligibility times dopamine) in the
+        association (or ``brain``): each from-and-to pair of its regions with its summed change,
+        the largest ``most``."""
         change = after - before
         if not np.any(change):
             return []
-        pops = self.association.connectome.populations
-        owner = np.full(self.association.connectome.n, -1)
+        brain = self.association if brain is None else brain
+        pops = brain.connectome.populations
+        owner = np.full(brain.connectome.n, -1)
         names = [n for n in pops if "/" not in n]
         for k, name in enumerate(names):
             owner[np.asarray(pops[name], dtype=np.int64)] = k
-        pre = owner[np.asarray(self.association.connectome.pre)]
-        post = owner[np.asarray(self.association.connectome.post)]
+        pre = owner[np.asarray(brain.connectome.pre)]
+        post = owner[np.asarray(brain.connectome.post)]
         moved = np.nonzero(change)[0]
         out: dict[tuple[str, str], float] = {}
         for a, b, c in zip(pre[moved], post[moved], change[moved], strict=True):
@@ -443,4 +467,12 @@ def _fill(count: int, centre: np.ndarray, half: np.ndarray, both: bool, seed: in
     return np.concatenate(out).astype(np.float32)
 
 
-__all__ = ["ATLAS", "WholeParrot"]
+PAGE: dict[str, Any] = {"association": 48, "ear": (2, 20), "heads": 1, "learn": False,
+        "settle": {"learning_tolerance": 0.03, "learning_free_steps": 24,
+                   "learning_nudged_steps": 8}}
+"""The whole brain for a web page: the same regions, smaller (the ear at two frames of 20 bands,
+an association of 48 neurons, one recall head), a looser settle, the association acting
+greedily; the voice's onset learns from each pistachio live."""
+
+
+__all__ = ["ATLAS", "PAGE", "WholeParrot"]

@@ -23,7 +23,7 @@ import numpy as np
 
 from .brain import GENES, Parrot
 from .eyes import HEIGHT, WIDTH, render
-from .whole import WholeParrot
+from .whole import PAGE, WholeParrot
 from .world import NAMES, Body, Scene, Thing
 
 AREAS = {"retina_l": "retina", "retina_r": "retina", "disparity": "wulst", "parallax": "wulst",
@@ -57,7 +57,13 @@ class Host:
         self.learn = bool(config.get("learn", False))
         # the whole brain (``config["whole"]``): the association, the ear, the voice and the
         # dopamine join the first brain, and a pistachio (``meta["reward"]``) pays
-        self.whole = WholeParrot(self.parrot) if config.get("whole") else None
+        whole = config.get("whole")
+        if whole == "page":
+            from .voice import Voice
+
+            self.whole: WholeParrot | None = WholeParrot(self.parrot, voice=Voice(), **PAGE)
+        else:
+            self.whole = WholeParrot(self.parrot) if whole else None
         self.scene = Scene([])
         self.cover: str | None = None
         self.silenced: set[str] = set()
@@ -246,6 +252,7 @@ class Host:
                 "vta": None if self.whole is None else self.whole.dopamine,
                 "paid": [] if self.whole is None else self.whole.paid,
                 "said": None if self.whole is None else self.whole.said,
+                "vocalized": None if self.whole is None else self.whole.vocalized,
                 "ms": {"render": 1000.0 * (rendered - began),
                        "brain": 1000.0 * (lived - rendered),
                        "host": 1000.0 * (time.perf_counter() - lived)},
