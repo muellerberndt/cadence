@@ -19,10 +19,6 @@
 - **`message_alone`**, off by default: a block takes the association's settle of the moment's
   observation alone (every memory silent, settled from rest) in place of the settle in its
   context, so a word's block holds the same activity wherever the word was heard.
-- **`message_read` on a worked store**, off by default: beside the heads read at once (or alone,
-  with `message_amplitude=0.0`) the brain reads one group's head at a time through the read
-  port, addressed by the present moment and the settle of the moment before in its context, one
-  turn term per group.
 - A checkpoint keeps the store (`counts`, `passed` beside `trace`), `describe()` names the
   settings, an imagined branch works a private copy, and `grow`, `graft` and long-term records
   refuse a brain with a worked store. With the options unset every brain, its file and its

@@ -1700,26 +1700,9 @@ worker.act(moments[[2]], greedy=True)                 # shift: the head moves to
 assert np.allclose(store.heads().reshape(2, 16)[1], store.state.reshape(2, 4, 16)[1, 1])
 ```
 
-**One head at a time (`message_read`).** Read at once, the heads are the settle's input together:
-a word said from one group is said from every group's head, and the synapses a lesson teaches can
-come to read a pair of heads that lessons showed together. With `message_read=True` beside the
-operations the brain also reads one group's head at a time, as it reads one block of a fixed code
-(the [read of one block](#held-message)): before each settle the present moment and the settle
-of the moment before (in its context, also where a block takes the moment alone) address the
-heads,
-
-```text
-p = softmax((x W_x + c W_c + w) . head / temperature + turn_g)
-```
-
-with one turn term `turn_g` per group, and a region of one block's width (`message_read`) holds
-`message_read_amplitude * sum_g p_g head_g`. The maps start at zero, so a newborn reads the heads'
-mean, and each lesson steps them toward the heads that the association's movement names. With
-`message_amplitude=0.0` the heads are read through that region alone.
-
 `brain.message.state` is every block, `(streams, groups * phases * units)`, `counts` the blocks a
-group was given and `passed` those its head moved past; a checkpoint keeps all three and the
-read's maps. A store worked by operations holds no fixed code, no `message_roles` or
+group was given and `passed` those its head moved past; a checkpoint keeps all three. A store
+worked by operations holds no fixed code, no `message_roles`, `message_read` or
 `message_boundary`, and keys no long-term records.
 
 `brain.message` is a `HeldMessage` (the standalone [`cd.Message`](#a-held-message) on the brain's
