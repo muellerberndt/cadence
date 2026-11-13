@@ -6314,12 +6314,17 @@ class Brain:
                     heard.hear(self._heard(value, code))
                 if told is not None and operated:
                     assert choice is not None
-                    told.hear(
-                        self._heard(value, code),
-                        self._settled_alone(value, code) if told.alone else np.asarray(
-                            _on_host(phase.state.activation))[:, self.association_index],
-                        np.asarray(choice, dtype=np.int64).reshape(len(value), -1)[:, told.slot],
-                    )
+                    named = np.asarray(choice, dtype=np.int64).reshape(len(value), -1)[
+                        :, told.slot]
+                    heard_now = self._heard(value, code)
+                    if not told.alone:
+                        taken: np.ndarray | None = np.asarray(
+                            _on_host(phase.state.activation))[:, self.association_index]
+                    elif told.takes(named, heard_now):
+                        taken = self._settled_alone(value, code)
+                    else:
+                        taken = None
+                    told.hear(heard_now, taken, named)
                 elif told is not None:
                     told.hear(self._heard(value, code), None if trace is None else trace.last)
                 if kept is not None:
@@ -6551,7 +6556,9 @@ class Brain:
             roles = np.asarray(action, dtype=np.int64).reshape(len(x), -1)[:, self.message.slot]
             settled: np.ndarray | None
             if self.message.alone:
-                settled = self._settled_alone(x, code)
+                # the settle of the observations alone, where a role gives a block its activity
+                heard = self._heard(x, code)
+                settled = self._settled_alone(x, code) if self.message.takes(roles, heard) else None
             else:
                 settled = None if state is None else np.asarray(
                     _on_host(state.activation))[:, self.association_index]

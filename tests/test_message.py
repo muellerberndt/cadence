@@ -506,6 +506,39 @@ def test_a_worked_store_is_kept_by_a_checkpoint_and_left_by_an_imagined_branch(t
         brain.retune(message_operations=_OPERATIONS)
 
 
+def test_a_move_takes_a_head_onto_another_group_and_alone_holds_the_moment_itself():
+    table = [[], [("write", 0)], [("move", 0, 1)], [("pop", 1)]]
+    brain = cd.Brain.compose(12, 4 + 4, modules=(16,), seed=5, backend="cpu", slots=(4, 4),
+                             message=16, message_settled=True, message_phases=3,
+                             message_operations=table, message_stacks=[1], message_alone=True)
+    told = brain.message
+    assert told.alone and told.groups == 2 and brain.describe()["genes"]["message_alone"] is True
+    stream = _stream(np.random.default_rng(6), 6, rows=2)
+    # the settle of an observation alone: the same whatever the stream carried before it
+    first = brain._settled_alone(stream[0], stream[0])
+    _say(brain, stream[0], [1, 1])
+    _say(brain, stream[1], [1, 1])
+    blocks = told.state.reshape(2, 2, 3, 16)
+    assert np.allclose(blocks[:, 0, 0], first)
+    assert np.allclose(blocks[:, 0, 1], brain._settled_alone(stream[1], stream[1]))
+    assert not np.allclose(blocks[:, 0, 1], brain.working_memory.last)  # not the settle in context
+    _say(brain, stream[2], [2, 0])  # the first stream moves its queue's head onto the stack
+    heads = told.heads().reshape(2, 2, 16)
+    assert np.allclose(heads[0, 1], first[0]) and np.allclose(heads[0, 0], blocks[0, 0, 1])
+    assert not heads[1, 1].any() and np.allclose(heads[1, 0], first[1])
+    _say(brain, stream[3], [2, 0])
+    assert np.allclose(told.heads().reshape(2, 2, 16)[0, 1], blocks[0, 0, 1])  # the latest moved
+    _say(brain, stream[4], [3, 2])
+    heads = told.heads().reshape(2, 2, 16)
+    assert np.allclose(heads[0, 1], first[0]) and not heads[0, 0].any()
+    assert np.allclose(heads[1, 1], first[1])
+    with pytest.raises(ValueError):
+        _brain(message=16, message_settled=True, message_alone=True)  # no operations
+    with pytest.raises(ValueError):
+        cd.Brain.compose(12, 8, modules=(16,), seed=5, backend="cpu", slots=(4, 4), message=16,
+                         message_settled=True, message_operations=[[], [("move", 0, 0)]])
+
+
 def test_a_brain_without_operations_keeps_its_bits():
     plain = _brain(message=16, message_settled=True, message_roles=((0, 1), (2,)),
                    message_phases=2, message_read=True, message_amplitude=0.0)

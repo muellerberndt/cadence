@@ -989,6 +989,20 @@ class HeldMessage(Message):
         self.last = None
         self.named = None
 
+    def takes(self, roles: Any, observations: np.ndarray) -> bool:
+        """Whether the next ``hear`` of ``observations`` gives a block its activity: whether
+        any stream's role (the role named for the moment, where one is) sets or writes."""
+        named = self.named
+        chosen = np.asarray(roles, dtype=np.int64).ravel()
+        if named is not None and len(named[0]) == len(chosen) and (
+            named[1] is None or np.array_equal(named[1], observations)
+        ):
+            chosen = named[0]
+        writes = np.array([any(step[0] in ("set", "write") for step in role)
+                           for role in self.operations], dtype=bool)
+        chosen = chosen[(chosen >= 0) & (chosen < len(writes))]
+        return bool(writes[chosen].any())
+
     def name(self, roles: Any, observations: Any = None) -> None:
         """Name each stream's role for the next moment heard, in place of the role the brain
         names there: a lesson names its taught roles so (the store follows the lesson, as the

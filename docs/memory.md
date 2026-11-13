@@ -1612,6 +1612,7 @@ assert not speaker.message.state.any()                    # a new stream starts 
 | `message_operations` | `()`, off | construction | With `message_settled`: per choice of a motor slot, the operations a moment runs on groups of blocks; the region holds each group's head, [below](#a-store-the-brain-works-itself-opt-in) |
 | `message_stacks` | `()` | construction | Groups whose head is their last block |
 | `message_slot` | `-1` | construction | The motor slot that names a moment's role |
+| `message_alone` | `False` | construction | A block takes the association's settle of the moment's observation alone, every memory silent, in place of the settle in its context |
 
 **A read of one block (`message_read=True`).** A port of `units` neurons holds one block of the
 message, chosen by the present moment: the moment as heard and the association's activity of the
@@ -1651,7 +1652,8 @@ choice, and what it holds is the brain's own settled activity:
   - `"set"` puts the moment's settled activity into the group's one block (a register);
   - `"write"` appends it to the group;
   - `"shift"` moves the group's head on to its next block;
-  - `"pop"` removes the group's last block.
+  - `"pop"` removes the group's last block;
+  - `("move", group, to)` takes the group's head and appends it to the group `to`.
 
   After each act the role the brain named runs its operations. A choice with an empty list, or
   one past the table, runs none.
@@ -1668,6 +1670,14 @@ choice, and what it holds is the brain's own settled activity:
 So a word's place in the store is the brain's own settled choice, a queue's blocks pass one head
 (the fourth item of a list is read through the synapses the first three taught), and a stack gives
 back the latest item first.
+
+**What a block takes (`message_alone`).** A moment settles in its context: the words before it,
+the heads the store shows, the working trace. A block that takes that activity holds the context
+with the word, and a reader can then take one word's content from another word's block. With
+`message_alone=True` a block takes the association's settle of the moment's observation alone
+(the sensory neurons stimulated, every memory silent, settled from rest): the same activity for
+one word wherever it was heard. The role is still the brain's choice in context. The extra settle
+runs after an act whose role sets or writes.
 
 ```python
 ROLES = [[], [("set", 0)], [("write", 1)], [("shift", 1)]]    # none; a register; a queue; its shift

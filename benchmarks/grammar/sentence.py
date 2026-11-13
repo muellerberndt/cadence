@@ -401,9 +401,13 @@ def speak(brain: Any, rows: list[gr.Row], store: Store | None, design: Design, *
     def follow(labels: np.ndarray | None, roles: np.ndarray, x: np.ndarray) -> None:
         # the instrument's store follows the given role, or the brain's own
         if store is not None:
-            held = (brain._settled_alone(x, brain._code(x)) if design.alone
-                    else settled(brain, n))
-            store.apply(roles if labels is None else labels[:, 2], held)
+            run = roles if labels is None else labels[:, 2]
+            takes = any(step[0] in ("set", "write") for r in run if 0 <= r < len(design.roles)
+                        for step in design.roles[int(r)][1])
+            held = (settled(brain, n) if not design.alone
+                    else brain._settled_alone(x, brain._code(x)) if takes
+                    else np.zeros((n, store.units)))
+            store.apply(run, held)
             install(brain, store)
 
     def give(labels: np.ndarray) -> None:
