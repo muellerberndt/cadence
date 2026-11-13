@@ -64,6 +64,7 @@ def scene(ex: dict[str, Any], path: Path) -> None:
     ax.set_ylim(-2.0, 2.2)
     ax.set_aspect("equal")
     ax.axis("off")
+    ax.set_position((0.05, 0.13, 0.9, 0.74))  # the captions above and below the room
     ax.add_patch(plt.Circle((0, 0), 0.16, color="#9aa3ad"))
     ax.annotate("", xy=(0, 0.45), xytext=(0, 0.18),
                 arrowprops={"arrowstyle": "->", "color": "#9aa3ad", "lw": 2})
@@ -76,11 +77,11 @@ def scene(ex: dict[str, Any], path: Path) -> None:
                                 ec=edge, lw=3 if t.get("focus") else 1))
         ax.text(x, y - 0.3, f"{t['kind']} ({t['material']})", color="#d8dee5", ha="center",
                 fontsize=11)
-    ax.text(0, 2.05, f"Trainer: {ex['question_text']}", color="#ffffff", ha="center",
-            fontsize=20)
+    fig.text(0.5, 0.92, f"Trainer: {ex['question_text']}", color="#ffffff", ha="center",
+             fontsize=20)
     said = ", ".join(ex["said"]) if ex["said"] else "(silence)"
     mark = "" if ex.get("right", True) else "   (wrong)"
-    ax.text(0, -1.85, f"Parrot: {said}{mark}", color="#ffd166", ha="center", fontsize=22)
+    fig.text(0.5, 0.04, f"Parrot: {said}{mark}", color="#ffd166", ha="center", fontsize=22)
     fig.savefig(path, facecolor=fig.get_facecolor())
     plt.close(fig)
 
