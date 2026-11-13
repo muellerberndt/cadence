@@ -54,7 +54,8 @@ class Lexicon:
 
     def __init__(self, concepts: dict[str, int], *, capacity: int = 256, rate: float = 0.05,
                  steps: int = 12, length: int = 16, level: float = 0.5, drive: float = 2.0,
-                 threshold: float = 0.15, keep: float = 0.5, backend: Any = "cpu"):
+                 threshold: float = 0.15, keep: float = 0.5, heard_only: bool = False,
+                 pattern_back: bool = False, backend: Any = "cpu"):
         from ..brain import Brain as Graph
         from ..connectome import Connectome
         from ..learning import learning_neuron_model
@@ -73,10 +74,19 @@ class Lexicon:
         self.length, self.level, self.drive = int(length), float(level), float(drive)
         self.threshold = float(threshold)
         self.keep = float(keep)  # the share of a mark a moment leaves
+        # opt-in: a lesson moves the heard words' synapses alone (unheard words keep theirs)
+        self.heard_only = bool(heard_only)
+        # opt-in: a word is heard back at the level of the group of a concept given as a
+        # pattern over its group (a population code), not at its exact unit
+        self.pattern_back = bool(pattern_back)
         self.settings = {"concepts": {k: s.stop - s.start for k, s in self.groups.items()},
                          "capacity": self.capacity, "rate": self.rate, "steps": self.steps,
                          "length": self.length, "level": self.level, "drive": self.drive,
                          "threshold": self.threshold, "keep": self.keep}
+        if self.heard_only:
+            self.settings["heard_only"] = True
+        if self.pattern_back:
+            self.settings["pattern_back"] = True
         self.word = np.arange(self.capacity)
         self.concept = self.capacity + np.arange(self.concepts)
         self.neurons = n = self.capacity + self.concepts
@@ -219,7 +229,9 @@ class Lexicon:
         top = max(shares.values()) if shares else self.rate
         if top <= 0.0:
             return float("nan")  # a lesson of no weight teaches nothing
-        steps = np.ones(self.connectome.synapses)
+        # every synapse steps at the top share, the heard words' at their own; with
+        # ``heard_only`` an unheard word's synapses take no step
+        steps = (np.zeros if self.heard_only else np.ones)(self.connectome.synapses)
         for u, share in shares.items():
             steps[self._touch[u]] = share / top
             counts[u] += 1
@@ -378,11 +390,14 @@ class Lexicon:
             # the groups the concept drives: a word is heard back among them
             groups = np.concatenate([np.arange(g.start, g.stop) for g in self.groups.values()
                                      if vector[g].max() > 0])
+            spread = next(g for g in self.groups.values() if g.start <= meant < g.stop)
+            pattern = self.pattern_back and int((vector[spread] > 0).sum()) > 1
             for unit in np.argsort(-active)[: max(int(tries), 1)]:
                 if active[unit] <= floor:
                     break
                 heard = self.hear(self.forms[int(unit)])
-                if int(groups[np.argmax(heard[groups])]) == meant:
+                top = int(groups[np.argmax(heard[groups])])
+                if top == meant or (pattern and spread.start <= top < spread.stop):
                     chosen = int(unit)
                     break
         return chosen
