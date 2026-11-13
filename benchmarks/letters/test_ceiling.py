@@ -46,6 +46,15 @@ def test_the_past_stands_beside_the_step() -> None:
     assert wide[0].tolist() == [*x[0], *x[0], *x[0]]  # the first step repeated before it
 
 
+def test_the_heard_history_stands_beside_the_step() -> None:
+    x = np.arange(8, dtype=np.float32).reshape(4, 2) + 1
+    (wide, _), = ce.with_traces([(x, np.array([1]))], [0.0, 0.5])
+    assert wide.shape == (4, 6)
+    assert wide[0, 2:].tolist() == [0.0] * 4  # silent at the start
+    assert wide[2, 2:4].tolist() == x[1].tolist()  # decay 0: the step before
+    assert wide[2, 4:].tolist() == (0.5 * 0.5 * x[0] + 0.5 * x[1]).tolist()
+
+
 def test_a_wider_window_is_rebuilt_from_the_cached_frames(tmp_path: Path) -> None:
     cache = _cache(tmp_path)
     as_cached = sp.load(cache, "held")
@@ -70,6 +79,20 @@ def test_a_learner_reads_the_window(tmp_path: Path, model: str, loss: str) -> No
     assert record["inputs"] == 2 * 8 * 8 and 0 < record["parameters"]
     assert set(record["best"]) == {"epoch", "characters", "letter_from_sound",
                                    "emission_given_letter", "deletions_per_character"}
+
+
+def test_a_learner_reads_a_copy_of_its_own_answers(tmp_path: Path) -> None:
+    cache = _cache(tmp_path)
+    out = tmp_path / "out"
+    ce.main(["--cache", str(cache), "--hear", "window", "--model", "mlp", "--width", "8",
+             "--loss", "soft", "--epochs", "1", "--efference", "0.5", "--efference-letters",
+             "--out", str(out)])
+    (path,) = out.glob("ceiling-*.json.gz")
+    record = sp.lt.read_record(path)
+    assert record["inputs"] == 8 * 8 + sp.SYMBOLS and record["efference"] == 0.5
+    with pytest.raises(ValueError):
+        ce.main(["--cache", str(cache), "--hear", "window", "--model", "lstm", "--width", "8",
+                 "--epochs", "1", "--efference", "0.5", "--out", str(out)])
 
 
 def test_a_learner_reads_a_saved_brains_fields_and_states(tmp_path: Path) -> None:

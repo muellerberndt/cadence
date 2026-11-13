@@ -32,6 +32,7 @@ for _name in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
     os.environ.setdefault(_name, "1")
 
 import argparse  # noqa: E402
+import dataclasses  # noqa: E402
 import hashlib  # noqa: E402
 import importlib.util  # noqa: E402
 import json  # noqa: E402
@@ -585,10 +586,18 @@ def life_batched(cache: Path, protocol: dict[str, Any], seed: int, out: Path,
 
     ``teacher`` in the protocol names the lesson: ``"path"`` (as without it) teaches each step
     the symbol on the forced alignment, the first batches on an even split; ``"soft"`` teaches
-    each step the soft path through the frozen copy's beliefs (``cadence.speech.align``'s
+    each step the soft path through the brain's beliefs (``cadence.speech.align``'s
     ``soft_path``: the share of the transcript's paths that say each symbol at the step), from
     the first batch on, through the newborn's beliefs there, each moment a ``soft_step``: the
-    lesson of the distribution and a greedy act."""
+    lesson of the distribution and a greedy act. The soft teacher reads the beliefs from the
+    brain itself, at rest between two batches with its learned fields held (its parameters
+    stay as they were), every ``align_every`` batches, and the brain is saved at rest every
+    ``save_every`` batches (a multiple of ``align_every``; ``align_every`` without it).
+    ``sharpness`` in the protocol is the soft path's (1 without it): one number, or one per
+    pass, the last held for the passes after.
+    ``rate`` in the protocol multiplies the lesson's two rates (``eta`` and ``eta_bias`` as
+    composed; 1 without it), one number or one per pass in the same form: the brain is retuned
+    where the multiplier changes, and keeps its optimizer's history."""
     import cadence as cd
     from cadence.speech.align import soft_path, soft_step
 
@@ -610,6 +619,34 @@ def life_batched(cache: Path, protocol: dict[str, Any], seed: int, out: Path,
     soft = protocol.get("teacher", "path") == "soft"
     if protocol.get("teacher", "path") not in ("path", "soft"):
         raise ValueError("a protocol's teacher is 'path' or 'soft'")
+    save_every = int(protocol.get("save_every", every))
+    if save_every < 1 or save_every % every:
+        raise ValueError("a protocol's save_every is a multiple of its align_every")
+    per_pass = len(groups) // max(int(protocol.get("passes", 1)), 1)
+
+    def scheduled(name: str, batch: int) -> float:
+        """A protocol's number for a batch: the number itself, or its pass's of a list."""
+        value = protocol.get(name, 1.0)
+        if isinstance(value, (int, float)):
+            return float(value)
+        return float(value[min(batch // max(per_pass, 1), len(value) - 1)])
+
+    def sharpness(batch: int) -> float:
+        return scheduled("sharpness", batch)
+
+    composed = brain.learner.config  # the lesson's rates as composed: what ``rate`` multiplies
+    composed_bias = (composed.eta_bias if composed.eta_bias is not None else composed.eta / 10)
+    rated = [1.0]
+
+    def retuned(batch: int) -> None:
+        """The lesson's rates at the batch's multiplier, the optimizer's history kept."""
+        factor = scheduled("rate", batch)
+        if factor != rated[0]:
+            brain.retune(learning=dataclasses.replace(
+                brain.learner.config, eta=composed.eta * factor,
+                eta_bias=composed_bias * factor))
+            rated[0] = factor
+
     # each batch's paths, by the batch: an utterance heard in two passes takes a path in each
     paths: dict[int, list[np.ndarray]] = {} if soft else {
         m: [even_path(len(train[int(i)][0]), train[int(i)][1]) for i in groups[m]]
@@ -624,7 +661,8 @@ def life_batched(cache: Path, protocol: dict[str, Any], seed: int, out: Path,
             for i, (_, logp) in zip(g, batch_beliefs(copy, [train[int(i)][0] for i in g]),
                                     strict=True):
                 text = train[int(i)][1]
-                new = soft_path(logp, text) if soft else lt.ctc_path(logp, text)
+                new = (soft_path(logp, text, sharpness=sharpness(m)) if soft
+                       else lt.ctc_path(logp, text))
                 best = np.argmax(new, axis=1) if soft else new
                 moved.append(float(np.mean(best != even_path(len(best), text))))
                 paths[m].append(new)
@@ -643,12 +681,30 @@ def life_batched(cache: Path, protocol: dict[str, Any], seed: int, out: Path,
             record["alignments"] = [a for a in earlier["alignments"] if a["batches"] < begin]
             record["resumed"] = list(earlier.get("resumed", []))
         record.setdefault("resumed", []).append(begin)
+        loaded = brain.learner.config  # the rates the save holds
+        rated[0] = loaded.eta / composed.eta
     for n, group in enumerate(groups):
         if n < begin:
             continue
         if stop_after is not None and n >= stop_after:
             return None
-        if (n or soft) and n % every == 0:
+        retuned(n)
+        if soft and n and n % save_every == 0:
+            brain.reset()  # a batch begins from rest: the save holds no stream
+            save_slot(brain, out, seed, n // save_every, {
+                "batches": n, "steps": steps, "clock": dict(clock)})
+        if soft and n % every == 0:  # the brain's own beliefs, at rest, its fields held
+            ticked = time.monotonic()
+            brain.reset()
+            moving = brain.fields is not None and brain.fields.learning
+            if moving:
+                brain.fields.learning = False
+            moved = realign(brain, n, n + every)
+            if moving:
+                brain.fields.learning = True
+            clock["aligning"] += time.monotonic() - ticked
+            record["alignments"].append({"batches": n, "moved_from_even": float(np.mean(moved))})
+        if not soft and n and n % every == 0:
             ticked = time.monotonic()
             brain.reset()  # a batch begins from rest: the save holds no stream
             copy = cd.Brain.load(save_slot(brain, out, seed, n // every, {

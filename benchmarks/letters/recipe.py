@@ -11,7 +11,10 @@ corrections and runs it on a stream:
 3. **train:** utterances side by side as streams, ``batch`` at a time, each batch from rest, one
    lesson a step (``step(..., teacher=labels)``); the labels are each utterance's forced
    alignment through a frozen copy's beliefs, renewed every ``align_every`` batches
-   (``speech.align``), the first batches on an even split;
+   (``speech.align``), the first batches on an even split. With ``--teacher soft`` each step
+   is taught the soft path through the copy's beliefs instead (``soft_path``, one
+   ``soft_step`` a moment), the first batches through the newborn's beliefs; read the copy
+   before every batch (``--align-every 1``);
 4. **read:** held-out utterances, the letter decoder (``collapse``) and, with a word list, the
    beam over the list (``WordBeam``): characters and words;
 5. **adapt:** half of a new speaker's utterances as corrections heard beside three training
@@ -177,7 +180,7 @@ def transcribe(brain: Any, rows: list[np.ndarray], alphabet: Any, words: Any, ba
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     from cadence import Brain
-    from cadence.speech.align import Alignments, forced_path, log_beliefs
+    from cadence.speech.align import Alignments, forced_path, log_beliefs, soft_step
     from cadence.speech.correct import Rehearsal
     from cadence.speech.decode import Alphabet, WordBeam
     from cadence.speech.frontend import Hearing, log_mel
@@ -238,6 +241,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     # 3. train
     folder = Path(tempfile.mkdtemp(prefix="recipe-"))
     alignments = Alignments()
+    soft = args.teacher == "soft"
     rng = np.random.default_rng(args.seed)
     lengths = np.array([len(u["rows"]) for u in train])
     trained = 0.0
@@ -250,7 +254,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             keys = [(p, int(i)) for i in group]
             if n % args.align_every == 0:  # the next batches' paths, from a frozen copy
                 upcoming = [(p, int(i)) for g in groups[n : n + args.align_every] for i in g]
-                if p == 0 and n == 0:
+                if p == 0 and n == 0 and not soft:
                     for key in upcoming:
                         u = train[key[1]]
                         alignments.even(key, len(u["rows"]), u["symbols"])
@@ -258,13 +262,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     copy = frozen(brain, folder)
                     rows = [train[i]["rows"] for _, i in upcoming]
                     for key, logp in zip(upcoming, log_beliefs(copy, rows), strict=True):
-                        alignments.realign(key, logp, train[key[1]]["symbols"])
+                        alignments.realign(key, logp, train[key[1]]["symbols"], soft=soft)
             x = padded([train[int(i)]["rows"] for i in group])
-            labels = alignments.lesson(keys, len(x))
             ticked = time.monotonic()
-            brain.reset()
-            for t in range(len(x)):
-                brain.step(x[t], teacher=labels[t])
+            if soft:  # a distribution per step: the lesson's pull, then a greedy act
+                targets = alignments.targets(keys, len(x), alphabet.size)
+                brain.reset()
+                for t in range(len(x)):
+                    soft_step(brain, x[t], targets[t])
+            else:
+                labels = alignments.lesson(keys, len(x))
+                brain.reset()
+                for t in range(len(x)):
+                    brain.step(x[t], teacher=labels[t])
             trained += time.monotonic() - ticked
         said, by_list = transcribe(brain, [u["rows"] for u in held], alphabet, words,
                                    args.batch, folder)
@@ -373,6 +383,8 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     parser.add_argument("--passes", type=int, default=3)
     parser.add_argument("--batch", type=int, default=32, help="utterances side by side")
     parser.add_argument("--align-every", type=int, default=8, help="batches between alignments")
+    parser.add_argument("--teacher", choices=("path", "soft"), default="path",
+                        help="the lesson: the forced path's symbols, or the soft path's shares")
     parser.add_argument("--fields", type=int, default=64, help="learned_fields")
     parser.add_argument("--width", type=int, default=256, help="the association's neurons")
     parser.add_argument("--correction-rate", type=float, default=0.1,

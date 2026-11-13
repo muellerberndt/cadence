@@ -77,18 +77,30 @@ def forced_path(log_beliefs: Any, transcript: Any, *, blank: int = BLANK,
     return path
 
 
-def soft_path(log_beliefs: Any, transcript: Any, *, blank: int = BLANK) -> np.ndarray:
+def soft_path(log_beliefs: Any, transcript: Any, *, blank: int = BLANK,
+              sharpness: float = 1.0) -> np.ndarray:
     """The distribution taught at each step: ``(steps, symbols)``, the share of the transcript's
     monotonic paths that say each symbol at that step, each path weighed by the product of the
     beliefs along it. The paths are ``forced_path``'s: blank allowed on any step and required
     between a symbol and the same symbol after it. Every row sums to one. Where the beliefs
     leave one path, the rows are that path's symbols; where they say nothing, the rows spread
-    each symbol over the steps it can take. A transcript longer than the steps allow is
-    refused."""
+    each symbol over the steps it can take. ``sharpness`` raises every path's weight to that
+    power: at 1 a path counts by its probability (CTC's shares), above 1 the better paths count
+    for more, and at a large value the rows are the forced path's symbols. A transcript longer
+    than the steps allow is refused."""
+    if (
+        isinstance(sharpness, (bool, np.bool_))
+        or not isinstance(sharpness, (int, float, np.integer, np.floating))
+        or not np.isfinite(sharpness)
+        or sharpness <= 0
+    ):
+        raise ValueError("sharpness must be a positive finite number")
     scores = np.asarray(log_beliefs, dtype=np.float64)
     sequence = np.asarray(transcript, dtype=np.int64)
     if scores.ndim != 2 or len(sequence) == 0:
         raise ValueError("soft_path needs (steps, symbols) beliefs and a symbol")
+    if sharpness != 1.0:
+        scores = scores * float(sharpness)
     repeats = int(np.sum(sequence[1:] == sequence[:-1]))
     if len(scores) < len(sequence) + repeats:
         raise ValueError("the transcript needs more steps than the utterance holds")
@@ -147,26 +159,40 @@ def soft_step(brain: Any, rows: Any, targets: Any) -> dict[str, float]:
     return report
 
 
-def log_beliefs(brain: Any, utterances: Sequence[Any]) -> list[np.ndarray]:
+def log_beliefs(brain: Any, utterances: Sequence[Any], *, hold: bool = False) -> list[np.ndarray]:
     """A brain's log beliefs over its symbols at each step of each utterance, the utterances
     heard side by side as streams from rest and answered greedily: the log-softmax of the settled
     motor activations at the brain's temperature. The brain's streams start again; give it a
-    frozen copy (``Brain.load`` of a saved brain) where the life must go on untouched."""
+    frozen copy (``Brain.load`` of a saved brain) where the life must go on untouched.
+
+    With ``hold`` the brain's learned fields take no step while it answers, and its streams are
+    at rest again afterwards: every parameter is what it was, so between two batches of its
+    life a brain reads its own beliefs and no copy is loaded."""
     rows = [np.asarray(u, dtype=np.float64) for u in utterances]
     if not rows:
         return []
     longest = max(len(r) for r in rows)
     x = np.stack([np.concatenate([r, np.repeat(r[-1:], longest - len(r), axis=0)])
                   for r in rows], axis=1)
-    brain.reset()
-    motor = np.asarray(brain.connectome.populations["motor"], dtype=np.int64)
-    temperature = float(brain.describe()["genes"]["temperature"])
-    out = np.zeros((longest, len(rows), len(motor)))
-    for t in range(longest):
-        brain.act(x[t], greedy=True)
-        drive = np.asarray(brain.basal_ganglia.state.activation)[:, motor] / temperature
-        top = drive.max(axis=1, keepdims=True)
-        out[t] = drive - top - np.log(np.sum(np.exp(drive - top), axis=1, keepdims=True))
+    fields = getattr(brain, "fields", None)
+    moving = fields if hold and fields is not None and fields.learning else None
+    if moving is not None:
+        moving.learning = False
+    try:
+        brain.reset()
+        motor = np.asarray(brain.connectome.populations["motor"], dtype=np.int64)
+        temperature = float(brain.describe()["genes"]["temperature"])
+        out = np.zeros((longest, len(rows), len(motor)))
+        for t in range(longest):
+            brain.act(x[t], greedy=True)
+            drive = np.asarray(brain.basal_ganglia.state.activation)[:, motor] / temperature
+            top = drive.max(axis=1, keepdims=True)
+            out[t] = drive - top - np.log(np.sum(np.exp(drive - top), axis=1, keepdims=True))
+        if hold:
+            brain.reset()
+    finally:
+        if moving is not None:
+            moving.learning = True
     return [out[: len(r), k] for k, r in enumerate(rows)]
 
 
@@ -195,11 +221,15 @@ class Alignments:
         return self._paths[key]
 
     def realign(self, key: Hashable, log_beliefs: Any, transcript: Any, *,
-                soft: bool = False) -> np.ndarray:
+                soft: bool = False, sharpness: float = 1.0) -> np.ndarray:
         """Hold the hearing's path through ``log_beliefs``: the best path's symbols
-        (``forced_path``), or with ``soft`` the soft path's distributions (``soft_path``)."""
-        self._paths[key] = (soft_path if soft else forced_path)(
-            log_beliefs, transcript, blank=self.blank)
+        (``forced_path``), or with ``soft`` the soft path's distributions (``soft_path`` at
+        ``sharpness``)."""
+        if soft:
+            self._paths[key] = soft_path(log_beliefs, transcript, blank=self.blank,
+                                         sharpness=sharpness)
+        else:
+            self._paths[key] = forced_path(log_beliefs, transcript, blank=self.blank)
         return self._paths[key]
 
     def take(self, key: Hashable) -> np.ndarray:

@@ -166,6 +166,45 @@ def test_a_soft_teacher_teaches_distributions_from_the_first_batch(tmp_path: Pat
         assert a["score"]["characters"] == b["score"]["characters"]
     with pytest.raises(ValueError):
         sp.life_batched(cache, {**protocol, "teacher": "other"}, 2, tmp_path)
+    with pytest.raises(ValueError):
+        sp.life_batched(cache, {**protocol, "save_every": 3}, 2, tmp_path)  # not a multiple
+    spaced = tmp_path / "spaced"  # aligned every batch, saved every fourth
+    spaced.mkdir()
+    rare = {**protocol, "align_every": 1, "save_every": 4}
+    assert sp.life_batched(cache, rare, 2, spaced, stop_after=5) is None
+    saved = sp.latest_slot(spaced, 2)
+    assert saved is not None and saved[1]["batches"] == 4
+    assert len(list(spaced.glob("speech-2-align-?.npz"))) == 1  # one save so far
+    done = sp.life_batched(cache, rare, 2, spaced)
+    # every batch from the save on is aligned again (the record keeps those up to its reading)
+    assert done is not None and [a["batches"] for a in done["alignments"]][-2:] == [4, 5]
+    assert done["resumed"] == [4]
+
+
+def test_a_protocols_rate_and_sharpness_follow_the_passes(tmp_path: Path) -> None:
+    """A rate per pass retunes the lesson's rates where it changes, and a stopped life
+    continues at its pass's rate to the whole life's readings."""
+    import cadence as cd
+
+    cache = _fake_cache(tmp_path, 4)
+    protocol = {"batch": 2, "passes": 2, "align_every": 1, "probe_every": 3, "teacher": "soft",
+                "sharpness": [1.0, 4.0], "rate": [1.0, 0.5], "brain": {"genes": GENES}}
+    whole, cut = tmp_path / "whole", tmp_path / "cut"
+    whole.mkdir()
+    cut.mkdir()
+    full = sp.life_batched(cache, protocol, 2, whole)
+    assert full is not None
+    born = cd.Brain.compose(sp.inputs_of(cache), sp.SYMBOLS, backend="cpu", seed=2, **GENES)
+    last = cd.Brain.load(whole / "speech-2-reading.npz", backend="cpu")
+    assert last.learner.config.eta == born.learner.config.eta * 0.5
+    assert sp.life_batched(cache, protocol, 2, cut, stop_after=5) is None
+    again = sp.life_batched(cache, protocol, 2, cut)
+    assert again is not None and again["resumed"] == [4]
+    for a, b in zip(full["probes"], again["probes"], strict=True):
+        assert a["score"]["characters"] == b["score"]["characters"]
+    np.testing.assert_array_equal(
+        np.asarray(cd.Brain.load(cut / "speech-2-reading.npz", backend="cpu").brain.efficacy),
+        np.asarray(last.brain.efficacy))
 
 
 def test_a_stopped_control_continues_from_its_last_pass(tmp_path: Path) -> None:

@@ -118,6 +118,37 @@ def test_the_soft_path_of_sure_beliefs_is_the_forced_path():
         soft_path(np.full((4, 8), -np.inf), [2])  # beliefs that allow nothing
 
 
+def test_a_sharp_soft_path_nears_the_forced_path():
+    from cadence.speech.align import soft_path
+
+    rng = np.random.default_rng(5)
+    scores = np.log(rng.dirichlet(np.ones(4), size=7))  # 7 steps, blank and three symbols
+    sequence = [2, 2, 3, 1]
+    forced = forced_path(scores, sequence)
+    plain = soft_path(scores, sequence)
+    np.testing.assert_array_equal(soft_path(scores, sequence, sharpness=1.0), plain)
+    sharp = soft_path(scores, sequence, sharpness=200.0)
+    assert np.argmax(sharp, axis=1).tolist() == forced.tolist() and sharp.max(axis=1).min() > 0.99
+    middle = soft_path(scores, sequence, sharpness=3.0)
+
+    def on_forced(rows):
+        return float(rows[np.arange(7), forced].mean())
+
+    assert on_forced(plain) < on_forced(middle) < on_forced(sharp)
+    by_hand = _paths_by_hand(scores, sequence)  # every path's weight cubed
+    total = sum(w**3.0 for _, w in by_hand)
+    cubed = np.zeros((7, 4))
+    for said, w in by_hand:
+        cubed[np.arange(7), list(said)] += w**3.0 / total
+    np.testing.assert_allclose(middle, cubed, atol=1e-10)
+    for bad in (0.0, -1.0, float("inf"), True):
+        with pytest.raises(ValueError):
+            soft_path(scores, sequence, sharpness=bad)
+    held = Alignments()
+    held.realign("a", scores, sequence, soft=True, sharpness=200.0)
+    assert np.argmax(held.take("a"), axis=1).tolist() == forced.tolist()
+
+
 def test_soft_paths_are_taught_as_targets_side_by_side():
     held = Alignments()
     beliefs = np.log(np.eye(4)[[1, 1, 1, 2]] + 1e-3)
@@ -169,3 +200,26 @@ def test_a_soft_step_is_the_lesson_and_a_greedy_act_with_one_step_of_the_fields(
     assert held.fields.work["updates"] == 0 and not held.fields.learning
     plain = cd.Brain.compose(6, 4, seed=0, backend="cpu", recall=False)  # a brain without fields
     soft_step(plain, rows[0][:, :6], targets[0])
+
+
+def test_a_brain_reads_its_own_beliefs_between_batches_and_stays_as_it_was():
+    def born():
+        return cd.Brain.compose((8, 8), 4, seed=0, backend="cpu", learned_fields=4)
+
+    rng = np.random.default_rng(2)
+    a, b = rng.normal(size=(5, 64)), rng.normal(size=(3, 64))
+    living, frozen = born(), born()
+    for t in range(3):  # a little life, the same for both
+        for brain in (living, frozen):
+            brain.step(a[t][None], teacher=[t % 4])
+    frozen.reset()
+    frozen.fields.learning = False
+    own = log_beliefs(living, [a, b], hold=True)
+    np.testing.assert_array_equal(own[0], log_beliefs(frozen, [a, b])[0])
+    assert living.fields.learning and living.fields.work["updates"] == 3  # no step was taken
+    np.testing.assert_array_equal(living.fields.dictionary, frozen.fields.dictionary)
+    np.testing.assert_array_equal(np.asarray(living.brain.efficacy),
+                                  np.asarray(frozen.brain.efficacy))
+    living.step(a[3][None], teacher=[1])  # at rest: the life goes on with new streams
+    moved = log_beliefs(born(), [a])  # without hold the fields learn as the brain answers
+    assert moved[0].shape == (5, 4)

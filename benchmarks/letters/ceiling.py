@@ -13,11 +13,21 @@ brain's answer path. The reading tells which link holds the letters a brain does
 - ``--hear state``: a saved brain's settled activity at each step, read greedily from rest
   (``--populations``, any of the brain's populations side by side);
 - ``--past k``: the heard vectors of the ``k`` steps before, side by side with the step's own;
+- ``--traces d ...``: the heard history a brain holds at each decay (``history_decays``), side
+  by side with the step's own vector;
+- ``--efference d``: beside the step's vector, a copy of the learner's own answers so far, as
+  a brain's efference copy holds its commands (``c <- d * c + (1 - d) * onehot(answer)`` after
+  each step, the answer its greedy choice; ``--efference-letters``: blank issues no command,
+  so the copy holds the letters said); the learner answers step by step (``linear``, ``mlp``);
 - ``--model linear | mlp | lstm | transformer`` at ``--width`` (``mlp``: one hidden layer;
   ``lstm`` and ``transformer``: the chamber's controls);
 - ``--loss ctc``: CTC on the utterance's text; ``--loss path``: cross-entropy on the forced
   alignment of the text through a frozen copy's beliefs, an even split before the first copy
-  and a new copy every ``--align-every`` utterances: the brain's teacher on a gradient learner.
+  and a new copy every ``--align-every`` utterances: the brain's teacher on a gradient learner;
+  ``--loss soft``: cross-entropy on the soft path of the text through the learner's own
+  beliefs at the update (CTC's descent as targets; ``--blank-bias`` is added to blank's log
+  belief in the teacher's sums, so that below zero a letter's share spreads over its sound;
+  ``--sharpness`` is the soft path's, one per epoch, the last held).
 
 Training is the offline control's: shuffled epochs, one Adam step per utterance (rate 0.001),
 read on the held-out utterances after every epoch.
@@ -108,6 +118,24 @@ def with_past(pairs: Pairs, past: int) -> Pairs:
     return out
 
 
+def with_traces(pairs: Pairs, decays: list[float]) -> Pairs:
+    """Each step's vector beside the heard history a brain holds of the steps before it
+    (``history_decays``): one block per decay ``d``, ``h <- d * h + (1 - d) * x`` after each
+    step, silent at the utterance's start."""
+    if not decays:
+        return pairs
+    out = []
+    for x, text in pairs:
+        blocks = [x]
+        for d in decays:
+            h = np.zeros_like(x)
+            for t in range(1, len(x)):
+                h[t] = d * h[t - 1] + (1.0 - d) * x[t - 1]
+            blocks.append(h)
+        out.append((np.concatenate(blocks, axis=1), text))
+    return out
+
+
 def standardized(train: Pairs, held: Pairs) -> tuple[Pairs, Pairs]:
     """Both sets less the training steps' mean, over their standard deviation, per value."""
     stacked = np.concatenate([x for x, _ in train])
@@ -133,20 +161,43 @@ def build(model: str, width: int, inputs: int, seed: int) -> Any:
 
 
 def run(train: Pairs, held: Pairs, *, model: str, width: int, loss: str, seed: int,
-        epochs: int, align_every: int = 256, rate: float = 0.001) -> dict[str, Any]:
+        epochs: int, align_every: int = 256, rate: float = 0.001,
+        blank_bias: float = 0.0, sharpness: list[float] | None = None,
+        efference: float | None = None,
+        efference_letters: bool = False, efference_amplitude: float = 3.0) -> dict[str, Any]:
     """One learner, trained offline and read after every epoch."""
     import controls as ct
     import torch
 
+    from cadence.speech.align import soft_path
+
     torch.set_num_threads(1)
     inputs = train[0][0].shape[1]
+    if efference is not None:
+        if model not in ("linear", "mlp") or loss == "path":
+            raise ValueError("the copy of its own answers is read by linear and mlp learners "
+                             "under ctc or soft lessons")
+        inputs += sp.SYMBOLS
     net = build(model, width, inputs, seed)
     opt = torch.optim.Adam(net.parameters(), lr=rate)
     record: dict[str, Any] = {"model": model, "width": width, "loss": loss, "seed": seed,
-                              "inputs": inputs, "parameters": ct.count(net), "probes": []}
+                              "inputs": inputs, "parameters": ct.count(net), "probes": [],
+                              "blank_bias": blank_bias, "efference": efference,
+                              "efference_letters": efference_letters}
 
     def forward(x: np.ndarray) -> Any:
-        return net(torch.from_numpy(np.ascontiguousarray(x, dtype=np.float32))[None])[0]
+        rows = torch.from_numpy(np.ascontiguousarray(x, dtype=np.float32))
+        if efference is None:
+            return net(rows[None])[0]
+        copy = torch.zeros(sp.SYMBOLS)  # the learner's own answers so far, read with the step
+        out = []
+        for t in range(len(rows)):
+            out.append(net(torch.cat([rows[t], efference_amplitude * copy])[None])[0])
+            answer = int(out[-1].argmax())
+            if answer != 0 or not efference_letters:
+                copy = efference * copy
+                copy[answer] += 1.0 - efference
+        return torch.stack(out)
 
     frozen: Any = None
     heard, started = 0, time.monotonic()
@@ -163,6 +214,13 @@ def run(train: Pairs, held: Pairs, *, model: str, width: int, loss: str, seed: i
                 value = torch.nn.functional.ctc_loss(
                     logp, torch.from_numpy(text)[None], torch.tensor([len(x)]),
                     torch.tensor([len(text)]), blank=0, zero_infinity=True)
+            elif loss == "soft":
+                belief = torch.log_softmax(logits.detach(), -1).numpy().astype(np.float64)
+                belief[:, 0] += blank_bias
+                sharp = 1.0 if not sharpness else sharpness[min(epoch, len(sharpness) - 1)]
+                shares = torch.from_numpy(
+                    soft_path(belief, text, sharpness=sharp).astype(np.float32))
+                value = -(shares * torch.log_softmax(logits, -1)).sum(-1).mean()
             else:
                 if frozen is None:
                     path = sp.even_path(len(x), text)
@@ -244,6 +302,8 @@ def heard(args: argparse.Namespace) -> tuple[Pairs, Pairs, dict[str, Any]]:
     if args.limit:
         train = train[: args.limit]
     train, held = with_past(train, args.past), with_past(held, args.past)
+    train, held = with_traces(train, args.traces), with_traces(held, args.traces)
+    note["traces"] = list(args.traces)
     if args.hear != "window":
         train, held = standardized(train, held)
     return train, held, note
@@ -260,10 +320,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--batch", type=int, default=32,
                         help="state: utterances the brain hears side by side")
     parser.add_argument("--past", type=int, default=0)
+    parser.add_argument("--traces", type=float, nargs="*", default=[],
+                        help="decays of heard-history blocks beside the step's vector")
+    parser.add_argument("--efference", type=float,
+                        help="the decay of a copy of the learner's own answers, read beside")
+    parser.add_argument("--efference-letters", action="store_true",
+                        help="blank issues no command: the copy holds the letters said")
     parser.add_argument("--model", choices=("linear", "mlp", "lstm", "transformer"),
                         default="mlp")
     parser.add_argument("--width", type=int, default=256)
-    parser.add_argument("--loss", choices=("ctc", "path"), default="ctc")
+    parser.add_argument("--loss", choices=("ctc", "path", "soft"), default="ctc")
+    parser.add_argument("--blank-bias", type=float, default=0.0)
+    parser.add_argument("--sharpness", type=float, nargs="*", default=[],
+                        help="soft: the soft path's sharpness per epoch, the last held")
     parser.add_argument("--align-every", type=int, default=256)
     parser.add_argument("--epochs", type=int, default=12)
     parser.add_argument("--seed", type=int, default=0)
@@ -275,7 +344,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     train, held, note = heard(args)
     record = run(train, held, model=args.model, width=args.width, loss=args.loss, seed=args.seed,
-                 epochs=args.epochs, align_every=args.align_every)
+                 epochs=args.epochs, align_every=args.align_every, blank_bias=args.blank_bias,
+                 sharpness=args.sharpness,
+                 efference=args.efference, efference_letters=args.efference_letters)
     record.update(note)
     name = args.name or "-".join(str(v) for v in (
         args.hear, *(args.populations if args.hear == "state" else []),
