@@ -545,7 +545,7 @@ class Map:
             # a thing of the kind is sensed: the doubt about where one of it went is over
             near += [p for p in pieces if self.doubt[p].mean() > 0.5]
             if physics is not None:  # the thing's motion record, carried on by this report
-                lines.append((units, self._line(units, near, place)))
+                lines.append((units, self._line(units, near, place, lines)))
             for piece in near:  # its cells, and around them those its kind alone holds
                 around = self._around(piece)
                 alone = around[(activity[around][:, units] > 0).any(axis=1)
@@ -769,10 +769,13 @@ class Map:
         spread = float(((points - middle) ** 2).sum(axis=1) @ kept) / 2.0
         return mass * share, middle, min(var, spread), True
 
-    def _line(self, units: np.ndarray, near: list[np.ndarray], place: np.ndarray
+    def _line(self, units: np.ndarray, near: list[np.ndarray], place: np.ndarray,
+              lines: list[tuple[np.ndarray, np.ndarray]] = ()  # type: ignore[assignment]
               ) -> np.ndarray:
         """The motion record a report carries on: the record of the thing its claimed pieces
-        hold (at the cell that holds most of it), or none for a new thing."""
+        hold (at the cell that holds most of it), or none for a new thing. A new thing takes an
+        identity no record holds, nor any record of this moment's reports before it
+        (``lines``)."""
         from .physics import IDENT
 
         record = None
@@ -782,7 +785,9 @@ class Map:
             if len(held):
                 record = self.motion[held[int(np.argmax(self.potential[held, units[0]]))],
                                      units[0]]
-        ident = float(self.motion[:, :, IDENT].max()) + 1.0 if record is None else 0.0
+        taken = max([float(self.motion[:, :, IDENT].max())]
+                    + [float(rec[IDENT]) for _, rec in lines])
+        ident = taken + 1.0 if record is None else 0.0
         return self.physics.see(record, place, ident, self._inside())
 
     def _predict(self, activity: np.ndarray, claimed: np.ndarray, sight: np.ndarray, lit: Any,
