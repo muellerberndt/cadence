@@ -614,9 +614,19 @@ class LongTermMemory:
             return np.asarray(array[rows])
         if self._pool is None:
             self._pool = ThreadPoolExecutor(self.THREADS)
-        parts = np.array_split(rows, self.THREADS)
-        return np.concatenate(list(self._pool.map(lambda part: np.take(array, part, axis=0),
-                                                  parts)))
+        rows = np.ascontiguousarray(rows, dtype=np.int64)
+        out = np.empty((len(rows), *array.shape[1:]), dtype=array.dtype)
+        # each thread fills a part of ``out``; the compiled loop holds no interpreter lock, and
+        # NumPy's take holds it for parts of a few rows
+        fetch = _pairs._ROWS if _pairs._ROWS is not None and self.COMPILED else \
+            (lambda part, into: np.take(array, part, axis=0, out=into))
+        edges = np.linspace(0, len(rows), min(self.THREADS, len(rows)) + 1).astype(np.int64)
+        jobs = [(rows[a:b], out[a:b]) for a, b in zip(edges[:-1], edges[1:], strict=True)]
+        if fetch is _pairs._ROWS:
+            list(self._pool.map(lambda job: fetch(array, job[0], job[1]), jobs))
+        else:
+            list(self._pool.map(lambda job: fetch(job[0], job[1]), jobs))
+        return out
 
     # -- the coarse stage
 
@@ -1147,6 +1157,7 @@ class LongTermMemory:
         if recognised is not None and not -1 <= int(recognised) < self.count:
             raise ValueError("recognised is a held slot, or -1 for none")
         sign = None if source is None else self._signature(source)
+        waited = _waited() if self._gather else 0
         if self._unfiled < self.count:
             self.file()
         # the key's address: the address of units files under it, and a write that recognises
@@ -1198,6 +1209,9 @@ class LongTermMemory:
                 held = int(np.count_nonzero(row >= 0))
                 if held > 1:
                     self._grow(held * (held - 1) // 2)
+                    if self._gather and self._cold:
+                        # the cells the record enters, fetched side by side before it does
+                        self._take(self.cells, self._pair_cells(row[:held])[0])
                     self._enter_rows(slot, 1)
         elif self.coarse and self.pairs:
             # a record told again under the key it holds stays filed where it is
@@ -1222,6 +1236,8 @@ class LongTermMemory:
         self.writes += 1
         self._unfiled = self.count
         self._sync()
+        if self._gather:  # whether this write waited for the disk, as a read notes it
+            self._cold = _waited() - waited > self.WAITS
         return slot, revised
 
     def fill(self, keys: Any, values: Any, sources: Any = None, chunk: int = 1024,

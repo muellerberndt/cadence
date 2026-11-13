@@ -425,8 +425,16 @@ def _top_few(keys: Any, projection: Any, sums: Any, k: Any, out: Any) -> None:
             out[r, q] = kept[q] if q < n else -1
 
 
+def _rows(array: Any, rows: Any, out: Any) -> None:
+    """``out[i] = array[rows[i]]`` for rows of a table. Compiled, it runs without the
+    interpreter's lock, so several threads fetch rows, and wait for the disk, side by side."""
+    for i in range(len(rows)):
+        out[i] = array[rows[i]]
+
+
 _COUNT: Any = None
 _COUNT_ROWS: Any = None
+_ROWS: Any = None
 _SPLIT: Any = None
 _FILE: Any = _file
 _FILE_RANGES: Any = None
@@ -442,6 +450,7 @@ if COMPILED:
     _UNFILE = _njit(cache=True)(_unfile)
     _TOP = _njit(cache=True, parallel=True)(_top)
     _TOP_FEW = _njit(cache=True, parallel=True)(_top_few)
+    _ROWS = _njit(cache=True, nogil=True)(_rows)
 
 
 # -- the NumPy forms, a record at a time
