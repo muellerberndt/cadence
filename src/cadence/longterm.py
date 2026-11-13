@@ -591,6 +591,12 @@ class LongTermMemory:
         if self._dir is not None:
             raise TypeError("a store on disk is one store: LongTermMemory.open(path) continues "
                             "it; a copy would read every file into memory")
+        if self.grow:
+            # the rows written and the cells held: the bound on the slots is not copied
+            out = LongTermMemory(**self.to_dict())
+            memo[id(self)] = out
+            out.restore(self.arrays())
+            return out
         out = copy(self)
         memo[id(self)] = out
         out.__dict__.update(deepcopy(self.__dict__, memo))
