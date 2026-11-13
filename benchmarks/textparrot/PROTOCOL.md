@@ -45,7 +45,8 @@ question, and what is said at a thing, and whether anything is, is the brain's.
 (whose settled activity is the concept code), the apical compartment carrying each region's
 input from the region above (top-down), the held message holding the question from the gap on,
 the heard history (decays 0 and .6), the working trace at .3, two motor slots (voice: every word
-and silence; gaze: pass or hold), every row taught at `teaching="deep"`. The words read reach the
+and silence; gaze: pass or hold), at `teaching="deep"`, lessons only where the answer differs
+(`learning_surprise=True`, amendment 1). The words read reach the
 lowest region with the eyes, or (`ear` arms) the association region alone, so the question reaches
 the regions below only through their apical compartments. Sleep (`s` arms): every efficacy times
 .5 between stages.
@@ -65,7 +66,7 @@ blocks of 64 exchanges).
 
 The development sweep (founders 900 and 901, caps of 150, 300, 300, 200, 200, 300) reads every
 depth (2, 4, 6 regions) at every apical fraction (0, .25, .5), the `ear` arms, sleep and
-surprise-only lessons. **The gated arm is the deep apical arm** (four or six regions, apical
+every-row lessons (`d2a25all`). **The gated arm is the deep apical arm** (four or six regions, apical
 above zero) with the best development mean on G3, unless an arm of two regions or without the
 compartment is above every deep apical arm by more than .05 on G3; then that arm is gated beside
 the best deep apical arm and the report reads why depth did not pay.
@@ -100,3 +101,10 @@ python textgates.py control 33800000 lstm-online out/ --brain-record out/d4a25_3
 python textgates.py read out/
 python chat.py out/d4a25_33800000.npz 33800000
 ```
+
+## Amendment 1 (before any gated reading)
+
+Taught on every row, a fresh brain says the majority answer ("no", .62 to .67) to "is a bottle
+long ?" under every message, width and memory variant; taught only where its answer differs it
+reads 1.00 by block 175 (founder 905). Every arm takes `learning_surprise=True`; the lives
+started under every-row teaching were stopped before any reading. Founders and gates unchanged.
