@@ -24,15 +24,19 @@ kinds = ["dako", "mipu", "sefa", "lobi"]               # nonce words: ball, cup,
 quarters = ["fobe", "lume", "kosa", "riza"]            # in front of, left of, behind, right of
 relations = Relations()
 parrot = Words(Map((-2.0, 2.0, -2.0, 2.0), (24, 24), units=4), parts=[relations],
-               capacity=32, shares={"kind": 0.4, "place": 0.3})
+               capacity=32, shares={"kind": 0.4, "place": 0.3},
+               heard_only=True, pattern_back=True)        # the lexicon's opt-ins, below
 rng = np.random.default_rng(0)
 
 
-def new_room():
-    """Four things around the parrot, one in each quarter of where it faces."""
+def new_room(right=None):
+    """Four things around the parrot, one in each quarter of where it faces (the one to its
+    right at ``right`` metres, where given)."""
     facing = rng.uniform(-math.pi, math.pi)
     places = [rng.uniform(0.7, 1.7) * np.array([math.cos(a), math.sin(a)])
               for a in facing + np.arange(4) * math.pi / 2 + rng.uniform(-0.5, 0.5, 4)]
+    if right is not None:
+        places[3] *= right / np.linalg.norm(places[3])
     parrot.map.reset()
     parrot.map.moment(seen=[(k, places[k]) for k in range(4)])
     parrot.body.heading = facing
@@ -44,23 +48,50 @@ for _ in range(12):                                    # naming: the things
     for k in range(4):
         parrot.name(kinds[k], places[k])
 relations.name_self(parrot, "you")                     # and the parrot itself
-for _ in range(16):                                    # questions answered: where from you?
+for _ in range(48):                                    # questions answered: where from you?
     new_room()
-    for k in range(4):
+    for k in range(3):                                 # three of the four quarter words
         parrot.practice(f"where is the {kinds[k]} from you", quarters[k])
-for _ in range(4):                                     # what is in front of, left of you?
+for _ in range(4):                                     # what is in front of you?
     new_room()
-    for k in range(2):
-        parrot.practice(f"what is {quarters[k]} you", kinds[k])
+    parrot.practice(f"what is {quarters[0]} you", kinds[0])
 
 new_room()                                             # a room it has never seen
 assert parrot.ask("where is the sefa from you") == ["kosa"]
-assert parrot.ask("what is riza you") == ["lobi"]      # never asked this way about "riza"
+assert parrot.ask("what is kosa you") == ["sefa"]      # never asked this way about "kosa"
 ```
 
 The parrot was never told which word names a direction: each answer word was named with what
 the parrot sensed of the thing from itself, its direction and its distance, and the word kept
 what its lessons shared, the direction.
+
+**The lexicon's two opt-ins.** The vector cells are population codes: neighbouring codes
+overlap, and so do the patterns of the words for them. `Words(heard_only=True)` makes a lesson
+move the synapses of the words heard alone (by default every word's synapses of the taught
+groups step, and a word active through its overlap with the heard word is taught toward
+silence). `Words(pattern_back=True)` makes the motor hear a word back at the level of the group
+of a concept said as a pattern (by default at its exact unit, which a population code's peak
+rarely shares with the right word's). In development lives of the chamber (no declared run),
+"where" and "how far" answers read .900 (from things) and .862 (from the parrot) with neither
+(six founders), and 1.000 and 1.000 with both (sixteen founders).
+
+## A word taught through words the parrot knows
+
+"What is next to the apple?" answered with the cup: where a question holds one word the parrot
+hears for the first time, every other word known and no relation word among them, the new word
+takes the meaning the answer shows. Each answered thing's code from the reference names it,
+and from then on it is a relation word like the others. A teacher shows it where it varies in
+what it does not name (here the distance), so that a few examples tell what it names.
+
+```python
+assert parrot.lexicon.unit("riza") is None             # the fourth quarter word: never heard
+for right in (0.7, 1.0, 1.4, 1.8):                     # shown at four distances
+    new_room(right)
+    parrot.practice("what is riza you", kinds[3])      # answered with the thing to the right
+new_room()
+assert parrot.ask("what is riza you") == ["lobi"]
+assert parrot.ask("where is the lobi from you") == ["riza"]   # and said the other way
+```
 
 ## What the parrot is born with and what it learns
 

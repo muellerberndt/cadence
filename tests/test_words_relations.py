@@ -37,7 +37,8 @@ def test_vector_cells() -> None:
 def _brain(seed: int = 0) -> tuple[Words, Relations, np.random.Generator]:
     part = Relations()
     held = Map((-2.0, 2.0, -2.0, 2.0), (24, 24), units=len(KINDS), seed=seed)
-    brain = Words(held, parts=[part], capacity=32, shares={"kind": 0.4, "place": 0.3})
+    brain = Words(held, parts=[part], capacity=32, shares={"kind": 0.4, "place": 0.3},
+                  heard_only=True, pattern_back=True)
     return brain, part, np.random.default_rng(seed)
 
 
@@ -62,7 +63,7 @@ def test_a_relation_word_from_answered_questions_said_in_both_directions() -> No
         for k in range(4):
             brain.name(KINDS[k], places[k])
     part.name_self(brain, "you")
-    for _ in range(16):  # "where is the X from you?", answered with its quarter's word
+    for _ in range(48):  # "where is the X from you?", answered with its quarter's word
         _room(brain, rng)
         for k in range(4):
             brain.practice(f"where is the {KINDS[k]} from you", QUARTERS[k])
@@ -109,7 +110,7 @@ def test_a_new_relation_word_taught_through_known_words() -> None:
         for k in range(4):
             brain.name(KINDS[k], places[k])
     part.name_self(brain, "you")
-    for _ in range(16):  # three of the quarter words, from "where is the X from you?"
+    for _ in range(48):  # three of the quarter words, from "where is the X from you?"
         _room(brain, rng)
         for k in range(3):
             brain.practice(f"where is the {KINDS[k]} from you", QUARTERS[k])

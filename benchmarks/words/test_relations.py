@@ -46,6 +46,7 @@ def test_the_teacher_asks_only_clear_questions() -> None:
         if event[0] == "practice":
             if a.relation == new:  # the held-out word's own examples, after practice
                 assert a.form == "things" and a.answer != [words.base.none]
+                assert taught % R.SPANS in R.others_of(a, room)
                 taught += 1
             else:
                 kinds = room.kinds()

@@ -294,8 +294,9 @@ def script(seed: int, **given: Any) -> list[tuple[Any, ...]]:
         events += [("practice", a) for a in draw(rng, pool, s["asked"])]
 
     # 4. the held-out relation word, taught in a few answered questions. ``taught="things"``:
-    # "what is R the X?" in the words the parrot knows, answered with the things (never none),
-    # R heard for the first time at the first; ``"where"``: "where is the X from the Y?" (or
+    # "what is R the X?" in the words the parrot knows, answered with the things (never none,
+    # one of them each time at another part of what R does not name), R heard for the first
+    # time at the first; ``"where"``: "where is the X from the Y?" (or
     # "how far"), answered with R, the examples spanning what R names and what it does not (a
     # word for a quarter across its quarter, each at another distance; a word for a distance
     # across its range, each in another quarter)
@@ -305,7 +306,7 @@ def script(seed: int, **given: Any) -> list[tuple[Any, ...]]:
         r = a_room(rng)
         if s["taught"] == "things":
             found = [a for a in every_question(w, r, [new], rng, ("things",))["things"]
-                     if a.answer != [w.base.none]]
+                     if a.answer != [w.base.none] and taught % SPANS in others_of(a, r)]
         else:
             form = "howfar" if far else "where"
             found = [a for a in every_question(w, r, [new], rng, (form,))[form]
@@ -370,6 +371,21 @@ def span_of(a: Asked, r: world.Room) -> int:
     return min(max(int(part * SPANS), 0), SPANS - 1)
 
 
+def others_of(a: Asked, r: world.Room) -> set[int]:
+    """What the answer to "what is R the X?" does not name, for each thing in it (as
+    ``other_of``: the distance part of a quarter's thing, the quarter of a distance's)."""
+    things = {t.kind: t for t in r.things}
+    origin = things[a.pair[0]].place
+    out = set()
+    for t in r.things:
+        if t.kind == a.pair[0] or not holds(a.relation, origin, t.place, r.heading):
+            continue
+        quarter, _, distance, _ = placed(origin, t.place, r.heading)
+        part = math.log(distance / 0.45) / math.log(3.6 / 0.45)
+        out.add(quarter if a.relation >= 4 else min(max(int(part * SPANS), 0), SPANS - 1))
+    return out
+
+
 def gate_of(a: Asked) -> str:
     """The gate a test question reads."""
     gate = {"things": "R1_thing", "things_you": "R1_you", "where": "R2_thing",
@@ -406,6 +422,8 @@ def make_brain(seed: int, **settings: Any) -> Any:
         "directions", "sharpness", "distances", "nearest", "farthest", "width", "tries", "norm",
         "contrast")}
     settings.setdefault("capacity", 64)
+    settings.setdefault("heard_only", True)  # the lexicon's opt-ins the part needs
+    settings.setdefault("pattern_back", True)
     settings.setdefault("shares", {"kind": 0.4, "place": 0.3})  # the words chamber's shares
     held = Map(world.PLANE, world.CELLS, units=KINDS, seed=int(seed))
     return Brain(held, parts=[Relations(**part)], **settings)
