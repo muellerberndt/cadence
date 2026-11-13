@@ -373,7 +373,9 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
     for t in range(moments):
         x = p.observe(exs, t, own, praise[t], rng)
         if learn:
-            done = np.full(n, t == moments - 1)
+            # an exchange's end ends the episode, and the recall memory's slots with it; with
+            # ``keep_slots`` the slots and the traces carry across exchanges
+            done = np.full(n, t == moments - 1 and not int(g.get("keep_slots", 0)))
             if brain.pending_feedback:
                 report = brain.learn(reward[t], done, x)
                 p.work["reward_row_sweeps"] += n * (float(report.get("free_steps", 0.0)) + 24)

@@ -177,6 +177,9 @@ def compose(genome: dict[str, Any], inputs: int, words: int, *, ear: int = 0, ga
                         carried_gain=float(g["carried_gain"]))
         if float(g["recall_address_reward"]) > 0.0:
             settings["recall_address_reward"] = float(g["recall_address_reward"])
+        for name in ("recall_position_reward", "recall_window", "recall_founder"):
+            if name in genome:  # named by the genome alone (no gene of the space)
+                settings[name] = genome[name]
     else:
         settings["recall"] = False
         if float(g["carried_gain"]) > 0:
