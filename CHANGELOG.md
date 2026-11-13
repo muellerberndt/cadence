@@ -45,6 +45,19 @@
   question's read. `Words.practice` takes no lesson of its own where a part's `takes` holds. The
   chamber's rung is `benchmarks/words/several.py`
   ([protocol](benchmarks/words/PROTOCOL_SEVERAL.md)).
+### The text parrot (#338)
+
+- **`benchmarks/textparrot`**: a chamber in which one composed brain reads a typed question about
+  the things it sees and types its answer: things of twelve kinds (colour, shape, material, size,
+  food) at eight places, seventeen question forms with a depth knob, sentence replies and a
+  parser that reads a reply back into the scene, held-out colour pairs, relation pairs, form
+  depths and kinds. An exchange: the question one word a moment, the gap that closes the held
+  message, a born serial sweep in which the learned gaze holds the named thing, and an answer
+  sweep in which the voice speaks at each thing. Pretraining by teacher forcing and DAgger
+  through a curriculum; LSTM, transformer, readout and table controls driven through the same
+  moments; probes, a word read alone, silencing, the regions; a new word by pistachios alone; a
+  chat. No library file changes.
+
 ### Learned physics on the map (#324)
 
 - **`Map(physics=True)`**: the map predicts where a thing it cannot see has gone, by how it has

@@ -326,6 +326,18 @@ namings and questions ([the declared protocol](../benchmarks/words/PROTOCOL.md))
 (`benchmarks/words/times.py`) carries and rolls things while the parrot looks on and asks where
 they were, are and will be ([its protocols](../benchmarks/words/PROTOCOL_TIME.md)).
 
+## The same questions in one composed brain
+
+The parts above are named: a map, a lexicon, reads. The
+[text parrot](../benchmarks/textparrot/README.md) asks the same kinds of questions of one
+`Brain.compose` brain that has none of them: a deep chain of regions under the apical compartment,
+the held message and the heard history. It reads the question one word a moment, its eyes sweep
+over the things, its gaze holds the thing the question names, and its voice says the answer one
+word a moment, sentences included ("the blue block is left of the red apple"). What a word means,
+which thing a question names and how a sentence is built are all in its synapses; its concept
+codes are read by probes, by a word read alone and by silencing a property
+([the declared protocol](../benchmarks/textparrot/PROTOCOL.md)).
+
 ## Settings and cost
 
 | Setting | Default | What it sets |
