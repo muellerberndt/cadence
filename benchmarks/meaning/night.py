@@ -649,3 +649,25 @@ if __name__ == "__main__":
         Path(target).parent.mkdir(parents=True, exist_ok=True)
         Path(target).write_text(text)
     print(text[:3000])
+
+
+def export_spec(p: Parrot, path: str | Path) -> None:
+    """The spec a page needs beside the brain file (``cadence.meaning.host.MeaningParrot``):
+    the eyes' layout, each word's heard code, the voice's words in unit order, the world's
+    feature prototypes."""
+    e = p.eyes
+    spec = {
+        "eyes": {"slots": e.slots, "hues": e.hues, "lights": e.lights, "shapes": e.shapes,
+                 "per_shape": e.per_shape, "sizes": e.sizes, "directions": e.directions,
+                 "distances": e.distances, "surfaces": e.surfaces, "per_surface": e.per_surface},
+        "ear_width": p.forms.width,
+        "codes": {w: p.forms(w).tolist() for w in WORDS},
+        "voice": list(p.voice),
+        "praise": PRAISE,
+        "kinds": {k: {"shape": list(v[0]), "width": v[1], "materials": list(v[2])}
+                  for k, v in {**KINDS, **NEW_KINDS}.items()},
+        "colours": {c: list(v) for c, v in COLOURS.items()},
+        "materials": {m: list(v) for m, v in MATERIALS.items()},
+        "moment_ms": 300, "turn_moments": TURN, "catch_moments": CATCH,
+    }
+    Path(path).write_text(json.dumps(spec))
