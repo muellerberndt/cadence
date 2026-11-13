@@ -1920,6 +1920,25 @@ assert "heads_moved" in report
 `brain.longterm.questions` and `asked_in` the questions heard and how many of them held each
 entry. A checkpoint keeps the maps and the counts.
 
+**A cue from the brain's own state (`fetch`).** A turn's question is one cue; what the brain
+attends is another. `brain.longterm.attended.fetch(focus, context=(), row=0)` reads the
+records with the learned heads where `focus` is what the brain attends, given as a moment the
+way the brain hears it (one row of its inputs) or as a codebook entry, and `context` holds
+further moments or entries the record looked for holds (a relation, a place). Head 0 reads the
+record about the focus among those holding some of the context, at its gates; each further
+head follows the head before it. Each head's record comes back as a `Fetched`: its `slot`
+(-1 for none), its `level`, its `content` (the moment after its turn, as heard: one row of the
+inputs) and its `context` (the entries of its key). A fetch changes nothing: no region, count,
+depth or last read. A record holds one moment as its content; a word heard as several frames
+is several moments.
+
+```python
+found = asker.longterm.attended.fetch(seen(3)[0], context=[seen(6)[0]])
+assert found[0].slot == 3                               # subject 3's record of relation 6
+assert np.array_equal(found[0].content, seen(11)[0])    # what it says, as heard
+assert [f.slot for f in found[1:]] == [-1]              # nothing for the second head
+```
+
 Limits: a relation word few records hold reads as a telling word; a question naming two
 relations of one subject reads one of them, since a telling word is read once; and the order in
 which the heads take the telling words is the order heard, which no lesson changes.

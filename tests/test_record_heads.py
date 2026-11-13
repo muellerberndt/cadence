@@ -238,3 +238,34 @@ def test_an_imagined_branch_reads_with_the_heads_and_counts_nothing():
     branch.hear(moment(None))
     assert kept.questions == 1 and branch.questions == 1 and not kept.attended.last
     assert kept.since[0] == -1 and len(kept._asked[0]) == 0
+
+
+def test_a_cue_from_the_brains_own_state_fetches_records_and_their_context():
+    b = brain()
+    told(b)
+    kept = b.longterm
+    heads = kept.attended
+    deep = np.array(kept.stores[0].deep, copy=True)
+    counts, read_slots, last = dict(kept.counts), kept.read_slots.copy(), dict(heads.last)
+    entry = kept.entry(b.message.code(moment(R))[0])
+    # what the brain attends (subject 3) with a relation as context: its record of that relation
+    found = heads.fetch(moment(3)[0], context=[moment(R)[0]])
+    assert [f.slot for f in found] == [3, -1, -1]
+    np.testing.assert_array_equal(found[0].content, moment(16 + 3 % 4)[0])
+    assert entry in found[0].context and found[0].level == 1.0
+    assert found[0].content is not kept.stores[0].values[3]
+    # the other relation of the same subject, the cue given as codebook entries
+    other = kept.entry(b.message.code(moment(R2))[0])
+    focus = kept.entry(b.message.code(moment(2)[0][None])[0])
+    assert heads.fetch(focus, context=[other])[0].slot == 14
+    # a chain: subject 6's link, then that subject's record of the relation
+    chain = heads.fetch(moment(6)[0], context=[moment(R)[0], moment(LINK)[0]])
+    assert [f.slot for f in chain[:2]] == [18, 2]
+    np.testing.assert_array_equal(chain[1].content, moment(16 + 2 % 4)[0])
+    # a moment no record holds fetches nothing, and nothing changes
+    assert all(f.slot == -1 and not f.content.any() for f in heads.fetch(moment(24)[0]))
+    np.testing.assert_array_equal(kept.stores[0].deep, deep)
+    assert kept.counts == counts and np.array_equal(kept.read_slots, read_slots)
+    assert heads.last == last
+    with pytest.raises(ValueError, match="cue"):
+        heads.fetch(np.zeros(3))

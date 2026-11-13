@@ -77,6 +77,15 @@ class _Read(NamedTuple):
     terms: list[np.ndarray]  # the terms of the map each place's gate reads (-1: none)
 
 
+class Fetched(NamedTuple):
+    """A head's record read by ``RecordHeads.fetch``."""
+
+    slot: int  # the record's slot in the stream's store, -1 where the head holds nothing
+    level: float  # its level, 0.0 where the head holds nothing
+    content: np.ndarray  # what the record says: the moment after its turn, as heard (inputs)
+    context: np.ndarray  # its key: the codebook entries heard before its turn
+
+
 class _Turn:
     """One stream's question at a turn, and what its read found."""
 
@@ -296,6 +305,60 @@ class RecordHeads:
         self.records.work = turn.work
         return turn.held
 
+    def _entry_of(self, cue: Any) -> int:
+        """The codebook entry of ``cue``: an entry as given, or a moment as the brain hears it
+        (one row of its inputs) by its code; -1 where no record's moment had that code."""
+        records = self.records
+        if isinstance(cue, (int, np.integer)):
+            return int(cue) if 0 <= int(cue) < records.entries else -1
+        moment = np.asarray(cue, dtype=np.float64).reshape(1, -1)
+        if moment.shape[1] != records.value_width or not np.isfinite(moment).all():
+            raise ValueError(f"a cue is a codebook entry or one finite row of "
+                             f"{records.value_width} inputs")
+        code = np.asarray(records.message.code(moment)[0], dtype=np.uint8)
+        return int(records._entries.get(code.tobytes(), -1))
+
+    def fetch(self, focus: Any, context: Any = (), row: int = 0) -> list[Fetched]:
+        """The heads' read with a cue from the brain's own state in place of a heard question:
+        ``focus`` what the brain attends (a moment as it hears it, one row of its inputs, or a
+        codebook entry) and ``context`` further moments or entries the record looked for holds
+        (a relation, a place). Head 0 reads the record about the focus, among those that hold
+        some of the context, at its learned gates, as at a turn; each further head follows the
+        head before it, so a chain is read hop by hop. Each head's record comes back in the
+        order read with its content and its context. Nothing changes: no region, no count, no
+        record's depth and no head's last read."""
+        records = self.records
+        none = Fetched(-1, 0.0, np.zeros(int(records.value_width)), np.zeros(0, dtype=np.int64))
+        aim = self._entry_of(focus)
+        around = [e for e in (self._entry_of(c) for c in context) if e >= 0 and e != aim]
+        if aim < 0 or row >= len(records.stores) or not records.stores[row].count:
+            return [none] * self.heads
+        asked = np.array([*around, aim], dtype=np.int64)
+        key = np.zeros(self.width)
+        for e in asked.tolist():
+            key = np.maximum(key, np.asarray(records._codes[e], dtype=np.float64))
+        places = np.arange(len(asked))
+        terms = [np.minimum(places, self.POSITIONS - 1),
+                 self.POSITIONS + np.minimum(places[::-1], self.POSITIONS - 1)]
+        weight = np.zeros(len(asked))
+        weight[-1] = 1.0  # the focus is the one telling entry the cue holds
+        postings = records._postings[row]
+        sought = np.array([e in postings for e in asked.tolist()])
+        sought[-1] = False
+        turn = _Turn(row, key, asked, weight, sought, terms,
+                     np.stack([key @ m + b for m, b in self.maps]))
+        picks = self._roll(turn, [], set(), keep=True)
+        values = records.stores[row].values
+        out = []
+        for pick, read in zip(picks, turn.reads, strict=True):
+            if pick < 0 or read is None:
+                out.append(none)
+                continue
+            level = float(read.levels[int(np.flatnonzero(read.slots == pick)[0])])
+            out.append(Fetched(int(pick), level, np.array(values[pick], dtype=np.float64),
+                               np.array(self._key_of(row, int(pick)), dtype=np.int64)))
+        return out
+
     # -- the lesson
 
     def _back(self, graph: Any, movement: np.ndarray) -> np.ndarray:
@@ -416,4 +479,4 @@ class RecordHeads:
         self.last = {}
 
 
-__all__ = ["RecordHeads"]
+__all__ = ["Fetched", "RecordHeads"]

@@ -12,7 +12,11 @@
   the regions from its end. `Brain.lesson` steps the maps (`heads_moved` in its report): each
   choice a head could have made is scored, with the heads after it read again, against the
   movement the lesson made. `cadence.record_heads.RecordHeads` holds the maps as
-  `brain.longterm.attended`.
+  `brain.longterm.attended`. A head reads only the records that hold some of the question's
+  context, so a subject that lacks the one relation asked of it holds nothing.
+- **`RecordHeads.fetch(focus, context=(), row=0)`**: the heads' read with a cue from the brain's
+  own state (what it attends, as a moment or a codebook entry) in place of a heard question;
+  each head's record comes back with its content and its context, and nothing changes.
 - **`longterm_motor=scale`** (opt-in): a plastic projection from each head's region to the motor
   region, so a motor slot learns to say what one region holds.
 - **`benchmarks/several`**: the chamber of questions whose one answer needs several of the

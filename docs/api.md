@@ -601,7 +601,9 @@ takes the question's next telling entry as its focus and reads a record of its o
 its learned map (`maps`) weigh the question's context entries, a head whose best record's level
 falls short of `longterm_match` holds nothing, a head with no telling entry left follows the
 head before it (a chain, laid on the regions from its end), and `Brain.lesson` steps the maps
-(`heads_moved`, `heads_refused` in its report); `work` counts the latest read's accumulates and
+(`heads_moved`, `heads_refused` in its report); `attended.fetch(focus, context=(), row=0)` reads
+with a cue from the brain's own state (moments as inputs or codebook entries) and returns one
+`Fetched` (`slot`, `level`, `content`, `context`) per head, changing nothing; `work` counts the latest read's accumulates and
 `questions` and `asked_in` the questions heard. `longterm_motor=scale` (0.0: off) adds a plastic
 projection from each head's region to the motor region. `read_slots` holds each head's
 record at the latest read (-1 for none), `counts` the writes, revisions, statements agreed and
