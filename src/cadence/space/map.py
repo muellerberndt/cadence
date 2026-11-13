@@ -100,12 +100,12 @@ class Map:
     empties it. ``arrays`` is the carried state, ``save`` and ``load`` write and read it.
 
     With ``surprise`` (True, or the genes of ``cadence.surprise.Surprise`` and ``Orienting`` by
-    name) every moment measures how far it moved each cell from the sheet the map carried into
-    it (its carried activity, or with taught physics its ``forecast(1)``): ``surprise`` holds
+    name) every moment measures how far it moved each thing from where the map carried it into
+    the moment (its carried activity, or with physics that has learned its ``forecast(1)``), in
+    units of ``step``, a thing that appears or is gone moving 1 (``moves``): ``surprise`` holds
     each cell's surprise against the cell's learned usual move, and ``focus`` the one place it
     draws (``orienting``, a ``cadence.surprise.Orienting``), sights and sounds in one
-    competition. A move is measured in reports: one report's whole drive is 1. The map's
-    activity is the same with and without it."""
+    competition. The map's activity is the same with and without it."""
 
     def __init__(self, plane: tuple[float, float, float, float],
                  cells: tuple[int, int] = (32, 26), *, units: int = 16, kinds: int | None = None,
@@ -747,12 +747,39 @@ class Map:
             self._forecasting = False
         return np.asarray(ahead.potential)
 
+    def moves(self, expected: np.ndarray) -> np.ndarray:
+        """How far the moment moved each thing from the sheet ``expected`` (the potentials the
+        map carried into it), in units of ``step``, on the cells of the thing then and now
+        ``(cells,)``: a thing of a kind is the nearest piece of that kind's activity within
+        ``stride``, and its move the distance between the middles of its activity; a thing that
+        appears or is gone moves 1."""
+        out = np.zeros(self.count)
+        now, then = self._activity(), np.maximum(np.tanh(np.asarray(expected) / 2.0), 0.0)
+        for kind in sorted(set(self._present(now)) | set(self._present(then))):
+            pieces = []
+            for held in (now, then):
+                own = self._of_kind(kind, held)
+                pieces.append([(p, (own[p] @ self.centers[p]) / own[p].sum())
+                               for p in self._pieces(np.asarray(own > self._floor))])
+            free = list(range(len(pieces[1])))
+            for cells, at in pieces[0]:
+                gaps = [float(np.linalg.norm(at - pieces[1][j][1])) for j in free]
+                if gaps and min(gaps) <= self.stride:
+                    j = free.pop(int(np.argmin(gaps)))
+                    cells = np.union1d(cells, pieces[1][j][0])
+                    moved = min(gaps) / self.step
+                else:
+                    moved = 1.0  # it appears
+                out[cells] = np.maximum(out[cells], moved)
+            for j in free:  # it is gone
+                out[pieces[1][j][0]] = 1.0
+        return out
+
     def _surprised(self, expected: np.ndarray) -> None:
-        """Each cell's move from the sheet carried in, in reports, into ``surprise``; the
-        focus it draws into ``focus``."""
+        """Each thing's move from the sheet carried in (``moves``), on its cells, into
+        ``surprise``; the focus it draws into ``focus``."""
         assert self.surprise is not None and self.orienting is not None
-        moved = np.linalg.norm(self.potential - expected, axis=1) / self.level
-        found = self.surprise.observe(moved)
+        found = self.surprise.observe(self.moves(expected))
         self.focus = self.orienting.attend(found, self.centers, sense="map")
 
 
