@@ -633,6 +633,7 @@ def cross_batches(founder: int, per_shape: int) -> dict[str, list[list[gr.Row]]]
 # -------------------------------------------------------------------------------- a life
 
 LEAN = ("clause", "clause_long", "dyck", "path", "back", "back_long")  # a checkpoint's panels
+LEAN_MORE = ("para_12_held", "para_21_held", "g2_held", "ask_concepts_held", "ask_words_held")
 
 
 def life(spec: dict[str, Any]) -> dict[str, Any]:
@@ -680,7 +681,8 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
         speak(brain, lesson_batch(train, rng, split), store, design, teach=True, work=work,
               echo=echo)
         if b in checks:
-            lean = panels(brain, store, design, {k: v[:2] for k, v in tests.items()}, LEAN)
+            lean = panels(brain, store, design, {k: v[:2] for k, v in tests.items()},
+                          LEAN + (LEAN_MORE if train == "all" else ()))
             row["curve"].append({"batches": b, "seconds": round(time.monotonic() - started, 1),
                                  **{k: mn._score(v, k) for k, v in lean.items()}})
             if spec.get("progress"):  # a file the checkpoints are appended to as they are read
@@ -894,7 +896,8 @@ def read(rows: list[dict[str, Any]], controls: list[dict[str, Any]], of: int = 1
         for b in points:
             found = [p for r in lives for p in r.get("curve", ()) if p["batches"] == b]
             lines.append(f"  {tag} at {b}: " + ", ".join(
-                f"{k} {np.mean([p[k] for p in found]):.2f}" for k in LEAN))
+                f"{k} {np.mean([p[k] for p in found if k in p]):.2f}"
+                for k in LEAN + LEAN_MORE if any(k in p for p in found)))
     lines += ["", "seconds a life, mean"]
     for tag, lives in arms.items():
         lines.append(f"  {tag}: {np.mean([r['seconds'] for r in lives]):.0f} "
