@@ -377,6 +377,7 @@ the thing is, in the settled activity of a sheet of neurons. Its graph has no ta
 | Part | For | Joins by | Holds between moments | Learns | Arrives | Grow and graft | Reading |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | [The place module, a `Map`](space.md#a-first-map) | Where things are, held while they are out of view: "where is the apple?" and "what is at this place?" | `cd.modules.load("place")` or `Map(plane)`; `brain.space = ...` for a brain that holds it; `moment(seen=, heard=, felt=, lit=)` at each moment | every thing the senses reported: its kind, its last known place, the moments since a sense wrote it, and the doubt of a thing seen missing | no | empty | held by the brain object: `grow`, `graft`, `retune`, `save` and `load` keep it | A hand that rests behind a pillar, on the two recorded scenes: 10.7 cm out of view, where its last seen place reads 15.5 cm; 1.2 cm in view, the camera's own error ([`mapped.py`](../benchmarks/tracking/mapped.py)) |
+| [Learned physics on the map](space.md#learned-physics-on-the-map) | A hidden thing that moves is followed, not left where it vanished: "where is the hand now?" and "where will it be?" | `Map(plane, physics=True)`; the same `moment(...)` calls; `forecast(moments)` for the map a few moments on | what the brain knows of each thing's motion, at the thing's cells; out of view, the share that kept its line, the share at rest and the share that left its line | yes, while things move in view: four numbers (how often a moving thing comes to rest or leaves its line, how far ahead and aside it then goes), by imagined lessons | untaught: it answers as the map until it has watched things move | held with the map: `save`, `load` and a brain's `space` keep what it learned | A person's hand out of view, twelve founders: 9.4 cm, where the map without physics reads 22.9; 10.3 after 25 scenes watched ([`mapped.py --physics`](../benchmarks/tracking/mapped.py)) |
 
 How the senses change the map ([space](space.md#how-a-position-travels)):
 
@@ -396,9 +397,13 @@ How the senses change the map ([space](space.md#how-a-position-travels)):
   `what_is_at(place)` the kind there. `things()` lists every thing with its kind, place, state
   and the moments since it was sensed.
 
-Learned physics on the map, how a thing moves while it is out of view, follows in the next
-release. `cadence.space.Space`, the earlier form that holds a row a thing in a program, is kept
-as the baseline the map is read against
+- **A hidden thing that moves** stays where it vanished, unless the map has learned physics:
+  `Map(plane, physics=True)` learns how things move while they are in view and carries a hidden
+  thing on along its line, leaving a share where it may have come to rest and a share where it
+  may have turned ([learned physics](space.md#learned-physics-on-the-map)).
+
+`cadence.space.Space`, the earlier form that holds a row a thing in a program, is kept as the
+baseline the map is read against
 ([the baseline](space.md#the-baseline-places-held-by-a-program)).
 
 ```python
@@ -523,6 +528,7 @@ no custom anatomy, and `graft` takes one.
 | `save`, `load` | A learner's checkpoint (`Brain.save` keeps a whole brain) | [checkpoints](api.md#checkpoints-cadencecheckpoint) |
 | `load_module`, `cadence.modules`: `names`, `load`, `save`, `host`, `Module` | A module file read; the modules the library ships listed and loaded; a trained module written, and its regions named in a brain | [modules](#modules-parts-that-arrive-as-files), [the API](api.md#modules-cadencemodules) |
 | `cadence.space.map`: `Map`, `Sense`, `sparse_codes` | The map of things, a taught projection of a reading onto its cells, and codes of several units a kind | [space](space.md), [the API](api.md#the-map-of-things-cadencespacemap) |
+| `cadence.space.physics`: `Physics` | What a map learns of how things move, shared by maps or kept in a map's file | [learned physics](space.md#learned-physics-on-the-map), [the API](api.md#learned-physics-on-the-map-cadencespacephysics) |
 | `cadence.space`: `Space`, `Interface` | The earlier form, a program that holds a row a thing, kept as the baseline | [the baseline](space.md#the-baseline-places-held-by-a-program) |
 | `available_backends` | The backends this machine can run | [backends](backends.md) |
 

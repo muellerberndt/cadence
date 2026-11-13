@@ -1,17 +1,27 @@
-# Space: a map of what is where
+# Space: tracking what is where
 
-A brain with a spatial model has a map of things. The map holds where things are, each place
-bound to what the thing is. A thing enters the map when a sense reports it. Sensory information
-updates its place. With no sensory information the last known place stays in the state, for any
-length of time.
+This is the guide to spatial object tracking: a brain that keeps track of the things around it,
+in view and out of it. A brain with a spatial model has a map of things. The map holds where
+things are, each place bound to what the thing is. A thing enters the map when a sense reports
+it. Sensory information updates its place. With no sensory information the last known place
+stays in the state, for any length of time.
 
 The module has two stages: **the map, then learned physics on the map.**
 
-- **The map** (`cadence.space.map`, this guide) is a sheet of neurons whose settled activity is
-  the whole state. No list of things is given to it and none is kept beside it.
+- **The map** (`cadence.space.map`) is a sheet of neurons whose settled activity is the whole
+  state. No list of things is given to it and none is kept beside it. A thing it does not see
+  stays where it was last sensed.
 - **Learned physics on the map** (`cadence.space.physics`, opt-in with `Map(physics=True)`):
-  the map predicts where a thing it cannot see has gone, by how it has seen things move
-  ([below](#learned-physics-on-the-map)).
+  the map also predicts where a moving thing it cannot see has gone, by how it has seen things
+  move ([below](#learned-physics-on-the-map)).
+
+| You want | Use |
+| --- | --- |
+| To know where a thing is, seen or not | `Map`, `where_is(kind)` |
+| To know what is at a place | `what_is_at(place)` |
+| Everything the brain holds, with how long ago it was sensed | `things()` |
+| A hidden thing that moves to be followed, not left where it vanished | `Map(physics=True)` |
+| Where a thing will be in a few moments | `forecast(moments)` |
 
 The pieces are opt-in: a program that does not import `cadence.space` gets a library without it.
 
@@ -314,16 +324,26 @@ Without physics the map holds a thing it does not see where it was last. With ph
 predicts where the thing has gone, by how it has seen things move. It is one switch:
 
 ```python
-held = Map((-1.0, 1.0, -0.2, 1.4), physics=True)  # learns while it watches
-held.moment(seen=[(HAND, (0.1, 0.5))], lit=camera_sees)  # as before
-held.things()                 # a hidden thing that moves: state "moving", with its "velocity"
-ahead = held.forecast(10)     # the map 10 moments on, a copy: nothing is learned from it
-ahead.where_is(HAND)          # where the hand will be
-held.physics.describe()       # what the brain has learned
+room = Map((-1.0, 1.0, -0.2, 1.4), physics=True)             # the one switch
+rng = np.random.default_rng(0)
+for lap in range(8):                                         # it watches a hand cross the room
+    for t in range(100):
+        at = np.array([0.9 - 0.012 * t, 0.3 + 0.08 * lap])   # 36 cm a second, to the left
+        if camera_sees(at[None])[0]:                         # the shadow lies left of -0.1
+            room.moment(seen=[(HAND, at + rng.normal(0.0, 0.01, 2))], lit=camera_sees)
+        else:
+            room.moment(lit=camera_sees)                     # in the shadow: no report
+(hand,) = room.things()                                      # 16 moments after it vanished
+assert hand["state"] == "moving" and hand["velocity"][0] < -0.008    # carried on, out of view
+assert abs(hand["place"][0] - at[0]) < 0.1                   # where it is, not where it vanished
+ahead = room.forecast(10)                                    # the map 10 moments on, a copy
+assert ahead.where_is(HAND)[0][0] < room.where_is(HAND)[0][0]        # further along its line
+learned = room.physics.describe()                            # rest, leave, ahead, aside
 ```
 
 A fresh physics has learned nothing and the map answers exactly as it does without physics. It
-learns while things move in view, and from then on predicts.
+learns while things move in view, and from then on predicts. Everything else on this page
+(`moment`, `where_is`, `what_is_at`, `things`, `area`, `save`) is used as before.
 
 ### What it learns
 
@@ -347,7 +367,11 @@ the line's own error) corrects both. The line knows its own error exactly: of it
 velocity and of the two together, carried through every correction. A surprise beyond three
 standard deviations at two moments in a row ends the line, and it begins anew at the latest
 reports: the thing has changed its motion. Whether a thing moves at all is the evidence of its
-line against a thing at rest.
+line against a thing at rest: a thing whose line more likely says it rests is the map's to
+hold, exactly as without physics.
+
+The line is the camera's. A place a sound or a joint reading names (`heard=`, `felt=`) moves
+the thing on the map as before and takes no part in its line or its lessons.
 
 ### How it learns: imagined lessons
 
@@ -375,7 +399,20 @@ Each moment a share `rest` of the core and of the tail comes to rest where it is
 takes away what it sees: the cells of the trail it sees, and of each bump the share the camera
 sees, the bump then centred on what is left. The parts keep their sum, so what sight takes from
 one part goes to the others: a hand that does not come out where its line says has stopped or
-turned, and the map holds it there. The thing's whole pattern over the units moves with it.
+turned, and the map holds it there. The thing's whole pattern over its units moves with it.
+
+- **Moving, then at rest.** `things()` reads a thing as `"moving"`, with its `velocity`, while
+  half of it or more is in the core and the tail. After that it is a thing in doubt at rest
+  (`"near"`). A part under a thousandth of the thing comes to rest, and a thing all at rest is
+  the map's to hold.
+- **`empty`.** With `"keep"` sight takes nothing away from a thing the physics carries. Where
+  sight finds no part of a thing that was reported the moment before, the map's own rule for a
+  place seen empty decides (`"near"` or `"clear"`).
+- **Several things.** Each thing has an identity of its own from its first report. A report
+  takes the carried thing it claims (a piece within `step`, or the nearest within `stride`) with
+  all its parts, and leaves another carried thing of the same kind as it is. A report that
+  claims nothing takes the carried things of its kind: a thing has come back where none was
+  expected. A carried thing leaves the doubt and the clock of other things' cells as they are.
 
 The cells that hold a thing also hold what the brain knows of its motion (its line, its lessons
 in progress and, out of view, its core and tail): the map keeps no list of things beside it.
@@ -412,8 +449,10 @@ scenes of a person's hand ([the chamber](../benchmarks/tracking/README.md), prot
 At no number of scenes watched is the map with physics worse than the map; before its first
 lesson it is the map. The area falls short of .90 where a hand turns out of view: the tail
 widens behind a hand that turned (.48 of the steps 21 to 40 moments after it was last seen,
-.14 after 41). A moment with two hands moving out of view takes 7.4 ms with its inventory under
-Pyodide 314.0.7 and 3.6 ms natively (`benchmarks/tracking/moving.py`).
+.14 after 41). The released code, read again on the same founders after its review, reads every
+row within 0.03 cm of this table and the area at .87. A moment with two hands moving out of
+view takes 9.1 ms with its inventory under Pyodide 314.0.7 and 4.2 ms natively
+(`benchmarks/tracking/moving.py`).
 
 ### Settings
 
@@ -440,8 +479,11 @@ may be shared by several maps (one of them taking the lessons: `learning=False` 
   line.
 - **The same rule everywhere.** Where things come to rest (a table, a wall inside the room) is
   not learned; the plane's edge is the only boundary.
-- **One thing, one record.** Two things of a kind that move out of view near each other are
-  read as the map reads them (`step`, `stride`); their crossing is not read.
+- **Two things of one kind.** Out of view within `step` of each other they are one thing to a
+  report, as on the map without physics; their crossing is not read.
+- **What is given, not learned.** The camera's error (`noise`), the line's length, the surprise
+  that ends it and the three outcomes of a lesson (keep, rest, leave) are settings and structure
+  of the program; the brain learns the four numbers.
 
 ## Settings and cost
 

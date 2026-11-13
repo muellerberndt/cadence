@@ -56,6 +56,7 @@ episodic memory, a learned code, images.
 | train a brain on data, a teacher, rewards or another brain | [Train a brain](https://github.com/muellerberndt/cadence/blob/main/docs/teach.md) |
 | let the world pay for good acts | [Learning from reward](https://github.com/muellerberndt/cadence/blob/main/docs/reward.md) |
 | give the brain a memory for a task | [Memory](https://github.com/muellerberndt/cadence/blob/main/docs/memory.md) |
+| keep track of where things are, seen or not, and where a hidden thing has gone | [Space: tracking what is where](https://github.com/muellerberndt/cadence/blob/main/docs/space.md) |
 | read or change a living brain | [Tune and read a living brain](https://github.com/muellerberndt/cadence/blob/main/docs/tune.md) |
 | a signature | [API reference](https://github.com/muellerberndt/cadence/blob/main/docs/api.md) |
 

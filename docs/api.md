@@ -700,7 +700,7 @@ observation. `Brain.compose(..., trained=[module])` builds a brain around it and
 ```text
 Map(plane, cells=(32, 26), *, units=16, kinds=None, weight=3, codes=None, level=0.02,
     empty="near", reach=0.15, step=0.15, stride=0.5, margin=0.02, seed=0, trace=False,
-    backend="cpu")
+    physics=None, backend="cpu")
 ```
 
 What is where, held in a sheet's own settled activity: `cells` of the `plane` (`(x low, x high,
@@ -712,7 +712,8 @@ none of it. The map's graph has no taught synapse.
 | `moment(seen=(), heard=(), felt=(), lit=None)` | One moment: each sense's reports as `(kind, (x, y))`; `lit` the cells in sight, flags `(cells,)` or a function of `(points, 2)` places. A report writes its place on its kind's units; a thing whose held place the camera sees with no report is driven once onto the cells out of sight within `reach` (`empty="near"`; `"clear"` and `"keep"` are the other rules); sight only takes cells away from a thing in doubt |
 | `where_is(kind) -> (things, 2)` | The places of a kind, by a settle with the kind's code as the cue |
 | `what_is_at(place, within=None) -> int or None` | The kind at a place, by a settle that keeps the cells around it |
-| `things() -> list[dict]` | The inventory read off the map: `kind`, `place`, `cells`, `pieces`, `since`, `state` (`seen`, `heard`, `felt`, `held`, `near`, `not known where`) |
+| `things() -> list[dict]` | The inventory read off the map: `kind`, `place`, `cells`, `pieces`, `since`, `state` (`seen`, `heard`, `felt`, `held`, `near`, `not known where`; with physics also `moving`, with the entry's `velocity` in metres a moment) |
+| `forecast(moments=1) -> Map` | With physics: a copy of the map that many moments on, as its physics predicts with nothing sensed. The map is left as it is and nothing is learned from a forecast; read the copy with `where_is`, `area` and `things`. Refuses a map without physics |
 | `area(kind, rate=0.9)`, `sheet(kind=None)` | The smallest set of cells holding `rate` of a kind's activity; its activity as a picture |
 | `observation()` | `where` and `what` as the latest moment settled them, for a brain that holds the map (`Brain.space`) |
 | `reset()`, `arrays()`, `save(path, card=None)`, `Map.load(path)`, `Map.card_of(path)` | The carried state emptied, read, written with a checksum of every array, read back (refusing a pickled object, a changed array, arrays that do not fit) |
@@ -725,6 +726,30 @@ ranges, per, rate=0.3)` is a taught projection of a reading onto the map's cells
 `Map`; `Brain.save` and `Brain.load` keep a brain's `space`. Refuses a plane whose low is not
 below its high, under 3 cells an axis, an `empty` other than the three, codes that are not zeros
 and ones with a one in every row. Guide: [space](space.md).
+
+### Learned physics on the map (`cadence.space.physics`)
+
+```text
+Physics(*, noise=0.01, line=30, surprise=3.0, settled=1.5, every=8, horizon=30, reports=10,
+        prior=500.0, learning=True)
+```
+
+`Map(plane, physics=True)` gives a map a `Physics` at these settings, `physics={...}` settings
+by name, and `physics=a_physics` one that several maps share. With it the map predicts where a
+moving thing it cannot see has gone, by four numbers it learns while things move in view; an
+untaught physics leaves the map as it is. The map then carries one more array, `motion` (what
+the brain knows of each thing's motion, at the thing's cells), and its file keeps what the
+physics learned.
+
+| Read | What it holds |
+| --- | --- |
+| `map.physics.rest`, `leave`, `ahead`, `aside` | The four numbers acted on: the shares of moving things that come to rest and that leave their line in a moment, and how far ahead and aside a thing that left goes, as shares of its speed |
+| `map.physics.describe()` | The four numbers, the speed of the things watched and the lessons taken |
+| `map.physics.learning` | Whether lessons are taken; set it to `False` to read a taught physics without teaching it. A map file keeps it |
+| `map.physics.taught`, `lessons` | Whether any lesson was taken, and how many |
+
+Refuses a line under 3 reports, lessons under 1 moment apart or long, and under 3 reports
+before a lesson. Guide: [learned physics on the map](space.md#learned-physics-on-the-map).
 
 ## Hearing, alignment and decoding (`cadence.speech.frontend`, `cadence.speech.align`, `cadence.speech.decode`)
 
