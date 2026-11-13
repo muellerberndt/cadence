@@ -1,13 +1,14 @@
 # Words for things (cadence#326)
 
-A robot holds a map of its room and learns words from naming: while it attends to a thing it
-hears one word. It then answers typed questions about rooms it has never seen, in both directions:
+A parrot (an African Grey) holds a map of its room and learns words from naming: while it attends
+to a thing it hears one word. It then answers questions about rooms it has never seen, in both
+directions:
 "where is the ball?", "what colour is the ball?", "what is red?", "what is behind you?", and "I do
 not know" where it holds no answer. The brain is `cadence.words.Words` ([the guide](../../docs/words.md)).
 
 | File | What it holds |
 | --- | --- |
-| `world.py` | Rooms of things (kind, colour, place), the robot's camera, the places around the robot, the nonce words drawn for each founder, the teacher's question forms and the scoring |
+| `world.py` | Rooms of things (kind, colour, place), the parrot's eyes, the places around the parrot, the nonce words drawn for each founder, the teacher's question forms and the scoring |
 | `words.py` | A founder's life as one script of events (rooms, turns, namings, practice, test questions), the brain's life on it and its readings |
 | `controls.py` | An LSTM and a causal transformer given the same script as tokens, online and offline, at the brain's parameter count and at nine times it |
 | `gates.py` | The declared run: every arm's lives on the founders, and the gates read from their files |

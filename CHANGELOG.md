@@ -26,7 +26,12 @@
   settle on the concept asked about and the read asked for; the map is asked by settling in both
   directions ("what colour is the ball?", "what is red?", "what is behind you?"); each answer is
   said by the lexicon's motor; "I do not know" is learned as the word of the read that finds
-  nothing.
+  nothing. The reads act as gains on each found thing's concepts and compete for them
+  (`sharpness`), and the motor hears a word before it says it. `Words(senses=, parts=)` takes
+  learned senses and plug-in parts (records, a forecast, relations, counting).
+- **Pistachios (`Words.ask(explore=True)`, `Words.reward(amount)`)**: a right answer earns a
+  reward, and the question's words of asking (those that name no concept) are taught the read the
+  answer took, at the reward's surprise. A word that names a concept keeps no read.
 - **`cadence.words.several.Several`** (#328): several things of one kind told apart by their
   colours ("where is the red ball?"), answers that name several things, "how many red things are
   there?" and "is there a ball?". Each word of a question names its most active concept of a

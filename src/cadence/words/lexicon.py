@@ -23,7 +23,9 @@ at, so a word's meaning is what its namings share.
   A word neuron has a threshold (``threshold``): it is active where it is heard or where a
   driven concept names it, and silent under the weak drive of concepts another word named.
 - **Saying** drives a concept's neuron and the word neurons settle; the motor chooses the most
-  active word and says its letters, one letter a part. The motor's letters are written when the
+  active word and says its letters, one letter a part. Before it says a word the brain hears
+  it: a word whose hearing settles on another concept of the groups said gives way to the next
+  most active. The motor's letters are written when the
   form enters, from the letters it was heard by.
 
 The synapses that join a word and a concept are one reciprocal pair, so the lessons of hearing
@@ -176,12 +178,15 @@ class Lexicon:
             self._learners[groups] = learner
         return self._learners[groups]
 
-    def name(self, words: Any, concepts: Any, *, groups: Any = None) -> float:
+    def name(self, words: Any, concepts: Any, *, groups: Any = None,
+             weight: float = 1.0) -> float:
         """A naming lesson: ``words`` heard (one form, or the forms heard together) while
         ``concepts`` are active: an array over the concepts, or ``{(group, value): share}``.
         The lesson teaches the concept neurons of ``groups`` (every group unless given) and
-        leaves the others' synapses as they are. A form heard for the first time enters. Gives
-        the error before the lesson, as a share of the target's sum."""
+        leaves the others' synapses as they are. ``weight`` (0 to 1) scales the share of its
+        error the lesson closes: a lesson of reward takes the reward's surprise. A form heard
+        for the first time enters. Gives the error before the lesson, as a share of the
+        target's sum."""
         rows = [[words] if isinstance(words, str) else list(words)]
         target_shares = self._concepts(concepts)
         groups = tuple(self.groups) if groups is None else tuple(groups)
@@ -192,8 +197,11 @@ class Lexicon:
         # each heard word's share of its error: 1 / n at its n-th lesson, no less than rate
         counts = self.counts.setdefault(groups, np.zeros(self.capacity, dtype=np.int64))
         heard = sorted({int(u) for u in np.flatnonzero(drive[0, self.word])})
-        shares = {u: max(1.0 / (counts[u] + 1), self.rate) for u in heard}
+        weight = min(max(float(weight), 0.0), 1.0)
+        shares = {u: weight * max(1.0 / (counts[u] + 1), self.rate) for u in heard}
         top = max(shares.values()) if shares else self.rate
+        if top <= 0.0:
+            return float("nan")  # a lesson of no weight teaches nothing
         steps = np.ones(self.connectome.synapses)
         for u, share in shares.items():
             steps[self._touch[u]] = share / top
@@ -255,23 +263,54 @@ class Lexicon:
         self.work["settles"] += settles
         self.work["macs"] += settles * self.steps * int(self.connectome.synapses)
 
-    def say(self, concept: Any, floor: float = 1e-3) -> str | None:
+    def say(self, concept: Any, floor: float = 1e-3, tries: int = 3) -> str | None:
         """The word the motor says for a concept: the motor chooses the most active word neuron
         of the settle and says its letters, one a part; None where no word neuron is above
-        ``floor``."""
+        ``floor``. The brain hears a word it is about to say: a word whose hearing settles on
+        another concept than the one said (a word for a kind that named the colour of the one
+        thing it was shown on) gives way to the next most active, up to ``tries`` words."""
         active = self.words_for(concept)
         if not len(active) or active.max() <= floor:
             return None
-        letters = self.letters[int(np.argmax(active))].argmax(axis=1)
+        vector = self._vector(concept)
+        chosen = int(np.argmax(active))
+        if vector.max() > 0:
+            meant = int(np.argmax(vector))
+            # the groups the concept drives: a word is heard back among them
+            among = np.concatenate([np.arange(g.start, g.stop) for g in self.groups.values()
+                                    if vector[g].max() > 0])
+            for unit in np.argsort(-active)[: max(int(tries), 1)]:
+                if active[unit] <= floor:
+                    break
+                heard = self.hear(self.forms[int(unit)])
+                if int(among[np.argmax(heard[among])]) == meant:
+                    chosen = int(unit)
+                    break
+        letters = self.letters[chosen].argmax(axis=1)
         return "".join(LETTERS[c] for c in letters if c < len(LETTERS))
+
+    def _vector(self, concept: Any) -> np.ndarray:
+        """A concept to say as a vector over the concepts."""
+        if isinstance(concept, tuple):
+            concept = self.index(*concept)
+        if isinstance(concept, (int, np.integer)):
+            return np.asarray(np.eye(self.concepts)[int(concept)])
+        return np.asarray(concept, dtype=np.float64).reshape(self.concepts)
 
     # -- the state
 
     def arrays(self) -> dict[str, np.ndarray]:
-        """What a file keeps of a lexicon: its synapses, the motor's letters and the forms."""
+        """What a file keeps of a lexicon: its synapses, the motor's letters, the forms, and
+        each word's lessons (a reloaded word goes on at its next lesson's share)."""
+        keys = sorted(self.counts)
         return {"efficacy": np.asarray(self.graph.efficacy, dtype=np.float64).copy(),
                 "letters": self.letters[: len(self.forms)].copy(),
-                "forms": np.array(self.forms, dtype=str)}
+                "forms": np.array(self.forms, dtype=str),
+                # each word's lessons by the groups they taught, and the lessons in all
+                "counted": np.array([",".join(k) for k in keys], dtype=str),
+                "counts": (np.stack([self.counts[k] for k in keys]) if keys
+                           else np.zeros((0, self.capacity), dtype=np.int64)),
+                "lessons": np.array(self.lessons, dtype=np.int64)}
 
     @classmethod
     def from_arrays(cls, settings: dict[str, Any], arrays: Any, backend: Any = "cpu") -> Lexicon:
@@ -287,4 +326,9 @@ class Lexicon:
             raise ValueError("the lexicon's efficacy does not fit its words and concepts")
         out.graph = Graph(out.connectome, out._model, efficacy=efficacy.copy(), bias=out._bias,
                           backend=backend)
+        if "counts" in arrays:  # a file without them restarts every word at its first lesson
+            counted = [str(k) for k in np.asarray(arrays["counted"])]
+            for key, row in zip(counted, np.asarray(arrays["counts"]), strict=True):
+                out.counts[tuple(key.split(","))] = np.asarray(row, dtype=np.int64).copy()
+            out.lessons = int(np.asarray(arrays["lessons"]))
         return out

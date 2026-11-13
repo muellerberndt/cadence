@@ -27,14 +27,14 @@ from cadence.words import Words
 BALL, CUP, BOX = 0, 1, 2
 RED, BLUE = 0, 1
 room = Map((-2.0, 2.0, -2.0, 2.0), (24, 24), units=3, values={"colour": 2})
-brain = Words(room)                                    # the robot stands at (0, 0)
+brain = Words(room)                                    # the parrot perches at (0, 0)
 kinds, colours = ["ball", "cup", "box"], ["red", "blue"]
 places = ["front", "right", "behind", "left"]          # the four places around the body
 rng = np.random.default_rng(0)
 
 
 def new_room():
-    """Three things around the robot, each in a drawn colour, seen once."""
+    """Three things around the parrot, each in a drawn colour, seen once."""
     turn = rng.uniform(0.0, 2 * math.pi)
     things = [(k, 1.2 * np.array([math.cos(turn + 2.1 * k), math.sin(turn + 2.1 * k)]),
                int(rng.integers(2))) for k in range(3)]
@@ -74,14 +74,15 @@ naming showed a whole thing, and the word took what its namings shared.
 | | The program | The brain |
 | --- | --- | --- |
 | A naming | Passes the word and the place attended to | The map settles on what is there (its kind and colour), the body gives the place around it, and the lexicon learns the word with those concepts by the library's free and nudged phases |
-| A question | Splits the text into words | The lexicon settles on the words: what is asked about (a kind, a colour or a place) and what is asked (its kind, its colour or its place) |
+| A question | Splits the text into words | The lexicon settles on the words: the concept asked about (the most active kind, colour or place) and each read's activity (what is asked for) |
 | Finding the things | Sets the map's cue from the concept the lexicon settled on | The map settles on the things: a kind's places, a colour's places, what is at a place around the body |
-| The answer | Joins the letters the motor said | For each thing found, the lexicon settles from the read's concept to a word, and the motor says the most active word's letters |
+| The answer | Joins the letters the motor said | For each thing found, its concepts, every group times its read's settled activity, drive the lexicon's saying settle; the motor chooses the most active word, hears it, and says it where hearing it gives back the concept said |
 | Knowing nothing | Nothing | A word never heard drives no concept; a concept the map does not hold finds nothing; both give the read that finds nothing, whose word the teacher said once |
 
-No table from word to concept is held anywhere: a word's meaning is in the synapses between its
-neuron and the concept neurons, and an answer is said by the motor. With those synapses at zero
-the same brain answers nothing.
+No table from word to concept is held anywhere, and none from a question word to a read: a
+word's meaning is in the synapses between its neuron and the concept neurons, a question word's
+read is in the synapses its practice taught it, the reads act as gains on what was found, and an
+answer is said by the motor. With the lexicon's synapses at zero the same brain answers nothing.
 
 ## The lexicon
 
@@ -99,7 +100,9 @@ the same brain answers nothing.
 - **Saying.** `say(("colour", 1))`: the concept's neuron is driven, the word neurons settle and
   the motor chooses the most active word and says its letters. The synapses of a word and a
   concept are one reciprocal pair, so hearing and saying read the same synapses: no lesson
-  teaches the way back.
+  teaches the way back. Before it says a word the brain hears it: a word whose hearing settles
+  on another concept of the groups said gives way to the next most active (a new kind's word,
+  named three times on one red thing, is bound to red too, and the word "red" is said for red).
 - **A threshold on the word neurons** (`threshold`, 0.15) keeps a settle from spreading from word
   to word: a word is active where it is heard or where a driven concept names it.
 
@@ -119,13 +122,14 @@ assert (lexicon.hear("kettle") < 0.05).all()           # never heard: names noth
 
 ## A brain that answers about its room
 
-`Words(map)` takes a map made with `values=` (the colour by default, `group=` names another) and
-builds a lexicon over the map's kinds, the values, the four places around the body (in front, to
-the right, behind, to the left), the three reads and the read that finds nothing. `brain.body` is
-where it stands and which way it faces.
+`Words(map)` takes a map (with `values=` for what things are like) and builds its senses
+(`Senses`: the map's kinds, each group of the map's values and the four places around the body:
+in front, to the right, behind, to the left), and a lexicon over those groups, one read a group
+and the read that finds nothing. `brain.body` is where it stands and which way it faces.
 
-- `name(word, at)`: a naming of the thing at `at`, each concept at its share of `shares` (the
-  kind .4, the value .3, the place around the body .3).
+- `look(seen=, lit=)`: one moment of the senses, passed to the map.
+- `name(word, at)`: a naming of the thing at `at`, each group at its share of `shares` (the kind
+  .4, the other groups an even split of the rest: .3 and .3 with one group of values).
 - `ask(question)`: the words said, one a thing found.
 - `practice(question, answer)`: a question with the teacher's answer. The brain hears the answer,
   reads in its own lexicon which group it names (a place, a colour, a kind), and the question's
@@ -139,6 +143,73 @@ pool and the map settles on the places of red things (`where_is_value`); each on
 there (`what_is_at`). "What is behind you?" goes from a place around the body to the things: the
 map settles on what is on the cells behind the body (`what_is_at(cells=)`), one thing at a time.
 Every direction reads the same lexicon and the same map.
+
+## Pistachios: what a question asks for, from reward
+
+A question word is learned the way a noun is, from questions answered for the brain, and the
+answer need not be told: a right answer can earn a pistachio. `ask(question, explore=True)` tries
+a read (what to say of the things found: their kind, their colour or their place), drawn from the
+reads' settled activity at `temperature`; `reward(1.0)` gives the pistachio. The question's words
+of asking, those that name no concept of the senses, are taught the read the answer took, at the
+reward's surprise: the reward less the chance the brain gave that read. A word that names a kind,
+a colour or a place keeps no read, so a read learned with one colour word holds for all of them,
+and no lesson of reward touches what a word names. A wrong answer earns nothing and teaches
+nothing.
+
+```python
+def raised_on_pistachios(rounds=30):
+    """The first brain's namings, then questions answered only with pistachios."""
+    parrot = Words(Map((-2.0, 2.0, -2.0, 2.0), (24, 24), units=3, values={"colour": 2}), seed=1)
+    room_ = parrot.map
+
+    def room_of():
+        turn = rng.uniform(0.0, 2 * math.pi)
+        things = [(k, 1.2 * np.array([math.cos(turn + 2.1 * k), math.sin(turn + 2.1 * k)]),
+                   int(rng.integers(2))) for k in range(3)]
+        room_.reset()
+        parrot.look(seen=[(k, p, {"colour": c}) for k, p, c in things])
+        return things
+
+    for _ in range(40):
+        things = room_of()
+        for k, p, c in [things[int(rng.integers(3))] for _ in range(4)]:
+            parrot.body.heading = float(rng.uniform(-math.pi, math.pi))
+            u = rng.random()
+            parrot.name(kinds[k] if u < 0.5 else colours[c] if u < 0.75 else
+                        places[parrot.body.place(p)], p)
+    parrot.body.heading = 0.0
+    for _ in range(rounds):
+        k, p, c = room_of()[0]
+        for question, right in ((f"where is the {kinds[k]}", places[parrot.body.place(p)]),
+                                (f"what colour is the {kinds[k]}", colours[c])):
+            if parrot.ask(question, explore=True) == [right]:
+                parrot.reward(1.0)                     # a pistachio for a right answer
+    return parrot, room_of()
+
+
+parrot, things = raised_on_pistachios()
+k, p, c = things[2]
+assert parrot.ask(f"what colour is the {kinds[k]}") == [colours[c]]
+```
+
+In the [chamber](../benchmarks/words/PROTOCOL_2.md) a parrot that practises on pistachios alone
+is read beside one told the answers and one whose pistachios are withheld.
+
+## Parts that plug in
+
+The question path is open to parts that add what the brain holds and how a question finds it
+(records of the past, a forecast of what comes, relations between things, counting). A part is
+an object with `groups` (its concept groups, added to the lexicon) and any of:
+
+| Member | Called |
+| --- | --- |
+| `answers` | Those of its groups a question may ask for: each gets a read |
+| `sense(brain, seen, lit)` | At each moment `look` passes to the map, before the map takes it |
+| `find(brain, heard, things)` | After the senses found the things a question names: gives the things found, each `(place, concepts by group)` |
+| `practice(brain, words, answer, heard)` | After a question answered: the part's own lessons |
+
+`Words(map, parts=[...])` takes them in order, and `Words(map, senses=...)` takes learned senses
+in place of the born ones: an object with `groups`, `describe(place)` and `find(group, pattern)`.
 
 ## The chamber and its readings
 
@@ -154,8 +225,10 @@ namings and questions ([the declared protocol](../benchmarks/words/PROTOCOL.md))
 | `rate` | 0.05 | The least share of its error a word's lesson closes |
 | `threshold` | 0.15 | A word neuron's threshold |
 | `steps` | 12 | Sweeps of a settle |
-| `Words(shares=)` | (0.4, 0.3, 0.3) | A naming's shares of the kind, the value and the place around the body |
+| `Words(shares=)` | the kind 0.4, the rest evenly | A naming's shares of the senses' groups |
 | `floor` | 0.05 | The activity a concept needs to count as named |
+| `sharpness` | 0.02 | How the reads compete for their gains when the brain answers |
+| `temperature` | 0.1 | How a read is drawn where the brain tries one (`ask(explore=True)`) |
 
 A settle of the lexicon reads every synapse once a sweep: 12 sweeps over 13,312 synapses at the
 defaults, about 160,000 multiply-accumulates. A question takes one settle to hear, one or more
