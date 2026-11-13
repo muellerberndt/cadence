@@ -97,14 +97,22 @@ class Map:
 
     ``moment`` takes one moment's reports and the cells in sight. ``where_is`` and
     ``what_is_at`` ask by settling, ``things`` reads the inventory off the map and ``reset``
-    empties it. ``arrays`` is the carried state, ``save`` and ``load`` write and read it."""
+    empties it. ``arrays`` is the carried state, ``save`` and ``load`` write and read it.
+
+    With ``surprise`` (True, or the genes of ``cadence.surprise.Surprise`` and ``Orienting`` by
+    name) every moment measures how far it moved each cell from the sheet the map carried into
+    it (its carried activity, or with taught physics its ``forecast(1)``): ``surprise`` holds
+    each cell's surprise against the cell's learned usual move, and ``focus`` the one place it
+    draws (``orienting``, a ``cadence.surprise.Orienting``), sights and sounds in one
+    competition. A move is measured in reports: one report's whole drive is 1. The map's
+    activity is the same with and without it."""
 
     def __init__(self, plane: tuple[float, float, float, float],
                  cells: tuple[int, int] = (32, 26), *, units: int = 16, kinds: int | None = None,
                  weight: int = 3, codes: np.ndarray | None = None, level: float = 0.02,
                  empty: str = "near", reach: float = 0.15, step: float = 0.15,
                  stride: float = 0.5, margin: float = 0.02, seed: int = 0,
-                 trace: bool = False, backend: Any = "cpu"):
+                 trace: bool = False, backend: Any = "cpu", surprise: Any = None):
         from ..brain import Apical
         from ..brain import Brain as Graph
         from ..connectome import Connectome
@@ -174,6 +182,25 @@ class Map:
         self._plain = Graph(self.connectome, self._model,
                             efficacy=np.full(self.connectome.synapses, PASS), bias=bias,
                             backend=backend)
+        # surprise and the one focus it draws (off unless given): the genes of ``Surprise``
+        # and ``Orienting`` by name
+        self.surprise: Any = None
+        self.orienting: Any = None
+        self.focus: Any = None
+        self._forecasting = False
+        if surprise is not None and surprise is not False:
+            from ..surprise import Orienting, Surprise
+
+            genes = {} if surprise is True else dict(surprise)
+            unknown = set(genes) - set(Surprise.GENES) - set(Orienting.GENES)
+            if unknown:
+                raise ValueError(f"unknown surprise gene: {sorted(unknown)[0]}")
+            self.surprise = Surprise(count, **{k: v for k, v in genes.items()
+                                               if k in Surprise.GENES})
+            self.orienting = Orienting(**{k: v for k, v in genes.items()
+                                          if k in Orienting.GENES})
+            self.settings["surprise"] = {**self.surprise.settings(),
+                                         **self.orienting.settings()}
         self._floor = 1e-3 * self.level  # activity under this is no thing
         self.trace = bool(trace)
         self.trajectory: dict[str, Any] = {}  # the latest settle by sweep, with ``trace``
@@ -183,7 +210,11 @@ class Map:
     # -- the carried state
 
     def reset(self) -> None:
-        """Empty the carried activity: the map then holds no thing."""
+        """Empty the carried activity: the map then holds no thing (and, with surprise, no
+        place is attended; what each cell is used to stays)."""
+        if getattr(self, "orienting", None) is not None:
+            self.orienting.reset()
+            self.focus = None
         self.potential = np.zeros((self.count, self.units))  # the sheet's carried potentials
         self.clock = np.zeros(self.count)  # the moments since a sense wrote each cell
         self.lost = np.zeros(self.units)  # the code units of things known with no place
@@ -201,7 +232,10 @@ class Map:
     def parts(self) -> tuple[dict[str, Any], dict[str, np.ndarray]]:
         """The map as a record (its settings) and arrays (its codes and carried state): what a
         map file and a brain that holds a map keep."""
-        return {"format": FORMAT, **self.settings}, {"codes": self.codes, **self.arrays()}
+        arrays = {"codes": self.codes, **self.arrays()}
+        if self.surprise is not None:  # what each cell learned it usually moves
+            arrays["surprise_usual"] = self.surprise.usual.copy()
+        return {"format": FORMAT, **self.settings}, arrays
 
     @classmethod
     def from_parts(cls, record: dict[str, Any], arrays: Any, **settings: Any) -> Map:
@@ -218,6 +252,11 @@ class Map:
             if value.shape != getattr(out, name).shape:
                 raise ValueError(f"the map's {name!r} does not fit its cells")
             setattr(out, name, value.copy())
+        if out.surprise is not None and "surprise_usual" in arrays:
+            usual = np.asarray(arrays["surprise_usual"], dtype=np.float64)
+            if usual.shape != out.surprise.usual.shape or not (usual >= 0).all():
+                raise ValueError("the map's 'surprise_usual' does not fit its cells")
+            out.surprise.usual = usual.copy()
         out.reading = out._read()
         return out
 
@@ -457,6 +496,9 @@ class Map:
         kind that lie on cells of doubt are cleared as well: a thing of the kind is found. A
         cell in sight loses what it carried. A piece seen empty with no report of its kind is
         treated as ``empty`` says."""
+        # with surprise: the sheet the map carries into the moment, to measure the moment by
+        expected = (self._expected() if self.surprise is not None and not self._forecasting
+                    else None)
         reports = [(int(kind), np.asarray(place, dtype=np.float64).reshape(2), sense)
                    for sense, given in (("seen", seen), ("heard", heard), ("felt", felt))
                    for kind, place in given]
@@ -557,6 +599,8 @@ class Map:
         self.reading = np.maximum(np.tanh(np.concatenate([v[run["where"]], v[run["what"]]])
                                           / 2.0), 0.0)
         self._sensed = [(kind, sense) for kind, _, sense in reports]
+        if expected is not None:
+            self._surprised(expected)
         # what the camera saw around each report, for the next moment's judgment
         self._views = [(place, looks(place, self.margin)) for _, place, _ in reports]
         self.work["moments"] += 1
@@ -687,6 +731,29 @@ class Map:
         activity = self._activity()
         held = activity.sum(axis=1) if kind is None else self._of_kind(int(kind), activity)
         return np.asarray(held.reshape(self.cells))
+
+    # -- surprise with a place (``cadence.surprise``)
+
+    def _expected(self) -> np.ndarray:
+        """The sheet the map carries into the next moment: its carried potentials, or with
+        physics that has learned from lessons the potentials of ``forecast(1)``."""
+        physics = getattr(self, "physics", None)
+        if physics is None or not physics.taught:
+            return np.asarray(self.potential.copy())
+        self._forecasting = True
+        try:
+            ahead = self.forecast(1)  # type: ignore[attr-defined]
+        finally:
+            self._forecasting = False
+        return np.asarray(ahead.potential)
+
+    def _surprised(self, expected: np.ndarray) -> None:
+        """Each cell's move from the sheet carried in, in reports, into ``surprise``; the
+        focus it draws into ``focus``."""
+        assert self.surprise is not None and self.orienting is not None
+        moved = np.linalg.norm(self.potential - expected, axis=1) / self.level
+        found = self.surprise.observe(moved)
+        self.focus = self.orienting.attend(found, self.centers, sense="map")
 
 
 class Sense:
