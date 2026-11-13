@@ -139,3 +139,10 @@ hidden state), on all twelve founders, saying the same panels and probed the sam
   paths (.79 to .88).
 
 ## Result
+
+Not read. The run started at 14:33 UTC on 2026-11-13 on one c7i.8xlarge and its box was
+terminated at 14:41 UTC, when every box of the project was stopped until a training plan is
+approved; no life had ended, so founders 10828600 to 10828611 hold no result and the run is
+taken as declared when a box is available. Since the declaration the read of one head over a
+worked store left the branch (8cbbe391, a located negative neither arm uses); the arms'
+arithmetic is the same at the branch's head.

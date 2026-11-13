@@ -28,7 +28,10 @@
   `benchmarks/grammar/SENTENCE_PROTOCOL_2.md`): the grammar chamber's brain with a role slot beside
   its word slots, lessons that name each heard and said moment's role, the say-back mix and a full
   mix with two wordings of one meaning and questions about a sentence, and the chamber's LSTM and
-  transformer taught the same batches, with and without the echoes and roles.
+  transformer taught the same batches, with and without the echoes and roles. Its designs hold a
+  path's start that clears the store (`alone_clean`), echoes that leave the recall read's address
+  as it is (`quiet`, and `"barred"` for the said words of a sentence whose meaning the bar
+  empties), and a reading of parity on every panel.
 
 ### A store of settled activity (#308)
 
