@@ -54,6 +54,9 @@ HAND_SET: dict[str, Any] = {
     # every input), "association" (the top region alone: the question reaches the regions below
     # only top-down, through their apical compartments) or "both"
     "ear_entry": "module_0",
+    # where the held message reaches: "association" (as compose wires it), or also the lowest
+    # region ("both"), beside the glimpse
+    "message_entry": "association",
 }
 
 
@@ -83,6 +86,9 @@ def anatomy(g: dict[str, Any], layout: tc.Layout, memory: dict[str, Any]) -> Any
     if entry in ("module_0", "both") or first == "association":
         sensory.append(Projection("sensory/ear", first, reciprocal=False, scale=1.0))
     rest = tuple(p for p in base.projections if p.pre != "sensory")
+    if str(g.get("message_entry", "association")) == "both" and first != "association":
+        rest = rest + tuple(Projection("message", first, reciprocal=False, scale=p.scale)
+                            for p in base.projections if p.pre == "message")
     return Genome(regions=regions, projections=tuple(sensory) + rest, label="text parrot")
 
 STAGES: list[tuple[str, tuple[str, ...]]] = [
@@ -166,7 +172,7 @@ class BrainPolicy:
         modules = tuple(int(m) for m in g["modules"])
         if float(g["apical"]) > 0 and len(modules) > 1:
             options["apical"] = float(g["apical"])
-        if str(g["ear_entry"]) != "module_0":
+        if str(g["ear_entry"]) != "module_0" or str(g["message_entry"]) != "association":
             from cadence.genome import develop
 
             memory = {k: v for k, v in options.items() if k.startswith("message")}
