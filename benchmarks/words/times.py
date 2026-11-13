@@ -45,9 +45,19 @@ import words  # noqa: E402
 import world  # noqa: E402
 
 DEFAULTS = {"naming_rooms": 40, "namings": 15, "practice_rooms": 40, "test_rooms": 30,
-            "carries": 2, "looks": 2}
+            "carries": 2, "looks": 2, "watch_rooms": 0, "rollers": 2, "watch": 40,
+            "roll_rooms": 0, "roll_tests": 0, "ahead": 10, "physics": False, "rest": 0}
 APART = 0.8  # a carried thing goes at least this far from where it was (metres)
 HELD = 0.15  # the map holds a thing where it holds its kind within this distance of its place
+TIMES = ("was", "is", "will")  # the forms of the questions about time, in the sources' order
+EDGE = math.radians(10.0)  # a rolled thing's places lie this far inside their places' edges
+
+
+def edge(heading: float, point: np.ndarray) -> float:
+    """How far a point's direction from the parrot lies from the nearest edge between two
+    places around it (radians)."""
+    a = math.atan2(point[1], point[0]) - heading
+    return abs((a % (math.pi / 2)) - math.pi / 4)
 
 
 def time_words(seed: int) -> dict[str, str]:
@@ -66,15 +76,17 @@ def time_words(seed: int) -> dict[str, str]:
     return {"was": drawn[0], "is": lex.question["is"], "will": drawn[1]}
 
 
-def make_brain(seed: int, **settings: Any) -> Any:
+def make_brain(seed: int, *, physics: Any = False, ahead: int = 10, **settings: Any) -> Any:
     """The founder's brain in time: the map of protocol 1 (one unit a kind, the colours on its
-    sheet) and a ``Times`` brain with its defaults."""
+    sheet), with learned physics where ``physics`` (True, or the physics' settings), and a
+    ``Times`` brain that forecasts ``ahead`` moments on."""
     from cadence.space.map import Map
     from cadence.words.episodes import Times
 
     held = Map(world.PLANE, world.CELLS, units=world.KINDS, values={"colour": world.COLOURS},
-               seed=int(seed))
-    return Times(held, seed=int(seed), **settings)
+               seed=int(seed), physics=(dict(physics) if isinstance(physics, dict)
+                                        else True if physics else None))
+    return Times(held, seed=int(seed), ahead=int(ahead), **settings)
 
 
 def look(brain: Any, r: world.Room) -> None:
@@ -112,13 +124,63 @@ def carry(r: world.Room, kind: int, place: np.ndarray) -> None:
     next(t for t in r.things if t.kind == kind).place = np.asarray(place, dtype=np.float64).copy()
 
 
-def question(lex: world.Lexicon, said: dict[str, str], r: world.Room, kind: int, when: str,
+def question(lex: world.Lexicon, said: dict[str, str], heading: float, kind: int, when: str,
              place: np.ndarray) -> world.Question:
-    """``where <when> the <kind>``, answered by the place around the parrot of ``place``."""
+    """``where <when> the <kind>``, answered by the place around the parrot facing ``heading``
+    of ``place``."""
     q = lex.question
     text = f"{q['where']} {said[when]} {q['the']} {lex.kind[kind]}"
-    return world.Question(text, when, [lex.place[world.place_of(r.heading, place)]], "moved",
+    return world.Question(text, when, [lex.place[world.place_of(heading, place)]], "moved",
                           kind)
+
+
+def roll_path(rng: np.random.Generator, at: dict[int, np.ndarray], kind: int, moments: Any,
+              ahead: int, *, heading: float | None = None,
+              distinct: bool = False) -> tuple[np.ndarray, int, float] | None:
+    """A roll of the thing of ``kind`` (``at`` holds every thing's place): a velocity of .03 to
+    .06 m a moment, the moments it rolls while the parrot watches (``moments``: a number, or a
+    range drawn from) and the heading the parrot watches from (``heading``, else drawn within
+    .5 radians of the thing). The path to ``ahead`` moments after stays .15 m inside the plane,
+    .4 m from the parrot and .35 m from every other thing; with ``distinct`` the places around
+    the parrot where it began, where it is when the watch ends and where it is ``ahead`` moments
+    later are three, each ``EDGE`` or more from the edges of its place. None where no roll is
+    found."""
+    start = at[kind]
+    for _ in range(4000):
+        speed, a = rng.uniform(0.03, 0.06), rng.uniform(-math.pi, math.pi)
+        v = speed * np.array([math.cos(a), math.sin(a)])
+        m = int(moments) if isinstance(moments, int) else int(rng.integers(*moments))
+        h = (math.atan2(start[1], start[0]) + rng.uniform(-0.5, 0.5) if heading is None
+             else float(heading))
+        path = start + np.arange(m + ahead + 1)[:, None] * v
+        if np.abs(path).max() > 1.85 or np.linalg.norm(path, axis=1).min() < 0.4:
+            continue
+        if any(np.linalg.norm(path - q, axis=1).min() < 0.35 for k, q in at.items()
+               if k != kind):
+            continue
+        three = (start, path[m], path[m + ahead])
+        if distinct and (len({world.place_of(h, p) for p in three}) < 3
+                         or min(edge(h, p) for p in three) < EDGE):
+            continue
+        return v, m, float(h)
+    return None
+
+
+def roll(r: world.Room, kind: int, velocity: np.ndarray) -> None:
+    """The room's thing of ``kind`` rolls at ``velocity`` (metres a moment) from now on."""
+    r.extra.setdefault("rolling", {})[int(kind)] = np.asarray(velocity, dtype=np.float64).copy()
+
+
+def watch(brain: Any, r: world.Room, heading: float, moments: int) -> None:
+    """The parrot faces ``heading`` for ``moments`` moments; each moment every rolling thing
+    moves on and the parrot sees what is in view."""
+    r.heading = heading
+    brain.body.heading = heading
+    for _ in range(int(moments)):
+        for t in r.things:
+            if t.kind in r.extra.get("rolling", {}):
+                t.place = t.place + r.extra["rolling"][t.kind]
+        brain.moment(seen=world.seen(r, heading), lit=world.camera(heading))
 
 
 def script(seed: int, **given: Any) -> list[tuple[Any, ...]]:
@@ -147,6 +209,41 @@ def script(seed: int, **given: Any) -> list[tuple[Any, ...]]:
             t = r.things[int(rng.integers(len(r.things)))]
             events.append(("name", t.place.copy(), words.naming_word(lex, r, t, rng), "naming"))
 
+    for _ in range(settings["watch_rooms"]):  # things roll while the parrot watches
+        r = world.room(rng, trained, int(rng.integers(4, 7)))
+        events.append(("room", r))
+        at = {t.kind: t.place.copy() for t in r.things}
+        first = r.things[int(rng.integers(len(r.things)))].place
+        heading = math.atan2(first[1], first[0]) + float(rng.uniform(-0.5, 0.5))
+        seen = [t.kind for t in r.things if world.in_view(heading, t.place)[0]]
+        for kind in [seen[int(i)] for i in rng.permutation(len(seen))][: settings["rollers"]]:
+            path = roll_path(rng, at, kind, settings["watch"], 0, heading=heading)
+            if path is not None:
+                events.append(("roll", kind, path[0]))
+        if settings["rest"]:  # the parrot watches the things at rest before they roll
+            events.insert(len(events) - sum(e[0] == "roll" for e in events[-settings["rollers"]:]),
+                          ("watch", heading, settings["rest"]))
+        events.append(("watch", heading, settings["watch"]))
+
+    def rolled_room() -> tuple[world.Room, dict[str, Any], float] | None:
+        """A room one of whose things rolls while the parrot watches: the thing's ``kind``, its
+        place where it began (``was``), when the watch ends (``now``) and ``ahead`` moments
+        later (``will``), three places around the parrot; and the heading it watches from."""
+        r = world.room(rng, trained, int(rng.integers(4, 7)))
+        at = {t.kind: t.place.copy() for t in r.things}
+        for i in rng.permutation(len(r.things)):
+            kind = r.things[int(i)].kind
+            path = roll_path(rng, at, kind, (16, 29), settings["ahead"], distinct=True)
+            if path is None:
+                continue
+            v, m, heading = path
+            events.extend([("room", r)] + ([("watch", heading, settings["rest"])]
+                                           if settings["rest"] else [])
+                          + [("roll", kind, v), ("watch", heading, m)])
+            return r, {"kind": kind, "was": at[kind], "now": at[kind] + m * v,
+                       "will": at[kind] + (m + settings["ahead"]) * v}, heading
+        return None
+
     def carried_room() -> tuple[world.Room, list[tuple[int, np.ndarray, np.ndarray]]]:
         """A room whose things the teacher carries: ``(kind, was, now)`` a carried thing. The
         room's things keep their first places: a life moves them at the carry events."""
@@ -167,26 +264,62 @@ def script(seed: int, **given: Any) -> list[tuple[Any, ...]]:
         r, moved = carried_room()
         asked = []
         for kind, was, now in moved:
-            asked += [question(lex, said, r, kind, "was", was),
-                      question(lex, said, r, kind, "is", now)]
+            asked += [question(lex, said, r.heading, kind, "was", was),
+                      question(lex, said, r.heading, kind, "is", now)]
         still = [t for t in r.things if all(t.kind != m for m, _, _ in moved)]
         if still:
             t = still[int(rng.integers(len(still)))]
             asked += [world.where(lex, r, t.kind), world.colour_of(lex, r, t.kind)]
         events += [("practice", asked[int(i)]) for i in rng.permutation(len(asked))]
 
+    rolled = 0
+    while rolled < settings["roll_rooms"]:
+        made = rolled_room()
+        if made is None:
+            continue
+        r, it, heading = made
+        rolled += 1
+        asked = [question(lex, said, heading, it["kind"], when, it[place])
+                 for when, place in (("was", "was"), ("is", "now"), ("will", "will"))]
+        still = [t for t in r.things if t.kind != it["kind"]]
+        t = still[int(rng.integers(len(still)))]
+        asked += [world.where(lex, world.Room(r.things, heading), t.kind),
+                  world.colour_of(lex, world.Room(r.things, heading), t.kind)]
+        events += [("practice", asked[int(i)]) for i in rng.permutation(len(asked))]
+
     for _ in range(settings["test_rooms"]):
         r, moved = carried_room()
         for kind, was, now in moved:
             extra = {"was": was, "now": now}
-            events += [("ask", "W8_past", question(lex, said, r, kind, "was", was), extra),
-                       ("ask", "W8_present", question(lex, said, r, kind, "is", now), extra)]
+            events += [("ask", "W8_past", question(lex, said, r.heading, kind, "was", was),
+                        extra),
+                       ("ask", "W8_present", question(lex, said, r.heading, kind, "is", now),
+                        extra)]
         still = [t for t in r.things if all(t.kind != m for m, _, _ in moved)]
         if still:  # the questions of protocol 1 about a thing that stayed
             t = still[int(rng.integers(len(still)))]
             extra = {"was": t.place.copy(), "now": t.place.copy()}
             events += [("ask", "still_where", world.where(lex, r, t.kind), extra),
                        ("ask", "still_colour", world.colour_of(lex, r, t.kind), extra)]
+
+    rolled = 0
+    while rolled < settings["roll_tests"]:
+        made = rolled_room()
+        if made is None:
+            continue
+        r, it, heading = made
+        rolled += 1
+        for gate, when, place in (("W8_past", "was", "was"), ("W8_present", "is", "now"),
+                                  ("W9_future", "will", "will")):
+            events.append(("ask", gate, question(lex, said, heading, it["kind"], when,
+                                                 it[place]), {**it, "rolled": True}))
+        still = [t for t in r.things if t.kind != it["kind"]]
+        t = still[int(rng.integers(len(still)))]
+        here = world.Room(r.things, heading)
+        extra = {"was": t.place.copy(), "now": t.place.copy(), "will": t.place.copy()}
+        events += [("ask", "still_where", world.where(lex, here, t.kind), extra),
+                   ("ask", "still_will", question(lex, said, heading, t.kind, "will", t.place),
+                    extra)]
     return events
 
 
@@ -198,6 +331,21 @@ def held_at(brain: Any, kind: int, place: np.ndarray) -> bool:
     return any(d <= HELD for d in apart) and all(d <= 2 * HELD for d in apart)
 
 
+def forecast_holds(brain: Any, kind: int, place: np.ndarray) -> tuple[bool, float]:
+    """The forecast's own answer: whether every place the forecast ``ahead`` moments on holds
+    of the kind lies in the place around the parrot of ``place`` (and it holds one), and its
+    distance in metres from ``place`` (the nearest)."""
+    from cadence.words.episodes import forecast
+
+    ahead = forecast(brain.map, brain.ahead)
+    places = ahead.where_is(kind)
+    if not len(places):
+        return False, float("nan")
+    around = world.place_of(brain.body.heading, place)
+    right = all(world.place_of(brain.body.heading, p) == around for p in places)
+    return right, float(min(np.linalg.norm(p - place) for p in places))
+
+
 def life(seed: int, *, record: Any = None, brain: Any = None, **given: Any) -> dict[str, Any]:
     """One founder's life on its script; the readings by gate. ``record`` (a list) takes every
     test question with what was said and what each source found."""
@@ -207,7 +355,9 @@ def life(seed: int, *, record: Any = None, brain: Any = None, **given: Any) -> d
     lex = world.lexicon(seed)
     said_as = time_words(seed)
     english = {**lex.english(), said_as["was"]: "was", said_as["will"]: "will"}
-    brain = make_brain(seed, **brain_settings) if brain is None else brain
+    if brain is None:
+        brain = make_brain(seed, physics=settings["physics"], ahead=int(settings["ahead"]),
+                           **brain_settings)
     readings: dict[str, list[bool]] = {}
     seconds: dict[str, float] = {}
     phase, began = "naming", time.time()
@@ -215,7 +365,7 @@ def life(seed: int, *, record: Any = None, brain: Any = None, **given: Any) -> d
     for event in events:
         kind = event[0]
         now = {"room": None, "turn": None, "name": "naming", "carry": None, "look": None,
-               "practice": "practice", "ask": "test"}[kind]
+               "roll": None, "watch": None, "practice": "practice", "ask": "test"}[kind]
         if now is not None and now != phase:
             seconds[phase] = seconds.get(phase, 0.0) + time.time() - began
             phase, began = now, time.time()
@@ -234,16 +384,39 @@ def life(seed: int, *, record: Any = None, brain: Any = None, **given: Any) -> d
         elif kind == "look":
             assert r is not None
             look(brain, r)
+        elif kind == "roll":
+            assert r is not None
+            roll(r, event[1], event[2])
+        elif kind == "watch":
+            assert r is not None
+            watch(brain, r, event[1], event[2])
         elif kind == "practice":
             q = event[1]
             brain.practice(q.text, q.answer if len(q.answer) > 1 else q.answer[0])
         else:
             gate, q, extra = event[1], event[2], event[3]
+            kept = brain.map.arrays()
             said = brain.ask(q.text)
             ok = world.right(q, said)
             readings.setdefault(gate, []).append(ok)
+            readings.setdefault("W9_map_kept", []).append(all(
+                np.array_equal(kept[k], v) for k, v in brain.map.arrays().items()))
             found = brain.last["found"]
             concepts = {s: sorted({c for k, c in found[s] if k == q.kind}) for s in found}
+            three = [concepts[s][0] if len(concepts[s]) == 1 else None
+                     for s in ("records", "map", "forecast")]
+            if None not in three and len(set(three)) == 3 and q.form in TIMES:
+                # W10: the three sources hold the thing in three places; is the asked one said?
+                group, value = three[TIMES.index(q.form)]
+                readings.setdefault(f"W10_three_{q.form}", []).append(said == [
+                    {"kind": lex.kind, "colour": lex.colour, "place": lex.place}[group][value]])
+            if gate == "W9_future":
+                right, error = forecast_holds(brain, q.kind, extra["will"])
+                readings.setdefault("W9_forecast_rate", []).append(right)
+                readings.setdefault("W9_error", []).append(error)
+                readings.setdefault("W9_now_rate", []).append(
+                    world.place_of(brain.body.heading, extra["now"])
+                    == world.place_of(brain.body.heading, extra["will"]))
             asked = "records" if q.form == "was" else "map"
             other = "map" if q.form == "was" else "records"
             apart = (len(concepts[asked]) == 1 and len(concepts[other]) == 1
@@ -283,12 +456,16 @@ def readings_of(seed: int, settings: dict[str, Any], readings: dict[str, list[bo
     """A life's readings: each gate's share and count, the pools, parameters and work."""
     out: dict[str, Any] = {"seed": int(seed), **settings}
     for gate, oks in sorted(readings.items()):
-        out[gate] = float(np.mean(oks)) if oks else float("nan")
+        finite = [x for x in oks if x == x]
+        out[gate] = float(np.mean(finite)) if finite else float("nan")
         out[f"{gate}_n"] = len(oks)
     oks = readings.get("W10_was", []) + readings.get("W10_is", []) + readings.get(
         "W10_will", [])
     out["W10"] = float(np.mean(oks)) if oks else float("nan")
     out["W10_n"] = len(oks)
+    oks = [ok for when in TIMES for ok in readings.get(f"W10_three_{when}", [])]
+    out["W10_three"] = float(np.mean(oks)) if oks else float("nan")
+    out["W10_three_n"] = len(oks)
     if brain is not None:
         out["parameters"] = int(brain.lexicon.connectome.synapses // 2)
         out["records"] = int(brain.records.store.count)
@@ -296,7 +473,7 @@ def readings_of(seed: int, settings: dict[str, Any], readings: dict[str, list[bo
         synapses = int(brain.map.connectome.synapses)
         out["macs"] = int(brain.lexicon.work["macs"] + brain.records.work["macs"] + synapses * (
             brain.map.work["moments"] + 2 * brain.map.work["questions"]
-            + brain.work["forecast_moments"]))
+            + brain.work["forecast_moments"] + 2 * brain.work["forecast_questions"]))
     out["seconds"] = seconds
     return out
 

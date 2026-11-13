@@ -176,3 +176,34 @@ def test_the_forecast_of_a_map_without_physics_is_the_map() -> None:
 
         Times(_room(), lexicon=Lexicon({"kind": 3}))
     assert brain.lexicon.concepts == 3 + 2 + 4 + 3 + 1 + 3
+
+
+def test_things_first_seen_together_are_told_apart_by_the_physics() -> None:
+    """Two things first seen in one moment take two identities in the motion records, so one
+    that rolls out of view is carried on by the physics while the other is seen."""
+    from cadence.space.physics import IDENT, Physics
+
+    held = Map((-2.0, 2.0, -2.0, 2.0), (24, 24), units=3, values={"colour": 2},
+               physics=Physics(prior=20.0))
+    lit = lambda p: p[:, 0] > 0.0  # noqa: E731
+    rng = np.random.default_rng(0)
+    for _ in range(12):  # watching things roll teaches the physics
+        held.reset()
+        start, velocity = rng.uniform(0.4, 1.5, (2, 2)), rng.uniform(-0.03, 0.03, (2, 2))
+        for t in range(40):
+            places = start + t * velocity
+            held.moment(seen=[(k, places[k], {"colour": k}) for k in range(2)
+                              if lit(places[k][None])[0]], lit=lit)
+    held.reset()
+    ball, cup = np.array([0.5, 0.5]), np.array([1.2, -0.6])
+    held.moment(seen=[(0, ball, {"colour": 1}), (1, cup, {"colour": 0})], lit=lit)
+    idents = {k: set(held.motion[:, k, IDENT][held.motion[:, k, IDENT] > 0]) for k in (0, 1)}
+    assert idents[0] and idents[1] and not idents[0] & idents[1]
+    velocity = np.array([-0.04, 0.0])
+    for t in range(1, 31):  # the ball rolls out of view; the cup stays in view
+        place = ball + t * velocity
+        held.moment(seen=([(0, place, {"colour": 1})] if lit(place[None])[0] else [])
+                    + [(1, cup, {"colour": 0})], lit=lit)
+    found = held.where_is(0)
+    assert len(found) == 1 and np.linalg.norm(found[0] - (ball + 30 * velocity)) < 0.1
+    assert held.values_at(found[0])["colour"] == 1

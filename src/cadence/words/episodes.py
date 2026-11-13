@@ -182,7 +182,9 @@ class Times(Words):
         self.ahead, self.leave, self.still = int(ahead), float(leave), float(still)
         self._rested: dict[int, np.ndarray | None] = {}  # where each thing rests; None: moving
         self._last: dict[int, np.ndarray] = {}  # where the map held each thing the moment before
-        self.work = {"forecasts": 0, "forecast_moments": 0}
+        # the forecasts made, their moments and the questions asked of them (a forecast is a
+        # copy: its work is counted here)
+        self.work = {"forecasts": 0, "forecast_moments": 0, "forecast_questions": 0}
 
     # -- living: the map's moments and the records written
 
@@ -291,12 +293,15 @@ class Times(Words):
         if about is None or read is None:
             return {s: [] for s in SOURCES}
         ahead = forecast(self.map, self.ahead)
+        asked = int(ahead.work["questions"])
+        out = {"records": self._in_records(about, read),
+               "map": self._on_map(self.map, about, read),
+               "forecast": self._on_map(ahead, about, read)}
         if ahead is not self.map:
             self.work["forecasts"] += 1
             self.work["forecast_moments"] += self.ahead
-        return {"records": self._in_records(about, read),
-                "map": self._on_map(self.map, about, read),
-                "forecast": self._on_map(ahead, about, read)}
+            self.work["forecast_questions"] += int(ahead.work["questions"]) - asked
+        return out
 
     # -- a question in time
 
