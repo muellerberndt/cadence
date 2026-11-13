@@ -119,7 +119,7 @@ REHEARSAL = 0.3  # the share of a step's blocks that revisit the earlier steps' 
 NIGHT: dict[str, Any] = {"actor_hold": 0.93, "actor_eta": 0.1, "ear_entry": "module_0",
                          "history_decays": (0.0, 0.5, 0.8), "self_reward": 0.1,
                          "reply_suppression": 1, "gated_lesson": 1.0, "recall": 0,
-                         "correction_lesson": 1.0, "vocal_until": "N0b"}
+                         "correction_lesson": 1.0, "vocal_until": "N6", "records_agree": 3}
 
 
 @dataclass
@@ -469,13 +469,20 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
         assert p.records is not None
         if not p.records.count or not np.any(cue):
             return np.zeros(p.forms.width)
-        got = p.records.read(cue, credit=learn)
+        # the nearest records, one a head; a word comes back only where they all hold it
+        # (gene ``records_agree``): a cue its neighbours disagree about recalls nothing
+        heads = min(int(g.get("records_agree", 1)), int(p.records.count))
+        got = p.records.read(cue, heads=heads, credit=learn)
         slot = got.first()
         if slot < 0:
             return np.zeros(p.forms.width)
         key = np.asarray(p.records.keys[slot], dtype=np.float64)
         cos = float(key @ cue) / (np.linalg.norm(key) * np.linalg.norm(cue) + 1e-12)
-        return p.records.value(got) if cos >= match else np.zeros(p.forms.width)
+        value = p.records.value(got)
+        for h in range(1, heads):
+            if got.first(h) < 0 or not np.array_equal(p.records.value(got, h), value):
+                return np.zeros(p.forms.width)
+        return value if cos >= match else np.zeros(p.forms.width)
 
     def keep(i: int, at: int, word: str) -> None:
         if p.records is not None and learn and at in assoc_at:
@@ -564,7 +571,10 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
                 k = echo_due[i][t]
                 if ex.question is not None:  # the correction, kept as a record
                     keep(i, ex.turn - 1, ex.question.answer[k])
-                echoes.append((i, echo_due[i].pop(t), int(voiced[i])))
+                heard_unit = int(voiced[i])
+                if str(g.get("correction_label", "echo")) == "given" and ex.question is not None:
+                    heard_unit = p.voice.index(ex.question.answer[k])  # a diagnostic arm only
+                echoes.append((i, echo_due[i].pop(t), heard_unit))
             if in_turn and not ex.bite:
                 turn_x[i].append(x[i])
                 turn_t[i].append(t)
@@ -691,6 +701,23 @@ def read(p: Parrot, rng: np.random.Generator, forms: list[str], held: set[tuple[
     return out
 
 
+def save_records(p: Parrot, path: str | Path) -> None:
+    """The word records beside a brain: the store's arrays, as ``load_records`` takes them."""
+    assert p.records is not None
+    with open(path, "wb") as f:
+        np.savez_compressed(f, **p.records.arrays())
+
+
+def load_records(p: Parrot, path: str | Path) -> bool:
+    """Take back the word records saved beside a brain, where the parrot keeps records and the
+    file exists."""
+    if p.records is None or not Path(path).exists():
+        return False
+    with np.load(path) as f:
+        p.records.restore({k: f[k] for k in f.files})
+    return True
+
+
 def held_of(rng: np.random.Generator) -> set[tuple[str, str]]:
     """The founder's kind-colour pairs kept for the test rooms (the first draws of its life)."""
     return {(k, str(rng.choice(KINDS[k][3] or tuple(COLOURS)))) for k in KIND_NAMES}
@@ -728,6 +755,7 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
 
         meta = json.loads(meta_path.read_text())
         p.brain = Brain.load(Path(ckpt) / f"ckpt_{seed}.npz")  # type: ignore[arg-type]
+        load_records(p, Path(ckpt) / f"ckpt_{seed}.records.npz")
         p.work.update(meta["work"])
         out, seen, paid = meta["out"], meta["seen"], meta["paid"]
         start = (int(meta["step"]), int(meta["block"]))
@@ -740,6 +768,8 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
             return
         meta_path.parent.mkdir(parents=True, exist_ok=True)
         p.brain.save(meta_path.with_suffix(".npz"))
+        if p.records is not None:
+            save_records(p, meta_path.with_suffix(".records.npz"))
         part = meta_path.with_suffix(".part")
         part.write_text(json.dumps({"step": step, "block": block, "out": out, "seen": seen,
                                     "paid": paid[-60:], "work": p.work}, default=float))
@@ -757,6 +787,7 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
         if first == 0:
             paid = []
         earlier = [f for _, _, ts in STEPS[:index] for f in ts]
+        b = first - 1  # a life resumed past a step's budget goes on to its reading
         for b in range(first, int(budget[name])):
             if b > first and b % 250 == 0:
                 checkpoint(index, b)
@@ -792,6 +823,8 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
         if save and control is None:
             Path(save).mkdir(parents=True, exist_ok=True)
             p.brain.save(Path(save) / f"brain_{seed}_{name}.npz")
+            if p.records is not None:
+                save_records(p, Path(save) / f"brain_{seed}_{name}.records.npz")
         checkpoint(index + 1, 0)
     out["work"] = dict(p.work)
     out["macs"] = float((p.work["act_sweeps"] + p.work["lesson_sweeps"]
@@ -839,4 +872,9 @@ def export_spec(p: Parrot, path: str | Path) -> None:
         "materials": {m: list(v) for m, v in MATERIALS.items()},
         "moment_ms": 300, "turn_moments": TURN, "catch_moments": CATCH,
     }
+    if p.records is not None:  # the word records' settings; their arrays lie beside the brain
+        spec["records"] = {"settings": {k: (v.item() if hasattr(v, "item") else v)
+                                        for k, v in p.records.to_dict().items()},
+                           "agree": int(p.genome.get("records_agree", 1)),
+                           "match": float(p.genome.get("records_match", 0.85))}
     Path(path).write_text(json.dumps(spec))

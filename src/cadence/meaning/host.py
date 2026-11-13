@@ -18,6 +18,10 @@ Every moment (about 300 ms):
    question about the whole scene, one moment a thing, ``see(things, glimpse=thing)``).
 4. ``pistachio()``: a pistachio for the last reply: the three-factor rule, one lesson on the
    moments of the reply with the parrot's own words as the labels.
+5. ``correct(word)``: after a wrong reply the trainer says the right word: where the brain keeps
+   word records (a ``records`` file beside the brain), the word is kept under the association
+   region's pattern of the moment the question ended. At the parrot's turn the records its
+   pattern then recalls (the nearest records, where they agree) are replayed to its ear.
 
 The voice says a word by replaying the take of the trainer's word its memory keeps (the page's
 audio); this module returns which word.
@@ -39,7 +43,8 @@ from .senses import Eyes, Seen
 class MeaningParrot:
     """A trained meaning brain and its senses, driven one moment at a time."""
 
-    def __init__(self, brain: str | Path, spec: str | Path, *, seed: int = 0):
+    def __init__(self, brain: str | Path, spec: str | Path, *, seed: int = 0,
+                 records: str | Path | None = None):
         self.brain = Brain.load(brain)
         self.spec = json.loads(Path(spec).read_text())
         eyes = self.spec["eyes"]
@@ -55,6 +60,20 @@ class MeaningParrot:
         self.own: str | None = None
         self.reply: list[tuple[np.ndarray, int]] = []
         self.brain.reset()
+        # the word records: kept under the association's pattern, replayed to the ear at the turn
+        self.records: Any = None
+        self.cue: np.ndarray | None = None  # the pattern of the last moment a word was heard
+        self.recalled = np.zeros(self.width)
+        self.in_turn = False
+        given = self.spec.get("records")
+        path = Path(records) if records is not None else Path(brain).with_suffix(".records.npz")
+        if given is not None and path.exists():
+            from ..longterm import LongTermMemory
+
+            self.records = LongTermMemory(**given["settings"])
+            with np.load(path) as f:
+                self.records.restore({k: f[k] for k in f.files})
+            self.association = np.asarray(list(self.brain.connectome.populations["association"]))
 
     def code(self, word: str | None) -> np.ndarray:
         if word is None:
@@ -85,13 +104,50 @@ class MeaningParrot:
         focus = self.glimpsed if self.glimpsed is not None else next(
             (t for t in self.things if t.salient), None)
         glimpse = [self.eyes.slot(focus)] if self.spec.get("glimpse") else []
-        return np.concatenate(glimpse + [scene, self.code(self.heard) + self.code(self.own)])[
-            None]
+        ear = self.code(self.heard) + self.code(self.own) + self.recalled
+        return np.concatenate(glimpse + [scene, ear])[None]
+
+    def recall(self, cue: np.ndarray) -> np.ndarray:
+        """The word the records hold for ``cue``: the nearest records' value where the
+        ``agree`` nearest hold one word and the nearest lies at cosine ``match`` or above."""
+        assert self.records is not None
+        if not self.records.count or not np.any(cue):
+            return np.zeros(self.width)
+        heads = min(int(self.spec["records"]["agree"]), int(self.records.count))
+        got = self.records.read(cue, heads=heads, credit=True)
+        slot = got.first()
+        if slot < 0:
+            return np.zeros(self.width)
+        key = np.asarray(self.records.keys[slot], dtype=np.float64)
+        cos = float(key @ cue) / (np.linalg.norm(key) * np.linalg.norm(cue) + 1e-12)
+        value = self.records.value(got)
+        for h in range(1, heads):
+            if got.first(h) < 0 or not np.array_equal(self.records.value(got, h), value):
+                return np.zeros(self.width)
+        return value if cos >= float(self.spec["records"]["match"]) else np.zeros(self.width)
+
+    def correct(self, word: str) -> bool:
+        """The trainer's right word after a reply: kept as a record under the pattern of the
+        moment the question ended. Returns whether a record was written."""
+        if self.records is None or self.cue is None or word not in self.codes:
+            return False
+        self.records.write(self.cue, self.code(word))
+        return True
 
     def moment(self, *, more: bool = False, greedy: bool = True) -> str | None:
         """One moment: settle on what is seen and heard, act; the word said, or None."""
+        if self.records is not None:
+            if self.heard is not None:  # the trainer speaks: no turn, nothing recalled
+                self.in_turn, self.recalled = False, np.zeros(self.width)
+            elif not more and not self.in_turn and self.cue is not None:
+                self.in_turn = True  # the turn opens in the gap: the records are read once
+                self.recalled = self.recall(self.cue)
+        heard_now = self.heard is not None
         x = self.observation()
         action = np.asarray(self.brain.act(x, greedy=greedy)).reshape(1, -1)
+        if self.records is not None and heard_now:
+            self.cue = np.asarray(self.brain.basal_ganglia.state.activation, dtype=np.float64)[
+                0, self.association].copy()
         unit = int(action[0, 0])
         said = None if unit >= self.silence or more else self.voice[unit]
         if said is not None:
@@ -112,3 +168,4 @@ class MeaningParrot:
     def turn_over(self) -> None:
         """The exchange ends: the reply's moments are forgotten (no pistachio came)."""
         self.reply = []
+        self.in_turn, self.recalled = False, np.zeros(self.width)

@@ -184,6 +184,9 @@ def compose(genome: dict[str, Any], inputs: int, words: int, *, ear: int = 0, ga
         settings["recall"] = False
         if float(g["carried_gain"]) > 0:
             settings["carried_gain"] = float(g["carried_gain"])
+    for name in genome:  # the learner's own settings, named by the genome alone
+        if name.startswith("learning_"):
+            settings[name] = genome[name]
     settings.update(extra)
     return Brain.compose(int(inputs), int(actions), **settings)
 

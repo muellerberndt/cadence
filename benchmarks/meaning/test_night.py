@@ -61,3 +61,33 @@ def test_the_page_host_steps_a_saved_brain_and_takes_a_pistachio(tmp_path):
     said = [m.moment(), m.moment(), m.moment()]
     assert all(w is None or w in nt.WORDS for w in said)
     assert m.pistachio() == sum(w is not None for w in said)
+
+
+def test_the_word_records_are_kept_with_the_checkpoint_and_the_brain(tmp_path):
+    nt.life(6, {"word_records": 1}, blocks=TINY, streams=2, reads=2, master=False,
+            ckpt=str(tmp_path / "ck"), save=str(tmp_path / "brains"), steps=["N0", "N0b"])
+    kept = tmp_path / "ck" / "ckpt_6.records.npz"
+    assert kept.exists() and (tmp_path / "brains" / "brain_6_N0b.records.npz").exists()
+    p = nt.Parrot(6, {"word_records": 1}, streams=2)
+    assert nt.load_records(p, kept) and p.records.count > 0
+
+
+def test_the_page_host_keeps_a_correction_and_recalls_it_at_the_turn(tmp_path):
+    from cadence.meaning.host import MeaningParrot
+
+    p = nt.Parrot(7, {"word_records": 1}, streams=1)
+    nt.export_spec(p, tmp_path / "spec.json")
+    p.brain.save(tmp_path / "brain.npz")
+    nt.save_records(p, tmp_path / "brain.records.npz")
+    m = MeaningParrot(tmp_path / "brain.npz", tmp_path / "spec.json")
+    assert m.records is not None and m.records.count == 0
+    apple = {"kind": "apple", "colour": "red", "material": "fruit", "direction": 1.0,
+             "distance": 1.4, "focus": True}
+    m.see([apple])
+    for word in ("what", "is", "this"):
+        m.hear(word)
+        m.moment(more=True)
+    assert m.correct("apple") and m.records.count == 1
+    assert np.array_equal(m.recall(m.cue), m.code("apple"))  # the same pattern recalls it
+    m.moment()  # the turn opens in the gap: the record is replayed to the ear
+    assert np.array_equal(m.recalled, m.code("apple"))

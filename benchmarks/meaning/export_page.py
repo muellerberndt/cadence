@@ -1,8 +1,9 @@
 """The files a page loads, from a trained brain, checked through the page's own host (cadence#334).
 
-    python export_page.py <brain.npz> <founder> <out_dir>
+    python export_page.py <brain.npz> <founder> <out_dir> [genome json]
 
-Writes ``brain.npz`` and ``spec.json``, then loads them with ``cadence.meaning.host`` and asks
+Writes ``brain.npz`` and ``spec.json`` (and ``brain.records.npz``, the word records saved beside
+the brain, where it keeps them), then loads them with ``cadence.meaning.host`` and asks
 the owner's five questions in the owner's room as a page would (the thing asked about clicked,
 the words one a moment with the voice held, then the parrot's turn in the gap: three moments, or
 one a thing for a question about the scene), and writes the replies to ``page_check.json``.
@@ -32,6 +33,7 @@ def ask(m: MeaningParrot, things: list[dict[str, Any]], words: list[str], scan: 
     """One exchange through the host: the words one a moment, then the turn."""
     m.brain.reset()
     m.own = None
+    m.turn_over()
     m.see(things)
     for w in words:  # the trainer speaks; the voice is held
         m.hear(w)
@@ -52,10 +54,14 @@ def ask(m: MeaningParrot, things: list[dict[str, Any]], words: list[str], scan: 
 
 def main(argv: list[str]) -> None:
     brain, seed, out = argv[1], int(argv[2]), Path(argv[3])
+    genome = json.loads(argv[4]) if len(argv) > 4 else None
     out.mkdir(parents=True, exist_ok=True)
-    p = nt.Parrot(seed, streams=1)
+    p = nt.Parrot(seed, genome, streams=1)
     nt.export_spec(p, out / "spec.json")
     shutil.copyfile(brain, out / "brain.npz")
+    kept = Path(brain).with_suffix(".records.npz")
+    if p.records is not None and kept.exists():
+        shutil.copyfile(kept, out / "brain.records.npz")
     m = MeaningParrot(out / "brain.npz", out / "spec.json", seed=seed)
     room = ii.owner_room()
     check = []

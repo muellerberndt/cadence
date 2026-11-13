@@ -40,6 +40,7 @@ def load(path: str, seed: int, genome: dict[str, Any] | None = None,
     p = nt.Parrot(seed, genome, streams=streams)
     p.brain = Brain.load(path)
     p.synapses = int(p.brain.connectome.synapses)
+    nt.load_records(p, Path(path).with_suffix(".records.npz"))  # where the brain keeps records
     return p
 
 
