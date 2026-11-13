@@ -147,6 +147,27 @@ def test_a_stopped_life_continues_from_its_last_re_alignment(tmp_path: Path) -> 
     assert sp.latest_slot(cut, 2) is None
 
 
+def test_a_soft_teacher_teaches_distributions_from_the_first_batch(tmp_path: Path) -> None:
+    """The soft teacher aligns every batch through a frozen copy, the first through the newborn,
+    and a stopped life continues to the whole life's readings."""
+    cache = _fake_cache(tmp_path, 3)
+    protocol = {"batch": 2, "passes": 2, "align_every": 2, "probe_every": 3, "teacher": "soft",
+                "brain": {"genes": GENES}}
+    whole, cut = tmp_path / "whole", tmp_path / "cut"
+    whole.mkdir()
+    cut.mkdir()
+    full = sp.life_batched(cache, protocol, 2, whole)
+    assert full is not None and [p["batches"] for p in full["probes"]] == [3, 6]
+    assert [a["batches"] for a in full["alignments"]] == [0, 2, 4]  # the newborn aligns too
+    assert sp.life_batched(cache, protocol, 2, cut, stop_after=5) is None
+    again = sp.life_batched(cache, protocol, 2, cut)
+    assert again is not None and again["resumed"] == [4]
+    for a, b in zip(full["probes"], again["probes"], strict=True):
+        assert a["score"]["characters"] == b["score"]["characters"]
+    with pytest.raises(ValueError):
+        sp.life_batched(cache, {**protocol, "teacher": "other"}, 2, tmp_path)
+
+
 def test_a_stopped_control_continues_from_its_last_pass(tmp_path: Path) -> None:
     cache = _fake_cache(tmp_path, 2)
     protocol = {"passes": 3, "read_each_pass": True, "transcripts": True}

@@ -579,8 +579,18 @@ def life_batched(cache: Path, protocol: dict[str, Any], seed: int, out: Path,
     The brain is saved at rest at every re-alignment (``save_slot``), and a stopped life
     continues from the latest of those saves: it re-aligns there as the life did and hears the
     same batches. ``stop_after`` ends the life after that many batches, as a lost machine would
-    (None is returned)."""
+    (None is returned). ``place`` in the protocol names where the brain settles (the keywords
+    of ``Brain.compose`` and ``Brain.load``: ``backend``, ``device``, ``precision``); without
+    it the CPU.
+
+    ``teacher`` in the protocol names the lesson: ``"path"`` (as without it) teaches each step
+    the symbol on the forced alignment, the first batches on an even split; ``"soft"`` teaches
+    each step the soft path through the frozen copy's beliefs (``cadence.speech.align``'s
+    ``soft_path``: the share of the transcript's paths that say each symbol at the step), from
+    the first batch on, through the newborn's beliefs there, as ``lesson(targets=...)`` and a
+    greedy act, the fields taking their one step of the moment at the act."""
     import cadence as cd
+    from cadence.speech.align import soft_path
 
     train, held = load(cache, "train"), load(cache, "held")
     size = int(protocol["batch"])
@@ -590,14 +600,18 @@ def life_batched(cache: Path, protocol: dict[str, Any], seed: int, out: Path,
                                if p else np.random.default_rng([seed, 7]).permutation(len(train)),
                                lengths, size)]
     every, probe_every = int(protocol["align_every"]), int(protocol["probe_every"])
-    brain = cd.Brain.compose(inputs_of(cache), SYMBOLS, backend="cpu", seed=seed,
+    place = dict(protocol.get("place", {"backend": "cpu"}))  # where the brain settles
+    brain = cd.Brain.compose(inputs_of(cache), SYMBOLS, seed=seed, **place,
                              **protocol["brain"]["genes"])
     matcher = word_matcher(protocol)
     clock = {"training": 0.0, "reading": 0.0, "aligning": 0.0}
     record: dict[str, Any] = {"seed": seed, "parameters": brain.parameters(), "probes": [],
                               "alignments": [], "describe": brain.describe(), "batch": size}
+    soft = protocol.get("teacher", "path") == "soft"
+    if protocol.get("teacher", "path") not in ("path", "soft"):
+        raise ValueError("a protocol's teacher is 'path' or 'soft'")
     # each batch's paths, by the batch: an utterance heard in two passes takes a path in each
-    paths: dict[int, list[np.ndarray]] = {
+    paths: dict[int, list[np.ndarray]] = {} if soft else {
         m: [even_path(len(train[int(i)][0]), train[int(i)][1]) for i in groups[m]]
         for m in range(min(every, len(groups)))
     }
@@ -609,8 +623,10 @@ def life_batched(cache: Path, protocol: dict[str, Any], seed: int, out: Path,
             paths[m] = []
             for i, (_, logp) in zip(g, batch_beliefs(copy, [train[int(i)][0] for i in g]),
                                     strict=True):
-                new = lt.ctc_path(logp, train[int(i)][1])
-                moved.append(float(np.mean(new != even_path(len(new), train[int(i)][1]))))
+                text = train[int(i)][1]
+                new = soft_path(logp, text) if soft else lt.ctc_path(logp, text)
+                best = np.argmax(new, axis=1) if soft else new
+                moved.append(float(np.mean(best != even_path(len(best), text))))
                 paths[m].append(new)
         return moved
 
@@ -620,7 +636,7 @@ def life_batched(cache: Path, protocol: dict[str, Any], seed: int, out: Path,
     if saved is not None:  # a stopped life: from its latest saved re-alignment
         begin, steps = int(saved[1]["batches"]), int(saved[1]["steps"])
         clock = {**clock, **saved[1]["clock"]}
-        brain = cd.Brain.load(saved[0])
+        brain = cd.Brain.load(saved[0], **place)
         if partial.exists():
             earlier = lt.read_record(partial)
             record["probes"] = [q for q in earlier["probes"] if q["batches"] <= begin]
@@ -632,28 +648,42 @@ def life_batched(cache: Path, protocol: dict[str, Any], seed: int, out: Path,
             continue
         if stop_after is not None and n >= stop_after:
             return None
-        if n and n % every == 0:
+        if (n or soft) and n % every == 0:
             ticked = time.monotonic()
             brain.reset()  # a batch begins from rest: the save holds no stream
             copy = cd.Brain.load(save_slot(brain, out, seed, n // every, {
-                "batches": n, "steps": steps, "clock": dict(clock)}))
+                "batches": n, "steps": steps, "clock": dict(clock)}), **place)
             moved = realign(copy, n, n + every)
             clock["aligning"] += time.monotonic() - ticked
             record["alignments"].append({"batches": n, "moved_from_even": float(np.mean(moved))})
         x, mask = padded([train[int(i)][0] for i in group])
-        labels = np.zeros(mask.shape, dtype=np.int64)
-        for r, path_r in enumerate(paths[n]):
-            labels[: len(path_r), r] = path_r
+        if soft:  # a distribution per step, blank after an utterance's end
+            targets = np.zeros((*mask.shape, SYMBOLS))
+            targets[:, :, 0] = 1.0
+            for r, path_r in enumerate(paths[n]):
+                targets[: len(path_r), r] = path_r
+        else:
+            labels = np.zeros(mask.shape, dtype=np.int64)
+            for r, path_r in enumerate(paths[n]):
+                labels[: len(path_r), r] = path_r
         ticked = time.monotonic()
         brain.reset()
         for t in range(len(x)):
-            brain.step(x[t], teacher=labels[t])
+            if soft:  # one step of the fields a moment, at the act, as in step
+                if brain.fields is not None:
+                    brain.fields.learning = False
+                brain.lesson(x[t], targets=targets[t])
+                if brain.fields is not None:
+                    brain.fields.learning = True
+                brain.act(x[t], greedy=True)
+            else:
+                brain.step(x[t], teacher=labels[t])
         clock["training"] += time.monotonic() - ticked
         steps += int(mask.sum())
         paths.pop(n, None)
         if (n + 1) % probe_every == 0 or n + 1 == len(groups):
             brain.reset()
-            copy = cd.Brain.load(brain.save(out / f"speech-{seed}-reading.npz"))
+            copy = cd.Brain.load(brain.save(out / f"speech-{seed}-reading.npz"), **place)
             ticked = time.monotonic()
             answered = []
             for k in range(0, len(held), size):
