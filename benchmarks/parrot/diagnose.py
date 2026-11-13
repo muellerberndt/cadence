@@ -74,7 +74,8 @@ def main() -> None:
         print("  read error where the peak is within 1 deg", np.round(np.median(rerr[good]), 3),
               "elsewhere", np.round(np.median(rerr[~good]), 3) if (~good).any() else None)
         for row in p[np.argsort(-np.abs(derr))][:12]:
-            print("  scene %d true disp %.2f peak %.2f true %.3f read %.3f" % tuple(row))
+            print("  scene {:.0f} true disp {:.2f} peak {:.2f} true {:.3f} read {:.3f}".format(
+                *row))
     # the field on binocular codes: read against truth
     print("wrong-thing lessons target/true", np.round(
         [r["target"] / r["true"] for r in rows

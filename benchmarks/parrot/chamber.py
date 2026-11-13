@@ -40,8 +40,8 @@ from cadence.parrot.world import HIGH, LOW, NAMES, Scene, Thing, stand_ins
 
 TABLE = stand_ins()
 KINDS = sorted(TABLE["kinds"])
-LIFE = {"scenes": 24, "moments": 60, "things": (3, 6)}
-TESTS = {"scenes": 10, "moments": 60, "behind": 20, "margin": 0.08, "alone": 0.15}
+LIFE = {"scenes": 48, "moments": 50, "things": (3, 6)}
+TESTS = {"scenes": 10, "moments": 60, "behind": 20, "margin": 0.10, "alone": 0.15}
 
 
 def place_things(rng: np.random.Generator, count: int, panel: str = "stands") -> Scene:
@@ -192,7 +192,8 @@ def live(parrot: Parrot, rng: np.random.Generator, scenes: int, moments: int,
         both = distance_errors(parrot, scene, parrot.record, eye=2)
         one = distance_errors(parrot, scene, [r for r in parrot.record if r["eye"] != 2])
         read = [r for r in parrot.record if r["truth"] >= 0]
-        curve.append({"both": float(np.median(both)) if both else math.nan,
+        curve.append({"errors": both,
+                      "both": float(np.median(both)) if both else math.nan,
                       "one": float(np.median(one)) if one else math.nan,
                       "read": float(np.mean([np.isfinite(r["distance"]) for r in read]))
                       if read else math.nan,
@@ -419,6 +420,13 @@ def founder(seed: int, genes: dict[str, Any] | None = None, *, life: dict[str, A
     test_rng = np.random.default_rng(np.random.SeedSequence([int(seed), 332, 2]))
     reading = test(parrot, test_rng, **tests)
     reading.pop("records")
+    quarter = max(1, len(curve) // 4)
+    first = [e for c in curve[:quarter] for e in c.pop("errors")]
+    for c in curve[quarter:-quarter]:
+        c.pop("errors")
+    last = [e for c in curve[-quarter:] for e in c.pop("errors", [])]
+    reading["E3_first_quarter"] = float(np.median(first)) if first else math.nan
+    reading["E3_last_quarter"] = float(np.median(last)) if last else math.nan
     out: dict[str, Any] = {"seed": int(seed), "curve": curve, "tests": reading,
                            "parameters": parrot.parameters(), "lessons": parrot.lessons,
                            "kinds": parrot.kinds.used, "genes": parrot.genes}
