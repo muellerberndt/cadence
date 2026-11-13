@@ -531,3 +531,275 @@ def test_the_new_settings_are_checked_and_off_by_default():
             LongTermMemory(8, 8, 32, **settings)
     small = LongTermMemory(8, 8, 32, pairs=8)  # under ``direct`` slots every slot is scored
     assert not small.coarse and not hasattr(small, "cells")
+
+
+# -- a table that grows, records on disk, a read that ends at its record (cadence#310)
+
+
+def growing(n=3000, width=32, **settings):
+    """``paired``'s records in a store whose table grows; the capacity is a bound."""
+    rng = np.random.default_rng(3)
+    keys = codes(rng, n, width).astype(np.float32)
+    values = codes(rng, n, 8).astype(np.float32)
+    memory = LongTermMemory(width, 8, 4 * n, **{**PAIRED, "grow": True, **settings})
+    return rng, keys, values, memory
+
+
+def table(memory):
+    """The cells a growing table holds."""
+    return memory.cells[: memory._level + memory._split]
+
+
+def test_a_table_that_grows_holds_what_its_records_call_for_and_reads_as_the_fixed_one():
+    rng, keys, values, memory = growing()
+    assert memory.grow and memory._level + memory._split == 64 and memory.entries == 0
+    empty = memory.nbytes
+    memory.fill(keys[:1500], values[:1500])
+    half, cells = memory.nbytes, memory._level + memory._split
+    load = memory.GROW_LOAD
+    assert -(-memory.entries // load) <= cells <= -(-(memory.entries + memory.dropped) // load)
+    memory.fill(keys[1500:], values[1500:])
+    # the bytes follow the records held, not the bound on the slots
+    assert memory.count == 3000 and (memory.nbytes - empty) / (half - empty) == pytest.approx(
+        2.0, rel=0.05)
+    assert memory._level + memory._split == pytest.approx(2 * cells, rel=0.05)
+    # every entry lies in a cell that holds it, and the cells past the table are untouched
+    assert int((table(memory) != memory.EMPTY).sum()) == memory.entries
+    assert memory.entries + memory.dropped == 3000 * 28
+    assert not memory.cells[memory._level + memory._split :][:64].any()
+    _, _, _, fixed = paired()
+    fixed.fill(keys, values)
+    for i in range(0, 3000, 50):  # an exact cue shares every pair with its record
+        read = memory.read(keys[i], credit=False)
+        assert read.first() == i and len(read.slots) <= 64
+        np.testing.assert_array_equal(memory.value(read), values[i])
+    noisy = [unit(keys[i] + 0.6 * rng.standard_normal(32) / np.sqrt(32)) for i in range(300)]
+    grown = np.array([memory.read(c, credit=False).first() for c in noisy])
+    sized = np.array([fixed.read(c, credit=False).first() for c in noisy])
+    assert np.mean(grown == np.arange(300)) > 0.9 and np.mean(grown == sized) > 0.95
+
+
+def test_a_write_splits_the_cells_its_entries_call_for_and_none_rebuilds_the_table():
+    _, keys, values, memory = growing()
+    most, held = 0, memory._level + memory._split
+    for i in range(3000):
+        slot, revised = memory.write(keys[i], values[i])
+        assert (slot, revised) == (i, False)
+        now = memory._level + memory._split
+        most, held = max(most, now - held), now
+    # a record of 28 pairs calls for five cells of six entries: no write split more
+    load = memory.GROW_LOAD
+    assert most <= -(-28 // load)
+    assert -(-memory.entries // load) <= held <= -(-(memory.entries + memory.dropped) // load)
+    assert memory.entries + memory.dropped == 3000 * 28
+    assert int((table(memory) != memory.EMPTY).sum()) == memory.entries
+    for i in range(0, 3000, 7):
+        assert memory.read(keys[i], credit=False).first() == i
+    # the rounds ended on the way: the table went through several doublings
+    assert memory._level >= 64 * 2 ** 7
+
+
+def test_the_compiled_and_the_numpy_forms_make_the_same_growing_table():
+    from cadence import _pairs
+
+    made = []
+    for compiled in (True, False):
+        try:
+            LongTermMemory.COMPILED = compiled
+            rng, keys, values, memory = growing()
+            memory.fill(keys[:1000], values[:1000])              # an empty table laid out
+            memory.fill(keys[1000:2000], values[1000:2000])      # a table with entries split
+            for i in range(2000, 2300):                          # writes one by one
+                memory.write(keys[i], values[i])
+            memory.write(keys[2400], values[3], recognised=5)    # slot 5 leaves and files again
+            cues = [unit(keys[i] + rng.standard_normal(32) / np.sqrt(32)) for i in range(40)]
+            made.append((memory, [memory._named(memory.address(c)) for c in cues]))
+        finally:
+            LongTermMemory.COMPILED = True
+    (a, named), (b, plain) = made
+    assert (a._level, a._split, a.entries, a.dropped) == (b._level, b._split, b.entries,
+                                                         b.dropped)
+    np.testing.assert_array_equal(table(a), table(b))
+    np.testing.assert_array_equal(a.filed[:2300], b.filed[:2300])
+    for x, y in zip(named, plain, strict=True):
+        np.testing.assert_array_equal(x, y)
+    drive = np.random.default_rng(5).standard_normal((50, 300)).astype(np.float32)
+    drive[3, :] = -1.0  # no unit driven above zero
+    drive[4, 10:] = -1.0  # fewer than asked
+    drive[5, 20:40] = 9.0  # equal drives: the lower units win
+    plain_top = _pairs.top_units(drive, 8)
+    assert (plain_top[3] == -1).all() and (plain_top[4] >= 0).sum() <= 8
+    np.testing.assert_array_equal(plain_top[5], np.arange(20, 28))
+    if _pairs._TOP is not None:
+        out = np.zeros((50, 8), dtype=np.int32)
+        _pairs._TOP(drive, 8, out)
+        np.testing.assert_array_equal(out, plain_top)
+
+
+def test_a_write_under_a_growing_table_recognises_revises_and_refiles():
+    _, keys, values, memory = growing()
+    memory.fill(keys, values)
+    entries = memory.entries
+    slot, revised = memory.write(keys[7], values[9])  # the key told again
+    assert (slot, revised) == (7, True) and memory.count == 3000 and memory.entries == entries
+    np.testing.assert_array_equal(memory.value(memory.read(keys[7], credit=False)), values[9])
+    slot, revised = memory.write(keys[11], values[3], recognised=5)  # slot 5 takes key 11
+    assert (slot, revised) == (5, True)
+    assert memory.read(keys[5], credit=False).first() != 5  # its old pairs no longer name it
+    assert memory.read(keys[11], heads=2, credit=False).first(0) == 5  # the lower of two equals
+    np.testing.assert_array_equal(memory.filed[5], memory.filed[11])
+    assert int((table(memory) != memory.EMPTY).sum()) == memory.entries
+    other = unit(keys[7] + 0.5 * keys[8])
+    slot, revised = memory.write(other, values[1])
+    assert (slot, revised) == (3000, False) and memory.read(other, credit=False).first() == 3000
+
+
+def test_fills_that_leave_their_records_unfiled_share_one_pass_over_the_table():
+    _, keys, values, whole = growing()
+    _, _, _, parts = growing()
+    whole.fill(keys, values)
+    parts.fill(keys[:1200], values[:1200], file=False)
+    assert parts.count == 1200 and parts.entries == 0  # written, and not yet under their pairs
+    parts.fill(keys[1200:], values[1200:], file=False)
+    parts.file()
+    np.testing.assert_array_equal(table(parts), table(whole))
+    assert (parts.entries, parts.dropped) == (whole.entries, whole.dropped)
+    _, _, _, written = growing()
+    written.fill(keys[:2999], values[:2999], file=False)
+    written.write(keys[2999], values[2999])  # a write files what the fills left
+    assert written.read(keys[10], credit=False).first() == 10
+    assert written.read(keys[2999], credit=False).first() == 2999
+
+
+def test_a_saved_memory_with_a_growing_table_continues_and_a_copy_is_its_own():
+    from copy import deepcopy
+
+    _, keys, values, memory = growing(apart=6)
+    memory.fill(keys, values, sources=np.eye(3000, 6, dtype=np.float32) + 1.0)
+    kept = memory.arrays()
+    assert set(kept) >= {"cells", "filed", "signs", "state", "table"}
+    assert len(kept["keys"]) == 3000 and len(kept["cells"]) == memory._level + memory._split
+    again = LongTermMemory(**memory.to_dict())
+    assert again.grow and memory.to_dict()["grow"] is True and "path" not in memory.to_dict()
+    again.restore(kept)
+    np.testing.assert_array_equal(table(again), table(memory))
+    for i in (0, 17, 2999):
+        assert again.read(keys[i], credit=False).first() == i
+    assert again.nbytes == memory.nbytes
+    assert again.write(unit(keys[1] + keys[2]), values[0]) == (3000, False)
+    twin = deepcopy(memory)
+    twin.write(unit(keys[3] + keys[4]), values[0])
+    assert twin.count == 3001 and memory.count == 3000 and twin.entries > memory.entries
+    assert int((table(memory) != memory.EMPTY).sum()) == memory.entries
+    with pytest.raises(ValueError, match="another shape"):
+        LongTermMemory(**{**memory.to_dict(), "pairs": 6}).restore(kept)
+
+
+def test_a_store_on_disk_continues_from_its_files(tmp_path):
+    from copy import deepcopy
+
+    rng, keys, values, _ = growing()
+    folder = tmp_path / "records"
+    settings = {**PAIRED, "grow": True, "path": folder}
+    store = LongTermMemory(32, 8, 1 << 20, **settings)  # a bound of a million slots
+    store.fill(keys[:2000], values[:2000])
+    assert store.to_dict()["path"] == str(folder) and store.count == 2000
+    files = {f.name for f in folder.iterdir()}
+    assert files >= {"store.json", "state.npy", "keys.npy", "values.npy", "cells.npy",
+                     "filed.npy", "projection.npy", "norms.npy"}
+    # the files' lengths are the bound's; the blocks on the disk follow the records
+    assert (folder / "keys.npy").stat().st_size > (1 << 20) * 32 * 4
+    assert store.nbytes < (folder / "keys.npy").stat().st_size
+    with pytest.raises(ValueError, match="holds a store"):
+        LongTermMemory(32, 8, 1 << 20, **settings)
+    with pytest.raises(TypeError, match="one store"):
+        deepcopy(store)
+    cells = table(store).copy()
+    store.close()
+    again = LongTermMemory.open(folder)
+    assert (again.count, again.writes, again.entries) == (2000, 2000, store.entries)
+    assert again.to_dict() == store.to_dict()
+    np.testing.assert_array_equal(table(again), cells)
+    np.testing.assert_array_equal(again.projection, store.projection)
+    for i in range(0, 2000, 40):
+        read = again.read(keys[i], credit=False)
+        assert read.first() == i
+        np.testing.assert_array_equal(again.value(read), values[i])
+    for i in range(2000, 3000):  # records added to the opened store, one by one
+        again.write(keys[i], values[i])
+    again.flush()
+    third = LongTermMemory.open(folder)  # a second mapping of the same files
+    assert third.count == 3000 and third.read(keys[2999], credit=False).first() == 2999
+    noisy = [unit(keys[i] + 0.6 * rng.standard_normal(32) / np.sqrt(32)) for i in range(100)]
+    _, _, _, memory = growing()
+    memory.fill(keys[:2000], values[:2000])
+    for i in range(2000, 3000):
+        memory.write(keys[i], values[i])
+    for cue in noisy:  # the store on disk reads as the same store in memory
+        assert third.read(cue, credit=False).first() == memory.read(cue, credit=False).first()
+    third._cold = True  # a store whose reads wait for the disk fetches its rows by threads
+    for i, cue in enumerate(noisy):
+        assert third.read(cue, credit=False).first() == memory.read(cue, credit=False).first()
+        third._cold = True
+    third.close()
+    again.close()
+    with pytest.raises(ValueError, match="holds no store"):
+        LongTermMemory.open(tmp_path / "nothing")
+    scan = LongTermMemory(32, 8, 500, candidates=0, cosine=True, path=tmp_path / "scan")
+    scan.write(keys[0], values[0].astype(np.float64))
+    scan.close()
+    assert LongTermMemory.open(tmp_path / "scan").read(keys[0], credit=False).first() == 0
+    sized = LongTermMemory(32, 8, 3008, **{**PAIRED, "path": tmp_path / "sized"})
+    sized.fill(keys, values)  # the fixed table of pairs in files
+    sized.close()
+    sized = LongTermMemory.open(tmp_path / "sized")
+    _, _, _, fixed = paired()
+    fixed.fill(keys, values)
+    np.testing.assert_array_equal(sized.cells, fixed.cells)
+    assert all(sized.read(c, credit=False).first() == fixed.read(c, credit=False).first()
+               for c in noisy)
+    sized.close()
+
+
+def test_a_read_with_sure_ends_at_its_record_and_reads_any_other_cue_in_full():
+    rng, keys, values, plain = growing()
+    _, _, _, memory = growing(sure=0.999)
+    plain.fill(keys, values)
+    memory.fill(keys, values)
+    np.testing.assert_array_equal(table(memory), table(plain))
+    read_units = []
+    found = memory._found
+    memory._found = lambda units: read_units.append(len(units)) or found(units)
+    for i in range(0, 3000, 30):
+        read = memory.read(keys[i], credit=False)
+        assert read.first() == i == plain.read(keys[i], credit=False).first()
+        assert len(read.slots) <= memory.CHECK
+        np.testing.assert_array_equal(memory.value(read), values[i])
+    assert set(read_units) == {8}  # the pairs of the cue's eight most driven units, no more
+    read_units.clear()
+    noisy = [unit(keys[i] + 0.6 * rng.standard_normal(32) / np.sqrt(32)) for i in range(200)]
+    for cue in noisy:  # no record holds a noisy cue so closely: the whole read, the same choice
+        assert memory.read(cue, credit=False).first() == plain.read(cue, credit=False).first()
+    assert max(read_units) == 32 and read_units.count(32) == 200
+    read_units.clear()
+    two = memory.read(keys[3], heads=2, credit=False)  # several heads read in full
+    assert two.first(0) == 3 and read_units == [32]
+    slot, revised = memory.write(keys[40], values[41])  # a write recognises through it too
+    assert (slot, revised) == (40, True)
+    near = unit(keys[9] + 0.01 * rng.standard_normal(32) / np.sqrt(32))
+    assert memory.read(near, credit=False).first() == 9
+
+
+def test_the_growing_table_and_the_store_on_disk_are_checked_and_off_by_default(tmp_path):
+    plain = LongTermMemory(8, 8, 32)
+    assert plain.grow is False and plain.path is None and plain.sure == 0.0
+    assert not {"grow", "path", "sure"} & set(plain.to_dict())
+    for settings in ({"grow": True}, {"grow": 1, "pairs": 8, "direct": 0},
+                     {"sure": 0.9}, {"sure": 2.0, "pairs": 8, "direct": 0},
+                     {"sure": True, "pairs": 8, "direct": 0}):
+        with pytest.raises(ValueError):
+            LongTermMemory(8, 8, 3000, **settings)
+    with pytest.raises(ValueError, match="address of pairs"):
+        LongTermMemory(8, 8, 30000, path=tmp_path / "units")  # the address of units, on disk
+    with pytest.raises(ValueError, match="under 2\\*\\*28"):
+        LongTermMemory(8, 8, 1 << 28, pairs=8, grow=True, direct=0)
