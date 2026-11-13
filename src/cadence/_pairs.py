@@ -137,7 +137,7 @@ def _count(units: Any, flat: Any, depth: Any, expansion: Any, bits: Any, capacit
 
 
 def _count_rows(rows: Any, tags: Any, capacity: Any, hits: Any, touched: Any) -> int:
-    """The same count over cells' rows already gathered, ``rows[q]`` the row of pair ``q``."""
+    """The same count over cells' rows gathered before, ``rows[q]`` the row of pair ``q``."""
     n = 0
     depth = rows.shape[1]
     for q in range(rows.shape[0]):

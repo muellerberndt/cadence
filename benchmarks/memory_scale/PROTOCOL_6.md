@@ -1,6 +1,7 @@
 # A brain with its own million records, beside the controls: the sixth declaration
 
-Declared 13 November 2026, before the first run on its founders. Issue:
+**A draft, not declared.** No life of its founders has run; it is posted on the issue before
+its first run. Issue:
 [#310](https://github.com/muellerberndt/cadence/issues/310), gates C6 (at 1,000,000 records) and
 C7. It follows [the fifth declaration](PROTOCOL_5.md), which read a brain with its own records at
 100,000. Instruments: `brain_records.py` and `window.py`; plans: [`protocol-6/`](protocol-6);
@@ -34,8 +35,8 @@ are what they were (contract tests), and a brain saves in the format it had.
   signature (`LongTermMemory(same=8)`, all 8 of its units), and a read or a write that carries a
   source ends early (`sure`) only at a record that holds its signature.
 
-A brain whose records grow, lie in files or are told apart saves as `cadence-brain/5`, which
-0.99.0 and earlier refuse by name.
+A brain whose records grow, lie in files, end a read early or are told apart saves as
+`cadence-brain/5`, which 0.99.0 and earlier refuse by name.
 
 ## What is designed, by name
 
@@ -147,7 +148,10 @@ facts, stale .000, every one of the 100,000 facts a record of its own and every 
 revisions a revision, on founder 5 whose facts share their key with another fact in 10.4% of
 cases.
 
-MILLION2
+A development reading at the lexicon of 512 stems and 1,024 verbs (founder 4, whose agents keep
+887 codes of 1,024, 100,000 facts, the nursery of 1,500 rounds) stopped with its box before its
+reading was written; the declaration states its nursery and its found and used before C6c and C6d
+are declared.
 
 **C6c, C6d and C6e** are expected to hold, found at .99 to 1.00 on every founder, with used within
 .01 of found.

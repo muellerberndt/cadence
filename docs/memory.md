@@ -2781,7 +2781,7 @@ memory. Three settings lift both limits. Each is off unless you set it.
   few of its pairs. With `sure=0.999` a read of one head first reads the pairs of the cue's
   `pairs` most driven units, 120 cells in place of 32,640. Where a record found there holds a key
   at that cosine to the cue, the read ends with it: the whole read would choose it too, unless
-  a second record of nearly the same key lies closer still. A cue that no record holds so
+  a second record of nearly the same key lies even closer. A cue that no record holds so
   closely (a noisy or partial one) is read in full. `sure` needs `cosine=True`.
 
 ```python

@@ -87,7 +87,7 @@ store in memory does.
 pairs. With ``sure`` a read of one head at temperature 0 first reads the pairs of the cue's
 ``pairs`` most driven units, then of four times as many, and ends where a record found under
 the most pairs holds a key at cosine ``sure`` or above to the cue: that record is the read's
-first choice. It is the whole read's choice unless another record lies closer still to the cue,
+first choice. It is the whole read's choice unless another record lies even closer to the cue,
 which at ``sure`` near 1 asks for a second record of nearly the same key (a read by cosine:
 ``sure`` needs ``cosine=True``). A cue no record holds so closely is read in full. A read or a
 write that carries a ``source`` ends there only where that record's signature agrees with the
@@ -291,7 +291,7 @@ class LongTermMemory:
     MIX = 0x9E3779B97F4A7C15
     EMPTY = 0xFFFFFFFF
     BLOCK = 2048  # the pairs the compiled coarse stage fetches side by side
-    # the table that grows: the entries a cell is split for (a cell not yet split in a round
+    # the table that grows: the entries a cell is split for (a cell unsplit in a round
     # holds up to twice as many), the bytes of table a fill writes in one pass, and the slots
     # found under the most pairs that a read with ``sure`` scores before it reads on
     GROW_LOAD = 6
@@ -1268,7 +1268,7 @@ class LongTermMemory:
         """Write many records told once, in one pass, and return their slots. Each takes an
         empty slot as a write with ``recognised=-1`` does: nothing is read, so a key told twice
         holds two records. The memory must have the empty slots. With ``file=False`` (a table
-        that grows) the records are written and not yet filed under their pairs, so several
+        that grows) the records are written and left unfiled under their pairs, so several
         fills share one pass over the table: ``file()`` files them, and so does the next
         write or read."""
         keys, values = np.asarray(keys), np.asarray(values)

@@ -1,6 +1,7 @@
 # Records at any size, on disk: the seventh declaration
 
-Declared 13 November 2026, before the first run on its founders. Issue:
+**A draft, not declared.** No cell of its founders has run; it is posted on the issue before its
+first run. Issue:
 [#310](https://github.com/muellerberndt/cadence/issues/310): the scope of its comment of 13
 November (a store that grows past the machine's memory, read at 10,000,000 and 100,000,000
 records; the law of the read's time and of the bytes per record; records added while the store
@@ -107,4 +108,39 @@ A store of 100,000,000 `code-128` records holds about 220 GB.
 
 ## Expectations, stated before the runs
 
-EXPECTATIONS
+From development founders 1 and 2 on the r7i (a shared box; every time below is development):
+
+- **Found.** At `winners=256, candidates=4096` (the fourth declaration's) the store read
+  `code-128` noisy and partial cues at .996 and .995 (100,000), .990 and .993 (1,000,000), .988
+  and .986 (10,000,000), the scan 1.000 at each; `hashed-280` partial at 10,000,000 .926 against
+  the scan's .954, a gap of .028. A probe of 500 cues a kind located the misses: records named
+  under none or one of the cue's pairs. At 10,000,000 records 384 winners and 8,192 candidates
+  read `code-128` noisy 1.000 and partial .994, `hashed-280` noisy .996 and partial .942; 512
+  winners gain under .005 more at about 1.5 times the cells. S1 and S1h are expected to hold at
+  10,000,000 with gaps to the scan of .01 and under.
+- **A hundred million.** A development store of 100,000,000 records (founder 2) stopped with its
+  box while it was being built; the declaration states its found, bytes and build time, read at
+  the settings above, before S1 at 100,000,000 is declared.
+- **The read's time.** A read of a cue with its pages in memory took 7.7, 9.0 and 8.0 ms at
+  100,000, 1,000,000 and 10,000,000 records (256 winners): the cells a read takes and the
+  records it scores do not grow with the records, and the projection of 65,536 units costs the
+  same at every size. S2 is expected to hold, each tenfold at 1.3 or under.
+- **Under the memory limit.** On the NVMe disk of an i4i (development founder 0, 10,000,000
+  records, `expansion=32768`, 256 winners, a 4 GB limit) a read of a held key took 8.6 ms on
+  average (about 120 page faults) and of a noisy or partial cue 147 to 148 ms (about 27,000 page
+  faults, fetched 64 at a time). With 384 winners and 8,192 candidates a cue takes about 2.6 times the
+  pages: expected 300 to 450 ms, under S3's 1,000 ms, and a held key under 10 ms.
+- **Writes.** A write took 1.4 to 3.0 ms (99 of 100 under 2 ms where the box was quiet; the
+  worst, 122 to 390 ms, are the first writes' page faults), 18.8 to 19.6 cells a write while the
+  table grows, every new and earlier record found. S4a and S4b are expected to hold.
+- **Bytes.** 2,480, 2,177 and 2,124 bytes a record on the disk at 100,000, 1,000,000 and
+  10,000,000 (`code-128`): the key 512, the value 256, the units filed 64, the sums 32, the table
+  about 1,280 (120 entries of 4 bytes, six to a cell of sixteen), the fixed projection 33.5 MB
+  over the records. S5 is expected to hold.
+
+## Cost, stated before the runs
+
+A store of 10,000,000 records builds in about 20 minutes on 8 threads and reads in about 10;
+the found run takes about 12 hours of 8 threads beside the sixth declaration's brains. The
+store of 100,000,000 builds in about 2.5 hours on 16 threads; its copy to the bucket and back
+about 20 minutes each.
