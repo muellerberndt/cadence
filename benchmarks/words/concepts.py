@@ -31,7 +31,7 @@ taught by the senses alone: no naming lesson), ``"given"`` (protocol 1's given c
 thing's kind, the colour band of the hue at the unmoved boundaries, the unmoved quarters).
 
     python concepts.py <seed> [json settings]    # one life, its readings as JSON
-    python concepts.py run <out> <first> <count> [jobs]
+    python concepts.py run <out> <first> <count> [jobs] [arms]
     python concepts.py read <out>
 """
 
@@ -60,8 +60,9 @@ import world  # noqa: E402
 SHAPE = ((0.0, 1.0), (0.0, 1.0), (0.0, 1.0))  # roundness, elongation, size
 SPREAD, APART, EDGE = 0.04, 0.3, 0.1  # a kind's spread a feature; the least distance of kinds
 SHIFT, TURN = math.radians(15.0), math.radians(15.0)  # the teacher's moves of the boundaries
-GAP, MARGIN = math.radians(10.0), math.radians(8.0)  # a colour's held-out gap, kept from edges
-DEFAULTS = {**words.DEFAULTS, "naming_rooms": 60, "held_rooms": 16, "joint": True}
+GAP, MARGIN = math.radians(6.0), math.radians(6.0)  # a colour's held-out gap, kept from edges
+DEFAULTS = {**words.DEFAULTS, "naming_rooms": 160, "held_rooms": 16, "joint": True,
+            "naming_rates": (1 / 3, 1 / 3, 1 / 3)}
 TAU = 2.0 * math.pi
 
 
@@ -237,10 +238,11 @@ def script(seed: int, **given: Any) -> list[tuple[Any, ...]]:
             r.heading = heading
             t = r.things[int(rng.integers(len(r.things)))]
             u = rng.random()
-            word = (lex.kind[t.kind] if u < world.NAMING[0] else lex.colour[t.colour]
-                    if u < world.NAMING[0] + world.NAMING[1]
+            rates = settings["naming_rates"]
+            word = (lex.kind[t.kind] if u < rates[0] else lex.colour[t.colour]
+                    if u < rates[0] + rates[1]
                     else lex.place[tea.place(direction(heading, t.place))])
-            if settings["joint"] and u < world.NAMING[0] + world.NAMING[1]:
+            if settings["joint"] and u < rates[0] + rates[1]:
                 # the parrot turns its head to the thing whose kind or colour it is told; its
                 # body, and so what lies in front of it and behind it, stays as it is
                 events.append(("look", direction(0.0, t.place) + float(looks.uniform(-0.5, 0.5))))
@@ -326,15 +328,12 @@ class Given:
         colour = int(((float(hue) - self.origin) % TAU) // (TAU / world.COLOURS))
         return kind, colour
 
-    def see(self, map: Any, seen: Any, lit: Any = None) -> None:
+    def perceive(self, seen: Any, lit: Any = None) -> list[tuple[int, np.ndarray, dict[str, int]]]:
         out = []
         for shape, place, hue in seen:
             kind, colour = self.percept(shape, hue)
             out.append((kind, np.asarray(place).copy(), {"colour": colour}))
-        map.moment(seen=out, lit=lit)
-
-    def named(self, brain: Any, word: str, at: Any) -> dict[str, Any]:
-        return {}
+        return out
 
     def parameters(self) -> int:
         return 0
@@ -345,30 +344,40 @@ class Given:
 
 def make_brain(seed: int, brain: str = "learned", **settings: Any) -> tuple[Any, Any]:
     """The founder's brain and its concepts. ``"learned"`` and ``"senses"``:
-    ``cadence.words.concepts.LearnedWords`` on a map whose kinds and colours are the concepts'
-    neurons; ``"given"``: protocol 1's ``cadence.words.Words`` on the given concepts."""
+    ``cadence.words.concepts.LearnedWords`` on ``Concepts`` (24 kind and 12 colour concept
+    neurons, the map's units); ``"given"``: protocol 1's ``cadence.words.Words`` on the given
+    concepts. ``lexicon_rate`` is the lexicon's rate (0.2)."""
     from cadence.space.map import Map
-    from cadence.words import Lexicon, Words
+    from cadence.words import Words
     from cadence.words.concepts import Concepts, LearnedWords
 
-    tea = teacher(seed)
     rate = float(settings.pop("lexicon_rate", 0.2))
     if brain == "given":
-        given = Given(tea)
+        given = Given(teacher(seed))
         room = Map(world.PLANE, world.CELLS, units=world.KINDS,
                    values={"colour": world.COLOURS}, seed=int(seed))
-        lexicon = Lexicon({"kind": world.KINDS, "colour": world.COLOURS,
-                           "place": len(world.PLACE_NAMES), "read": 3, "none": 1}, rate=rate)
-        return Words(room, lexicon=lexicon, body=given.body), given
-    exclusive = bool(settings.pop("exclusive", True))
+        return Words(room, body=given.body, rate=rate, seed=int(seed)), given
+    kinds = int(settings.pop("kinds", 24))
+    colours = int(settings.pop("colours", 12))
     if brain == "senses":
         settings = {"vigilance": {"kind": 0.5, "colour": 0.15, "place": 0.15}, **settings,
                     "naming": False}
-    held = Concepts(SHAPE, **settings)
-    sizes = held.sizes()
-    room = Map(world.PLANE, world.CELLS, units=sizes["kind"], values={"colour": sizes["colour"]},
+    room = Map(world.PLANE, world.CELLS, units=kinds, values={"colour": colours},
                seed=int(seed))
-    return LearnedWords(room, held, exclusive=exclusive, rate=rate), held
+    held = Concepts(room, SHAPE, **settings)
+    return LearnedWords(room, held, rate=rate, seed=int(seed)), held
+
+
+def see(brain: Any, held: Any, r: world.Room, gaze: float) -> None:
+    """One moment of sight facing ``gaze``: the eyes' raw reports, through the brain's
+    concepts."""
+    from cadence.words.concepts import LearnedWords
+
+    raw = reports(r, gaze)
+    if isinstance(brain, LearnedWords):
+        brain.look(raw, world.camera(gaze))
+    else:
+        brain.look(held.perceive(raw), world.camera(gaze))
 
 
 def look_around(brain: Any, held: Any, r: world.Room) -> None:
@@ -376,18 +385,29 @@ def look_around(brain: Any, held: Any, r: world.Room) -> None:
     for i in range(9):
         heading = r.heading + (i % 8) * math.pi / 4 if i < 8 else r.heading
         brain.body.heading = heading
-        held.see(brain.map, reports(r, heading), world.camera(heading))
+        see(brain, held, r, heading)
 
 
 def turn(brain: Any, held: Any, r: world.Room, heading: float) -> None:
     r.heading = heading
     brain.body.heading = heading
-    held.see(brain.map, reports(r, heading), world.camera(heading))
+    see(brain, held, r, heading)
 
 
 def look(held: Any, brain: Any, r: world.Room, gaze: float) -> None:
     """The parrot turns its head to ``gaze``: one moment of sight there, its body as it is."""
-    held.see(brain.map, reports(r, gaze), world.camera(gaze))
+    see(brain, held, r, gaze)
+
+
+def ablate(brain: Any) -> Any:
+    """W6's twin: the brain's map, body and senses, and its lexicon with every word it heard
+    and its synapses at zero."""
+    from cadence.words import Lexicon, Words
+
+    arrays = brain.lexicon.arrays()
+    arrays["efficacy"] = np.zeros_like(arrays["efficacy"])
+    return Words(brain.map, senses=brain.senses, body=brain.body,
+                 lexicon=Lexicon.from_arrays(brain.lexicon.settings, arrays))
 
 
 def held_rate(brain: Any, held: Any, r: world.Room) -> list[bool]:
@@ -457,7 +477,7 @@ def life(seed: int, *, brain: str = "learned", record: Any = None, keep: Any = N
             ok = world.right(q, said)
             readings.setdefault(gate, []).append(ok)
             if gate.startswith("W1"):
-                ablated = ablated if ablated is not None else words.ablate(mind)
+                ablated = ablated if ablated is not None else ablate(mind)
                 readings.setdefault("W6_ablated", []).append(world.right(q, ablated.ask(q.text)))
             if gate.startswith("W1") and q.about == "out_of_view":
                 readings.setdefault("W4_out_of_view", []).append(ok)
@@ -592,21 +612,44 @@ def _switch(sweep: np.ndarray, said: list[str | None], before: str, after: str) 
 
 
 ARMS = ("learned", "senses", "given")
+CONTROLS = ("lstm_online", "lstm_offline", "transformer_online", "transformer_offline")
+PARAMETERS = 56864  # the learned brain's parameters at the defaults
+
+# the declared gates: (reading, threshold); a gate holds where the mean over the founders and at
+# least ten of twelve founders reach it
+GATES = {
+    "C1": [("C1_colour", 0.90), ("C1_kind", 0.95), ("C1_place", 0.90)],
+    "C2": [("C2_hue", 0.90), ("C2_shape", 0.90), ("C2_room", 0.90)],
+    "W1": [("W1", 0.95), ("W1_named_only", 0.95)],
+    "W2": [("W2", 0.90)],
+    "W3": [("W3", 0.90)],
+    "W4": [("W4_never_seen", 0.95), ("W4_never_taught", 0.95)],
+    "W5": [("W5_by_colour", 0.90), ("W5_by_place", 0.90)],
+}
+READINGS = ["C1_colour", "C1_kind", "C1_place", "C2_hue", "C2_shape", "C2_room", "W1",
+            "W1_named_only", "W2", "W3", "W4_out_of_view", "W4_map_rate", "W4_never_seen",
+            "W4_never_taught", "W5_by_colour", "W5_by_place", "W6_ablated"]
 
 
-def jobs(out: Path, first: int, count: int, arms: Any = ARMS,
+def jobs(out: Path, first: int, count: int, arms: Any = ARMS + CONTROLS,
          settings: dict[str, Any] | None = None) -> list[tuple[Path, list[str]]]:
     python = sys.executable
     todo = []
     for seed in range(first, first + count):
         for arm in arms:
+            if arm in CONTROLS:
+                model, mode = arm.split("_")
+                todo.append((out / f"{arm}_{seed}.json",
+                             [python, str(HERE / "concepts_controls.py"), str(seed), model, mode,
+                              str(PARAMETERS)]))
+                continue
             told = json.dumps({"brain": arm, **(settings or {})})
             todo.append((out / f"{arm}_{seed}.json",
                          [python, str(HERE / "concepts.py"), str(seed), told]))
     return todo
 
 
-def run(out: Path, first: int, count: int, workers: int, arms: Any = ARMS,
+def run(out: Path, first: int, count: int, workers: int, arms: Any = ARMS + CONTROLS,
         settings: dict[str, Any] | None = None) -> None:
     out.mkdir(parents=True, exist_ok=True)
     env = {**os.environ, "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1",
@@ -630,12 +673,81 @@ def run(out: Path, first: int, count: int, workers: int, arms: Any = ARMS,
             print(line, flush=True)
 
 
+def boundaries(lives: list[dict[str, Any]], sense: str) -> dict[str, float]:
+    """C3 over every founder's boundaries of a sense: the slope of where the brain's words change
+    on where the teacher's do (both from the unmoved place), the mean distance between the two,
+    and the share of the boundaries the teacher moved by 5 degrees or more on which the brain's
+    lies nearer its own teacher's than the unmoved place."""
+    moved = np.concatenate([life[f"C3_{sense}_moved"] for life in lives])
+    found = np.concatenate([life[f"C3_{sense}_found"] for life in lives])
+    error = np.abs(np.concatenate([life[f"C3_{sense}_error"] for life in lives]))
+    far = np.abs(moved) >= 5.0
+    return {"slope": float(np.polyfit(moved, found, 1)[0]), "error": float(error.mean()),
+            "nearer": float(np.mean(np.abs(found - moved)[far] < np.abs(found)[far])),
+            "boundaries": int(len(moved))}
+
+
+def read(out: Path) -> dict[str, Any]:
+    """The table of every arm and each gate's verdict on the learned brain."""
+    arms: dict[str, list[dict[str, Any]]] = {}
+    for path in sorted(out.glob("*.json")):
+        arms.setdefault(path.stem.rsplit("_", 1)[0], []).append(json.loads(path.read_text()))
+    head = ["arm", "founders", "parameters", "multiply-accumulates", "seconds"] + READINGS
+    print("| " + " | ".join(head) + " |")
+    print("|" + " --- |" * len(head))
+    for arm, lives in arms.items():
+        row = [arm, str(len(lives)), str(lives[0].get("parameters", "")),
+               f"{np.mean([life.get('macs', 0) for life in lives]):.3g}",
+               f"{np.mean([sum(life['seconds'].values()) for life in lives]):.0f}"]
+        for name in READINGS:
+            values = [life[name] for life in lives if name in life and life[name] == life[name]]
+            row.append(f"{np.mean(values):.3f}" if values else "")
+        print("| " + " | ".join(row) + " |")
+    verdicts: dict[str, Any] = {}
+    brain = arms.get("learned", [])
+    for gate, needs in GATES.items():
+        held, parts = True, []
+        for name, threshold in needs:
+            values = np.array([life[name] for life in brain])
+            reach = int((values >= threshold).sum())
+            ok = bool(len(values)) and values.mean() >= threshold and reach >= min(
+                10, len(values))
+            held &= ok
+            parts.append(f"{name} mean {values.mean():.3f}, {reach} of {len(values)} at "
+                         f"{threshold}")
+        verdicts[gate] = held
+        print(f"{gate}: {'holds' if held else 'fails'} ({'; '.join(parts)})")
+    for arm in ("learned", "senses", "given"):
+        for sense in ("colour", "place"):
+            if arms.get(arm):
+                c3 = boundaries(arms[arm], sense)
+                print(f"C3 {arm} {sense}: slope {c3['slope']:.3f}, mean error "
+                      f"{c3['error']:.2f} degrees, nearer its own teacher {c3['nearer']:.3f} "
+                      f"({c3['boundaries']} boundaries)")
+    if brain:
+        c3 = {s: boundaries(brain, s) for s in ("colour", "place")}
+        verdicts["C3"] = all(c3[s]["slope"] >= 0.8 and c3[s]["error"] <= 4.0 for s in c3) and (
+            c3["colour"]["nearer"] >= 0.8)
+        print(f"C3: {'holds' if verdicts['C3'] else 'fails'}")
+        gaps = [abs(life["W4_out_of_view"] - life["W4_map_rate"]) for life in brain]
+        verdicts["W4_out_of_view"] = max(gaps) <= 0.02
+        print(f"W4 out of view: {'holds' if verdicts['W4_out_of_view'] else 'fails'} (largest "
+              f"gap from the map's own rate {max(gaps):.3f})")
+        ablated = [life["W6_ablated"] for life in brain]
+        verdicts["W6"] = max(ablated) <= 0.05
+        print(f"W6 ablation: the lexicon's synapses at zero answer W1 at {max(ablated):.3f} at "
+              "most")
+    return verdicts
+
+
 if __name__ == "__main__":
     if sys.argv[1] == "run":
         run(Path(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]),
             int(sys.argv[5]) if len(sys.argv) > 5 else 15,
-            sys.argv[6].split(",") if len(sys.argv) > 6 else ARMS,
+            sys.argv[6].split(",") if len(sys.argv) > 6 else ARMS + CONTROLS,
             json.loads(sys.argv[7]) if len(sys.argv) > 7 else None)
+    elif sys.argv[1] == "read":
+        read(Path(sys.argv[2]))
     else:
         told = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {}
         print(json.dumps(life(int(sys.argv[1]), **told), default=float))

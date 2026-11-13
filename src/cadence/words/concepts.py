@@ -55,7 +55,7 @@ from typing import Any
 import numpy as np
 
 from .lexicon import Lexicon
-from .room import Body, Words
+from .room import Body, Senses, Words
 
 GROUPS = ("kind", "colour", "place")  # the regions, in the lexicon's order of its groups
 
@@ -183,12 +183,16 @@ class Region:
 
     def recruit(self, reading: Any, *, by: str = "senses") -> int | None:
         """The next silent concept neuron enters on ``reading``: its synapses are set so that it
-        settles at ``level`` there. None where every neuron has entered."""
+        settles at ``level`` there, or above the most active concept there where that one is at
+        ``level`` or more (a concept split from it wins its reading). None where every neuron
+        has entered."""
         if self.used >= self.capacity:
             return None
         unit = self.used
         lit = np.tanh(self.code(reading)[0] / 2.0)  # the sense neurons' activity there
-        held = 2.0 * math.atanh(self.level)  # the potential that settles at level
+        top = float(self.settle(reading)[0].max()) if self.used else 0.0
+        win = min(max(self.level, top + 0.05), 0.95)
+        held = 2.0 * math.atanh(win)  # the potential that settles there
         efficacy = np.asarray(self.graph.efficacy, dtype=np.float64).copy()
         into = np.asarray(self.connectome.post) == self.inputs + unit
         efficacy[into] = held * lit[np.asarray(self.connectome.pre)[into]] / max(
@@ -249,21 +253,34 @@ class Around(Body):
         return np.asarray(self.region.winners(self.angle(centers)) == int(place))
 
 
-class Concepts:
-    """The regions of concepts a brain learns: ``kind`` over the ``shape`` features (their
-    ranges; ``per`` tuned inputs a feature), ``colour`` over the hue (``hues`` tuned inputs)
-    and ``place`` over the direction around the body (``directions``), with ``kinds``,
-    ``colours`` and ``places`` concept neurons. ``words`` is the most words the images hold (the
-    lexicon's capacity). ``vigilance`` is every region's, or ``{group: share}``. ``margin``,
-    ``sure`` and ``least`` decide the sense a word names; ``naming`` False
-    keeps every naming from the regions (the senses alone teach them: a control), and then every
-    region takes new concepts from its senses."""
+class Concepts(Senses):
+    """The senses of ``cadence.words.Words`` with concepts it learns, in place of the given ones
+    (``Words(map, senses=Concepts(map, shape))``): ``kind`` over the ``shape`` features (their
+    ranges; ``per`` tuned inputs a feature), one concept neuron a kind unit of the map,
+    ``colour`` over the hue (``hues`` tuned inputs), one a unit of the map's ``colour`` values,
+    and ``place`` over the direction around the body (``directions``), ``places`` concept
+    neurons. ``words`` is the most words the images hold (the lexicon's capacity).
+    ``vigilance`` is every region's, or ``{group: share}``. ``margin``, ``sure`` and ``least``
+    decide the sense a word names. ``naming`` False keeps every naming from the regions (the
+    senses alone teach them: a control), and then every region takes new concepts from its
+    senses. ``exclusive`` keeps a naming from teaching a word a concept another word of its
+    sense names more (mutual exclusivity).
 
-    def __init__(self, shape: Any, *, kinds: int = 24, colours: int = 12, places: int = 10,
-                 per: int = 8, hues: int = 48, directions: int = 48, words: int = 256,
-                 level: float = 0.5, vigilance: Any = 0.5, rate: float = 0.3,
-                 margin: float = 1.5, sure: float = 0.1, least: int = 5, naming: bool = True,
-                 backend: Any = "cpu"):
+    The calls of the senses (``groups``, ``describe``, ``find``) read the map, which holds each
+    thing's kind and colour concepts, and the place region; ``perceive`` turns the eyes' raw
+    reports into the map's, and ``named`` takes a naming's lesson and gives the concepts the
+    lexicon's lesson teaches."""
+
+    def __init__(self, map: Any, shape: Any, *, places: int = 10, per: int = 8,
+                 hues: int = 48, directions: int = 48, words: int = 256, level: float = 0.5,
+                 vigilance: Any = 0.5, rate: float = 0.3, margin: float = 1.5,
+                 sure: float = 0.1, least: int = 5, naming: bool = True,
+                 exclusive: bool = True, backend: Any = "cpu"):
+        if "colour" not in map.values:
+            raise ValueError("learned concepts take a map with colour values: "
+                             "Map(units=kinds, values={'colour': colours})")
+        kinds = len(map.codes)
+        colours = map.values["colour"].stop - map.values["colour"].start
         watch = dict(vigilance) if isinstance(vigilance, dict) else dict.fromkeys(
             GROUPS, float(vigilance))
         options = {"level": level, "rate": rate, "backend": backend}
@@ -272,20 +289,20 @@ class Concepts:
                            vigilance=watch["kind"], **options),
             "colour": Region(Circle(hues), colours, senses=not naming,
                              vigilance=watch["colour"], **options),
-            "place": Region(Circle(directions), places, senses=not naming,
+            "place": Region(Circle(directions), int(places), senses=not naming,
                             vigilance=watch["place"], **options)}
+        super().__init__(map, Around(self.regions["place"]))
+        self.groups = {"kind": kinds, "colour": colours, "place": int(places)}
         self.margin, self.sure, self.naming = float(margin), float(sure), bool(naming)
-        self.least = int(least)
-        self.learning = True  # False: the regions and the images hold still (a test)
-        self.settings = {"shape": [list(map(float, r)) for r in shape], "kinds": int(kinds),
-                         "colours": int(colours), "places": int(places), "per": int(per),
-                         "hues": int(hues), "directions": int(directions), "words": int(words),
-                         "level": level, "vigilance": vigilance, "rate": rate,
-                         "margin": margin, "sure": sure, "least": int(least),
-                         "naming": bool(naming)}
-        self.body = Around(self.regions["place"])
+        self.least, self.exclusive = int(least), bool(exclusive)
+        self.learning = True  # False: the regions and the images keep as they are (a test)
+        self.settings = {"shape": [[float(v) for v in r] for r in shape], "places": int(places),
+                         "per": int(per), "hues": int(hues), "directions": int(directions),
+                         "words": int(words), "level": level, "vigilance": vigilance,
+                         "rate": rate, "margin": margin, "sure": sure, "least": int(least),
+                         "naming": bool(naming), "exclusive": bool(exclusive)}
         # each word's image of each sense and how many namings it holds, and the base image
-        width = {"kind": kinds, "colour": hues, "place": directions}
+        width = {"kind": kinds, "colour": int(hues), "place": int(directions)}
         self.images = {g: np.zeros((int(words), width[g])) for g in GROUPS}
         self.counts = {g: np.zeros(int(words), dtype=np.int64) for g in GROUPS}
         self.base = {g: np.zeros(width[g]) for g in GROUPS}
@@ -293,10 +310,26 @@ class Concepts:
         self.sight: list[tuple[np.ndarray, np.ndarray, float]] = []  # this moment's reports
         self.lit: Any = None
         self.log = {"lessons": 0, "splits": 0, "unsure": 0, "objects": 0}
+        self.last: dict[str, Any] = {}  # what the latest naming did in each region
 
-    def sizes(self) -> dict[str, int]:
-        """Each group's concept neurons, as the lexicon's groups take them."""
-        return {g: self.regions[g].capacity for g in GROUPS}
+    # -- the calls of the senses
+
+    def describe(self, place: Any) -> dict[str, np.ndarray] | None:
+        """Each group's pattern of the thing at a place: its kind and colour concepts as the map
+        holds them, and the place concept of its direction (a group at rest where it holds no
+        concept). None where the map holds nothing there."""
+        kind = self.map.what_is_at(place)
+        if kind is None:
+            return None
+        colour = self.map.values_at(place)["colour"]
+        around = self.body.place(place)
+        rest = {g: np.zeros(n) for g, n in self.groups.items()}
+        out = {"kind": np.eye(self.groups["kind"])[int(kind)],
+               "colour": rest["colour"] if colour is None else np.eye(
+                   self.groups["colour"])[int(colour)],
+               "place": rest["place"] if around is None else np.eye(
+                   self.groups["place"])[int(around)]}
+        return out
 
     # -- the senses into the map
 
@@ -313,23 +346,22 @@ class Concepts:
             out.append(found)
         return out[0], out[1]
 
-    def see(self, map: Any, reports: Any, lit: Any = None) -> None:
-        """One moment of sight: ``reports`` are the eyes' ``(shape, place, hue)`` of each thing
-        in view; each becomes the map's report of its kind and colour concepts."""
+    def perceive(self, seen: Any, lit: Any = None) -> list[tuple[int, np.ndarray, dict[str, int]]]:
+        """One moment of sight: ``seen`` holds the eyes' ``(shape, place, hue)`` of each thing
+        in view; gives the map's reports, each thing's kind and colour concepts at its place."""
         self.sight = [(np.asarray(s, dtype=np.float64).copy(),
                        np.asarray(p, dtype=np.float64).reshape(2).copy(), float(h))
-                      for s, p, h in reports]
+                      for s, p, h in seen]
         self.lit = lit
-        self._write(map)
+        return self._reports()
 
-    def _write(self, map: Any) -> None:
-        seen = []
+    def _reports(self) -> list[tuple[int, np.ndarray, dict[str, int]]]:
+        out = []
         for shape, place, hue in self.sight:
             kind, colour = self.percept(shape, hue)
-            if kind is None:
-                continue
-            seen.append((kind, place.copy(), {} if colour is None else {"colour": colour}))
-        map.moment(seen=seen, lit=self.lit)
+            if kind is not None:
+                out.append((kind, place.copy(), {} if colour is None else {"colour": colour}))
+        return out
 
     # -- a naming's lesson
 
@@ -343,11 +375,11 @@ class Concepts:
         x = np.maximum(self.regions[group].code(reading)[0], 0.0)
         return np.asarray(x / max(float(np.linalg.norm(x)), 1e-12))
 
-    def _context(self, brain: Any) -> dict[str, np.ndarray]:
+    def _context(self) -> dict[str, np.ndarray]:
         """What each sense gives at this moment over every thing the brain holds: the kinds and
         the directions of the things on the map, the hues of the things in sight."""
         out: dict[str, list[np.ndarray]] = {g: [] for g in GROUPS}
-        for entry in brain.map.things():
+        for entry in self.map.things():
             if entry["place"] is None:
                 continue
             out["kind"].append(self._image("kind", entry["kind"]))
@@ -356,15 +388,17 @@ class Concepts:
             out["colour"].append(self._image("colour", hue))
         return {g: np.mean(v, axis=0) for g, v in out.items() if v}
 
-    def named(self, brain: Any, word: str, at: Any) -> dict[str, Any]:
-        """The lesson of a naming, before the lexicon's: ``word`` heard while ``brain`` (a
-        ``LearnedWords``) attends to the thing at ``at``. The readings of this moment are a kind
-        and a colour where the eyes see the thing (the kind the map holds there where they do
-        not), the direction of its place always. Gives what the naming did in each region."""
+    def named(self, brain: Any, word: str, at: Any) -> np.ndarray | None:
+        """A naming: ``word`` heard while ``brain`` (a ``cadence.words.Words`` on these senses)
+        attends to the thing at ``at``. The regions take the naming's lesson first, from the
+        readings of this moment: a kind and a colour where the eyes see the thing (the kind the
+        map holds there where they do not), the direction of its place always. Gives the
+        concepts the lexicon's lesson teaches (``_taught``); what the regions did is in
+        ``last``."""
         if not self.learning:
-            return {}
+            return self._taught(brain, word, at)
         lexicon = brain.lexicon
-        unit = lexicon._enter(word)
+        unit = lexicon.enter(word)
         place = np.asarray(at, dtype=np.float64).reshape(2)
         readings: dict[str, Any] = {"place": float(self.body.angle(place)[0])}
         sighted = [r for r in self.sight if np.linalg.norm(r[1] - place) <= 1e-6]
@@ -380,11 +414,11 @@ class Concepts:
             if region.senses and g in readings and not region.explained(readings[g])[1]:
                 changed = region.recruit(readings[g]) is not None or changed
         if self.naming:  # the word's image and the base take this moment's readings
-            for g, x in self._context(brain).items():
+            for g, x in self._context().items():
                 self.based[g] += 1
                 self.base[g] += (x - self.base[g]) / self.based[g]
             kind = self.regions["kind"].concept(readings["kind"]) if sighted else (
-                brain.map.what_is_at(place))
+                self.map.what_is_at(place))
             for g, reading in (("kind", kind), ("colour", readings.get("colour")),
                                ("place", readings["place"])):
                 if reading is None:
@@ -407,25 +441,48 @@ class Concepts:
             if own is None:
                 new = region.recruit(reading, by="naming")
                 done[g] = ("split", new)
-                self.log["splits"] += 1
-                changed = changed or new is not None
+                if new is not None:
+                    self.log["splits"] += 1
+                    changed = True
             else:
                 done[g] = ("lesson", own, region.lesson(reading, own))
                 self.log["lessons"] += 1
                 changed = True
-        if changed and sighted:
-            self._write(brain.map)  # the thing seen again, through the concepts as they are now
-        return done
+        if changed and sighted:  # the thing seen again, through the concepts as they are now
+            self.map.moment(seen=self._reports(), lit=self.lit)
+        self.last = done
+        return self._taught(brain, word, at)
+
+    def _taught(self, brain: Any, word: str, at: Any) -> np.ndarray | None:
+        """The concepts a naming teaches the lexicon: the thing's, each group at its share; a
+        word whose image names a sense is taught that sense's concept alone (its other concepts
+        fade), and with ``exclusive`` a concept another word of its sense names more is left at
+        rest. None where the map holds nothing there."""
+        described = self.describe(at)
+        if described is None:
+            return None
+        unit = brain.lexicon.unit(word)
+        group = self.group_of(unit)
+        for g, pattern in described.items():
+            keep = group is None or g == group
+            if keep and self.exclusive and pattern.max() > 0:
+                keep = not self.claimed(brain.lexicon, (g, int(np.argmax(pattern))), unit)
+            if not keep:
+                described[g] = np.zeros_like(pattern)
+        return np.asarray(brain.concepts(described, brain.shares))
 
     def _unnamed(self, brain: Any, unit: int, place: np.ndarray, new: int = 3) -> bool:
         """Whether a word heard ``new`` times or fewer names the thing as a new kind (mutual
         exclusivity and the whole thing): every concept of the thing there, its kind, its colour
-        and its place, is named more by another word of that concept's sense."""
+        and its place, is named more by another word of that concept's sense or of no sense
+        yet."""
         if self.counts["kind"][unit] > new:
             return False
-        concepts = brain.attend(place)
-        return len(concepts) == len(GROUPS) and all(
-            self.claimed(brain.lexicon, c, unit) for c in concepts)
+        described = self.describe(place)
+        if described is None or any(p.max() <= 0 for p in described.values()):
+            return False
+        return all(self.claimed(brain.lexicon, (g, int(np.argmax(p))), unit, new=True)
+                   for g, p in described.items())
 
     def standing(self, unit: int) -> dict[str, float]:
         """How far a word's image of each sense stands apart from the base: the squared
@@ -458,15 +515,18 @@ class Concepts:
             self.log["unsure"] += 1
         return found
 
-    def claimed(self, lexicon: Lexicon, concept: tuple[str, int], unit: int | None) -> bool:
+    def claimed(self, lexicon: Lexicon, concept: tuple[str, int], unit: int | None, *,
+                new: bool = False) -> bool:
         """Whether another word of the concept's own sense names the concept more than the word
         neuron ``unit`` does: the concept settles to the words, and the most active word, where
-        one is active, is of the concept's sense and not ``unit``."""
+        one is active, is of the concept's sense and not ``unit``. With ``new``, a word of no
+        sense yet claims it as well."""
         words = lexicon.words_for(concept)
         if not len(words) or words.max() <= 1e-3:
             return False
         top = int(np.argmax(words))
-        return top != unit and self.group_of(top) == concept[0]
+        held = self.group_of(top)
+        return top != unit and (held == concept[0] or (new and held is None))
 
     def _own(self, lexicon: Lexicon, word: str, group: str, most: int = 3) -> int | None:
         """The word's concept in ``group``: of the concepts the word names most there (by the
@@ -495,63 +555,27 @@ class Concepts:
 
 
 class LearnedWords(Words):
-    """``cadence.words.Words`` on concepts it learns (``Concepts``): the map's kinds and colours
-    are the concepts' neurons, the body is the concepts' ``Around``, and the lexicon's groups are
-    the concepts' regions. ``exclusive`` keeps a naming from teaching the word a concept another
-    word names more (mutual exclusivity). ``rate`` is the lexicon's."""
+    """``cadence.words.Words`` whose senses are ``Concepts``: ``look`` passes the eyes' raw
+    reports through ``Concepts.perceive`` before the map takes them, and ``name`` takes
+    ``Concepts.named``'s lesson and concepts. The two calls a ``Words`` makes of senses that
+    have ``perceive`` and ``named``; this class makes them on a ``Words`` that does not."""
 
-    def __init__(self, map: Any, concepts: Concepts, *, exclusive: bool = True,
-                 rate: float = 0.2, capacity: int = 256, **settings: Any):
-        sizes = concepts.sizes()
-        held = map.values.get(settings.get("group", "colour"))
-        if len(map.codes) != sizes["kind"] or held is None or (
-                held.stop - held.start != sizes["colour"]):
-            raise ValueError("the map holds one kind a kind concept and one value a colour "
-                             "concept: Map(units=kinds, values={'colour': colours})")
-        lexicon = Lexicon({"kind": sizes["kind"], "colour": sizes["colour"],
-                           "place": sizes["place"], "read": 3, "none": 1}, rate=rate,
-                          capacity=capacity)
-        super().__init__(map, lexicon=lexicon, body=concepts.body, **settings)
-        self.concepts, self.exclusive = concepts, bool(exclusive)
+    def __init__(self, map: Any, concepts: Concepts, **settings: Any):
+        if concepts.map is not map:
+            raise ValueError("the concepts read the brain's own map")
+        super().__init__(map, senses=concepts, body=concepts.body, **settings)
+        self.senses: Concepts = concepts
 
-    def see(self, reports: Any, lit: Any = None) -> None:
-        """One moment of sight from the eyes' raw reports ``(shape, place, hue)``."""
-        self.concepts.see(self.map, reports, lit)
+    def look(self, seen: Any = (), lit: Any = None, heard: Any = (), felt: Any = ()) -> None:
+        super().look(self.senses.perceive(seen, lit), lit, heard, felt)
 
-    def attend(self, place: Any) -> dict[tuple[str, int], float]:
-        kind = self.map.what_is_at(place)
-        if kind is None:
-            return {}
-        out = {("kind", int(kind)): self.shares[0]}
-        value = self.map.values_at(place)[self.group]
-        if value is not None:
-            out[("colour", int(value))] = self.shares[1]
-        around = self.body.place(place)
-        if around is not None:
-            out[("place", int(around))] = self.shares[2]
-        return out
-
-    def name(self, word: str, at: Any) -> float:
-        """A naming: the concepts' lesson, then the lexicon's. A word whose image names a sense
-        is taught that sense's concept alone (its other concepts fade); with ``exclusive``, a
-        concept another word of its sense names more is left at rest."""
-        self.concepts.named(self, word, at)
-        concepts = self.attend(at)
-        if not concepts:
+    def name(self, word: str | list[str], at: Any) -> float:
+        if not isinstance(word, str):
+            return super().name(word, at)
+        concepts = self.senses.named(self, word, at)
+        if concepts is None:
             return float("nan")
-        unit = self.lexicon.unit(word)
-        group = self.concepts.group_of(unit)
-        out = {}
-        for concept, share in concepts.items():
-            keep = group is None or concept[0] == group
-            if keep and self.exclusive and self.concepts.claimed(self.lexicon, concept, unit):
-                keep = False
-            out[concept] = share if keep else 0.0
-        return self.lexicon.name(word, out, groups=("kind", "colour", "place"))
-
-    def find(self, about: tuple[str, int] | None, read: int | None) -> list[tuple[str, int]]:
-        found = [c for c in super().find(about, read) if c[1] is not None]
-        return found or [("none", 0)]
+        return self.lexicon.name(word, concepts, groups=tuple(self.shares))
 
 
 __all__ = ["Around", "Circle", "Concepts", "Features", "LearnedWords", "Region"]

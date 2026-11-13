@@ -40,8 +40,24 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 import concepts  # noqa: E402
-import controls  # noqa: E402
 import world  # noqa: E402
+
+
+def _controls() -> Any:
+    """Protocol 1's controls under the name they take in this chamber's tests: several chambers
+    hold a ``controls.py`` (#306)."""
+    import importlib.util
+
+    if "words_controls" not in sys.modules:
+        spec = importlib.util.spec_from_file_location("words_controls", HERE / "controls.py")
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["words_controls"] = module
+        spec.loader.exec_module(module)
+    return sys.modules["words_controls"]
+
+
+controls = _controls()
 
 READINGS = 7
 MARKERS = ("PAD", "THING", "NAME", "ASK", "SAY", "END")

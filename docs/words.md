@@ -211,6 +211,70 @@ an object with `groups` (its concept groups, added to the lexicon) and any of:
 `Words(map, parts=[...])` takes them in order, and `Words(map, senses=...)` takes learned senses
 in place of the born ones: an object with `groups`, `describe(place)` and `find(group, pattern)`.
 
+## Concepts the parrot learns
+
+The given senses hand the brain its categories: a unit a kind, a unit a colour, the four quarters
+around the body. `cadence.words.concepts.Concepts` replaces them with concepts the brain learns. It
+is born with senses and no category:
+
+- the **hue** of a thing and the **direction** of a place from where the body faces, each over
+  inputs tuned around the circle (`Circle`), as hue-tuned and head-direction cells tile theirs;
+- a thing's **shape and size**, three features each over tuned inputs, an input a combination
+  (`Features`).
+
+Each sense feeds a **region** of concept neurons that start silent; the region settles and its most
+active neuron is the concept. A kind concept enters where a thing's shape is explained by none (a
+thing of a new shape is a new kind before any word names it). A colour or a place concept enters by
+naming. **Naming moves the boundaries**: a word's image of each sense (the mean reading of its
+namings) says which sense the word names, "red" the hue, "ball" the kinds, "behind" the direction.
+A naming then pulls the word's own concept up on the reading and every other concept of that
+region to rest, by the library's free and nudged phases. So the concept of red ends where this
+teacher stops saying "red", and a hue never shown is named by the nearest concept. A new word heard
+on a thing whose kind, colour and place each carry another word's name takes a new kind
+concept: a new word goes to what has no name.
+
+```python
+import numpy as np
+from cadence.space.map import Map
+from cadence.words.concepts import Concepts, LearnedWords
+
+room = Map((-2.0, 2.0, -2.0, 2.0), (16, 16), units=6, values={"colour": 4})
+concepts = Concepts(room, [(0.0, 1.0)] * 3, places=4)   # three shape features, each in 0 to 1
+parrot = LearnedWords(room, concepts)
+rng = np.random.default_rng(0)
+shapes = {"dako": np.array([0.2, 0.3, 0.4]), "mipu": np.array([0.7, 0.6, 0.5])}
+edges, colours = [0.0, 1.0, 3.0, 4.6], ["ruka", "beto", "gani", "sefo"]  # this teacher's hues
+for _ in range(320):                                     # namings of a thing in front
+    kind = str(rng.choice(list(shapes)))
+    hue, at = float(rng.uniform(0.0, 2 * np.pi)), np.array([1.2, rng.uniform(-0.6, 0.6)])
+    room.reset()
+    parrot.look([(shapes[kind] + rng.normal(0.0, 0.03, 3), at, hue)])  # what the eyes report
+    colour = colours[int(np.searchsorted(edges, hue, side="right")) - 1]
+    parrot.name(kind if rng.random() < 0.4 else colour, at)
+concepts.learning = False
+assert concepts.regions["colour"].used == 4             # one colour concept a colour word
+said = [parrot.lexicon.say(("colour", concepts.percept(shapes["dako"], h)[1]))
+        for h in (0.6, 0.9, 1.1, 1.4)]
+assert said == ["ruka", "ruka", "beto", "beto"]         # its boundary is this teacher's, at 1.0
+```
+
+`LearnedWords` is `Words` with these senses: `look` takes the eyes' raw reports `(shape, place,
+hue)`, and `name` takes the concepts' lesson before the lexicon's. The lexicon then teaches a word
+the concept of its own sense alone, and leaves at rest a concept another word of that sense names
+more. [`benchmarks/words/concepts.py`](../benchmarks/words/concepts.py) gives each founder a
+teacher whose boundaries move, holds hues and shapes out of training, and reads where the parrot's
+boundaries lie ([its declared protocol](../benchmarks/words/CONCEPTS_PROTOCOL.md)).
+
+| Setting | Default | What it sets |
+| --- | --- | --- |
+| `Concepts(places=)` | 10 | Place concept neurons (the kinds and colours are the map's units) |
+| `hues`, `directions`, `per` | 48, 48, 8 | Tuned inputs of the hue, the direction and each shape feature |
+| `vigilance` | 0.5 | The share of its level under which a reading is unexplained (kinds) |
+| `rate` | 0.3 | The share of its error a naming's lesson closes in a region |
+| `margin`, `sure`, `least` | 1.5, 0.1, 5 | How far a word's image must stand apart to name a sense, and from how many readings |
+| `naming` | True | False: the regions learn from the senses alone (a control) |
+| `exclusive` | True | A naming leaves at rest a concept another word of its sense names more |
+
 ## The chamber and its readings
 
 [`benchmarks/words`](../benchmarks/words/README.md) raises a brain over rooms of nonce words drawn

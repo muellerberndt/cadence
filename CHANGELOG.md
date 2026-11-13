@@ -29,6 +29,17 @@
   nothing. The reads act as gains on each found thing's concepts and compete for them
   (`sharpness`), and the motor hears a word before it says it. `Words(senses=, parts=)` takes
   learned senses and plug-in parts (records, a forecast, relations, counting).
+- **Concepts the parrot learns (`cadence.words.concepts`, opt-in).** `Concepts(map, shape)` are
+  senses for `Words` with no category given: a thing's shape features, its hue and the direction
+  of a place around the body, each over born tuned inputs (`Features`, `Circle`), feed regions of
+  concept neurons that start silent. A kind concept enters where no concept explains a shape; a
+  colour or place concept enters by naming. A word's image of each sense says which sense it
+  names, and a naming pulls the word's own concept up on the reading and the region's other
+  concepts to rest (free and nudged phases), so the boundaries are the teacher's.
+  `LearnedWords(map, concepts)` is `Words` on them: `look` takes the eyes' raw reports, `name`
+  takes the concepts' lesson, and the lexicon leaves at rest a concept another word of its sense
+  names more. The chamber `benchmarks/words/concepts.py` gives each founder a teacher whose
+  boundaries move (protocol: `benchmarks/words/CONCEPTS_PROTOCOL.md`).
 - **Pistachios (`Words.ask(explore=True)`, `Words.reward(amount)`)**: a right answer earns a
   reward, and the question's words of asking (those that name no concept) are taught the read the
   answer took, at the reward's surprise. A word that names a concept keeps no read.
