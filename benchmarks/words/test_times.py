@@ -88,7 +88,7 @@ def test_a_rolled_thing_is_in_three_places() -> None:
             it = e[3]
             assert len({world.place_of(heading, it[p]) for p in ("was", "now", "will")}) == 3
             assert min(times.edge(heading, it[p]) for p in ("was", "now", "will")) >= times.EDGE
-    assert sum(e[0] == "watch" for e in events) == 3 + 2 + 3
+    assert sum(e[0] == "watch" for e in events) == 3 + 2 * (2 + 3)  # a watch, then the turn
     assert not any(e[0] in ("roll", "watch") for e in times.script(9, **SHORT))
 
 

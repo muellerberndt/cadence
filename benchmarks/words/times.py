@@ -20,7 +20,7 @@ beside the founder's other words; "is" is the founder's word of protocol 1. One 
 A question about time names the thing by its kind's word: ``where <was|is> the <kind>``.
 
     python times.py <founder> ['{"test_rooms": 4}']    one brain's life, its readings
-    python times.py run <out> <first founder> <founders> [jobs]
+    python times.py run <out> <first founder> <founders> [jobs] [T1|T2]
     python times.py read <out>
 
 ``run`` writes one JSON file a life (``brain_<seed>.json``, ``<model>_<mode>_<seed>.json`` for
@@ -136,15 +136,16 @@ def question(lex: world.Lexicon, said: dict[str, str], heading: float, kind: int
 
 def roll_path(rng: np.random.Generator, at: dict[int, np.ndarray], kind: int, moments: Any,
               ahead: int, *, heading: float | None = None,
-              distinct: bool = False) -> tuple[np.ndarray, int, float] | None:
+              distinct: bool = False) -> tuple[np.ndarray, int, float, float] | None:
     """A roll of the thing of ``kind`` (``at`` holds every thing's place): a velocity of .03 to
     .06 m a moment, the moments it rolls while the parrot watches (``moments``: a number, or a
-    range drawn from) and the heading the parrot watches from (``heading``, else drawn within
-    .5 radians of the thing). The path to ``ahead`` moments after stays .15 m inside the plane,
-    .4 m from the parrot and .35 m from every other thing; with ``distinct`` the places around
-    the parrot where it began, where it is when the watch ends and where it is ``ahead`` moments
-    later are three, each ``EDGE`` or more from the edges of its place. None where no roll is
-    found."""
+    range drawn from), the heading the parrot watches from (``heading``, else drawn within .5
+    radians of the thing) and the heading it turns its head to for one more moment when the
+    watch ends (with ``distinct``, drawn; else the same). The path to ``ahead`` moments after
+    stays .15 m inside the plane, .4 m from the parrot and .35 m from every other thing; with
+    ``distinct`` the places around the parrot, as it faces when it has turned, where the thing
+    began, where it is then and where it is ``ahead`` moments later are three, each ``EDGE`` or
+    more from the edges of its place. None where no roll is found."""
     start = at[kind]
     for _ in range(4000):
         speed, a = rng.uniform(0.03, 0.06), rng.uniform(-math.pi, math.pi)
@@ -152,17 +153,19 @@ def roll_path(rng: np.random.Generator, at: dict[int, np.ndarray], kind: int, mo
         m = int(moments) if isinstance(moments, int) else int(rng.integers(*moments))
         h = (math.atan2(start[1], start[0]) + rng.uniform(-0.5, 0.5) if heading is None
              else float(heading))
-        path = start + np.arange(m + ahead + 1)[:, None] * v
+        final = float(rng.uniform(-math.pi, math.pi)) if distinct else h
+        turned = int(distinct)  # the moment the parrot turns its head
+        path = start + np.arange(m + turned + ahead + 1)[:, None] * v
         if np.abs(path).max() > 1.85 or np.linalg.norm(path, axis=1).min() < 0.4:
             continue
         if any(np.linalg.norm(path - q, axis=1).min() < 0.35 for k, q in at.items()
                if k != kind):
             continue
-        three = (start, path[m], path[m + ahead])
-        if distinct and (len({world.place_of(h, p) for p in three}) < 3
-                         or min(edge(h, p) for p in three) < EDGE):
+        three = (start, path[m + turned], path[m + turned + ahead])
+        if distinct and (len({world.place_of(final, p) for p in three}) < 3
+                         or min(edge(final, p) for p in three) < EDGE):
             continue
-        return v, m, float(h)
+        return v, m, float(h), final
     return None
 
 
@@ -227,9 +230,10 @@ def script(seed: int, **given: Any) -> list[tuple[Any, ...]]:
         events.append(("watch", heading, settings["watch"]))
 
     def rolled_room() -> tuple[world.Room, dict[str, Any], float] | None:
-        """A room one of whose things rolls while the parrot watches: the thing's ``kind``, its
-        place where it began (``was``), when the watch ends (``now``) and ``ahead`` moments
-        later (``will``), three places around the parrot; and the heading it watches from."""
+        """A room one of whose things rolls while the parrot watches, then turns its head: the
+        thing's ``kind``, its place where it began (``was``), when the parrot has turned
+        (``now``) and ``ahead`` moments later (``will``), three places around the parrot; and
+        the heading the parrot has turned to."""
         r = world.room(rng, trained, int(rng.integers(4, 7)))
         at = {t.kind: t.place.copy() for t in r.things}
         for i in rng.permutation(len(r.things)):
@@ -237,12 +241,12 @@ def script(seed: int, **given: Any) -> list[tuple[Any, ...]]:
             path = roll_path(rng, at, kind, (16, 29), settings["ahead"], distinct=True)
             if path is None:
                 continue
-            v, m, heading = path
+            v, m, heading, final = path
             events.extend([("room", r)] + ([("watch", heading, settings["rest"])]
                                            if settings["rest"] else [])
-                          + [("roll", kind, v), ("watch", heading, m)])
-            return r, {"kind": kind, "was": at[kind], "now": at[kind] + m * v,
-                       "will": at[kind] + (m + settings["ahead"]) * v}, heading
+                          + [("roll", kind, v), ("watch", heading, m), ("watch", final, 1)])
+            return r, {"kind": kind, "was": at[kind], "now": at[kind] + (m + 1) * v,
+                       "will": at[kind] + (m + 1 + settings["ahead"]) * v}, final
         return None
 
     def carried_room() -> tuple[world.Room, list[tuple[int, np.ndarray, np.ndarray]]]:
@@ -542,18 +546,21 @@ def sequences(seed: int, **given: Any) -> list[tuple[str, Any, Any]]:
         elif kind == "roll":
             assert r is not None
             roll(r, event[1], event[2])
+            start = next(t.place for t in r.things if t.kind == event[1])
+            r.extra.setdefault("paths", {})[event[1]] = [start.copy()]
         elif kind == "watch":
             assert r is not None
             heading, moments = event[1], int(event[2])
-            rolling = r.extra.get("rolling", {})
-            starts = {t.kind: t.place.copy() for t in r.things if t.kind in rolling}
+            rolling, paths = r.extra.get("rolling", {}), r.extra.get("paths", {})
             for t in r.things:
                 if t.kind in rolling:
-                    t.place = t.place + moments * rolling[t.kind]
+                    for _ in range(moments):
+                        t.place = t.place + rolling[t.kind]
+                        paths[t.kind].append(t.place.copy())
             r.heading = heading
             tracks = [[tok("TRACK"), tok(f"kind{k}")] + [
-                tok(cell(heading, start + round(i * moments / 4) * rolling[k]))
-                for i in range(5)] for k, start in starts.items()]
+                tok(cell(heading, path[round(i * (len(path) - 1) / 4)])) for i in range(5)]
+                for k, path in paths.items()]
             if r.extra.get("watched"):  # a watched room: each track is a lesson
                 out += [("train", [(track[:4] + [tok("SAY")], track[4:] + [tok("END")])], None)
                         for track in tracks]
@@ -646,27 +653,41 @@ PARAMETERS = 256 * (world.KINDS + world.COLOURS + 4 + 3 + 1 + 3)  # one efficacy
 CONTROLS = [(m, mode) for m in ("lstm", "transformer") for mode in ("online", "offline")]
 READINGS = ["W8_past", "W8_present", "W8_map_rate", "W8_barred", "W8_barred_refused", "W10",
             "W10_was", "W10_is", "still_where", "still_colour"]
+ROLLED = ["W9_future", "W9_forecast_rate", "W9_error", "W9_now_rate", "W9_map_kept",
+          "W10_three", "W10_three_was", "W10_three_is", "W10_three_will", "still_will"]
+# the declared protocols' chambers: T1 carries things (W8); T2 rolls them as well, with the
+# map's learned physics (W8 again, W9, W10)
+PROTOCOLS: dict[str, dict[str, Any]] = {
+    "T1": {},
+    "T2": {"practice_rooms": 20, "test_rooms": 15, "watch_rooms": 300, "roll_rooms": 40,
+           "roll_tests": 50, "physics": True},
+}
 
 
-def jobs(out: Path, first: int, count: int) -> list[tuple[Path, list[str]]]:
+def jobs(out: Path, first: int, count: int, protocol: str = "T1"
+         ) -> list[tuple[Path, list[str]]]:
+    import json
+
     python = sys.executable
+    told = json.dumps(PROTOCOLS[protocol])
     todo = []
     for seed in range(first, first + count):
-        todo.append((out / f"brain_{seed}.json", [python, str(HERE / "times.py"), str(seed)]))
+        todo.append((out / f"brain_{seed}.json",
+                     [python, str(HERE / "times.py"), str(seed), told]))
         for model, mode in CONTROLS:
             code = (f"import json,sys; sys.path.insert(0,{str(HERE)!r}); import times; "
                     f"print(json.dumps(times.control({seed}, {model!r}, {mode!r}, "
-                    f"{PARAMETERS}), default=float))")
+                    f"{PARAMETERS}, **times.PROTOCOLS[{protocol!r}]), default=float))")
             todo.append((out / f"{model}_{mode}_{seed}.json", [python, "-c", code]))
     return todo
 
 
-def run(out: Path, first: int, count: int, workers: int) -> None:
+def run(out: Path, first: int, count: int, workers: int, protocol: str = "T1") -> None:
     import gates
 
     out.mkdir(parents=True, exist_ok=True)
     keep = gates.jobs
-    gates.jobs = lambda o, f, c: jobs(o, f, c)  # gates.run's pool over this chamber's jobs
+    gates.jobs = lambda o, f, c: jobs(o, f, c, protocol)  # gates.run's pool over these jobs
     try:
         gates.run(out, first, count, workers)
     finally:
@@ -680,14 +701,16 @@ def read(out: Path) -> dict[str, Any]:
     arms: dict[str, list[dict[str, Any]]] = {}
     for path in sorted(out.glob("*.json")):
         arms.setdefault(path.stem.rsplit("_", 1)[0], []).append(json.loads(path.read_text()))
-    head = ["arm", "founders", "parameters", "multiply-accumulates", "seconds"] + READINGS
+    rolled = any("W9_future" in life for lives in arms.values() for life in lives)
+    names = READINGS + (ROLLED if rolled else [])
+    head = ["arm", "founders", "parameters", "multiply-accumulates", "seconds"] + names
     print("| " + " | ".join(head) + " |")
     print("|" + " --- |" * len(head))
     for arm, lives in arms.items():
         row = [arm, str(len(lives)), str(lives[0].get("parameters", "")),
                f"{np.mean([life.get('macs', 0) for life in lives]):.3g}",
                f"{np.mean([sum(life['seconds'].values()) for life in lives]):.0f}"]
-        for name in READINGS:
+        for name in names:
             values = [life[name] for life in lives if name in life and life[name] == life[name]]
             row.append(f"{np.mean(values):.3f} ({min(values):.2f}-{max(values):.2f})"
                        if values else "")
@@ -714,6 +737,14 @@ def read(out: Path) -> dict[str, Any]:
           f"records barred at {max(barred) if barred else float('nan'):.3f} at most; chance .25)")
     verdicts["W8"] = verdicts["W8_past"] and verdicts["W8_present"] and verdicts["W8_barred"]
     verdicts["W10_was_is"] = gate("W10", 0.95)
+    if rolled:
+        gaps = [abs(life["W9_future"] - life["W9_forecast_rate"]) for life in brain]
+        kept = [life["W9_map_kept"] for life in brain]
+        verdicts["W9"] = bool(gaps) and max(gaps) <= 0.02 and min(kept) == 1.0
+        print(f"W9: {'holds' if verdicts['W9'] else 'fails'} (largest gap from the forecast's "
+              f"own rate {max(gaps):.3f}; the map kept bit for bit over every question on "
+              f"{sum(k == 1.0 for k in kept)} of {len(kept)} founders)")
+        verdicts["W10"] = gate("W10_three", 0.95)
     return verdicts
 
 
@@ -722,7 +753,8 @@ if __name__ == "__main__":
 
     if len(sys.argv) > 1 and sys.argv[1] == "run":
         run(Path(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]),
-            int(sys.argv[5]) if len(sys.argv) > 5 else 16)
+            int(sys.argv[5]) if len(sys.argv) > 5 else 16,
+            sys.argv[6] if len(sys.argv) > 6 else "T1")
     elif len(sys.argv) > 1 and sys.argv[1] == "read":
         read(Path(sys.argv[2]))
     else:
