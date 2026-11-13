@@ -40,9 +40,10 @@ def _words_world() -> Any:
     return sys.modules[name]
 
 
-def nonce(seed: int, need: int, *, salt: int) -> list[str]:
-    """The words chamber's nonce forms: two or three consonant-vowel syllables."""
-    return list(_words_world().nonce(seed, need, salt=salt))
+def nonce(seed: int, need: int, *, salt: int, taken: Any = ()) -> list[str]:
+    """The words chamber's nonce forms: two or three consonant-vowel syllables, none in
+    ``taken``."""
+    return list(_words_world().nonce(seed, need, salt=salt, taken=taken))
 
 SALT = 334
 SHAPE_DIMS = ("round", "long", "hollow", "handle", "flat", "tall")
