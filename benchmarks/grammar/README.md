@@ -1137,6 +1137,28 @@ clauses read .00 to .02 on every arm, the patient of a long clause landing in a 
 lesson put a patient. With 8 blocks held-out combinations and role twins read .97 and .97 on 6 of
 6 founders, and paths fall .05.
 
+### A word said by its parts
+
+Said from the held state, held-out combinations were lost at the verb's form: the association
+holds the verb's stem and the agent's number each on its own, and a readout of whole words reads
+their conjunction only as well as the lessons showed it. [MEANING_PROTOCOL_7.md](MEANING_PROTOCOL_7.md)
+(cadence#302) gives the motor two slots that settle together, a stem and a form
+(`"parts": True` in `meaning.py`, the library's `slots=(12, 3)`). On twelve fresh founders
+`parts_256` says the verb's form on held-out clauses at .98 to 1.00 with the previous words given
+and reads held-out clauses at .97 to 1.00, +.06 (.02) over the motor of whole words. Its third
+gate, no cost on any other panel, fails on paths: -.07 (.04) from the held state, and three hops
+-.13 (.10) with the read free.
+
+[MEANING_PROTOCOL_8.md](MEANING_PROTOCOL_8.md) reads where that cost lies. Protocol
+7 taught the form `none` on every word without a number (`near`, the brackets, `end`), so the form
+slot had to tell at every word whether the word has a number, which it reads from the state the
+brain carries. Lives taught that way end with louder carried routes (the trace's learned gain .18
+against .10, the heard history's 2.18 against 1.55, 42 development founders), and three hops,
+whose third `near` stands where every lesson says `end`, fall with the louder trace. With
+`"parts": "open"` a word without a number leaves the form slot open in its lesson
+([a slot the lesson leaves open](../../docs/teach.md#a-slot-the-lesson-leaves-open)): the lesson
+neither judges nor pulls it.
+
 ### What the held-meaning readings establish
 
 - In the default composition a sentence's meaning lives in the recall memory's slots. The carried

@@ -103,6 +103,9 @@ Things to know:
   brain answers right are skipped, and the report counts them in `agreed_presentations`
   ([lessons only where the answer differs](#lessons-only-where-the-answer-differs)). With
   several motor slots a row is right only where every slot is; `agreed_slots` counts the slots.
+- **A slot can be left open.** With several motor slots, a label of `-1` leaves that slot open at
+  that row: the lesson neither judges the slot nor pulls it
+  ([a slot the lesson leaves open](#a-slot-the-lesson-leaves-open)).
 - **Rows are streams.** Each row is one stream. Once the brain has acted on a batch, a lesson must
   have the same number of rows (`ValueError` "lesson batch must match the live streams") until
   `reset()`. Lessons on their own, before any act, can take any number of rows.
@@ -124,6 +127,39 @@ Things to know:
 `predict(observations)` answers each row on its own, from rest and without memories, so it
 tests what the weights hold. `act` answers inside the stream with every memory
 ([evaluate without fooling yourself](#evaluate-without-fooling-yourself)).
+
+### A slot the lesson leaves open
+
+A brain with several motor slots answers every slot at every moment, and some moments have no
+answer for one of them. A word said as a stem and a number has no number where the word is
+`and`; an arm with a gripper has no grip to show while it travels. Teaching the slot a class
+that means "nothing here" makes it predict, at every moment, whether the moment has an answer,
+and it reads that from the state the brain carries.
+
+A label of `-1` (`cadence.learning.OPEN`) leaves the slot open at that row instead:
+
+```python
+from cadence.learning import OPEN
+
+speaker = Brain.compose(4, 5, modules=(16,), seed=2, slots=(3, 2))   # a stem and a number
+words = np.array([[0, 1], [2, OPEN], [1, 0], [2, OPEN]])             # stem 2 has no number
+speaker.lesson(cues, words)
+assert speaker.last_learning["demonstrations"] == 4.0
+```
+
+- **Not judged.** Under `learning_surprise` a row is taught where a labelled slot differs from
+  its label, whatever its open slot says; `agreed_slots` counts labelled slots.
+- **Not pulled.** In the nudged phases the open slot's target is what the slot says in the
+  lesson's own free phase, so the pull on it is zero there and the slot moves with the rest of
+  the brain. No synapse learns an answer for it from that row.
+- **Every row labels a slot.** A row with every slot open is refused, as is `-1` in a brain of
+  one slot. `accuracy`, `fit` and the batched lives take labels for every slot.
+- A brain with `recall_tokens` or `memory_choice=True` refuses open slots: both keep every slot
+  of a shown action.
+
+A lesson that labels every slot is the lesson above to the bit. The grammar chamber reads a motor
+of a stem and a number that leaves the number of a word without one open
+([a word said by its parts](../benchmarks/grammar/README.md#a-word-said-by-its-parts)).
 
 <a id="explicit-learning-with-step"></a>
 

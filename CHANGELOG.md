@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### A lesson can leave a motor slot open (#302)
+
+- **`brain.lesson(observations, labels)` and `step(teacher=labels)`** take a label of `-1`
+  (`cadence.learning.OPEN`) in a brain of several motor slots: the lesson leaves that slot open at
+  that row. The slot is not judged (under `learning_surprise` a row is taught where a labelled
+  slot differs) and not pulled (its target in the nudged phases is what it says in the lesson's
+  own free phase, so the pull on it is zero there). A row labels at least one slot. A brain with
+  `recall_tokens` or `memory_choice=True` refuses open slots, and `accuracy`, `fit` and the
+  batched lives take a label for every slot. A lesson that labels every slot keeps its bits; the
+  guide is [a slot the lesson leaves open](docs/teach.md#a-slot-the-lesson-leaves-open).
+- **The grammar chamber's motor of parts** (`benchmarks/grammar/meaning.py`, `"parts": "open"`)
+  leaves the form of a word without a number open. Protocol 7 taught that form as a third class,
+  `none`, on every such word; the lessons of that class raise the learned gains of the carried
+  routes (the trace's .18 against .10 for a motor of whole words, the heard history's 2.18
+  against 1.55, 42 development founders), and three hops, whose third `near` no lesson reaches,
+  fall with the louder trace.
+
 ## 0.99.0 - 2026-11-13
 
 A map of what is where, held in the brain's own carried activity (`cadence.space.map.Map`,

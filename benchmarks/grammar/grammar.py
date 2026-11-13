@@ -34,6 +34,7 @@ import argparse
 import copy
 import importlib.util
 import json
+import os
 import sys
 import time
 import warnings
@@ -46,16 +47,49 @@ import numpy as np
 
 # ------------------------------------------------------------------------------- language
 
-WORDS = (
-    "dog", "cat", "fox", "owl", "dogs", "cats", "foxes", "owls",
-    "sees", "see", "chases", "chase", "near", "(", ")", "[", "]", "end",
-)
-NOUNS = 4  # noun i: singular word i, plural word i + 4
-NEAR, OPEN_ROUND, CLOSE_ROUND, OPEN_SQUARE, CLOSE_SQUARE, END = 12, 13, 14, 15, 16, 17
-CONCEPTS = (
-    "DOG", "CAT", "FOX", "OWL", "PLURAL", "AGENT", "PATIENT", "MOD", "SEE", "CHASE",
-    "OPEN_ROUND", "OPEN_SQUARE", "CLOSE", "FROM", "DIALECT", "GO", "SPEAK",
-)
+
+def _lexicon() -> tuple[int, int]:
+    """The lexicon's nouns and verbs: four and two, or what the environment variable
+    ``CADENCE_GRAMMAR_LEXICON`` names (``"16x8"``), read once when the chamber is imported. A
+    scaled lexicon keeps the grammar and names its words ``n0 n1 ... v0s v0 ...``."""
+    text = os.environ.get("CADENCE_GRAMMAR_LEXICON", "4x2")
+    try:
+        nouns, verbs = (int(part) for part in text.lower().split("x"))
+    except ValueError:
+        raise ValueError("CADENCE_GRAMMAR_LEXICON names nouns and verbs as '16x8'") from None
+    if nouns < 2 or verbs < 2:
+        raise ValueError("a lexicon holds at least two nouns and two verbs")
+    return nouns, verbs
+
+
+NOUNS, VERBS = _lexicon()  # noun i: singular word i, plural word i + NOUNS
+SCALED = (NOUNS, VERBS) != (4, 2)
+if SCALED:
+    _NOUN_NAMES = tuple(f"n{i}" for i in range(NOUNS))
+    _VERB_NAMES = tuple(f"v{i}" for i in range(VERBS))
+    WORDS: tuple[str, ...] = (
+        *_NOUN_NAMES, *(name + "s" for name in _NOUN_NAMES),
+        *(form for name in _VERB_NAMES for form in (name + "s", name)),
+        "near", "(", ")", "[", "]", "end",
+    )
+    CONCEPTS: tuple[str, ...] = (
+        *(name.upper() for name in _NOUN_NAMES), "PLURAL", "AGENT", "PATIENT", "MOD",
+        *(name.upper() for name in _VERB_NAMES),
+        "OPEN_ROUND", "OPEN_SQUARE", "CLOSE", "FROM", "DIALECT", "GO", "SPEAK",
+    )
+else:
+    WORDS = (
+        "dog", "cat", "fox", "owl", "dogs", "cats", "foxes", "owls",
+        "sees", "see", "chases", "chase", "near", "(", ")", "[", "]", "end",
+    )
+    CONCEPTS = (
+        "DOG", "CAT", "FOX", "OWL", "PLURAL", "AGENT", "PATIENT", "MOD", "SEE", "CHASE",
+        "OPEN_ROUND", "OPEN_SQUARE", "CLOSE", "FROM", "DIALECT", "GO", "SPEAK",
+    )
+VERB = 2 * NOUNS  # verb v: its singular form word VERB + 2 v, its plural form the word after
+NEAR, OPEN_ROUND, CLOSE_ROUND, OPEN_SQUARE, CLOSE_SQUARE, END = range(
+    VERB + 2 * VERBS, VERB + 2 * VERBS + 6)
+VERB_CONCEPTS = CONCEPTS[NOUNS + 4:NOUNS + 4 + VERBS]
 C = {name: len(WORDS) + i for i, name in enumerate(CONCEPTS)}
 INPUTS, ACTIONS = len(WORDS) + len(CONCEPTS), len(WORDS)
 OPENS = (OPEN_ROUND, OPEN_SQUARE)
@@ -64,6 +98,7 @@ MATCH = {OPEN_ROUND: CLOSE_ROUND, OPEN_SQUARE: CLOSE_SQUARE}
 BATCH = 16
 FOUNDERS = (0, 1, 2)
 SEEDS = {"train": 11, "test": 33, "split": 7}
+TAUGHT_SHARE = 0.25  # of the verbs, taught with each agent form at a scaled lexicon
 TRAIN_L, TEST_L = (0, 1, 2), (3, 4)  # distractor phrases in a clause
 TRAIN_DEPTH, TEST_DEPTH = 3, (4, 5)  # the deepest nesting of a Dyck sentence
 TRAIN_HOPS, TEST_HOPS = (1, 2), (3,)  # facts chained by a path sentence
@@ -75,7 +110,11 @@ def noun(i: int, plural: int) -> int:
 
 
 def verb(v: int, plural: int) -> int:
-    return 8 + 2 * int(v) + int(plural)
+    return VERB + 2 * int(v) + int(plural)
+
+
+def is_verb(word: int) -> bool:
+    return VERB <= word < NEAR
 
 
 def say(words: list[int]) -> str:
@@ -115,17 +154,49 @@ class Split:
 
     triples: tuple[tuple[int, int, int], ...]  # (agent noun, plural, verb)
     pair: tuple[int, int]  # never agent and patient of one trained clause, either order
+    # a scaled lexicon: the triples training shows, every other one held out (``triples`` empty)
+    trained: frozenset[tuple[int, int, int]] | None = None
 
     @classmethod
     def of(cls, founder: int) -> Split:
         rng = np.random.default_rng(np.random.SeedSequence([int(founder), SEEDS["split"]]))
+        if SCALED:
+            return cls.scaled(rng)
         a, b = (int(i) for i in rng.permutation(NOUNS)[:2])
         triples = ((a, 1, 0), (b, 0, 1))
         p, q = (int(i) for i in rng.permutation(NOUNS)[:2])
         return cls(triples, (min(p, q), max(p, q)))
 
+    @classmethod
+    def scaled(cls, rng: np.random.Generator) -> Split:
+        """A scaled lexicon's split: each agent in each number is taught with ``TAUGHT_SHARE``
+        of the verbs (at least one) and every other agent-number-verb triple is held out, so
+        most of the language is combinations no lesson shows. The taught verbs go round the
+        verbs in a random order, so every verb form is taught with the same number of agents
+        where the verbs divide the taught pairs."""
+        taught = max(1, round(TAUGHT_SHARE * VERBS))
+        nouns, verbs = rng.permutation(NOUNS), rng.permutation(VERBS)
+        trained = set()
+        for plural in (0, 1):
+            offset = int(rng.integers(VERBS))
+            for i, agent in enumerate(nouns):
+                for j in range(taught):
+                    v = int(verbs[(i * taught + offset + j) % VERBS])
+                    trained.add((int(agent), plural, v))
+        p, q = (int(i) for i in rng.permutation(NOUNS)[:2])
+        return cls((), (min(p, q), max(p, q)), frozenset(trained))
+
     def held(self, agent: tuple[int, int], patient: tuple[int, int], v: int) -> bool:
+        if self.trained is not None:
+            return ((agent[0], agent[1], v) not in self.trained
+                    or {agent[0], patient[0]} == set(self.pair))
         return (agent[0], agent[1], v) in self.triples or {agent[0], patient[0]} == set(self.pair)
+
+    def held_triple(self, agent: tuple[int, int], v: int) -> bool:
+        """Whether the agent, its number and the verb are a combination no lesson shows."""
+        if self.trained is not None:
+            return (agent[0], agent[1], v) not in self.trained
+        return (agent[0], agent[1], v) in self.triples
 
 
 # ------------------------------------------------------------------------------- episodes
@@ -148,11 +219,11 @@ def clause(rng: np.random.Generator, L: int, *, agent: tuple[int, int] | None = 
            dialect: bool = False) -> Row:
     agent = agent or (int(rng.integers(NOUNS)), int(rng.integers(2)))
     patient = patient or (int(rng.integers(NOUNS)), int(rng.integers(2)))
-    v = int(rng.integers(2)) if v is None else v
+    v = int(rng.integers(VERBS)) if v is None else v
     mods = mods if mods is not None else [(int(rng.integers(NOUNS)), int(rng.integers(2)))
                                           for _ in range(L)]
     inverted = bool(rng.integers(2)) if inverted is None else inverted
-    act = concept(("SEE", "CHASE")[v], *(("DIALECT",) if dialect else ()))
+    act = concept(VERB_CONCEPTS[v], *(("DIALECT",) if dialect else ()))
     a = noun_concept(*agent, "AGENT")
     p = noun_concept(*patient, "PATIENT")
     m = [noun_concept(*mod, "MOD") for mod in mods]
@@ -276,7 +347,7 @@ def solve(pre: list[np.ndarray]) -> list[int]:
                 stack.append(OPEN_ROUND if "OPEN_ROUND" in o else OPEN_SQUARE)
                 said.append(stack[-1])
         return said + [MATCH[o] for o in reversed(stack)] + [END]
-    v = 0 if "SEE" in on[0] else 1
+    v = next(i for i, name in enumerate(VERB_CONCEPTS) if name in on[0])
     nouns = {}
     mods = []
     for o in on[1:]:
@@ -378,7 +449,7 @@ def panels(founder: int, batches: int = 4) -> dict[str, list[list[Row]]]:
                 m = base.meta
                 for _ in range(64):
                     other = (twin(base, agent=(m["agent"][0], 1 - m["agent"][1]))
-                             if change == "agent" else twin(base, v=1 - m["verb"]))
+                             if change == "agent" else twin(base, v=(m["verb"] + 1) % VERBS))
                     om = other.meta
                     if not split.held(tuple(om["agent"]), tuple(om["patient"]), om["verb"]):
                         break
@@ -674,7 +745,7 @@ def locate(brain: Any, batches: list[list[Row]]) -> dict[str, Any]:
 def _kind(r: Row, j: int) -> str:
     if r.family == "clause":
         m = r.meta
-        k = next(i for i, w in enumerate(r.target) if 8 <= w <= 11)
+        k = next(i for i, w in enumerate(r.target) if is_verb(w))
         if j == 0:
             name = "agent"
         elif j == k:
@@ -703,17 +774,18 @@ def score(row: Row, said: list[int]) -> dict[str, Any]:
     ended = bool(said) and said[-1] == END
     if row.family == "clause" and row.force == 0:
         m = row.meta
-        verbs = [i for i, w in enumerate(words) if 8 <= w <= 11]
+        verbs = [i for i, w in enumerate(words) if is_verb(w)]
         one = len(verbs) == 1
         k = verbs[0] if one else -1
-        out["agree"] = one and (words[k] - 8) % 2 == m["agent"][1]
-        out["verb"] = one and (words[k] - 8) // 2 == m["verb"]
-        subject = words[0] if words and words[0] < 8 else None
-        out["agree_own"] = one and subject is not None and (words[k] - 8) % 2 == subject // NOUNS
+        out["agree"] = one and (words[k] - VERB) % 2 == m["agent"][1]
+        out["verb"] = one and (words[k] - VERB) // 2 == m["verb"]
+        subject = words[0] if words and words[0] < VERB else None
+        out["agree_own"] = (one and subject is not None
+                            and (words[k] - VERB) % 2 == subject // NOUNS)
         # an attracted verb: it agrees with the noun said just before it, not with the agent
-        before = words[k - 1] if one and k > 0 and words[k - 1] < 8 else None
+        before = words[k - 1] if one and k > 0 and words[k - 1] < VERB else None
         out["attracted"] = (None if before is None or before // NOUNS == m["agent"][1]
-                            else (words[k] - 8) % 2 == before // NOUNS)
+                            else (words[k] - VERB) % 2 == before // NOUNS)
         out["subject"] = subject == noun(*m["agent"])
         patient_at = (k - 1) if m["dialect"] else (k + 1)
         out["patient"] = one and 0 <= patient_at < len(words) and words[patient_at] == noun(
@@ -723,9 +795,10 @@ def score(row: Row, said: list[int]) -> dict[str, Any]:
         out["mods"] = words[1:1 + len(mods)] == mods if mods else None
         out["ended"] = ended
     elif row.family == "clause":  # a context continuation: the verb, the patient, end
-        out["agree"] = bool(said) and 8 <= said[0] <= 11 and (said[0] - 8) % 2 == row.meta[
+        out["agree"] = bool(said) and is_verb(said[0]) and (said[0] - VERB) % 2 == row.meta[
             "agent"][1]
-        out["verb"] = bool(said) and 8 <= said[0] <= 11 and (said[0] - 8) // 2 == row.meta["verb"]
+        out["verb"] = (bool(said) and is_verb(said[0])
+                       and (said[0] - VERB) // 2 == row.meta["verb"])
     elif row.family == "dyck":
         stack, valid = [], ended
         for w in row.target[:row.force] + words:

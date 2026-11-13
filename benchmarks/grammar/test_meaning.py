@@ -575,6 +575,38 @@ def test_a_word_is_said_and_taught_by_its_parts():
     assert sum("-> P3" in line for line in lines) == 2
 
 
+def test_a_word_without_a_form_leaves_its_form_open():
+    warnings.simplefilter("ignore")
+    assert mn.word_parts(gr.NEAR, open=True) == (gr.NOUNS + 2, mn.OPEN)
+    assert mn.word_parts(gr.END, open=True)[1] == mn.OPEN
+    assert mn.word_parts(5, open=True) == (1, mn.PLURAL)  # a noun keeps its number
+    assert mn.word_parts(10, open=True) == mn.word_parts(10)  # and a verb its agent's
+    assert all(mn.parts_word(*mn.word_parts(w, open=True)) == w for w in range(gr.ACTIONS))
+    brain = mn.make_brain(0, {"parts": "open"})
+    assert type(brain).__name__ == "PartsBrain" and len(brain.motor_index) == sum(mn.PART_SLOTS)
+    x = np.tile(gr.concept("GO"), (3, 1))
+    report = brain.lesson(x, np.array([gr.NEAR, 4, gr.END]))
+    assert report["attempted_presentations"] == 3.0
+    said = brain.act(x, greedy=True)
+    assert said.shape == (3,) and all(0 <= w < gr.ACTIONS for w in said)
+    plan = mn.eighth_plan(tuple(range(8)))
+    lives = [s["tag"] for s in plan["eighth"]]
+    assert {tag: lives.count(tag) for tag in set(lives)} == {
+        "words_free": 8, "open_free": 8, "parts_free": 2, "words_256": 2, "open_256": 2,
+        "parts_256": 1}
+    assert len(mn.EIGHTH) == 96 and len(plan["eighth_controls"]) == 2 * 2 * 6
+    assert plan["eighth_controls"][0]["parameters"] == mn.make_brain(
+        0, {**mn.BOTH, "parts": "open"}, 256).parameters()
+    rows = [mn.run_life({**spec, "module": 64, "batches": 2, "panel_batches": 1,
+                         "held_probes": 1}) for spec in mn.eighth_plan((0,))["eighth"]]
+    lines = mn.eighth_verdict(rows, [], of=1)
+    assert any(line.startswith("  P1:") for line in lines)
+    assert any(line.startswith("  P2:") for line in lines)
+    assert sum("-> P3" in line for line in lines) == 2
+    assert any("open_free: history_0" in line for line in lines)  # the carried routes' gains
+    assert any(line.startswith("  open_free: hop1 ") for line in lines)  # the read's delivery
+
+
 def test_a_knock_life_leaves_the_shared_battery_as_it_is():
     # the sequence battery every other test reads keeps its own make_brain (#306)
     warnings.simplefilter("ignore")
@@ -585,3 +617,53 @@ def test_a_knock_life_leaves_the_shared_battery_as_it_is():
     assert gr.BATTERY.make_brain is shared
     brain = gr.BATTERY.make_brain(gr.BATTERY.TwoHop(), "recipe64", 0, module=8)
     assert brain.describe()["genes"]["recall_position"] == 64
+
+
+SCALED_LIFE = """
+import warnings
+import numpy as np
+warnings.simplefilter("ignore")
+import grammar as gr
+import meaning as mn
+assert mn.PART_SLOTS == (16 + 8 + 6, 3)
+assert all(mn.parts_word(*mn.word_parts(w)) == w for w in range(gr.ACTIONS))
+assert all(mn.parts_word(*mn.word_parts(w, open=True)) == w for w in range(gr.ACTIONS))
+assert mn.word_parts(gr.verb(5, 1)) == (16 + 5, mn.PLURAL)
+assert mn.word_parts(gr.NEAR, open=True) == (16 + 8, mn.OPEN)
+plan = mn.ninth_plan((0, 1))
+assert [s["tag"] for s in plan["ninth"]] == ["words_256"] * 2 + ["open_256"] * 2
+assert all(s["lexicon"] == [16, 8] and s["settings"]["message_winners"] == 10
+           for s in plan["ninth"])
+assert len(plan["ninth_controls"]) == 2 * 2 * 2 and plan["ninth_controls"][0]["lexicon"] == [16, 8]
+rows = [mn.run_life({**spec, "module": 64, "batches": 2, "panel_batches": 1, "held_probes": 1})
+        for spec in mn.ninth_plan((0,))["ninth"]]
+row = rows[1]
+assert row["lexicon"] == [16, 8] and set(mn.WHOLE) <= set(row["panels"])
+assert "clause_L0_verb" in row["said_held"]
+assert row["probes_held"]["verb_form"]["verb"]["settled"]["chance"] <= 0.5
+lines = mn.ninth_verdict(rows, [], of=1)
+assert any(line.startswith("  S1:") for line in lines)
+assert any(line.startswith("  open_256 less words_256") for line in lines)
+try:
+    mn.run_life({**plan["ninth"][0], "lexicon": [4, 2]})
+except ValueError as error:
+    assert "planned for a lexicon of 4 nouns" in str(error)
+else:
+    raise AssertionError("a life planned for another lexicon ran")
+print("scaled life ok", row["parameters"])
+"""
+
+
+def test_a_life_at_a_scaled_lexicon_says_words_by_their_parts():
+    import os
+    import subprocess
+
+    with pytest.raises(ValueError, match="scaled lexicon"):
+        mn.ninth_plan((0,))  # the chamber's own lexicon holds two held-out triples
+
+    found = subprocess.run(
+        [sys.executable, "-c", SCALED_LIFE], cwd=Path(__file__).parent,
+        env={**os.environ, "CADENCE_GRAMMAR_LEXICON": "16x8"}, capture_output=True, text=True,
+        check=False,
+    )
+    assert found.returncode == 0 and "scaled life ok" in found.stdout, found.stderr[-2000:]

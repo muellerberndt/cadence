@@ -5178,9 +5178,11 @@ class Brain:
         importance = SynapticMemory.salience_vector(
             np.abs(r) if salience is None else salience, batch
         )
-        labels = None if teacher is None else self.learner._labels(np.asarray(teacher))
+        labels = None if teacher is None else self.learner._labels(np.asarray(teacher), open=True)
         if labels is not None and len(labels) != batch:
             raise ValueError("teacher must match the observation batch")
+        if labels is not None:
+            self._open_labels(labels)
         if bootstrap is not None:
             bootstrap = np.asarray(bootstrap, dtype=float)
             if bootstrap.shape != (batch,) or not np.isfinite(bootstrap).all():
@@ -5231,6 +5233,13 @@ class Brain:
         eligibility belongs to the parameters before the lesson: report the outcome first
         (``step`` or ``learn``).
 
+        With several motor slots a label of -1 (``cadence.learning.OPEN``) leaves that slot
+        open at that row: the lesson neither judges the slot nor pulls it (its target in the
+        nudged phases is what the slot says in the lesson's own free phase), so a row that has
+        no answer for a slot teaches the slot nothing. A row labels at least one slot; a brain
+        with ``recall_tokens`` or an episodic memory, which keep every slot of a shown action,
+        refuses open slots.
+
         ``targets``, in place of ``labels``, teaches a distribution over the actions per row,
         ``(rows, actions)`` (with several motor slots each slot's columns side by side, each
         slot's summing to one): the nudged phases pull the motor neurons toward it as they pull
@@ -5250,9 +5259,10 @@ class Brain:
             raise ValueError("a lesson takes labels or targets, one of the two")
         cfg = self.learner.config
         if labels is not None:
-            labels = self.learner._labels(np.asarray(labels))
+            labels = self.learner._labels(np.asarray(labels), open=True)
             if len(labels) != len(x):
                 raise ValueError("labels must match the observation batch")
+            self._open_labels(labels)
         else:
             targets = np.asarray(targets, dtype=float)
             self.learner.soft_targets(targets)  # refused before anything changes
@@ -5330,6 +5340,25 @@ class Brain:
         with self._code_attempt():
             return self._teach(x, labels, targets=targets, weights=weights)
 
+    def _open_labels(self, labels: np.ndarray) -> bool:
+        """Whether a lesson's labels leave a motor slot open (a label of -1, with several
+        slots): refused, before anything changes, where a memory keeps or judges every slot of
+        a shown action (``recall_tokens``, the episodic records' demonstrations)."""
+        if labels.ndim != 2 or not labels.size or labels.min() >= 0:
+            return False
+        if self.recall is not None and self.recall.tokens is not None:
+            raise ValueError(
+                "recall_tokens judges a lesson's rows by every slot's label; label every slot "
+                "of a brain with declared tokens"
+            )
+        episodic = self._episodic
+        if episodic is not None and episodic.demonstrations:
+            raise ValueError(
+                "the episodic records keep a shown action's every slot; label every slot of a "
+                "brain with an episodic memory"
+            )
+        return True
+
     def _token_rows(self, labels: np.ndarray) -> np.ndarray | None:
         """Per row, whether a label names an action that is a token (``recall_tokens``), or
         None for a brain without declared tokens. With several output slots a row is a token
@@ -5366,8 +5395,8 @@ class Brain:
             _moment.SHORTCUTS and self.learned_code is None and self.sparse_code is None
             and self.fields is None and self._compiled_moment()
         ):  # the compiled moment's read without the general path's layers (``_settled``)
-            if _moment.ONE_CALL and labels is not None:
-                # with the judging solve, in one call
+            if _moment.ONE_CALL and labels is not None and not (labels.size and labels.min() < 0):
+                # with the judging solve, in one call (the general path judges open slots)
                 judged = self._judge_compiled(
                     x, labels, _moment.ONE_LESSON and weights is None
                 )

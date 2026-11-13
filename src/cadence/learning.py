@@ -276,6 +276,10 @@ class LearnerConfig:
         }
 
 
+# A lesson's label for a motor slot it leaves open: the slot is neither judged nor pulled at that
+# row (``Learner.step``; a learner of several slots).
+OPEN = -1
+
 _NEUTRAL: dict[str, Any] = {
     "normalize_relative": 0.0, "nudged_fixed": False, "rehearsal": 0.0, "rehearsal_capacity": 512,
     "surprise_share": False, "fast_settle": False, "compiled_moment": False,
@@ -758,7 +762,11 @@ class Learner:
             nudge=nudge, damping=cfg.damping,
         )
 
-    def _labels(self, labels: np.ndarray) -> np.ndarray:
+    def _labels(self, labels: np.ndarray, open: bool = False) -> np.ndarray:
+        """Validated class labels, ``(batch,)`` or with several slots ``(batch, slots)``. With
+        ``open`` (a lesson's labels) a slotted learner also takes ``OPEN`` (-1) in a slot: the
+        lesson leaves that slot of that row open, neither judged nor pulled; a row keeps at
+        least one labelled slot."""
         labels = np.asarray(labels)
         if labels.dtype == np.int64 and labels.ndim == 1 and self.slot_count == 1 and labels.size:
             # one slot's labels of the kind returned: the checks below in two reductions
@@ -772,8 +780,13 @@ class Learner:
             raise ValueError("labels must have shape (batch,) for a single output slot")
         if not np.issubdtype(labels.dtype, np.integer):
             raise ValueError("labels must be integer class indices")
-        if (labels < 0).any() or (labels >= self.slot_sizes).any():
+        if (labels >= self.slot_sizes).any():
             raise ValueError("a label lies outside its output slot's choices")
+        if (labels < 0).any():
+            if not open or self.slot_count == 1 or (labels < OPEN).any():
+                raise ValueError("a label lies outside its output slot's choices")
+            if (labels < 0).all(axis=1).any():
+                raise ValueError("a lesson's row labels at least one slot: every slot is open")
         return labels.astype(np.int64, copy=False)
 
     def soft_targets(self, probabilities: Any) -> np.ndarray:
@@ -797,16 +810,51 @@ class Learner:
         return target
 
     def targets(self, labels: np.ndarray) -> np.ndarray:
-        """Per-neuron target activation for class labels: ``(batch,)``, or ``(batch, slots)``."""
-        labels = self._labels(labels)
+        """Per-neuron target activation for class labels: ``(batch,)``, or ``(batch, slots)``.
+        A slot a lesson leaves open (``OPEN``) holds no target here: ``_open_targets`` gives it
+        the slot's own answer once the free phase has settled."""
+        labels = self._labels(labels, open=True)
         batch = len(labels)
         target = np.zeros((batch, self.brain.connectome.n))
         target[:, self.output_index] = 0.0
         if self.slot_count > 1:
+            if labels.size and labels.min() < 0:  # the open slots hold no target
+                rows, slots = np.nonzero(labels >= 0)
+                shown = labels[rows, slots] + self.slot_offsets[slots]
+                target[rows, self.output_index[shown]] = 1.0
+                return target
             neurons = self.output_index[labels + self.slot_offsets[None, :]]
             target[np.arange(batch)[:, None], neurons] = 1.0
         else:
             target[np.arange(batch), self.output_index[labels]] = 1.0
+        return target
+
+    def _open_targets(
+        self, target: np.ndarray, free: BrainState, open: np.ndarray | None
+    ) -> np.ndarray:
+        """``target`` with every slot the lesson leaves open (``open``, ``(rows, slots)``, True
+        at a label of ``OPEN``) holding what the slot says in the free phase ``free``: its own
+        softmax under the cross-entropy nudge, its own activation under the quadratic one. The
+        pull on an open slot is then zero at the free state, and the slot moves with the rest
+        of the net through the nudged phases: the lesson teaches it nothing of its own."""
+        if open is None or not open.any():
+            return target
+        cfg = self.config
+        activity = np.atleast_2d(np.asarray(free.part(self.output_index), dtype=float))
+        if len(activity) != len(target) or open.shape != (len(target), self.slot_count):
+            raise ValueError("the open slots, the targets and the free state hold the same rows")
+        target = np.array(target, dtype=float)
+        for k in np.flatnonzero(open.any(axis=0)):
+            rows = np.flatnonzero(open[:, k])
+            start = int(self.slot_offsets[k])
+            columns = np.arange(start, start + int(self.slot_sizes[k]))
+            own = activity[np.ix_(rows, columns)]
+            if cfg.nudge == "cross_entropy":
+                z = own / cfg.temperature
+                z -= z.max(axis=1, keepdims=True)
+                own = np.exp(z)
+                own /= own.sum(axis=1, keepdims=True)
+            target[np.ix_(rows, self.output_index[columns])] = own
         return target
 
     # -- the rule
@@ -1577,7 +1625,7 @@ class Learner:
         else:
             if targets is not None:
                 raise ValueError("a lesson takes labels or targets, not both")
-            labels = self._labels(labels)
+            labels = self._labels(labels, open=True)
             batch = len(labels)
         if not _resident(drive):
             drive = np.asarray(drive, dtype=float)
@@ -1591,12 +1639,18 @@ class Learner:
             judged = self._differs(np.asarray(answer), labels)
             if not judged.any():
                 return self._untaught(judged)
+        # the slots the lesson leaves open (labels of ``OPEN``), at the rows the phases run on
+        open_slots: np.ndarray | None = None
         if target is None:  # the labels' targets, made where a phase reads them
             assert labels is not None
             target = self.targets(labels)
+            if self.slot_count > 1 and labels.size and labels.min() < 0:
+                open_slots = labels < 0
         if judged is not None:
             drive, target, weight = self._lesson(judged, drive, target, weight)
             warm = None if warm is None else _restrict(warm, judged)
+            if open_slots is not None:
+                open_slots = open_slots[judged]
         if cfg.qualified:
             phases: dict[str, Equilibrium] = {}
             phases["free"] = self._qualified_phase(drive, warm, cfg.free_steps)
@@ -1609,6 +1663,9 @@ class Learner:
             if judged is None:
                 drive, target, weight = self._lesson(taught, drive, target, weight)
                 free = _restrict(free, taught, drive)
+                if open_slots is not None and taught is not None:
+                    open_slots = open_slots[taught]
+            target = self._open_targets(target, free, open_slots)
             held = self.brain.apical_gain(drive, free, own_precision=True)
             for name, sign in (("nudged", 1.0), ("opposite", -1.0)):
                 phases[name] = self._qualified_phase(
@@ -1623,7 +1680,7 @@ class Learner:
             report.update(_phase_report(phases, accepted=True, qualified=True))
             report.update(_taught_report(taught, batch))
             return LearnedState(free, nudged, opposite, taught), report
-        if judged is not None and weight is None and cfg.compiled_moment:
+        if judged is not None and weight is None and cfg.compiled_moment and open_slots is None:
             # the compiled moment's lesson: the three phases and their checks in one call
             found = self._phases_compiled(drive, warm, target)
             if found is not None:
@@ -1657,6 +1714,9 @@ class Learner:
         if judged is None:
             drive, target, weight = self._lesson(taught, drive, target, weight)
             free = _restrict(free, taught, drive)
+            if open_slots is not None and taught is not None:
+                open_slots = open_slots[taught]
+        target = self._open_targets(target, free, open_slots)
         held = self.brain.apical_gain(drive, free, own_precision=True)  # read once, by both phases
         # one nudge per phase, read by the phase and by its diagnostic check
         pull = self.nudge_for(target, cfg.beta, weight, held)
@@ -1715,6 +1775,9 @@ class Learner:
         if answer.shape != labels.shape:
             raise ValueError("answer must have the labels' shape")
         differs = np.asarray(answer != labels, dtype=bool)
+        if differs.ndim == 2 and labels.size and labels.min() < 0:
+            # a slot the lesson leaves open agrees
+            differs &= labels >= 0
         return np.asarray(differs.any(axis=1)) if differs.ndim == 2 else differs
 
     def _share(self, taught: np.ndarray | None) -> float:
