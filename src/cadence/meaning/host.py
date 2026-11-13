@@ -48,6 +48,7 @@ class MeaningParrot:
         self.silence = len(self.voice)
         self.rng = np.random.default_rng(seed)
         self.things: list[Seen] = []
+        self.glimpsed: Seen | None = None
         self.heard: str | None = None
         self.own: str | None = None
         self.reply: list[tuple[np.ndarray, int]] = []
@@ -67,8 +68,11 @@ class MeaningParrot:
                     direction=float(thing["direction"]), distance=float(thing["distance"]),
                     salient=bool(thing.get("focus", False)), surface=np.asarray(surface))
 
-    def see(self, things: list[dict[str, Any]]) -> None:
+    def see(self, things: list[dict[str, Any]], glimpse: dict[str, Any] | None = None) -> None:
+        """What the parrot holds; ``glimpse`` (a thing) is where its focus is this moment, by
+        default the thing in focus (during a scan the focus visits each thing in turn)."""
         self.things = [self.seen(t) for t in things][: self.eyes.slots]
+        self.glimpsed = self.seen(glimpse) if glimpse is not None else None
 
     def hear(self, word: str | None) -> None:
         self.heard = word
@@ -76,7 +80,8 @@ class MeaningParrot:
     def observation(self) -> np.ndarray:
         order = self.rng.permutation(len(self.things))
         scene = self.eyes.scene([self.things[int(i)] for i in order])
-        focus = next((t for t in self.things if t.salient), None)
+        focus = self.glimpsed if self.glimpsed is not None else next(
+            (t for t in self.things if t.salient), None)
         glimpse = [self.eyes.slot(focus)] if self.spec.get("glimpse") else []
         return np.concatenate(glimpse + [scene, self.code(self.heard) + self.code(self.own)])[
             None]
