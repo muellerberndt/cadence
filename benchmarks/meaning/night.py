@@ -534,6 +534,15 @@ def read(p: Parrot, rng: np.random.Generator, forms: list[str], held: set[tuple[
     return out
 
 
+def held_of(rng: np.random.Generator) -> set[tuple[str, str]]:
+    """The founder's kind-colour pairs kept for the test rooms (the first draws of its life)."""
+    return {(k, str(rng.choice(KINDS[k][3] or tuple(COLOURS)))) for k in KIND_NAMES}
+
+
+def founder_held(seed: int) -> set[tuple[str, str]]:
+    return held_of(np.random.default_rng(np.random.SeedSequence([int(seed), 334, 31])))
+
+
 def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, int] | None = None,
          streams: int = 16, reads: int = 48, backend: str = "cpu", pistachio: str = "earned",
          steps: list[str] | None = None, log: Any = None, keep: bool = False,
@@ -543,7 +552,7 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
     budget = {"N0": 1500, "N1": 1500, "N2": 2000, "N3": 1500, "N4": 3000, "N5": 2000,
               "N6": 1500, **(blocks or {})}
     rng = np.random.default_rng(np.random.SeedSequence([int(seed), 334, 31]))
-    held = {(k, str(rng.choice(KINDS[k][3] or tuple(COLOURS)))) for k in KIND_NAMES}
+    held = held_of(rng)
     p = Parrot(seed, genome, streams=streams, backend=backend)
     if control is not None:  # a matched control lives the same life in the brain's place
         import meaning_controls

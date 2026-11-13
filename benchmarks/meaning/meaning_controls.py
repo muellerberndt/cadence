@@ -184,14 +184,15 @@ class Delta:
         zero = np.zeros_like(x)
         before = self.history[-1] if self.history else zero
         earlier = self.history[-2] if len(self.history) > 1 else zero
-        return np.concatenate([x, before, earlier, np.ones((len(x), 1))], axis=1)
+        z = np.concatenate([x, before, earlier, np.ones((len(x), 1))], axis=1)
+        return z / (np.linalg.norm(z, axis=1, keepdims=True) + 1e-9)  # unit length
 
     def act(self, x: Any, greedy: bool = False, temperature: Any = None) -> np.ndarray:
         x = np.asarray(x, dtype=np.float64)
         z = self._z(x)
         out = []
         for w in self.w:
-            q = z @ w
+            q = np.nan_to_num(np.clip(z @ w, -50.0, 50.0))
             if greedy:
                 out.append(np.argmax(q, axis=1))
             else:
