@@ -2171,7 +2171,9 @@ class LongTermRecords:
                 return
             _, revised = store.write(key, value, recognised=found, source=source)
         else:
-            _, revised = store.write(key, value, source=source)  # the store's own recognition
+            # the read's first choice leads the records that hold the key by the units its
+            # signature shares with the source: where it is another fact's, none is this fact's
+            _, revised = store.write(key, value, recognised=-1, source=source)
         self.counts["writes"] += 1
         self.counts["revisions"] += int(revised)
 
