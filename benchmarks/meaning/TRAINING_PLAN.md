@@ -198,17 +198,17 @@ capacity.
 | R0 | Measure: lives of the four sizes at 8, 16 and 64 streams, CPU and CUDA backends; the learning speed of imitation and names at the hand-set and four variants (development) | 1 c7a.16xlarge, 1 g5.4xlarge | 4 + 4 | 8 | 20 |
 | R1 | Turns T0 to T2: development, then the declared run (brain, yoked parrot, LSTM, transformer; 12 founders) with the parrot-brain lane's wiring | 1 c7a.16xlarge | 4 | 5 | 13 |
 | R2 | GA lineage L1 (2,880 lives at about 0.33 core-hours) and random search at equal evaluations | 3 c7a.16xlarge in parallel | 30 (10 wall) | 35 | 98 |
-| R3 | Words rungs gated (M1 to M9, 12 fresh founders): hand-set, selected, random composition, 5 lesions; the plain readout and table on CPU; LSTM and transformer online and offline on GPU | 1 c7a.16xlarge, 1 g5.4xlarge | 3 + 26 | 27 | 52 |
-| | **Phase A (R0 to R3)** | | | **75** | **183** |
+| R3 | Words rungs gated (M1 to M9, 12 fresh founders): hand-set, selected, random composition, 5 lesions, the selected brain with and without the strength of records (#336); the plain readout and table on CPU; LSTM and transformer online and offline on GPU | 1 c7a.16xlarge, 1 g5.4xlarge | 3.5 + 26 | 27 | 54 |
+| | **Phase A (R0 to R3)** | | | **75** | **185** |
 | R4 | GA lineage L2 (layout and grammar; 640 lives and as many random, about 0.11 GPU-hours each) | 4 g5.4xlarge in parallel | 140 (35 wall) | 125 | 227 |
 | R5 | Grammar rungs gated (G1 to G4, 12 founders): selected, hand-set, random composition, 2 lesions; controls at 3.2 million parameters | 4 g5.4xlarge | 92 (23 wall) | 82 | 149 |
 | | **Phase B (R4, R5)** | | | **207** | **376** |
 | R6 | Vocabulary 200 and 500: lineage L3 with random search (256 lives), gated readings, controls | 4 g5.4xlarge | 164 (41 wall) | 146 | 266 |
-| R7 | Vocabulary 2,000 (nonce words) gated, selected and hand-set, controls at about 20 million parameters | 4 g5.4xlarge | 170 (43 wall) | 151 | 275 |
+| R7 | Vocabulary 2,000 (nonce words) gated: selected, hand-set, and the selected brain with the strength of records (#336); controls at about 20 million parameters | 4 g5.4xlarge | 206 (52 wall) | 183 | 334 |
 | R8 | English: the 2,000 most common English words, grounded words and imitation of all, controls | 4 g5.4xlarge | 85 (21 wall) | 76 | 138 |
-| | **Phase C (R6 to R8)** | | | **373** | **679** |
-| | **All runs** | | 41 CPU box-hours, 681 GPU-hours | **655** | **1,238** |
-| | **Cap asked, with a quarter for reruns** | | | **820** | |
+| | **Phase C (R6 to R8)** | | | **405** | **738** |
+| | **All runs** | | 41.5 CPU box-hours, 717 GPU-hours | **687** | **1,299** |
+| | **Cap asked, with a quarter for reruns** | | | **860** | |
 
 The parrot-brain lane's box-hour estimate for the turn wiring (R1) is folded in when it arrives.
 M10 (the browser) needs no box. Storage on S3 is under $5 a month.
@@ -217,6 +217,21 @@ M10 (the browser) needs no box. Storage on S3 is under $5 a month.
 spend reaches its row's spot figure plus a quarter stops and reports. A rung whose gated reading
 fails is read, its term located, and its next protocol declared; three rounds that each locate a
 new term without closing the gap stop the rung and report the options.
+
+**The strength of records (#336, opt-in on its own lane).** Records strengthen by surprise and
+by repetition, cross a kept threshold, and the rest fade. The rungs that depend on it:
+
+- M1 with the ear: the voice replays the record of each heard word, which ten noisy takes settle
+  into a clean form (#336 G4);
+- M2 and M3 once a name is a record fetched by the focus (#333): the name's record kept by
+  repetition, a foil heard once fading;
+- the pistachio's moment kept at once (one write at high surprise, #336 G2);
+- G4 (was, from the records of where things were) and V1 to V3 (a new word kept after three
+  namings, words never used fading).
+
+R3 reads the selected brain with and without it (one more arm, about 20 core-hours); lineages L1
+to L3 carry it as a gene (on or off, and its kept threshold) once it lands; R7 reads the
+2,000-word brain with it as one more arm. The budget above holds both arms.
 
 ## 8. Where results and brains go
 

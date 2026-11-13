@@ -39,9 +39,9 @@ class Circle:
         self.centres = np.arange(self.per) * (2.0 * math.pi / self.per)
 
     def __call__(self, angle: float, weight: float = 1.0) -> np.ndarray:
-        d = np.angle(np.exp(1j * (float(angle) - self.centres)))
+        d = np.asarray(np.angle(np.exp(1j * (float(angle) - self.centres))), dtype=np.float64)
         width = self.spread * 2.0 * math.pi / self.per
-        return float(weight) * np.exp(-0.5 * (d / width) ** 2)
+        return np.asarray(float(weight) * np.exp(-0.5 * (d / width) ** 2), dtype=np.float64)
 
 
 class Line:
