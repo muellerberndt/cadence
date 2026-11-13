@@ -998,13 +998,16 @@ def test_the_scale_instrument_builds_reads_and_writes_a_store_on_disk(tmp_path, 
     reads = {(r["arm"], r.get("pass"), r["cue"]): r for r in rows if r["step"] == "read"}
     assert reads["disk", "first", "exact"]["found"] == 1.0
     assert reads["disk", "first", "exact"]["scored"] <= 64  # the read ended at its record
-    assert reads["scan", None, "exact"]["found"] == 1.0
-    assert reads["disk", "first", "noisy"]["found"] >= reads["scan", None, "noisy"]["found"] - 0.1
+    scanned = {r["cue"]: r for r in sc.scan(cell, tmp_path)}
+    assert scanned["exact"]["found"] == 1.0 and scanned["exact"]["scored"] == 3000
+    assert reads["disk", "first", "noisy"]["found"] >= scanned["noisy"]["found"] - 0.1
     assert reads["disk", "again", "noisy"]["trials"] == 20
     wrote = next(r for r in rows if r["step"] == "write")
     assert wrote["found_new"] == 1.0 and wrote["found_earlier"] == 1.0
     assert wrote["records_after"] == 3300 and wrote["cells_after"] > wrote["cells_before"]
     assert wrote["cells_per_write"] <= 5  # a record of 28 pairs calls for five cells at most
+    again = next(r for r in sc.read(cell, tmp_path) if r["step"] == "write")
+    assert again["found_new"] == 1.0 and again["records_after"] == 3600  # other new records
     in_memory = sc.memory({**cell, "writes": 0}, tmp_path)
     assert {r["arm"] for r in in_memory} == {"grow", "pairs"}
     exact = [r for r in in_memory if r["cue"] == "exact"]

@@ -11,11 +11,13 @@ its own, so that the reading can run under a memory limit the building did not h
   write. The store is flushed and closed. The step reports the seconds of each stage and the
   bytes the store holds, in its arrays and on the disk.
 * ``read``: the store is opened again (``LongTermMemory.open``). Cues of every kind are read
-  through the address and by the scan that scores every record (by parts, over the store's own
-  keys): ``found`` for both. Then the timing: ms per read by cue kind, with the page faults that
-  waited for the disk, and after it the same reads again (``warm``). Then ``writes`` new records
-  written one by one while the store is read: each write's pause, the cells the table took, and
-  whether the new records and the earlier ones are found.
+  through the address: ``found``, ms per read by cue kind and the page faults that waited for
+  the disk (``first``); then the first ``timed`` of them again, their pages in memory
+  (``again``). Then ``writes`` new records are written one by one while the store is read: each
+  write's pause, the cells the table took, and whether the new records and the earlier ones are
+  found. The step runs with or without a memory limit on its control group, which it reports.
+* ``scan``: the same cues by the read that scores every record, by parts over the store's own
+  keys: the control and the ceiling.
 * ``memory``: the same records in a store in memory (``grow=True`` and the fixed table of
   ``pairs``), filled and read with the same cues, to N the machine's memory holds.
 
@@ -270,19 +272,11 @@ def read(cell: dict[str, Any], root: Path) -> list[dict[str, Any]]:
                          "macs": macs, "sure": store.sure,
                          **timed(store, asked[: timed_reads if label == "again" else None],
                                  wanted[: timed_reads if label == "again" else None])})
-    if cell.get("scan", True):
-        t0 = time.perf_counter()
-        in_order = np.load(folder / "keys.npy", mmap_mode="r")  # read from end to end
-        for kind in KINDS:
-            wanted, asked = cues[kind]
-            first = scan_parts(in_order, n, asked)
-            rows.append({**base, "step": "read", "arm": "scan", "cue": kind,
-                         "trials": len(asked), "found": round(float(np.mean(first == wanted)), 4),
-                         "macs": n * width, "scored": n})
-        rows[-1]["scan_seconds"] = round(time.perf_counter() - t0, 1)
     writes = int(cell.get("writes", 0))
     if writes:
-        rng = np.random.default_rng(np.random.SeedSequence([founder, 310, 8, n, width]))
+        # new records for every run of the step: the seed holds the records the store has
+        rng = np.random.default_rng(np.random.SeedSequence([founder, 310, 8, n, width,
+                                                            int(store.count)]))
         if form == "hashed":
             new_keys = ml.hashed_records(rng, writes)
         else:
@@ -323,6 +317,30 @@ def read(cell: dict[str, Any], root: Path) -> list[dict[str, Any]]:
                      "flush_ms": round(1e3 * (time.perf_counter() - t0), 1),
                      "records_after": int(store.count)})
     store.close()
+    return rows
+
+
+def scan(cell: dict[str, Any], root: Path) -> list[dict[str, Any]]:
+    """The cell's cues by the read that scores every record, over the store's own keys."""
+    from cadence.longterm import LongTermMemory
+
+    n, width = cell["n"], cell["width"]
+    folder = root / name_of(cell)
+    store = LongTermMemory.open(folder)
+    cues = cues_of(cell, lambda rows: np.asarray(store.keys[np.sort(rows)])[
+        np.argsort(np.argsort(rows))], store.count)
+    store.close()
+    in_order = np.load(folder / "keys.npy", mmap_mode="r")  # read from end to end
+    rows = []
+    t0 = time.perf_counter()
+    for kind in KINDS:
+        wanted, asked = cues[kind]
+        first = scan_parts(in_order, n, asked)
+        rows.append({**{k: cell[k] for k in ("founder", "n", "form", "width")}, "step": "scan",
+                     "arm": "scan", "cue": kind, "trials": len(asked),
+                     "found": round(float(np.mean(first == wanted)), 4), "macs": n * width,
+                     "scored": n})
+    rows[-1]["scan_seconds"] = round(time.perf_counter() - t0, 1)
     return rows
 
 
@@ -369,14 +387,15 @@ def memory(cell: dict[str, Any], root: Path) -> list[dict[str, Any]]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
-    parser.add_argument("step", choices=("build", "read", "memory"))
+    parser.add_argument("step", choices=("build", "read", "scan", "memory"))
     parser.add_argument("--plan", type=Path, required=True)
     parser.add_argument("--cell", type=int, required=True)
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
     cell = cell_of(json.loads(args.plan.read_text()), args.cell)
-    rows = {"build": build, "read": read, "memory": memory}[args.step](cell, args.root)
+    rows = {"build": build, "read": read, "scan": scan, "memory": memory}[args.step](
+        cell, args.root)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("a") as sink:
         for row in rows:
