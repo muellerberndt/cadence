@@ -105,6 +105,33 @@ def life(seed: int, arm: str, out_dir: Path, *, pistachio: bool = True) -> dict[
     return record
 
 
+POINTED = ("colour", "relation", "where", "can_eat")
+
+
+def pointed(seed: int, arm: str, out_dir: Path, per: int = 128) -> dict[str, Any]:
+    """The secondary reading (amendment 4, no gate): the forms that name a thing, read from the
+    saved brain with the trainer pointing at it (the focus given, the parrot's own words), beside
+    the free read's share of searches that held the named thing alone."""
+    from cadence import Brain
+
+    layout = tc.Layout.founder(seed)
+    policy = tp.BrainPolicy.from_brain(Brain.load(out_dir / f"{arm}_{seed}.npz", backend="cpu"),
+                                       layout)
+    rng = np.random.default_rng([seed, 2])  # the readings' own stream, as the free read's
+    out = {"G1": tp.read(policy, layout, rng, POINTED, per, mode="dagger"),
+           "G2": tp.read(policy, layout, rng, ("describe_rel",), per, mode="dagger"),
+           "G3": {"pairs": tp.read(policy, layout, rng, ("colour", "where"), per, split="pairs",
+                                   mode="dagger"),
+                  "relations": tp.read(policy, layout, rng, ("relation", "describe_rel"), per,
+                                       split="relations", mode="dagger"),
+                  "depth": tp.read(policy, layout, rng, ("where", "can_eat"), per,
+                                   split="depth", mode="dagger")},
+           "held_free": {f: v["held"] for f, v in tp.read(policy, layout, rng, POINTED, per)
+                         .items()}}
+    Path(out_dir / f"pointed_{arm}_{seed}.json").write_text(json.dumps(out, indent=1))
+    return out
+
+
 def plan_of(record: dict[str, Any]) -> list[tuple[str, tuple[str, ...], int]]:
     """The brain's curriculum as it lived it: each stage's forms and blocks."""
     forms = dict(tp.STAGES)
@@ -332,7 +359,7 @@ ti_props = ("round", "red", "food", "left", "near")
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("what", choices=["life", "control", "read", "detail"])
+    ap.add_argument("what", choices=["life", "control", "read", "detail", "pointed"])
     ap.add_argument("args", nargs="*")
     ap.add_argument("--no-pistachio", action="store_true")
     ap.add_argument("--brain-record")
@@ -344,6 +371,8 @@ def main() -> None:
     elif a.what == "control":
         seed, kind, out = int(a.args[0]), a.args[1], Path(a.args[2])
         control(seed, kind, out, Path(a.brain_record) if a.brain_record else None, a.arm)
+    elif a.what == "pointed":
+        pointed(int(a.args[0]), a.args[1], Path(a.args[2]))
     elif a.what == "detail":
         print(detail(Path(a.args[0]), a.args[1], a.args[2] if len(a.args) > 2 else None))
     else:

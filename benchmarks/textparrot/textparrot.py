@@ -269,16 +269,24 @@ def batch(rng: np.random.Generator, forms: tuple[str, ...], n: int, *, split: st
 
 
 def read(policy: Any, layout: tc.Layout, rng: np.random.Generator, forms: tuple[str, ...],
-         per: int, *, split: str = "test", streams: int = 64) -> dict[str, Any]:
-    """A frozen greedy read: ``per`` exchanges of each form, free running, nothing taught."""
+         per: int, *, split: str = "test", streams: int = 64, mode: str = "free"
+         ) -> dict[str, Any]:
+    """A frozen greedy read: ``per`` exchanges of each form, free running, nothing taught
+    (``mode="dagger"``: the parrot's own words with the trainer pointing at the thing the
+    question names, its focus given). ``held``: the share whose search held the named thing
+    alone."""
     out: dict[str, Any] = {}
     for form in forms:
         items = [draw(form, rng, split=split) for _ in range(per)]
         got: list[dict[str, Any]] = []
+        held: list[float] = []
         for i in range(0, per, streams):
-            eps = tc.run(policy, layout, items[i:i + streams], "free", learn=False)
+            eps = tc.run(policy, layout, items[i:i + streams], mode, learn=False)
             got += [tc.score(e) for e in eps]
+            held += [float(e.held == ([e.q.referent] if e.q.referent is not None else []))
+                     for e in eps]
         out[form] = {"right": float(np.mean([g["right"] for g in got])),
+                     "held": float(np.mean(held)),
                      "example": {"said": " ".join(got[0]["said"]),
                                  "want": " ".join(got[0]["want"])}}
         if "parsed" in got[0]:

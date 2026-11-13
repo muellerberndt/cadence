@@ -130,3 +130,16 @@ reading. Founders and gates unchanged.
   development sweep's stages ended at their caps unmastered).
 - The gated lives restarted under amendments 1 to 3; no earlier life is read. G5's trials are
   declared in full before any life reaches G5.
+
+## Amendment 4 (before any gated reading)
+
+- **G5's session**: rounds of a prompted lemon trial ("what is it ? zabu"), an unprompted lemon
+  trial ("what is it ?") and a trial about a known thing alone (half the time a round or fruit
+  kind), each paid by its own pistachio for the right reply and taught by it alone; the count is
+  the lemon trials (40); every two lemon trials a frozen read of 16 fresh lemons and 32 known
+  things. Reported: the lemon trials to .90, the old names then, round and food under the new
+  name.
+- **A secondary reading, no gate**: the forms that name a thing (colour, relation, where, can
+  eat; what do you see R the X; their held-out splits) read from each saved brain with the
+  trainer pointing at the thing (the focus given, the parrot's own words), beside the free
+  read's share of searches that held the named thing alone (`textgates.py pointed`).
