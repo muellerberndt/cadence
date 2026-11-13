@@ -1089,6 +1089,26 @@ def test_the_sixth_declaration_s_plans_parse_on_their_founders():
     assert not set(range(3220, 3252)) & set(range(3100, 3152))  # fresh founders
 
 
+def test_the_seventh_declaration_s_plans_parse_on_their_founders():
+    import json
+
+    sc = _load("scale")
+    plans = {name: json.loads((HERE / "protocol-7" / f"{name}.json").read_text())
+             for name in ("found", "hundred-million", "timing")}
+    store = {"pairs": 16, "expansion": 65536, "winners": 384, "candidates": 8192, "sure": 0.999}
+    assert all(plan["settings"] == store and plan["capacity"] == 134_217_727
+               for plan in plans.values())
+    found = [sc.cell_of(plans["found"], i) for i in range(72)]
+    assert {c["founder"] for c in found} == set(range(3200, 3212))
+    assert {(c["n"], c["form"]) for c in found} == {
+        (n, form) for n in (100_000, 1_000_000, 10_000_000) for form in ("code", "hashed")}
+    assert sc.cell_of(plans["hundred-million"], 0)["n"] == 100_000_000
+    assert plans["hundred-million"]["founders"] == [3212]
+    assert plans["timing"]["founders"] == [3213, 3214, 3215]
+    used = set(range(3200, 3216))
+    assert not used & set(range(3100, 3152)) and not used & set(range(3220, 3252))
+
+
 def test_the_brain_chamber_reads_each_size_on_records_of_its_own_on_disk(tmp_path):
     br = _load("brain_records")
     store = {"pairs": 4, "expansion": 64, "winners": 8, "candidates": 8, "fade": False,

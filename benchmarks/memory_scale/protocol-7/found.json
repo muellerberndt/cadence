@@ -35,8 +35,8 @@
  "settings": {
   "pairs": 16,
   "expansion": 65536,
-  "winners": 256,
-  "candidates": 4096,
+  "winners": 384,
+  "candidates": 8192,
   "sure": 0.999
  }
 }

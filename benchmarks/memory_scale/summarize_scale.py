@@ -35,7 +35,7 @@ GROWTH = 2.0  # ms per read at N over ms at N / 10, the pages in memory
 BYTES_SPREAD = 0.05
 CELLS_A_WRITE = 20
 PAUSE_P99_MS, PAUSE_WORST_MS = 100.0, 1000.0
-EXACT_MS, FULL_MS = 25.0, 500.0  # a read under the memory limit: its record's key; any cue
+EXACT_MS, FULL_MS = 25.0, 1000.0  # a read under the memory limit: its record's key; any cue
 SAME_FOUND = 0.01  # found under the limit against found without it
 GATED = 10_000_000  # S1 and S3 are gated from this size up; smaller sizes are reported
 

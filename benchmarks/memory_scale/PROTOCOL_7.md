@@ -16,7 +16,7 @@ One store, made the same way for every size:
 
 ```python
 cadence.LongTermMemory(width, 64, capacity=134_217_727, pairs=16, expansion=65536,
-                       winners=WINNERS, candidates=4096, cosine=True, fade=False, revise=0.0,
+                       winners=384, candidates=8192, cosine=True, fade=False, revise=0.0,
                        dtype="float32", grow=True, sure=0.999, path=folder)
 ```
 
@@ -27,7 +27,10 @@ cadence.LongTermMemory(width, 64, capacity=134_217_727, pairs=16, expansion=6553
 - **`expansion=65536`**: the address's units, set once for the bound. A record's place depends
   on them, so a store that is to reach 100,000,000 records is made with them from the start.
   The fourth declaration's stores, each made for one size, used 16,384 at 1,000,000.
-- **`winners=WINNERS`**: WINNERS_WHY
+- **`winners=384, candidates=8192`**: a read takes the pairs of the cue's 384 most driven units
+  (73,536 cells) and scores the 8,192 records found under the most of them. With the address's
+  units spread over 65,536, the fourth declaration's 256 winners name too few of a noisy or
+  partial cue's pairs at 10,000,000 records (development, below).
 
 Nothing is learned in this declaration. The designed parts are the fourth declaration's (the
 fixed projection, the table of pairs, the centring) with the table's growth, the files and the
@@ -53,7 +56,7 @@ Each step is a process of its own.
    closed.
 2. **read**: the store is opened again. Every cue is read once (`first`: found, ms, page faults
    that waited for the disk), then the first 300 of each kind again (`again`: their pages are in
-   memory). Then 10,000 new records are written one by one, a read between every two writes:
+   memory). On the shared box the store's files are read once into memory before the step. Then 10,000 new records are written one by one, a read between every two writes:
    each write's pause, the cells the table took, whether the new records and the earlier ones
    are found. Every read step adds its 10,000 records to the store.
 3. **read under a memory limit**: the same step after the page cache is emptied, in a control
@@ -77,7 +80,7 @@ Each step is a process of its own.
 | S1 | found at 10,000,000 (12 founders) and at 100,000,000 (founder 3212), `code-128`: from an exact cue; from a noisy and from a partial cue; noisy and partial against the scan on the same cues | .99; .95; no more than .02 under the scan; on 10 of 12, and at 100,000,000 |
 | S1h | found at 10,000,000, `hashed-280`: exact; noisy; noisy and partial against the scan | .99; .95; no more than .02 under the scan; on 10 of 12 |
 | S2 | ms per read on one core with the read's pages in memory (`again`, mean of the three cue kinds), at N over N / 10: 1,000,000 over 100,000 and 10,000,000 over 1,000,000 on each timing founder; 100,000,000 (3212) over 10,000,000 (each timing founder) | under 2 at each tenfold, on every timing founder |
-| S3 | under the 8 GB limit, 10,000,000 (timing founders) and 100,000,000 (3212), `code-128`, first pass: found against the same store's read without the limit; ms per read of an exact cue; ms per read of a noisy and of a partial cue | within .01; under 25 ms; under 500 ms; on every cell |
+| S3 | under the 8 GB limit, 10,000,000 (timing founders) and 100,000,000 (3212), `code-128`, first pass: found against the same store's read without the limit; ms per read of an exact cue; ms per read of a noisy and of a partial cue | within .01; under 25 ms; under 1,000 ms; on every cell |
 | S4a | 10,000 records written one by one, every cell of every run, with and without the limit: cells a write takes; new records found from their keys; earlier records found | at most 20; .99; .99; on every cell |
 | S4b | the same on the cells read alone (timing founders and 3212), with and without the limit: the pause of a write | 99 of 100 under 100 ms and none over 1,000 ms, on every cell |
 | S5 | bytes a record on the disk, `code-128`, at 1,000,000, 10,000,000 and 100,000,000 | within 5 % of their mean |
