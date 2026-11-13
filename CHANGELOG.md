@@ -18,7 +18,7 @@ guide is [docs/memory.md](docs/memory.md#records-at-any-size-opt-in).
 - **`LongTermMemory(path=directory)`: records on disk.** Every array of the memory is a mapped
   file under the directory, so a store holds more than the machine's memory. `flush()`,
   `close()` and `LongTermMemory.open(directory)` keep and continue it. While reads wait for the
-  disk the rows a read needs are fetched by sixteen threads at once.
+  disk the rows a read needs are fetched by many threads at once.
 - **`LongTermMemory(sure=cosine)`: a read that ends at its record.** A read of one head first
   reads the pairs of the cue's `pairs` most driven units (120 cells in place of 32,640) and ends
   where a record found there holds a key at that cosine to the cue; any other cue is read in

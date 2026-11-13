@@ -2772,7 +2772,7 @@ memory. Three settings lift both limits. Each is off unless you set it.
   touch, so a store can hold far more than the machine's memory. `flush()` makes the files
   current, `close()` flushes and ends the store's threads, and `cd.LongTermMemory.open(directory)`
   continues the store in another process. While reads wait for the disk, the rows a read needs
-  are fetched by sixteen threads at once.
+  are fetched by many threads at once (`THREADS`, 64).
 - **`sure=cosine`: a read that ends at its record.** A cue that is a key the memory holds needs
   few of its pairs. With `sure=0.999` a read of one head first reads the pairs of the cue's
   `pairs` most driven units, 120 cells in place of 32,640. Where a record found there holds a key

@@ -294,7 +294,7 @@ class LongTermMemory:
     # a store on disk: the threads that fetch a read's rows, the rows from which they do, the
     # page faults of a read past which the next read's rows are fetched by the threads, and the
     # name its directory carries
-    THREADS = 16
+    THREADS = 64
     GATHER = 64
     WAITS = 32
     FORMAT = "cadence-longterm/1"
@@ -1051,7 +1051,7 @@ class LongTermMemory:
     def _cosines(self, slots: np.ndarray, dots: np.ndarray, cue: np.ndarray) -> np.ndarray:
         """The candidates' dot products with ``cue`` over their keys' lengths and the cue's: their
         cosines, 0 where a key or the cue is zeros."""
-        lengths = self.norms[slots] * _norms(cue.astype(self.dtype)[None, :])[0]
+        lengths = self._take(self.norms, slots) * _norms(cue.astype(self.dtype)[None, :])[0]
         out = np.zeros(len(dots))
         np.divide(dots, lengths, out=out, where=lengths > 0)
         return out
