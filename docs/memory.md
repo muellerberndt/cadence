@@ -1722,6 +1722,7 @@ recall memory's read.
 | `longterm_pairs` | `0`, off | construction | Files each record under the pairs of this many units: [a million records](#a-million-records-opt-in) |
 | `longterm_expansion`, `longterm_winners`, `longterm_candidates` | the store's own | construction | The address's units, a cue's winners and the slots a read scores |
 | `longterm_fade` | `True` | construction | `False` for records written once: the fading touches every slot each moment |
+| `longterm_strength` | `False` | construction | Records grow strong: kept for good past 8 tellings, the rest forgotten in time, the brain's surprise counted as tellings: [a record's strength](#a-records-strength-opt-in) |
 
 **A stream of a million records.** A stream of more than 16,384 records reads through an
 address. `longterm_pairs=16, longterm_expansion=16384, longterm_winners=256,
@@ -2799,10 +2800,24 @@ told 1, 2 and 4 times and never read is forgotten after 54, 100 and 850 idle mom
 kept as eight tellings are; at surprise 0 to 3 it is forgotten) and the clean form (the record's
 cosine to the clean pattern .99 after 16 takes, the nearest take's .90).
 
-The associative store's place records have the same threshold: `SynapticMemory(fade_keep=depth)`
-keeps the records along a key coordinate whose [fade](#records-that-fade-with-disuse-opt-in) depth has reached
-it, so they stop fading. Repetition sums in its slow matrix, and `salience` raises its
-slow write rate.
+**In a brain.** `Brain.compose(longterm_strength=True)` gives the brain's own records (with
+`longterm_fade`, the founder) these rules as born ones: each stream's store keeps a record for
+good past 8 tellings (`LongTermRecords.KEEP`) and forgets one below it once it has faded for as
+long as the store keeps its depth (`hold`, eight capacities), so a fact told once and never used
+is gone after about eight times as many moments as the store has slots. A fact told again as the record holds it (which writes nothing) counts
+one more telling, and a read deepens the record only where it delivers it. The brain's own
+surprise at the moment a record is written counts as tellings: from `brain.surprise` (per stream
+and input unit, each unit's miss of its forecast over that forecast's usual size, #337), the
+root mean square over the units less one, so a moment as surprising as usual adds nothing and
+one eight times as surprising is kept at once. Without a surprise the brain counts each telling
+as one.
+
+The associative store's place records have the same threshold: `SynapticMemory(fade_keep=depth)`,
+and in a brain `Brain.compose(memory_fade=..., memory_keep=depth)`, keeps the records along a
+key coordinate whose [fade](#records-that-fade-with-disuse-opt-in) depth has reached it, so they
+stop fading. Repetition sums in its slow matrix, and `salience` raises its slow write rate. A
+brain with either setting saves checkpoint format `cadence-brain/6`, which 0.99.0 and earlier
+refuse by name.
 
 **Beside a brain.** The memory's read of a moment's key is held on input coordinates of its own,
 as a recall port is held through a settle, and lessons teach the brain to answer from it:

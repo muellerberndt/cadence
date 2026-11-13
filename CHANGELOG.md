@@ -22,6 +22,12 @@ bit. The guide is [docs/memory.md](docs/memory.md#a-records-strength-opt-in).
   deeper of two equal matches is read first.
 - **`SynapticMemory(fade_keep=depth)`**: with a fade, the records along a key coordinate whose
   depth has reached it stop fading.
+- **In a brain**: `Brain.compose(longterm_strength=True)` gives each stream's records these
+  rules (kept past 8 tellings, forgotten after about 8 capacities' moments unused, a telling as
+  the record holds it counted, a read crediting only the record it delivers), with the brain's
+  surprise at the write (`brain.surprise`, #337) counted as tellings; `Brain.compose(memory_fade=,
+  memory_keep=depth)` keeps the place records used past that depth. A brain with either saves
+  `cadence-brain/6`, which 0.99.0 and earlier refuse by name.
 - **A chamber**, `benchmarks/memory_strength/strength.py`: the dose curve, the one-shot write
   and the clean form beside the store without the settings.
 

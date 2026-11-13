@@ -134,7 +134,8 @@ brain](anatomy.md#genome-development-brain)).
 Brain(connectome, *, episodic=True, consolidation=0.05,
       memory_rate=1.0, memory_amplitude=1.0, memory_choice=False,
       memory_context=0.0, memory_extinction=0.0,
-      memory_context_hold=None, memory_fade=0.0, maturity=False, maturity_scale=10.0,
+      memory_context_hold=None, memory_fade=0.0, memory_keep=0.0, maturity=False,
+      maturity_scale=10.0,
       maturity_recovery=200000.0,
       working_memory_decay=0.0, working_memory_amplitude=3.0,
       efference_decay=0.2, efference_amplitude=0.0,
@@ -176,6 +177,7 @@ of 8 decisions, demonstrations recorded at 1.0, 24 active separation cells) are 
 | --- | --- |
 | `memory_choice` needs `episodic=True` | `ValueError` |
 | `memory_fade` in `[0, 1)`, and above 0 needs `episodic=True` ([records that fade](memory.md#records-that-fade-with-disuse-opt-in)) | `ValueError` |
+| `memory_keep` 0 or more, and above 0 needs `memory_fade` ([a record's strength](memory.md#a-records-strength-opt-in)) | `ValueError` |
 | `memory_context`, `memory_extinction` need `memory_choice`; `memory_context_hold` (`"unchanged"` or `"punished"`) needs `memory_choice` and `memory_context` | `ValueError` |
 | `learned_code` at least 2; `learned_code_fields` without it, `code` beside it, an image brain, the `torch` backend, or a connectome without the region's populations and complete synapses | `ValueError` |
 | `learned_fields` at least 2, on an image of at least 8 by 8 pixels, without `code` or `learned_code`; `image`, `ports` or `fields_motor` without `learned_fields`; `ports` negative or not an integer; `fields_motor` negative or not finite; `grow` and `graft` of a brain that holds them | `ValueError` |
@@ -262,7 +264,10 @@ the records' settings under `memories/longterm` in the metadata and, under
 `memories/longterm/`, the streams' turns (`since`, `read_slots`) and every stream's records
 (`store/<s>/keys`, `values`, `deep`, `recent`, `faded`, their first `count` rows, and
 `store/<s>/state`). `Brain.load` refuses records under another name and a `cadence-brain/4` file
-without them.
+without them. A brain whose memories grow strong (`longterm_strength`, `memory_keep`, #336)
+writes `cadence-brain/6`, which 0.99.0 and earlier refuse by name, whatever else it holds: the
+same members, with each record's `kept` and `gone` rows beside its sums and the place records'
+`fade_keep` under their settings.
 
 A brain with a [held message](memory.md#held-message) (`message`), [learned
 fields](senses.md#learned-receptive-fields) (`learned_fields`, `ports`), an actor's hold
@@ -595,7 +600,13 @@ brain's held message from a turn; it needs `message=units`, `message_boundary` a
 (0.75), `longterm_revise` (0.999), `longterm_turn` (None) and `longterm_rare` (0.03) are
 construction settings, as are `longterm_pairs` (0), `longterm_expansion`, `longterm_winners`,
 `longterm_candidates` (None: the store's own) and `longterm_fade` (True), which build each
-stream's store (`address()` names those that differ from the store's founders); with `longterm_turn=channel` every moment with that input channel on is a
+stream's store (`address()` names those that differ from the store's founders), and
+`longterm_strength` (False; needs `longterm_fade`, not built for `longterm_distinct`): each
+stream's store keeps a record for good past `LongTermRecords.KEEP` (8) tellings and forgets one
+below it that fades as far as its `hold` (8 capacities); a telling of a record as it holds itself deepens it,
+a read deepens only the record it delivers, the records read store by store, and `hear(x,
+surprise=)` counts the brain's surprise as tellings ([a record's
+strength](memory.md#a-records-strength-opt-in)); with `longterm_turn=channel` every moment with that input channel on is a
 turn, a turn's key is the rare units of the message's codes heard since the last value
 (`content(window)`), and `window`, `key`, `heard` and `moments` hold the streams' windows, their
 keys and the units' counts. `longterm_distinct=share` (with `longterm_turn`) reads by codebook

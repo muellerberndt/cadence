@@ -846,6 +846,18 @@ class LongTermMemory:
         self.writes += 1
         return slot, revised
 
+    def attend(self, slot: int, share: float = 1.0) -> None:
+        """A read's attention of ``share`` on one slot, credited as ``read`` credits it."""
+        self._credit(np.array([int(slot)]), [np.array([float(share)])])
+
+    def retell(self, slot: int, surprise: float | None = None) -> None:
+        """A record told again just as it holds itself: nothing is rewritten, its depth gains
+        one telling (``1 + surprise``) and its fade starts again."""
+        self.deep[slot] += 1.0 if surprise is None else 1.0 + float(surprise)
+        if self.keep and self.deep[slot] >= self.keep:
+            self.kept[slot] = True
+        self.faded[slot] = 0.0
+
     def _novel(self, key: np.ndarray) -> float:
         """How far the held record nearest ``key`` lies from it: 1 less their cosine, from 0
         (a key held) to 1 (a key at a right angle to every record, or an empty store)."""
@@ -1106,6 +1118,10 @@ class LongTermRecords:
     # the streams' records as one bank where they allow it (``batched``); False reads, writes
     # and fades them store by store, the reference the bank equals
     BATCHED: ClassVar[bool] = True
+    # a record's strength (``strength``, #336): the tellings past which a record is kept for
+    # good; a record below them is forgotten once it has faded for as long as the store keeps
+    # its depth (``hold``, eight capacities): one time scale for both
+    KEEP: ClassVar[float] = 8.0
 
     def __init__(
         self,
@@ -1127,7 +1143,13 @@ class LongTermRecords:
         winners: int | None = None,
         candidates: int | None = None,
         fade: bool = True,
+        strength: bool = False,
     ) -> None:
+        if strength and not fade:
+            raise ValueError("longterm_strength reads the records' fade: it needs longterm_fade")
+        if strength and distinct is not None:
+            raise ValueError("longterm_strength is built for records read by their keys: it is "
+                             "not built for longterm_distinct")
         if turn is None and (
             message is None or message.boundary is None or not message.boundary_holds
         ):
@@ -1161,6 +1183,10 @@ class LongTermRecords:
         self.expansion = None if expansion is None else int(expansion)
         self.winners = None if winners is None else int(winners)
         self.candidates = None if candidates is None else int(candidates)
+        # a record's strength (#336): kept past KEEP tellings, the rest forgotten in time, the
+        # moment's surprise counted as tellings; and that surprise per stream for this moment
+        self.strength = bool(strength)
+        self._told: np.ndarray | None = None
         self.width, self.value_width = int(message.units), int(message.inputs)
         populations = connectome.populations
         self.columns: list[slice | np.ndarray] = []
@@ -1217,11 +1243,16 @@ class LongTermRecords:
                 out[name] = getattr(self, name)
         if not self.fade:
             out["fade"] = False
+        if self.strength:
+            out["strength"] = True
         return out
 
     def _store(self) -> LongTermMemory:
+        settings = {**self.STORE, **self.address()}
+        if settings.pop("strength", False):  # kept past KEEP tellings; forgotten in time
+            settings.update(keep=self.KEEP, forget=8.0 * self.capacity)
         return LongTermMemory(self.width, self.value_width, self.capacity, revise=self.revise,
-                              seed=self.seed, **self.STORE, **self.address())
+                              seed=self.seed, **settings)
 
     @staticmethod
     def _saved(store: LongTermMemory) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -1239,7 +1270,7 @@ class LongTermRecords:
     def batched(self) -> bool:
         """Whether the streams' records are read, written and faded as one bank: every slot
         scored (no address), and keys of zeros and ones, which a held message gives."""
-        return self.BATCHED and self._binary and not self._store_coarse
+        return self.BATCHED and self._binary and not self._store_coarse and not self.strength
 
     def _bank(self) -> None:
         """The streams' sums (``deep``, ``recent``, ``faded``) as rows of three shared arrays,
@@ -1433,7 +1464,8 @@ class LongTermRecords:
             picks = np.full((len(rows), self.heads), -1, dtype=np.int64)
             for i, row in enumerate(rows):
                 read = self.stores[int(row)].read(
-                    keys[row], heads=self.heads, credit=not self._private
+                    keys[row], heads=self.heads,
+                    credit=not self._private and not self.strength,  # with strength: the held
                 )
                 picks[i] = [read.first(head) for head in range(self.heads)]
                 if self._store_coarse and not self._private:
@@ -1448,16 +1480,26 @@ class LongTermRecords:
                 if self._holds(store, slot, key, self.match):
                     out[row, columns] = self.amplitude * store.values[slot]
                     self.read_slots[row, head] = slot
+                    if self.strength and not self._private:  # recall that is used deepens
+                        store.attend(slot)
         return out
 
     # -- the write, after the settle
 
-    def hear(self, observations: np.ndarray) -> None:
+    def hear(self, observations: np.ndarray, surprise: Any = None) -> None:
         """After the message has heard the moment: a stream whose message turned at this moment
         holds its turn, and the moment after a turn is written where it says more than the
-        record the key finds; every stream's records live one moment."""
+        record the key finds; every stream's records live one moment. With ``strength``,
+        ``surprise`` (one value per stream, 0 or more) is the moment's surprise in tellings,
+        which a record written or told again at this moment gains."""
         x = np.asarray(observations, dtype=float)
         batch = len(x)
+        self._told = None
+        if self.strength and surprise is not None:
+            told = np.asarray(surprise, dtype=float)
+            if told.shape != (batch,) or not np.isfinite(told).all() or (told < 0).any():
+                raise ValueError("surprise is one finite value of 0 or more per stream")
+            self._told = told
         self._streams(batch)
         if self.turn is not None:
             self._hear_turns(x)
@@ -1648,10 +1690,13 @@ class LongTermRecords:
                 found = store.read(key, credit=False).first()
         elif store.count:
             found = store.read(key, credit=False).first()
+        surprise = None if self._told is None else float(self._told[row])
         if store.count and self._holds(store, found, key, self.revise) and np.array_equal(
             np.asarray(store.values[found], dtype=np.float64), value
         ):
             self.counts["agreed"] += 1  # the moment says nothing the record does not
+            if self.strength:  # yet it was told again: one more telling
+                store.retell(found, surprise)
             return
         if self.batched or self._store_coarse:
             # the store's own recognition, on the slot the read found
@@ -1661,13 +1706,13 @@ class LongTermRecords:
                 norm = float(np.linalg.norm(key) * np.linalg.norm(store.keys[found]))
                 if norm > 0 and score / norm >= store.revise:
                     recognised = found
-            slot, revised = store.write(key, value, recognised=recognised)
+            slot, revised = store.write(key, value, recognised=recognised, surprise=surprise)
             if not self._store_coarse:
                 if not np.isin(key, (0.0, 1.0)).all():
                     self._binary = False  # a key of other values: the stores read one by one
                 self._index[row, :, slot] = key.astype(np.uint8)
         else:
-            slot, revised = store.write(key, value)
+            slot, revised = store.write(key, value, surprise=surprise)
         self.counts["writes"] += 1
         self.counts["revisions"] += int(revised)
 
@@ -1814,11 +1859,16 @@ class LongTermRecords:
         for s, store in enumerate(self.stores):
             kept = store.arrays()
             by_rows, whole = self._saved(store)
-            for name in (*self.SAVED_ROWS, *by_rows):
+            for name in (*self.SAVED_ROWS, *by_rows, *self._strong()):
                 out[f"store/{s}/{name}"] = np.array(kept[name][: store.count])
             for name in ("state", *whole):
                 out[f"store/{s}/{name}"] = kept[name]
         return out
+
+    def _strong(self) -> tuple[str, ...]:
+        """The rows a checkpoint keeps of a record's strength: which records are kept for good
+        and which are forgotten (``strength``)."""
+        return ("kept", "gone") if self.strength else ()
 
     @staticmethod
     def _tables_as_rows(arrays: Mapping[str, np.ndarray]) -> dict[str, np.ndarray]:
@@ -1845,7 +1895,8 @@ class LongTermRecords:
         turns, into a memory of the same settings (``Brain.load``). Refused where a shape
         disagrees with the settings."""
         missing = [f"store/{s}/{name}" for s in range(int(stores)) for name in
-                   (*self.SAVED_ROWS, "state") if f"store/{s}/{name}" not in arrays]
+                   (*self.SAVED_ROWS, *self._strong(), "state")
+                   if f"store/{s}/{name}" not in arrays]
         missing += [name for name in ("since", "read_slots") if name not in arrays]
         if missing:
             raise ValueError(f"missing saved long-term records: {missing[0]}")
@@ -1858,7 +1909,7 @@ class LongTermRecords:
                 raise ValueError("invalid saved long-term records: counts")
             count = int(state[0])
             by_rows, whole = self._saved(store)
-            for name in (*self.SAVED_ROWS, *by_rows):
+            for name in (*self.SAVED_ROWS, *by_rows, *self._strong()):
                 given = np.asarray(arrays[f"store/{s}/{name}"])
                 if given.shape != (count, *full[name].shape[1:]):
                     raise ValueError(f"invalid saved long-term records: {name}")

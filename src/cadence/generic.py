@@ -128,6 +128,9 @@ FADE_FORMAT = "cadence-brain/3"
 # own, which 0.96.0 and earlier refuse, whatever else the brain holds: its file carries a maturity
 # and a fading store as the files named for them do. Every other brain keeps its name.
 LONGTERM_FORMAT = "cadence-brain/4"
+# A brain whose memories grow strong (``longterm_strength`` or ``memory_keep``, #336) saves under a
+# format name of its own, which 0.99.0 and earlier refuse by name, whatever else it holds.
+STRENGTH_FORMAT = "cadence-brain/6"
 # A memory's group in BRAIN_FORMAT and the prefix the reader validates its arrays under; the
 # episodic memory's arrays are the context store's and the stream's (``_flat_layout``).
 _MEMORY_PREFIXES = {
@@ -686,6 +689,7 @@ _EPISODIC_FOUNDERS: dict[str, Any] = {
 }
 _EPISODIC_SETTINGS = (
     "memory_choice", "memory_context", "memory_extinction", "memory_context_hold", "memory_fade",
+    "memory_keep",
 )
 # The constants of the stores the brain builds, the founders every reading used (``RETIRED``):
 # the share of a stream's record each later write keeps (``memory_decay``) and the cells of the
@@ -728,6 +732,9 @@ _LONGTERM_FOUNDERS: dict[str, Any] = {
     "heads": 1, "amplitude": 3.0, "match": 0.75, "revise": 0.999, "turn": None, "rare": 0.03,
     "distinct": None, "best": False, "rest": False,
     "pairs": 0, "expansion": None, "winners": None, "candidates": None, "fade": True,
+    # a record's strength (#336): kept past LongTermRecords.KEEP tellings, the rest forgotten in
+    # time, the brain's surprise at a write counted as tellings
+    "strength": False,
 }
 # The settings a brain is composed with and keeps for its life: ``retune`` refuses each of them
 # as a construction setting, and ``grow`` names those it does not add as construction choices.
@@ -795,6 +802,14 @@ def _longterm_genes(longterm: Any, genes: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(out["fade"], (bool, np.bool_)):
         raise ValueError("longterm_fade must be boolean")
     out["fade"] = bool(out["fade"])
+    if not isinstance(out["strength"], (bool, np.bool_)):
+        raise ValueError("longterm_strength must be boolean")
+    out["strength"] = bool(out["strength"])
+    if out["strength"] and not out["fade"]:
+        raise ValueError("longterm_strength reads the records' fade: it needs longterm_fade")
+    if out["strength"] and out["distinct"] is not None:
+        raise ValueError("longterm_strength is built for records read by their keys: it is not "
+                         "built for longterm_distinct")
     return out
 
 
@@ -1183,8 +1198,12 @@ def _load_memory(
                 if (depth < 0).any() or (recent < 0).any():
                     raise ValueError("saved fade depths and traces must be nonnegative")
                 memory.fade_depth, memory.fade_recent = depth.astype(float), recent.astype(float)
+                memory.fade_keep = real("saved memory fade_keep", metadata.get("fade_keep", 0.0),
+                                        low=0)
             elif prefix + "fade_depth" in data or prefix + "fade_recent" in data:
                 raise ValueError("saved fade depths require the fade's metadata")
+            elif metadata.get("fade_keep"):
+                raise ValueError("a saved memory_keep needs the fade's metadata")
             if (
                 metadata.get("persistent_parameters", memory.consolidated.size)
                 != memory.consolidated.size
@@ -1832,6 +1851,17 @@ def _actor_config(values: Any) -> ActorCriticConfig:
         raise ValueError("invalid saved actor config") from exc
 
 
+def _saved_strength(saved: Mapping[str, Any]) -> bool:
+    """Whether a checkpoint's metadata names memories that grow strong (``longterm_strength``,
+    ``memory_keep``): the brains that save ``STRENGTH_FORMAT``."""
+    memories = saved.get("memories")
+    if not isinstance(memories, dict):
+        return False
+    records, store = memories.get("longterm"), memories.get("hippocampus")
+    return (isinstance(records, dict) and bool(records.get("strength"))) or (
+        isinstance(store, dict) and bool(store.get("fade_keep")))
+
+
 def _saved_fade(saved: Mapping[str, Any]) -> bool:
     """Whether a checkpoint's metadata names a fading store (``memory_fade`` above zero): the
     brains that save ``FADE_FORMAT``. The store's reader validates the value itself."""
@@ -2463,6 +2493,7 @@ class Brain:
         memory_extinction: float = 0.0,
         memory_context_hold: str | None = None,
         memory_fade: float = 0.0,
+        memory_keep: float = 0.0,
         maturity: bool = False,
         maturity_scale: float = _MATURITY_FOUNDERS["maturity_scale"],
         maturity_recovery: float = _MATURITY_FOUNDERS["maturity_recovery"],
@@ -2651,6 +2682,9 @@ class Brain:
             raise ValueError("memory_fade must lie in [0, 1)")
         if memory_fade and not episodic:
             raise ValueError("memory_fade needs the episodic memory")
+        memory_keep = real("memory_keep", memory_keep, low=0)
+        if memory_keep and not memory_fade:
+            raise ValueError("memory_keep keeps place records from the fade: it needs memory_fade")
         working_memory_decay = real("working_memory_decay", working_memory_decay, low=0)
         efference_decay = real("efference_decay", efference_decay, low=0)
         if working_memory_decay >= 1 or efference_decay >= 1:
@@ -2820,7 +2854,7 @@ class Brain:
                 best=kept_records["best"], rest=kept_records["rest"],
                 pairs=kept_records["pairs"], expansion=kept_records["expansion"],
                 winners=kept_records["winners"], candidates=kept_records["candidates"],
-                fade=kept_records["fade"],
+                fade=kept_records["fade"], strength=kept_records["strength"],
             )
         # The index memory of the stream's moments. Populations named ``recall`` and ``next``
         # without ``recall=True`` are ordinary ones: an instrument may name and drive its own.
@@ -2880,6 +2914,7 @@ class Brain:
                 records.fade = memory_fade
                 records.fade_depth = np.zeros(records.key_width)
                 records.fade_recent = np.zeros(records.key_width)
+                records.fade_keep = memory_keep  # used past this depth: kept for good (#336)
             if maturity:  # surprise-gated writes engaged by the same maturity, noise from zero
                 records.gate_noise = np.zeros(records.consolidated.shape)
                 records.maturity = self.basal_ganglia.maturity
@@ -3924,6 +3959,8 @@ class Brain:
             genes["consolidation"] = self.hippocampus.consolidation
             if self.hippocampus.fade:
                 genes["memory_fade"] = self.hippocampus.fade
+            if self.hippocampus.fade_keep:
+                genes["memory_keep"] = self.hippocampus.fade_keep
         if self.message is not None:
             held = self.message
             genes.update(
@@ -4276,6 +4313,24 @@ class Brain:
             norm = np.linalg.norm(np.atleast_2d(np.asarray(x, dtype=float)), axis=1)
             return np.asarray(part / np.where(norm > 0.0, norm, 1.0)[:, None])
         return code if self.coded_cortex else x
+
+    def _moment_surprise(self) -> np.ndarray | None:
+        """This moment's surprise per stream in tellings, for the records' writes
+        (``longterm_strength``, #336): from the brain's surprise (``Brain.surprise``, #337: per
+        stream and unit, each unit's miss of its forecast over that forecast's learned noise,
+        about 1 for a usual miss), the root mean square over the units less one, at least 0. A
+        moment as surprising as usual adds nothing, one eight times as surprising counts as
+        eight tellings. None without records that grow strong, or where the brain holds no
+        surprise this moment."""
+        if self.longterm is None or not self.longterm.strength:
+            return None
+        held = getattr(self, "surprise", None)
+        if held is None:
+            return None
+        miss = np.asarray(held, dtype=float)
+        if miss.ndim != 2 or not np.isfinite(miss).all():
+            return None
+        return np.asarray(np.maximum(0.0, np.sqrt(np.mean(miss * miss, axis=1)) - 1.0))
 
     def stimulus(self, observations: Any, *, memory: bool = True) -> np.ndarray:
         """The drive of a batch of observations: the sensory neurons stimulated, plus the
@@ -6039,8 +6094,8 @@ class Brain:
                 self._heard(x, code),
                 None if self.working_memory is None else self.working_memory.last,
             )
-        if self.longterm is not None:
-            self.longterm.hear(self._heard(x, code))  # a turn held, a statement written
+        if self.longterm is not None:  # a turn held, a statement written
+            self.longterm.hear(self._heard(x, code), surprise=self._moment_surprise())
         if self.recall is not None:
             self.recall.witness(code, state)  # the sensed moment joins the stream's slots
         self._hear_episode(x)
@@ -6446,7 +6501,7 @@ class Brain:
         if self.longterm is not None:
             # after the message: a turn it holds from this moment, or the moment after a turn
             # written where it says more than the record its key finds
-            self.longterm.hear(self._heard(x, code))
+            self.longterm.hear(self._heard(x, code), surprise=self._moment_surprise())
         if self.recall is not None:
             # the moment acted on joins the stream's slots, with ``recall_action`` with the
             # command executed on it; its settled cortex enters the next moment's address
@@ -6779,8 +6834,11 @@ class Brain:
         memories: dict[str, Any] = {}
         store = self.hippocampus
         fading = isinstance(store, SynapticMemory) and bool(store.fade)
+        strong = (self.longterm is not None and self.longterm.strength) or (
+            isinstance(store, SynapticMemory) and bool(store.fade_keep))
         metadata: dict[str, Any] = {
-            "format": LONGTERM_FORMAT if self.longterm is not None
+            "format": STRENGTH_FORMAT if strong
+            else LONGTERM_FORMAT if self.longterm is not None
             else FADE_FORMAT if fading
             else BRAIN_FORMAT if agent.maturity is None else MATURITY_FORMAT,
             "actor": agent.config.to_dict(),
@@ -6958,22 +7016,27 @@ class Brain:
                 raise ValueError("not a Brain checkpoint; use Learner.load for a learner")
             saved = json.loads(str(archive["brain"]))
             if not isinstance(saved, dict) or saved.get("format") not in (
-                BRAIN_FORMAT, MATURITY_FORMAT, FADE_FORMAT, LONGTERM_FORMAT
+                BRAIN_FORMAT, MATURITY_FORMAT, FADE_FORMAT, LONGTERM_FORMAT, STRENGTH_FORMAT
             ):
                 raise ValueError("unsupported Brain checkpoint format")
             saved_memories = saved.get("memories")
             with_records = isinstance(saved_memories, dict) and "longterm" in saved_memories
-            if (saved["format"] == LONGTERM_FORMAT) != with_records:
+            strong = _saved_strength(saved)
+            if (saved["format"] == STRENGTH_FORMAT) != strong:
+                raise ValueError(
+                    f"memories that grow strong belong to checkpoint format {STRENGTH_FORMAT}"
+                )
+            if not strong and (saved["format"] == LONGTERM_FORMAT) != with_records:
                 raise ValueError(
                     f"long-term records belong to checkpoint format {LONGTERM_FORMAT}"
                 )
             fading = _saved_fade(saved)
-            if not with_records and (saved["format"] == FADE_FORMAT) != fading:
+            if not strong and not with_records and (saved["format"] == FADE_FORMAT) != fading:
                 raise ValueError(f"a fading store belongs to checkpoint format {FADE_FORMAT}")
             # a file with records or a fading store holds a maturity or none; any other file is
             # named by it
             if (
-                not with_records and not fading
+                not strong and not with_records and not fading
                 and (saved["format"] == MATURITY_FORMAT) != ("maturity" in saved)
             ):
                 raise ValueError(

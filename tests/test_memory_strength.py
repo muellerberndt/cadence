@@ -251,3 +251,97 @@ def test_a_synaptic_memory_keeps_the_records_used_past_its_kept_depth():
     for settings in ({"fade_keep": 5.0}, {"fade": 0.01, "fade_keep": -1.0}):
         with pytest.raises(ValueError):
             SynapticMemory(np.arange(4), np.arange(4, 6), **settings)
+
+
+# -- born in a brain: its records (``longterm_strength``) and its place records (``memory_keep``)
+
+INPUTS, TURN = 15, 14  # agents 0-5, verbs 6-9, patients 10-13, the turn 14
+
+
+def moment(*on):
+    x = np.zeros((1, INPUTS))
+    x[:, list(on)] = 1.0
+    return x
+
+
+def records_brain(**settings):
+    import cadence as cd
+
+    return cd.Brain.compose(INPUTS, 4, modules=(32,), seed=0, backend="cpu", message=70,
+                            message_boundary=TURN, message_boundary_holds=True, longterm=60,
+                            **settings)
+
+
+def tell(brain, agent, verb, patient):
+    brain.reset()
+    for x in (moment(agent), moment(6 + verb), moment(TURN), moment(10 + patient)):
+        brain.act(x, greedy=True)
+
+
+def asked(brain, agent, verb):
+    """The slot the question's read held (-1 for none)."""
+    brain.reset()
+    for x in (moment(agent), moment(6 + verb), moment(TURN)):
+        brain.act(x, greedy=True)
+    brain.stimulus(np.zeros((1, INPUTS)))
+    return int(brain.longterm.read_slots[0, 0])
+
+
+def checkpoint_format(path):
+    import json
+
+    with np.load(path, allow_pickle=False) as archive:
+        return json.loads(str(archive["brain"]))["format"]
+
+
+def test_a_brain_s_records_grow_strong_by_retelling_and_surprise_and_the_rest_fade(tmp_path):
+    import cadence as cd
+
+    brain = records_brain(longterm_strength=True)
+    records = brain.longterm
+    assert records.strength and not records.batched
+    for _ in range(10):  # told ten times: each telling as the record holds itself deepens it
+        tell(brain, 0, 0, 1)
+    tell(brain, 1, 1, 2)  # told once
+    brain.surprise = np.full((1, 5), 9.0)  # the brain's surprise (#337): nine times the usual
+    tell(brain, 2, 2, 3)  # told once, at a moment that surprising: eight tellings more
+    brain.surprise = None
+    store = records.stores[0]
+    assert store.count == 3 and records.counts["agreed"] == 9
+    assert store.kept[:3].tolist() == [True, False, True]
+    assert (store.keep, store.forget) == (records.KEEP, store.hold) == (8.0, 480.0)
+    brain.reset()  # a new episode: no turn holds a record in mind
+    for _ in range(520):  # idle moments: nothing is told or asked
+        brain.act(np.zeros((1, INPUTS)), greedy=True)
+    assert store.gone[:3].tolist() == [False, True, False]
+    assert asked(brain, 0, 0) == 0 and asked(brain, 2, 2) == 2 and asked(brain, 1, 1) == -1
+    assert brain.describe()["genes"]["longterm_strength"] is True
+    path = brain.save(tmp_path / "strong.npz")
+    assert checkpoint_format(path) == "cadence-brain/6"
+    loaded = cd.Brain.load(path)
+    again = loaded.longterm.stores[0]
+    assert loaded.longterm.strength and again.kept[:3].tolist() == store.kept[:3].tolist()
+    assert again.gone[:3].tolist() == store.gone[:3].tolist()
+    np.testing.assert_array_equal(again.deep[:3], store.deep[:3])
+    plain = records_brain()
+    assert not plain.longterm.strength and "longterm_strength" not in plain.describe()["genes"]
+    for settings in ({"longterm_strength": 1}, {"longterm_strength": True, "longterm_fade": False}):
+        with pytest.raises(ValueError):
+            records_brain(**settings)
+
+
+def test_a_brain_s_place_records_used_past_the_kept_depth_stop_fading(tmp_path):
+    import cadence as cd
+
+    brain = cd.Brain.compose(6, 3, seed=2, arousal=True, recall=False, memory_fade=1e-3,
+                             memory_keep=50.0)
+    assert brain.hippocampus.fade_keep == 50.0
+    assert brain.describe()["genes"]["memory_keep"] == 50.0
+    path = brain.save(tmp_path / "kept.npz")
+    assert checkpoint_format(path) == "cadence-brain/6"
+    assert cd.Brain.load(path).hippocampus.fade_keep == 50.0
+    faded = cd.Brain.compose(6, 3, seed=2, arousal=True, recall=False, memory_fade=1e-3)
+    assert faded.hippocampus.fade_keep == 0.0 and "memory_keep" not in faded.describe()["genes"]
+    assert checkpoint_format(faded.save(tmp_path / "faded.npz")) == "cadence-brain/3"
+    with pytest.raises(ValueError, match="memory_fade"):
+        cd.Brain.compose(6, 3, seed=2, recall=False, memory_keep=50.0)
