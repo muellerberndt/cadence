@@ -27,14 +27,14 @@ from cadence.words import Words
 BALL, CUP, BOX = 0, 1, 2
 RED, BLUE = 0, 1
 room = Map((-2.0, 2.0, -2.0, 2.0), (24, 24), units=3, values={"colour": 2})
-brain = Words(room)                                    # the robot stands at (0, 0)
+brain = Words(room)                                    # the parrot perches at (0, 0)
 kinds, colours = ["ball", "cup", "box"], ["red", "blue"]
 places = ["front", "right", "behind", "left"]          # the four places around the body
 rng = np.random.default_rng(0)
 
 
 def new_room():
-    """Three things around the robot, each in a drawn colour, seen once."""
+    """Three things around the parrot, each in a drawn colour, seen once."""
     turn = rng.uniform(0.0, 2 * math.pi)
     things = [(k, 1.2 * np.array([math.cos(turn + 2.1 * k), math.sin(turn + 2.1 * k)]),
                int(rng.integers(2))) for k in range(3)]
@@ -83,6 +83,30 @@ No table from word to concept is held anywhere, and none from a question word to
 word's meaning is in the synapses between its neuron and the concept neurons, a question word's
 read is in the synapses its practice taught it, the reads act as gains on what was found, and an
 answer is said by the motor. With the lexicon's synapses at zero the same brain answers nothing.
+
+## What is born and what is learned
+
+The rule is to engineer nothing that can be learned. Every part the parrot is born with, and
+every step the program takes in the brain's path, is listed here with its evidence or the plan
+that replaces it.
+
+| Part | Now | Evidence, or the plan that replaces it |
+| --- | --- | --- |
+| The map of things (where a thing is, held out of view) | Born: `cadence.space.map.Map` | Animals are born with maps of space; the map's own guide gives its readings |
+| What kind a thing is | Given by the caller (`moment(seen=[(kind, ...)])`) | The eyes learn kinds from what they see: the retina lane (#330) |
+| The colours | Six given categories, one unit each | Replaced by concepts learned from raw senses, with their boundaries learned from naming (`words-concepts`) |
+| The places around the body | Four fixed quarters | Replaced the same way: a direction around the body, its words' boundaries learned (`words-concepts`) |
+| Which word a heard form is | A word neuron a form, entered on first hearing, found by its exact form | Replaced by records of the recall memory keyed by the form, found by the memory's read (noisy and partial forms included), with the focused thing as context (#333) |
+| What a word names | Learned: reciprocal synapses, from naming (protocols 1 and 2) or from pistachios (protocol 3) | |
+| What a question asks for | Learned: the read neurons' synapses from answered questions or pistachios | The three read neurons are born, one a group of concepts; the next protocol makes the choice among groups a competition in the settle |
+| The concept asked about | The program takes the group whose most active concept is the most active | The next protocol: a competition in the settle |
+| The map's read by group | The program reads a kind by `where_is`, a value by `where_is_value`, a place by the cells it covers | The next protocol: the concept's pattern as the map's cue, one settle for every group |
+| A word heard back before it is said | A step of the program (`Lexicon.say`) | A candidate for a settle in which saying and hearing meet |
+| The words that learn a read (no concept named) | A rule of the program (`Words.asking`) | To be learned: which words of a question carry its meaning |
+| The written word's letters | Copied from the letters it was heard by | The parrot's voice replays the heard sound (#329), and the lexicon learns which word to say |
+| The focus | Given by the program (`Words.focus`, `attend`) | The learned focus of #333 |
+| Several things, counting | `cadence.words.several`: a born number sense (one neuron a count) | To be replaced: number learned from seeing objects (the next protocol of #328) |
+| Settings | Naming shares, thresholds, rates, temperatures | Genes: each beside the hand-set value as its control |
 
 ## The lexicon
 
@@ -144,6 +168,57 @@ there (`what_is_at`). "What is behind you?" goes from a place around the body to
 map settles on what is on the cells behind the body (`what_is_at(cells=)`), one thing at a time.
 Every direction reads the same lexicon and the same map.
 
+## Pistachios: what a question asks for, from reward
+
+A question word is learned the way a noun is, from questions answered for the brain, and the
+answer need not be told: a right answer can earn a pistachio. `ask(question, explore=True)` tries
+a read (what to say of the things found: their kind, their colour or their place), drawn from the
+reads' settled activity at `temperature`; `reward(1.0)` gives the pistachio. The question's words
+of asking, those that name no concept of the senses, are taught the read the answer took, at the
+reward's surprise: the reward less the chance the brain gave that read. A word that names a kind,
+a colour or a place keeps no read, so a read learned with one colour word holds for all of them,
+and no lesson of reward touches what a word names. A wrong answer earns nothing and teaches
+nothing.
+
+```python
+def raised_on_pistachios(rounds=30):
+    """The first brain's namings, then questions answered only with pistachios."""
+    parrot = Words(Map((-2.0, 2.0, -2.0, 2.0), (24, 24), units=3, values={"colour": 2}), seed=1)
+    room_ = parrot.map
+
+    def room_of():
+        turn = rng.uniform(0.0, 2 * math.pi)
+        things = [(k, 1.2 * np.array([math.cos(turn + 2.1 * k), math.sin(turn + 2.1 * k)]),
+                   int(rng.integers(2))) for k in range(3)]
+        room_.reset()
+        parrot.look(seen=[(k, p, {"colour": c}) for k, p, c in things])
+        return things
+
+    for _ in range(40):
+        things = room_of()
+        for k, p, c in [things[int(rng.integers(3))] for _ in range(4)]:
+            parrot.body.heading = float(rng.uniform(-math.pi, math.pi))
+            u = rng.random()
+            parrot.name(kinds[k] if u < 0.5 else colours[c] if u < 0.75 else
+                        places[parrot.body.place(p)], p)
+    parrot.body.heading = 0.0
+    for _ in range(rounds):
+        k, p, c = room_of()[0]
+        for question, right in ((f"where is the {kinds[k]}", places[parrot.body.place(p)]),
+                                (f"what colour is the {kinds[k]}", colours[c])):
+            if parrot.ask(question, explore=True) == [right]:
+                parrot.reward(1.0)                     # a pistachio for a right answer
+    return parrot, room_of()
+
+
+parrot, things = raised_on_pistachios()
+k, p, c = things[2]
+assert parrot.ask(f"what colour is the {kinds[k]}") == [colours[c]]
+```
+
+In the [chamber](../benchmarks/words/PROTOCOL_2.md) a parrot that practises on pistachios alone
+is read beside one told the answers and one whose pistachios are withheld.
+
 ## Parts that plug in
 
 The question path is open to parts that add what the brain holds and how a question finds it
@@ -160,6 +235,41 @@ an object with `groups` (its concept groups, added to the lexicon) and any of:
 `Words(map, parts=[...])` takes them in order, and `Words(map, senses=...)` takes learned senses
 in place of the born ones: an object with `groups`, `describe(place)` and `find(group, pattern)`.
 
+## Several things, how many, is there
+
+A room may hold two balls, one red and one blue. `cadence.words.several.Several` is a part that
+answers questions about several things:
+
+```python
+from cadence.words import Words
+from cadence.words.several import Several
+
+parrot = Words(room, parts=[Several()])
+```
+
+- **"Where is the red ball?"** Each word of the question is heard alone and names its most active
+  concept: "red" a colour, "ball" a kind. The map settles on the balls, and the part keeps the
+  ball the map settles on as red there. The map holds the two balls as two things, each with its
+  colour on its own cells ([values carried with a thing](space.md#values-carried-with-a-thing)).
+- **"Where is the ball?"** names both balls: one word a thing found.
+- **"How many red things are there?"** and **"is there a ball?"** are two more reads of the things
+  found together: their count and whether there is one. The parrot is born with a sense of small
+  numbers (one neuron a count of the things a settle finds, from none to five or more); the
+  words for the counts, and yes and no, are learned from the teacher's answers alone.
+
+**How the count words are learned.** A question whose answer is one word no naming has shown
+(a number word, yes, no, "I do not know") is the part's lesson. The question's words of asking
+are taught the read whose motor would say the teacher's word, and the answer is named with what
+the parrot found (the count, whether there is one) at the gain of the question's read. A read
+whose concepts hold another firm word takes no part in naming the answer, so "no" goes to the
+truth where "zero" holds the count of none. The teacher asks "how many?" before "is there?": asked
+together from the first question, the two words for none can take each other's concept (the
+chamber reads both orders).
+
+| Setting | Default | What it sets |
+| --- | --- | --- |
+| `Several(numbers=)` | 6 | The counts of the number sense, from none (the last counts that many or more) |
+
 ## The chamber and its readings
 
 [`benchmarks/words`](../benchmarks/words/README.md) raises a brain over rooms of nonce words drawn
@@ -174,8 +284,10 @@ namings and questions ([the declared protocol](../benchmarks/words/PROTOCOL.md))
 | `rate` | 0.05 | The least share of its error a word's lesson closes |
 | `threshold` | 0.15 | A word neuron's threshold |
 | `steps` | 12 | Sweeps of a settle |
-| `Words(shares=)` | (0.4, 0.3, 0.3) | A naming's shares of the kind, the value and the place around the body |
+| `Words(shares=)` | the kind 0.4, the rest evenly | A naming's shares of the senses' groups |
 | `floor` | 0.05 | The activity a concept needs to count as named |
+| `sharpness` | 0.02 | How the reads compete for their gains when the brain answers |
+| `temperature` | 0.1 | How a read is drawn where the brain tries one (`ask(explore=True)`) |
 
 A settle of the lexicon reads every synapse once a sweep: 12 sweeps over 13,312 synapses at the
 defaults, about 160,000 multiply-accumulates. A question takes one settle to hear, one or more
