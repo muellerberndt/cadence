@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+### A store the brain works itself (#308)
+
+- **`message_operations`** (`Brain.compose(message=width, message_settled=True,
+  message_operations=table)`), off by default: the message region becomes a store that one of
+  the brain's motor slots (the role slot, `message_slot`, the last unless named) works. The table
+  holds one entry per choice of that slot, each a list of `(operation, group)`: `"set"` puts the
+  moment's settled activity into the group's one block, `"write"` appends it to the group,
+  `"shift"` moves the group's head on, `"pop"` removes the group's last block and
+  `("move", group, to)` takes the group's head onto another group. The region holds one block per
+  group, its head (a queue's first block not shifted past; for a group in `message_stacks` its
+  last block), and the association reads every head at once through plastic synapses, with a
+  learned gain per group under `carried_gain`. A lesson's label for the role slot is followed by
+  the act on the same observations (the store follows the lesson, as the next moment hears the
+  taught word); `brain.message.name(roles)` names a moment's roles without a lesson.
+- **`message_alone`**, off by default: a block takes the association's settle of the moment's
+  observation alone (every memory silent, settled from rest) in place of the settle in its
+  context, so a word's block holds the same activity wherever the word was heard.
+- A checkpoint keeps the store (`counts`, `passed` beside `trace`), `describe()` names the
+  settings, an imagined branch works a private copy, and `grow`, `graft` and long-term records
+  refuse a brain with a worked store. With the options unset every brain, its file and its
+  description are unchanged to the bit on `backend="cpu"` (docs/memory.md, a store the brain
+  works itself).
+- **The sentence instrument's store** (`benchmarks/grammar/sentence.py`,
+  `benchmarks/grammar/SENTENCE_PROTOCOL_2.md`): the grammar chamber's brain with a role slot beside
+  its word slots, lessons that name each heard and said moment's role, the say-back mix and a full
+  mix with two wordings of one meaning and questions about a sentence, and the chamber's LSTM and
+  transformer taught the same batches, with and without the echoes and roles.
+
 ### A store of settled activity (#308)
 
 - **`message_settled`** (`Brain.compose(message=width, message_settled=True)`), off by default: a
