@@ -211,6 +211,8 @@ class Distance:
     def take(self, arrays: dict[str, Any]) -> None:
         from ..brain import Brain as Graph
 
+        if "pairs" in arrays and not np.array_equal(np.asarray(arrays["pairs"]), self.pairs):
+            raise ValueError("the arrays were learned on another wiring")
         self.graph = Graph(self.connectome, self._model,
                            efficacy=np.asarray(arrays["efficacy"], dtype=np.float64).copy(),
                            backend="cpu")

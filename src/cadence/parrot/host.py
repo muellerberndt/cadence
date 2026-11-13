@@ -1,0 +1,243 @@
+"""The parrot's brain in a web page: the host the page's worker runs in Pyodide.
+
+The page's worker builds ``Host(config)`` and calls ``handle(message)`` for ``describe``,
+``reset``, ``silence``, ``scene``, ``place``, ``move`` and ``remove``, and ``step(meta, arrays)``
+once a moment (ten a second). The host keeps the scene the page shows and renders both eyes
+from it with ``cadence.parrot.eyes`` (the same file as the chamber's), lives one moment of the
+brain, moves the body's joints and answers with the angles to pose the rig, the things on the
+map, the focus, the distance read for the thing looked at, and every drawn neuron's activity in
+``buffers``. ``config["files"]`` is a folder that may hold ``brain.npz`` (``Parrot.save``) and
+``groups.json`` (the chamber's probe: the neurons that carry distance and their tuning curves);
+without them the brain is a newborn.
+"""
+
+from __future__ import annotations
+
+import json
+import math
+import time
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+
+from .brain import GENES, Parrot
+from .eyes import HEIGHT, WIDTH, render
+from .world import NAMES, Body, Scene, Thing
+
+AREAS = {"retina_l": "retina", "retina_r": "retina", "disparity": "wulst", "parallax": "wulst",
+         "size_one": "rotundus", "elevation_one": "tectum", "size_both": "rotundus",
+         "elevation_both": "tectum", "distance": "arco", "look": "rotundus", "kind": "rotundus",
+         "focus": "tectum", "map": "map"}
+TITLES = {"retina_l": "Left eye: what stands out from the room",
+          "retina_r": "Right eye: what stands out from the room",
+          "disparity": "Disparity units: the two eyes' views compared",
+          "parallax": "Parallax units: one eye before and after the head moved",
+          "size_one": "Size in one eye", "elevation_one": "Height in one eye's field",
+          "size_both": "Size seen by both eyes", "elevation_both": "Height seen by both eyes",
+          "distance": "Distance neurons (the reach)", "look": "The look: hue, saturation, light",
+          "kind": "Kinds learned", "focus": "The focus: one winner", "map": "The map of things"}
+POOL = 4  # pixels a side of the retina's drawn cells
+
+
+class Host:
+    """The page's brain host; see the module note."""
+
+    def __init__(self, config: dict[str, Any] | None = None):
+        config = dict(config or {})
+        folder = Path(str(config.get("files", ""))) if config.get("files") else None
+        brain = folder / "brain.npz" if folder is not None else None
+        self.parrot = (Parrot.load(brain) if brain is not None and brain.exists()
+                       else Parrot(dict(GENES), seed=int(config.get("seed", 0))))
+        self.newborn = not (brain is not None and brain.exists())
+        found = folder / "groups.json" if folder is not None else None
+        self.probe: dict[str, Any] = (json.loads(found.read_text()) if found is not None
+                                      and found.exists() else {})
+        self.learn = bool(config.get("learn", False))
+        self.scene = Scene([])
+        self.cover: str | None = None
+        self.silenced: set[str] = set()
+        self.buffers: dict[str, np.ndarray] = {}
+        r = self.parrot.regions
+        sizes = [("retina_l", (HEIGHT // POOL) * (WIDTH // POOL)),
+                 ("retina_r", (HEIGHT // POOL) * (WIDTH // POOL))]
+        sizes += [(name, r[name].stop - r[name].start) for name in r if name not in ("map",)]
+        sizes += [("map", self.parrot.map.count)]
+        self.populations: list[dict[str, Any]] = []
+        start = 0
+        for name, size in sizes:
+            self.populations.append({"name": name, "title": TITLES.get(name, name),
+                                     "region": AREAS.get(name, name), "start": start,
+                                     "size": int(size)})
+            start += int(size)
+        self.neurons = start
+        self.pop = {p["name"]: p for p in self.populations}
+
+    # -- commands
+
+    def handle(self, message: dict[str, Any]) -> dict[str, Any]:
+        command = message.get("command")
+        if command == "describe":
+            return self.describe()
+        if command == "reset":
+            return self.reset()
+        if command == "silence":
+            return self.silence(str(message.get("group")), bool(message.get("on")))
+        if command == "scene":
+            self.scene = Scene.from_json(message["scene"])
+            return {"things": len(self.scene.things)}
+        if command == "place":
+            self.scene.things.append(Scene.from_json({"schema": "parrot-scene/1",
+                                                      "things": [message["thing"]]}).things[0])
+            return {"things": len(self.scene.things)}
+        if command == "move":
+            for t in self.scene.things:
+                if t.id == str(message["id"]):
+                    t.x, t.z = float(message["pos"][0]), float(message["pos"][2])
+                    t.stand = float(message.get("stand", t.stand))
+            return {"things": len(self.scene.things)}
+        if command == "remove":
+            self.scene.things = [t for t in self.scene.things if t.id != str(message["id"])]
+            return {"things": len(self.scene.things)}
+        raise ValueError(f"unknown command {command!r}")
+
+    def describe(self) -> dict[str, Any]:
+        reach = self.pop["distance"]
+        group: dict[str, Any] = {
+            "name": "distance", "title": "Distance neurons",
+            "explain": ("Each of these neurons prefers one distance. They started with no "
+                        "synapses at all and learned from the parrot's own head turns: a thing "
+                        "stays where it is while the head turns, so the distance at which two "
+                        "views of it agree is the one they learn."),
+            "units": list(range(reach["start"], reach["start"] + reach["size"])),
+            "variable": "distance", "unit": "m",
+            "range": [float(v) for v in self.parrot.distance.span],
+            "preferred": self.parrot.distance.preferred.tolist()}
+        if self.probe:
+            group["tuning"] = self.probe.get("tuning", {})
+            group["found"] = self.probe.get("found", {})
+        return {"name": "parrot", "placeholder": False, "newborn": self.newborn,
+                "title": "The parrot's brain: two eyes, a map of things, distance learned",
+                "joints": list(NAMES), "eye": {"w": WIDTH, "h": HEIGHT}, "rate_hz": 10,
+                "populations": self.populations, "neurons": self.neurons,
+                "synapses": int(self.parrot.distance.connectome.synapses
+                                + self.parrot.kinds.connectome.synapses
+                                + self.parrot.focus.connectome.synapses
+                                + self.parrot.map.connectome.synapses),
+                "parameters": self.parrot.parameters(), "groups": [group],
+                "genes": {k: v for k, v in self.parrot.genes.items() if k != "wiring"}}
+
+    def reset(self) -> dict[str, Any]:
+        self.parrot.reset()
+        return {"ok": True}
+
+    def silence(self, group: str, on: bool) -> dict[str, Any]:
+        (self.silenced.add if on else self.silenced.discard)(group)
+        units: list[int] = []
+        if "distance" in self.silenced:
+            found = self.probe.get("found", {}).get("units")
+            r = self.parrot.regions["distance"]
+            units = list(found) if found else list(range(r.start, r.stop))
+        self.parrot.silence(units)
+        return {"silenced": sorted(self.silenced)}
+
+    # -- a moment
+
+    def _looked_at(self, sightings: list[Any]) -> int | None:
+        """The sighting nearest the beak's direction, a thing both eyes see first."""
+        if not sightings:
+            return None
+        rotation = self.parrot.body.eyes().rotation
+        best, key = None, (2, math.inf)
+        for i, s in enumerate(sightings):
+            head = rotation.T @ s.direction
+            angle = abs(math.atan2(float(head[0]), float(head[2])))
+            here = (0 if s.eye == 2 else 1, angle)
+            if here < key:
+                best, key = i, here
+        return best
+
+    def step(self, meta: dict[str, Any], arrays: dict[str, np.ndarray]) -> dict[str, Any]:
+        began = time.perf_counter()
+        if meta.get("scene") is not None:
+            self.scene = Scene.from_json(meta["scene"])
+        cover = meta.get("cover", self.cover)
+        size = HEIGHT * WIDTH * 3
+        given = [arrays.get("left"), arrays.get("right")]
+        if all(a is not None and a.size == size for a in given):
+            images = np.stack([np.asarray(a, dtype=np.uint8).reshape(HEIGHT, WIDTH, 3)
+                               for a in given])
+            if cover in ("left", "right"):
+                images[("left", "right").index(cover)] = 0
+        else:
+            images = render(self.scene, self.parrot.body.eyes(), cover=cover).images
+        rendered = time.perf_counter()
+        out = self.parrot.moment(images, learn=bool(meta.get("learn", self.learn)))
+        lived = time.perf_counter()
+        sightings = out["sightings"]
+        looked = self._looked_at(sightings)
+        activity = np.zeros(self.neurons, dtype=np.float32)
+        weights = self.parrot.vision.weights
+        for e, name in ((0, "retina_l"), (1, "retina_r")):
+            pooled = weights[e][: HEIGHT // POOL * POOL, : WIDTH // POOL * POOL].reshape(
+                HEIGHT // POOL, POOL, WIDTH // POOL, POOL).mean(axis=(1, 3))
+            p = self.pop[name]
+            activity[p["start"]: p["start"] + p["size"]] = pooled.reshape(-1)
+        readout: dict[str, Any] = {"distance": None, "looked_at": None}
+        group_activity: dict[str, list[float]] = {"distance": []}
+        r = self.parrot.regions
+        if looked is not None:
+            s = sightings[looked]
+            row = out["reach"][looked]
+            cues = self.parrot.distance.width_in
+            for name in ("disparity", "parallax", "size_one", "elevation_one", "size_both",
+                         "elevation_both"):
+                p, a = self.pop[name], r[name].start - r["disparity"].start
+                activity[p["start"]: p["start"] + p["size"]] = row[a: a + p["size"]]
+            p = self.pop["distance"]
+            reach = row[cues: cues + p["size"]]
+            activity[p["start"]: p["start"] + p["size"]] = reach
+            group_activity["distance"] = [float(v) for v in reach]
+            kinds = out["kind_activity"][looked]
+            for name, part in (("look", self.parrot.kinds.feature),
+                               ("kind", self.parrot.kinds.category)):
+                p = self.pop[name]
+                activity[p["start"]: p["start"] + p["size"]] = kinds[part]
+            readout = {"distance": float(s.distance) if np.isfinite(s.distance) else None,
+                       "looked_at": {"place": None if s.place is None else
+                                     [float(v) for v in s.place],
+                                     "kind": s.kind, "both_eyes": s.eye == 2}}
+        focus = self.parrot.focused
+        if focus is not None:
+            p = self.pop["focus"]
+            activity[p["start"]: p["start"] + len(focus.activity)] = focus.activity
+        p = self.pop["map"]
+        sheet = self.parrot.map.potential.sum(axis=1)
+        activity[p["start"]: p["start"] + p["size"]] = sheet / max(float(sheet.max()), 1e-9)
+        angles = self.parrot.body.angles.astype(np.float32)
+        self.buffers = {"activity": activity, "angles": angles,
+                        "targets": Body.scaled(self.parrot.body.targets).astype(np.float32)}
+        names = ["activity", "angles", "targets"]
+        if meta.get("show_eyes"):
+            self.buffers["left"], self.buffers["right"] = images[0].ravel(), images[1].ravel()
+            names += ["left", "right"]
+        things = [{"place": None if t["place"] is None else [float(v) for v in t["place"]],
+                   "kind": t["kind"], "state": t["state"], "since": int(t["since"])}
+                  for t in self.parrot.map.things()]
+        return {"buffers": names, "group_activity": group_activity, "readout": readout,
+                "focus": None if focus is None else {
+                    "place": [float(v) for v in focus.place], "kind": int(focus.kind),
+                    "why": focus.why, "activity": [float(v) for v in focus.activity]},
+                "things": things, "silenced": sorted(self.silenced),
+                "ms": {"render": 1000.0 * (rendered - began),
+                       "brain": 1000.0 * (lived - rendered),
+                       "host": 1000.0 * (time.perf_counter() - lived)},
+                "newborn": self.newborn}
+
+
+def scene_of(things: list[Thing]) -> dict[str, Any]:
+    """A scene in the page's format, for a test or a script."""
+    return Scene(list(things)).to_json()
+
+
+__all__ = ["AREAS", "Host", "scene_of"]

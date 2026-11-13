@@ -234,6 +234,7 @@ class Vision:
         self.max_area = float(max_area)
         self.width, self.height = int(width), int(height)
         self.ground = Ground(share=share, soft=soft)
+        self.weights = np.zeros((2, self.height, self.width))
         self._azimuth = [columns(0, self.width), columns(1, self.width)]
         self._deg = 2.0 * TOP / self.height  # degrees a row
         self._col_deg = float(np.degrees(abs(self._azimuth[0][1] - self._azimuth[0][0])))
@@ -320,12 +321,14 @@ class Vision:
                 if lit[e]:
                     self.ground.learn(rgb[e])
         planes: list[tuple[np.ndarray, np.ndarray, list[Figure]]] = []
+        self.weights = np.zeros(rgb.shape[:3])  # each eye's figure weight, for a reader
         for e in (0, 1):
             if not lit[e]:
                 planes.append((np.zeros(rgb.shape[1:3]), np.full(rgb.shape[1:3], -1), []))
                 continue
             weight = self.ground.weight(rgb[e])
             weight = np.where(rgb[e].max(axis=-1) > self.dark, weight, 0.0)
+            self.weights[e] = weight
             found, labels = self.figures(e, rgb[e], weight, None if ids is None else ids[e])
             planes.append((weight, labels, found))
         if lit[0] and lit[1]:

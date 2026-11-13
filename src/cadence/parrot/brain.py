@@ -29,10 +29,12 @@ One moment of the brain, from the two eyes' images and the body's own joint read
 
 from __future__ import annotations
 
+import json
 import math
 import time
 from collections import deque
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -115,6 +117,15 @@ def triangulate(o1: np.ndarray, u1: np.ndarray, o2: np.ndarray, u2: np.ndarray
     t = (e - b * d) / denom
     p1, p2 = o1 + s * u1, o2 + t * u2
     return (p1 + p2) / 2.0, float(np.linalg.norm(p1 - p2)), s, t, math.acos(min(1.0, abs(b)))
+
+
+def _plain(value: Any) -> Any:
+    """A gene's value as JSON: arrays as lists, numbers as numbers."""
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    raise TypeError(f"no JSON for {type(value).__name__}")
 
 
 def flat(vector: np.ndarray) -> np.ndarray:
@@ -386,6 +397,7 @@ class Parrot:
         self._time("look", clock)
         self.moments += 1
         self.last = {"figures": figures, "sightings": sightings, "taught": taught,
+                     "reach": activity, "kind_activity": kind_activity,
                      "reports": reports}
         return self.last
 
@@ -512,6 +524,46 @@ class Parrot:
         goal = float(np.clip(goal, LOW[k], HIGH[k]))
         targets[k] = 2.0 * (goal - LOW[k]) / (HIGH[k] - LOW[k]) - 1.0
         return targets
+
+    # -- what a file keeps
+
+    FORMAT = "cadence-parrot-brain-arrays/1"
+
+    def arrays(self) -> dict[str, np.ndarray]:
+        """What was learned, as arrays: the ground's colours, the kinds and the reach."""
+        out = {f"ground.{k}": v for k, v in self.vision.ground.arrays().items()}
+        out.update({f"kinds.{k}": v for k, v in self.kinds.arrays().items()})
+        out.update({f"distance.{k}": v for k, v in self.distance.arrays().items()})
+        return out
+
+    def save(self, path: str | Path, *, card: dict[str, Any] | None = None) -> Path:
+        """Write the genes, a card and what was learned to one ``.npz`` (no pickled object)."""
+        target = Path(path)
+        record = {"format": self.FORMAT, "genes": self.genes, "seed": self.seed,
+                  "moments": self.moments, "lessons": self.lessons, "card": card or {}}
+        text = json.dumps(record, default=_plain)
+        payload: dict[str, Any] = {"record": np.frombuffer(text.encode("utf-8"), dtype=np.uint8),
+                                   **self.arrays()}
+        np.savez(target, **payload)
+        return target if target.suffix == ".npz" else target.with_suffix(".npz")
+
+    @classmethod
+    def load(cls, path: str | Path, *, backend: Any = "cpu") -> Parrot:
+        """A brain from ``save``'s file: its genes and what it learned."""
+        with np.load(Path(path), allow_pickle=False) as data:
+            record = json.loads(bytes(data["record"]).decode("utf-8"))
+            if record.get("format") != cls.FORMAT:
+                raise ValueError(f"{path} is no {cls.FORMAT} file")
+            arrays = {k: np.asarray(data[k]) for k in data.files if k != "record"}
+        genes = dict(record["genes"])
+        if isinstance(genes.get("wiring"), list):
+            genes["wiring"] = np.asarray(genes["wiring"], dtype=np.int64)
+        brain = cls(genes, seed=int(record["seed"]), backend=backend)
+        brain.vision.ground.take({k[7:]: v for k, v in arrays.items() if k.startswith("ground.")})
+        brain.kinds.take({k[6:]: v for k, v in arrays.items() if k.startswith("kinds.")})
+        brain.distance.take({k[9:]: v for k, v in arrays.items() if k.startswith("distance.")})
+        brain.moments, brain.lessons = int(record["moments"]), int(record["lessons"])
+        return brain
 
     def reset(self) -> None:
         """A new scene: the map empties and the head returns to rest; what was learned stays."""

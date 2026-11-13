@@ -144,3 +144,34 @@ def test_random_wiring_has_as_many_synapses():
     assert loose.distance.parameters() == hand.distance.parameters()
     assert not np.array_equal(loose.distance.pairs, hand.distance.pairs)
     assert set(GENES) <= set(hand.genes)
+
+
+def test_save_load_and_the_page_host(tmp_path):
+    import json
+
+    from cadence.parrot.host import Host, scene_of
+
+    scene = Scene([Thing("a", "apple", 0.05, 0.35, stand=0.1),
+                   Thing("b", "cup", 0.35, 0.05, stand=0.05)])
+    parrot = Parrot(seed=2)
+    for _ in range(12):
+        parrot.moment(render(scene, parrot.body.eyes()).images)
+    path = parrot.save(tmp_path / "brain.npz", card={"trained on": "a test"})
+    again = Parrot.load(path)
+    assert np.array_equal(again.distance.graph.efficacy, parrot.distance.graph.efficacy)
+    assert again.kinds.used == parrot.kinds.used and again.genes == parrot.genes
+    host = Host({"files": str(tmp_path)})
+    assert not host.newborn
+    described = host.describe()
+    json.dumps(described, allow_nan=False)
+    assert described["groups"][0]["name"] == "distance"
+    host.handle({"command": "scene", "scene": scene_of(scene.things)})
+    for _ in range(3):
+        reply = host.step({"show_eyes": True}, {})
+        json.dumps(reply, allow_nan=False)
+    assert set(reply["buffers"]) == {"activity", "angles", "targets", "left", "right"}
+    assert host.buffers["activity"].shape == (described["neurons"],)
+    assert host.buffers["left"].size == 100 * 175 * 3
+    assert host.silence("distance", True)["silenced"] == ["distance"]
+    reply = host.step({}, {})
+    assert reply["readout"]["distance"] is None
