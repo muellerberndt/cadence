@@ -10,7 +10,9 @@ on the chamber's gates as ``words.life`` reads them:
 - ``shares_colour``: (.3, .4, .3), the colour first;
 - ``rate_one``: a lesson closes all of its error, so a word holds its latest naming (against
   1/n, no less than .05);
-- ``threshold_zero``: the word neurons' threshold at 0 (against .15).
+- ``threshold_zero``: the word neurons' threshold at 0 (against .15);
+- ``say_once``: the motor says the most active word without hearing it first (``say(tries=1)``,
+  at a head whose ``Lexicon.say`` takes ``tries``; against 3).
 
     python genes.py <founder> <out> [short] [variant ...]
 """
@@ -24,11 +26,24 @@ import common
 
 VARIANTS: dict[str, dict[str, Any]] = {
     "default": {},
-    "shares_equal": {"shares": (1 / 3, 1 / 3, 1 / 3)},
-    "shares_colour": {"shares": (0.3, 0.4, 0.3)},
+    "shares_equal": {"shares": {"kind": 1 / 3, "colour": 1 / 3, "place": 1 / 3}},
+    "shares_colour": {"shares": {"kind": 0.3, "colour": 0.4, "place": 0.3}},
     "rate_one": {"rate": 1.0},
     "threshold_zero": {"threshold": 0.0},
+    "say_once": {"tries": 1},
 }
+
+
+def _shares(given: dict[str, Any]) -> dict[str, Any]:
+    """``shares`` as the head's ``Words`` takes it: a dict by group, or (kind, colour, place)."""
+    import inspect
+
+    from cadence.words import Words
+
+    if "shares" in given and inspect.signature(Words).parameters["shares"].default is not None:
+        given = {**given, "shares": tuple(given["shares"][g] for g in ("kind", "colour",
+                                                                       "place"))}
+    return given
 GATES = ["W1", "W1_named_only", "W2", "W3", "W4_never_seen", "W4_never_taught", "W5_by_colour",
          "W5_by_place", "W6_ablated"]
 
@@ -38,12 +53,21 @@ def life(seed: int, settings: dict[str, Any], variant: dict[str, Any]) -> dict[s
 
     from cadence.words import Lexicon
 
-    given = dict(variant)
+    given = _shares(dict(variant))
     brain = None
     if "threshold" in given:
         brain = words.make_brain(seed)
         concepts = {g: s.stop - s.start for g, s in brain.lexicon.groups.items()}
         brain.lexicon = Lexicon(concepts, threshold=float(given.pop("threshold")))
+    if "tries" in given:
+        import functools
+        import inspect
+
+        tries = int(given.pop("tries"))
+        brain = brain if brain is not None else words.make_brain(seed)
+        if "tries" not in inspect.signature(brain.lexicon.say).parameters:
+            return {"absent": "say takes no tries at this head"}
+        brain.lexicon.say = functools.partial(brain.lexicon.say, tries=tries)
     return words.life(seed, brain=brain, **settings, **given)
 
 

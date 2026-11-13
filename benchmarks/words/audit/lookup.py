@@ -8,6 +8,9 @@ Three arms live the founder's script on one map and one body, each with its own 
   lane's rules: a lookup): a word's row is the running mean of the concept shares of its
   lessons, hearing sums the heard words' rows, saying is the entered word whose row is largest
   at the concept. Same lessons, same shares, same motor letters; no settle, no synapse;
+- ``table_heard_back``: the table, saying as the head's lexicon says (a word is heard before it
+  is said, and gives way where its hearing names another concept than the said vector's
+  largest);
 - ``oracle``: the same ``Words`` with a table written by hand from the world's own lexicon (each
   kind, colour and place word on its concept, "where" on the place read, "colour" on the colour
   read, "what" and "you" on the kind read, the nothing word on nothing) and no lesson at all:
@@ -49,6 +52,7 @@ class Table:
         self.lessons = 0
         self.work = {"settles": 0, "macs": 0}
         self.fixed = False  # a hand-written table takes no lesson
+        self.heard_back = False  # say as the lexicon of the head says: hear the word first
 
     def index(self, group: str, value: int) -> int:
         return int(self.groups[group].start) + int(value)
@@ -64,6 +68,8 @@ class Table:
         return self._units[form]
 
     def _concepts(self, concepts: Any) -> np.ndarray:
+        if not isinstance(concepts, dict):
+            return np.asarray(concepts, dtype=np.float64).reshape(self.concepts).copy()
         out = np.zeros(self.concepts)
         for (group, value), share in concepts.items():
             out[self.index(group, value)] += float(share)
@@ -102,11 +108,37 @@ class Table:
             return self.rows[: len(self.forms), int(concept)].copy()
         return self.rows[: len(self.forms)] @ np.asarray(concept, dtype=np.float64)
 
-    def say(self, concept: Any, floor: float = 1e-3) -> str | None:
+    def say(self, concept: Any, floor: float = 1e-3, tries: int = 3) -> str | None:
         active = self.words_for(concept)
         if not len(active) or active.max() <= floor:
             return None
-        return self.forms[int(np.argmax(active))]
+        chosen = int(np.argmax(active))
+        if self.heard_back:  # the lexicon's rule at the head: a word is heard before it is said
+            vector = self._vector(concept)
+            if vector.max() > 0:
+                meant = int(np.argmax(vector))
+                among = np.concatenate([np.arange(g.start, g.stop) for g in self.groups.values()
+                                        if vector[g].max() > 0])
+                for unit in np.argsort(-active)[: max(int(tries), 1)]:
+                    if active[unit] <= floor:
+                        break
+                    heard = self.hear(self.forms[int(unit)])
+                    if int(among[np.argmax(heard[among])]) == meant:
+                        chosen = int(unit)
+                        break
+        return self.forms[chosen]
+
+    def _vector(self, concept: Any) -> np.ndarray:
+        if isinstance(concept, tuple):
+            concept = self.index(*concept)
+        if isinstance(concept, (int, np.integer)):
+            return np.asarray(np.eye(self.concepts)[int(concept)])
+        return np.asarray(concept, dtype=np.float64).reshape(self.concepts)
+
+
+def heard_back(table: Table) -> Table:
+    table.heard_back = True
+    return table
 
 
 def oracle(lex: world.Lexicon, concepts: dict[str, int]) -> Table:
@@ -140,6 +172,8 @@ def life(seed: int, settings: dict[str, Any]) -> dict[str, Any]:
     lex = world.lexicon(seed)
     arms = {"brain": brain,
             "table": Words(brain.map, lexicon=Table(concepts), body=brain.body),  # type: ignore[arg-type]
+            "table_heard_back": Words(brain.map, lexicon=heard_back(Table(concepts)),  # type: ignore[arg-type]
+                                      body=brain.body),
             "oracle": Words(brain.map, lexicon=oracle(lex, concepts),  # type: ignore[arg-type]
                             body=brain.body)}
     h = common.Harness(seed, brain, settings)
@@ -168,6 +202,7 @@ def life(seed: int, settings: dict[str, Any]) -> dict[str, Any]:
     return {"seed": int(seed), "settings": settings, "seconds": round(time.time() - began, 1),
             "parameters": {"brain": int(brain.lexicon.connectome.synapses // 2),
                            "table": int(arms["table"].lexicon.rows.size),
+                           "table_heard_back": int(arms["table"].lexicon.rows.size),
                            "oracle": 0},
             "arms": {name: {"shares": common.shares(book), "gates": book}
                      for name, book in books.items()}}

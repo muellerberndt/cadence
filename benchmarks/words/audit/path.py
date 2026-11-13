@@ -26,20 +26,22 @@ import numpy as np
 import world
 from lookup import Table
 
-CHOOSES = re.compile(r"argmax|READS\[|group == |if READS|max\(\(|letters\[|\.letters\b")
+CHOOSES = re.compile(r"argmax|READS\[|group == |if READS|max\(\(|max\(self\.answers|letters\[|"
+                     r"\.letters\b|np\.eye")
 
 
 def steps() -> list[str]:
     from cadence.words import lexicon, room
 
     out = []
-    for module, names in ((room, ("Words._heard", "Words.find", "Words.ask", "Words.practice")),
+    for module, names in ((room, ("Words._heard", "Words.hear", "Words.find", "Words.answer",
+                                  "Words.ask", "Words.practice", "Senses.describe",
+                                  "Senses.find")),
                           (lexicon, ("Lexicon.say", "Lexicon._enter"))):
         for name in names:
             owner, _, attr = name.partition(".")
             obj = getattr(getattr(module, owner, None), attr, None)
             if obj is None:
-                out.append(f"{module.__name__}.{name}: absent at this head")
                 continue
             lines, start = inspect.getsourcelines(obj)
             for i, line in enumerate(lines):
