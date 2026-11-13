@@ -211,10 +211,11 @@ def scored(h: Harness, q: world.Question, said: list[str], predicted: list[str] 
 # -- the replay
 
 def replay(seed: int, probes: list[Any], settings: dict[str, Any] | None = None,
-           brain: Any = None, after: Any = None) -> dict[str, Any]:
+           brain: Any = None, after: Any = None, practise: Any = None) -> dict[str, Any]:
     """The founder's life with ``probes`` answering beside the brain at every test question;
-    ``after(harness)`` runs on the brain the life left (scenes of its own) and gives a dict.
-    Gives each probe's shares by gate, and the brain's own."""
+    ``after(harness)`` runs on the brain the life left (scenes of its own) and gives a dict;
+    ``practise(harness, question)`` takes each practice question in place of the teacher's
+    told answer. Gives each probe's shares by gate, and the brain's own."""
     settings = {**words.DEFAULTS, **(settings or {})}
     events = words.script(seed, **settings)
     h = Harness(seed, words.make_brain(seed) if brain is None else brain, settings)
@@ -235,11 +236,16 @@ def replay(seed: int, probes: list[Any], settings: dict[str, Any] | None = None,
             h.brain.name(event[2], event[1])
         elif kind == "practice":
             q = event[1]
-            h.brain.practice(q.text, q.answer if len(q.answer) > 1 else q.answer[0])
+            if practise is not None:
+                practise(h, q)
+            else:
+                h.brain.practice(q.text, q.answer if len(q.answer) > 1 else q.answer[0])
         else:
             gate, q = event[1], event[2]
             said = h.brain.ask(q.text)
             tally(books["brain"], gate, scored(h, q, said))
+            if gate == "W5_by_place" and q.about == "several":  # a place that holds things
+                tally(books["brain"], "W5_by_place_held", scored(h, q, said))
             for p in probes:
                 if entered.get(p.name) != h.rooms:
                     entered[p.name] = h.rooms

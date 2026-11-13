@@ -18,7 +18,7 @@ from pathlib import Path
 import common
 
 HERE = Path(__file__).resolve().parent
-SCRIPTS = ("ablations", "adversarial", "lookup", "path", "genes")
+SCRIPTS = ("ablations", "adversarial", "lookup", "path", "genes")  # reward.py runs on its own
 
 
 def main(argv: list[str]) -> None:
