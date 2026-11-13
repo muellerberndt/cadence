@@ -393,7 +393,27 @@ from what it imagined. It is no local repair inside the map's settle.
 
 ### Readings
 
-READINGS
+The declared run of [#324](https://github.com/muellerberndt/cadence/issues/324): twelve fresh
+founders, each map watching 400 scenes of a person's hand in its founder's world, read on 360
+scenes of a person's hand ([the chamber](../benchmarks/tracking/README.md), protocol at
+367d5ffe). Centimetres out of view, means over the founders:
+
+| | The map | With physics |
+| --- | --- | --- |
+| A person's hand | 22.9 | 9.4 (10.3 after 25 scenes watched) |
+| Straight | 16.4 | 2.9 (the Kalman filter 1.65) |
+| Slows | 22.3 | 7.7 |
+| Stops | 21.1 | 10.6 |
+| Turns | 21.0 | 9.6 |
+| Errands (a hand left, visiting, pausing, hopping, slow) | 13.9 | 9.8 |
+| The recorded scene of the pillar (`scenes/promise.json`) | 10.7 | 6.3 |
+| The area at .90 holds the hand | .50 at 24 cells | .87 at 12 cells |
+
+At no number of scenes watched is the map with physics worse than the map; before its first
+lesson it is the map. The area falls short of .90 where a hand turns out of view: the tail
+widens behind a hand that turned (.48 of the steps 21 to 40 moments after it was last seen,
+.14 after 41). A moment with two hands moving out of view takes 7.4 ms with its inventory under
+Pyodide 314.0.7 and 3.6 ms natively (`benchmarks/tracking/moving.py`).
 
 ### Settings
 
