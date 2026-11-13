@@ -35,7 +35,8 @@ A right reply earns the trainer's praise word, heard at once, and a pistachio in
 **The teacher's question forms** (``FORMS``): what is this (the focus), what colour has the X,
 what is <colour>, what objects are round, where is the X (a direction word, and "far" when far),
 what is left of / right of / next to / opposite the X, what is made of <material>, what can you
-eat, can you eat the X.
+eat, can you eat the X, can you eat this (the focus on it). A kind never shown in training (a
+lemon) is the exam's new object.
 """
 
 from __future__ import annotations
@@ -66,9 +67,14 @@ KINDS: dict[str, tuple[tuple[float, ...], float, tuple[str, ...], tuple[str, ...
     "key": ((.10, .90, .00, .60, .70, .10), .07, ("metal",), ()),
     "book": ((.05, .40, .00, .00, .90, .20), .18, ("cloth", "plastic"), ()),
     "bottle": ((.40, .60, .80, .00, .00, .90), .10, ("glass", "plastic"), ()),
+    "pistachio": ((.70, .40, .00, .00, .20, .20), .03, ("fruit",), ("green",)),
 }
 KIND_NAMES = tuple(KINDS)
-ROUND = ("apple", "ball", "cup")
+# a kind never shown in training: the exam's new object, a fruit (no word, never bitten)
+NEW_KINDS: dict[str, tuple[tuple[float, ...], float, tuple[str, ...], tuple[str, ...]]] = {
+    "lemon": ((.80, .30, .00, .00, .10, .45), .08, ("fruit",), ("yellow",)),
+}
+ROUND = ("apple", "ball", "cup", "lemon")
 COLOURS: dict[str, tuple[float | None, float, float]] = {
     "red": (0.0, .90, .50), "yellow": (60.0, .90, .60), "green": (120.0, .80, .45),
     "blue": (230.0, .85, .45), "white": (None, .05, .95), "black": (None, .05, .08)}
@@ -84,14 +90,18 @@ QUESTION_WORDS = ("what", "is", "this", "colour", "has", "the", "objects", "are"
 ANSWER_WORDS = ("far", "yes", "no")
 WORDS = (KIND_NAMES + tuple(COLOURS) + tuple(MATERIALS) + DIRECTIONS + ("round",)
          + tuple(w for w in QUESTION_WORDS if w not in ("left", "right"))
-         + ANSWER_WORDS + ("good",))
+         + ANSWER_WORDS + ("good", "zabu"))
 PRAISE = "good"
+NEW_WORD = "zabu"  # heard and babbled from birth, never a name in training: the new-word gate's
 CATCH = 2       # moments from a right reply to the pistachio in the beak
 TURN = 3        # moments of the parrot's turn
 TAIL = CATCH + 2
+# a step ends once the last 40 blocks of the parrot's own turns earned this share of pistachios
+MASTERY = {"N0": .92, "N1": .92, "N2": .9, "N3": .88, "N4": .88, "N5": .9, "N6": .85}
 NIGHT: dict[str, Any] = {"actor_hold": 0.93, "actor_eta": 0.1, "ear_entry": "module_0",
                          "history_decays": (0.0, 0.5, 0.8), "self_reward": 0.1,
-                         "reply_suppression": 1, "gated_lesson": 1.0}
+                         "reply_suppression": 1, "gated_lesson": 1.0, "recall": 0,
+                         "correction_lesson": 1.0}
 
 
 @dataclass
@@ -134,7 +144,7 @@ def direction_of(heading: float, point: np.ndarray) -> str:
 
 def thing(rng: np.random.Generator, kind: str, place: np.ndarray, *,
           colour: str | None = None, material: str | None = None) -> Thing:
-    proto, width, materials, colours = KINDS[kind]
+    proto, width, materials, colours = {**KINDS, **NEW_KINDS}[kind]
     colour = colour or str(rng.choice(colours or tuple(COLOURS)))
     material = material or str(rng.choice(materials))
     hue_deg, sat, light = COLOURS[colour]
@@ -249,6 +259,10 @@ def ask(form: str, r: Room, rng: np.random.Generator) -> Question | None:
     if form == "can_eat":
         return Question(["can", "you", "eat", "the", x.kind],
                         ["yes" if x.material in EDIBLE else "no"], form)
+    if form == "can_eat_this":  # the focus on a thing, its name unsaid
+        x.focus = True
+        return Question(["can", "you", "eat", "this"],
+                        ["yes" if x.material in EDIBLE else "no"], form, focus=x)
     raise ValueError(form)
 
 
@@ -335,7 +349,9 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
         brain.reset()
     g = p.genome
     n = len(exs)
-    moments = max(ex.length for ex in exs)
+    moments = max(ex.length for ex in exs) + max(  # room for a trainer's correction
+        (len(ex.question.answer) for ex in exs if ex.extra.get("dagger") and ex.question),
+        default=0)
     own: list[str | None] = [None] * n
     voiced = np.full(n, p.silence, dtype=np.int64)
     beak = np.zeros(n, dtype=np.int64)
@@ -348,6 +364,9 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
     replies: list[list[str]] = [[] for _ in range(n)]
     judged = [False] * n
     oks = [False] * n
+    turn_x: list[list[np.ndarray]] = [[] for _ in range(n)]
+    echo_due: list[dict[int, int]] = [{} for _ in range(n)]  # moment -> answer word index
+    echoes: list[tuple[int, int, int]] = []  # (stream, word index, the echo's unit)
     for t in range(moments):
         x = p.observe(exs, t, own, praise[t], rng)
         if learn:
@@ -376,6 +395,21 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
                     p.work["gated"] += int((w8 > 0).sum())
                 for i in gated:
                     moment_x[i], moment_unit[i] = [], []
+            if echoes and float(g["correction_lesson"]) > 0:
+                # the trainer's correction, echoed by the parrot's own imitation, learned on the
+                # state the parrot was in when it replied (one lesson a word position)
+                for k in sorted({e[1] for e in echoes}):
+                    rows, w8 = x.copy(), np.zeros(n)
+                    labels = np.stack([np.full(n, p.silence), np.zeros(n, dtype=np.int64)], 1)
+                    for i, kk, unit in echoes:
+                        if kk == k and unit != p.silence and turn_x[i]:
+                            rows[i] = turn_x[i][min(k, len(turn_x[i]) - 1)]
+                            labels[i, 0], w8[i] = unit, float(g["correction_lesson"])
+                    if w8.any():
+                        rep = brain.lesson(rows, labels, weights=w8)
+                        p.work["lesson_sweeps"] += float(rep.get("total_row_sweeps", 0.0))
+                        p.work["corrected"] = p.work.get("corrected", 0) + int((w8 > 0).sum())
+                echoes = []
             action = np.asarray(brain.act(x)).reshape(n, -1)
         else:
             action = np.asarray(brain.act(x, greedy=True)).reshape(n, -1)
@@ -397,7 +431,10 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
                     reward[t + 1, i] += 1.0  # the taste
                     praise[t + 1, i] = True
                     moment_x[i], moment_unit[i] = [x[i]], [p.silence]
+            if t in echo_due[i]:
+                echoes.append((i, echo_due[i].pop(t), int(voiced[i])))
             if in_turn and not ex.bite:
+                turn_x[i].append(x[i])
                 said[i].append(w)
                 if w is not None and learn:
                     moment_x[i].append(x[i])
@@ -415,6 +452,12 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
                     p.work["pistachios"] += 1
                 elif learn:
                     moment_x[i], moment_unit[i] = [], []
+                if learn and not oks[i] and ex.extra.get("dagger"):
+                    for k, word in enumerate(ex.question.answer):  # the trainer corrects
+                        while len(ex.heard) <= t + 1 + k:
+                            ex.heard.append(None)
+                        ex.heard[t + 1 + k] = word
+                        echo_due[i][t + 1 + k] = k
     return {"replies": replies, "right": oks, "bitten": bitten}
 
 
@@ -435,7 +478,7 @@ def exchange(p: Parrot, rng: np.random.Generator, form: str, mode: str,
         heard: list[str | None] = list(q.words)
         if mode == "model":
             heard += list(q.answer)
-        return Exchange(r, heard, len(heard) - 1, q)
+        return Exchange(r, heard, len(heard) - 1, q, extra={"dagger": mode == "dagger"})
     raise RuntimeError(f"no room for {form}")
 
 
@@ -452,15 +495,16 @@ def block(p: Parrot, rng: np.random.Generator, form: str, mode: str,
 
 STEPS: list[tuple[str, dict[str, float], list[str]]] = [
     ("N0", {"imitate": 1.0}, ["imitate"]),
-    ("N1", {"name:model": 0.5, "name:turn": 0.5}, ["name"]),
-    ("N2", {"colour_of:model": .2, "colour_of:turn": .3, "by_colour:model": .2,
-            "by_colour:turn": .3}, ["colour_of", "by_colour"]),
-    ("N3", {"where:model": .4, "where:turn": .6}, ["where"]),
+    ("N1", {"name:model": 0.3, "name:dagger": 0.7}, ["name"]),
+    ("N2", {"colour_of:model": .15, "colour_of:dagger": .35, "by_colour:model": .15,
+            "by_colour:dagger": .35}, ["colour_of", "by_colour"]),
+    ("N3", {"where:model": .3, "where:dagger": .7}, ["where"]),
     ("N4", {f"{f}:{m}": w for f in ("left_of", "right_of", "next_to", "opposite")
-            for m, w in (("model", .1), ("turn", .15))}, ["left_of", "next_to", "opposite"]),
-    ("N5", {"material:model": .2, "material:turn": .3, "bite:turn": .2, "can_eat:model": .1,
-            "can_eat:turn": .2}, ["material", "can_eat"]),
-    ("N6", {"round:model": .25, "round:turn": .25, "eat:model": .25, "eat:turn": .25},
+            for m, w in (("model", .07), ("dagger", .18))}, ["left_of", "next_to", "opposite"]),
+    ("N5", {"material:model": .1, "material:dagger": .3, "bite:turn": .2, "can_eat:model": .05,
+            "can_eat:dagger": .15, "can_eat_this:model": .05, "can_eat_this:dagger": .15},
+     ["material", "can_eat", "can_eat_this"]),
+    ("N6", {"round:model": .15, "round:dagger": .35, "eat:model": .15, "eat:dagger": .35},
      ["round", "eat"]),
 ]
 
@@ -493,13 +537,18 @@ def read(p: Parrot, rng: np.random.Generator, forms: list[str], held: set[tuple[
 def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, int] | None = None,
          streams: int = 16, reads: int = 48, backend: str = "cpu", pistachio: str = "earned",
          steps: list[str] | None = None, log: Any = None, keep: bool = False,
-         save: str | None = None) -> dict[str, Any]:
+         save: str | None = None, master: bool = True,
+         control: str | None = None) -> dict[str, Any]:
     """One founder's night through the steps; each step read on a frozen copy after it."""
-    budget = {"N0": 300, "N1": 600, "N2": 800, "N3": 600, "N4": 1200, "N5": 800, "N6": 600,
-              **(blocks or {})}
+    budget = {"N0": 1500, "N1": 1500, "N2": 2000, "N3": 1500, "N4": 3000, "N5": 2000,
+              "N6": 1500, **(blocks or {})}
     rng = np.random.default_rng(np.random.SeedSequence([int(seed), 334, 31]))
     held = {(k, str(rng.choice(KINDS[k][3] or tuple(COLOURS)))) for k in KIND_NAMES}
     p = Parrot(seed, genome, streams=streams, backend=backend)
+    if control is not None:  # a matched control lives the same life in the brain's place
+        import meaning_controls
+
+        meaning_controls.control(control, p, parameters=int(p.brain.parameters()), seed=seed)
     out: dict[str, Any] = {"seed": int(seed), "parameters": int(p.brain.parameters()),
                            "synapses": p.synapses, "streams": streams, "steps": {},
                            "pistachio": pistachio, "held": sorted(held)}
@@ -516,18 +565,24 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
             exs = (imitate_block(p, rng, held) if form == "imitate"
                    else block(p, rng, form, mode, held))
             got = live(p, exs, rng, pistachio=pistachio)
-            if mode == "turn" and form not in ("bite",):
+            if mode in ("turn", "dagger") and form not in ("bite",):
                 paid.append(float(np.mean(got["right"])))
             if log is not None and b % 50 == 0:
                 log(f"{name} {b} {key} right={np.mean(got['right']):.2f} "
                     f"t={time.time() - began:.0f}s")
+            if master and b >= 100 and b % 25 == 0 and len(paid) >= 40 and float(
+                    np.mean(paid[-40:])) >= MASTERY.get(name, 0.9):
+                if log is not None:
+                    log(f"{name} mastered at block {b}: paid {np.mean(paid[-40:]):.2f}")
+                break
+        out.setdefault("blocks_lived", {})[name] = b + 1
         seen += tests
         reading = read(p, rng, sorted(set(seen)), held, reads)
         reading["paid_last"] = float(np.mean(paid[-50:])) if paid else float("nan")
         out["steps"][name] = reading
         if log is not None:
             log(f"READ {name} {reading}")
-        if save:
+        if save and control is None:
             Path(save).mkdir(parents=True, exist_ok=True)
             p.brain.save(Path(save) / f"brain_{seed}_{name}.npz")
     out["work"] = dict(p.work)
@@ -548,7 +603,8 @@ if __name__ == "__main__":
     result = life(seed, given.get("genome"), blocks=given.get("blocks"),
                   streams=int(given.get("streams", 16)), reads=int(given.get("reads", 48)),
                   pistachio=str(given.get("pistachio", "earned")), steps=given.get("steps"),
-                  save=given.get("save"), log=lambda s: print(s, flush=True))
+                  save=given.get("save"), control=given.get("control"),
+                  master=bool(given.get("master", True)), log=lambda s: print(s, flush=True))
     result["settings"] = given
     text = json.dumps(result, default=float, indent=1)
     if target:
