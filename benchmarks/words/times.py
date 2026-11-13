@@ -419,6 +419,12 @@ def life(seed: int, *, record: Any = None, brain: Any = None, **given: Any) -> d
                 readings.setdefault(f"W10_three_{q.form}", []).append(said == [
                     {"kind": lex.kind, "colour": lex.colour, "place": lex.place}[group][value]])
             if gate == "W9_future":
+                ahead, brain.ahead = brain.ahead, 0  # the forecast barred: it is the map now
+                try:
+                    readings.setdefault("W9_unforecast", []).append(
+                        world.right(q, brain.ask(q.text)))
+                finally:
+                    brain.ahead = ahead
                 right, error = forecast_holds(brain, q.kind, extra["will"])
                 readings.setdefault("W9_forecast_rate", []).append(right)
                 readings.setdefault("W9_error", []).append(error)
@@ -656,7 +662,8 @@ PARAMETERS = 256 * (world.KINDS + world.COLOURS + 4 + 3 + 1 + 3)  # one efficacy
 CONTROLS = [(m, mode) for m in ("lstm", "transformer") for mode in ("online", "offline")]
 READINGS = ["W8_past", "W8_present", "W8_map_rate", "W8_barred", "W8_barred_refused", "W10",
             "W10_was", "W10_is", "still_where", "still_colour"]
-ROLLED = ["W9_future", "W9_forecast_rate", "W9_error", "W9_now_rate", "W9_map_kept",
+ROLLED = ["W9_future", "W9_forecast_rate", "W9_error", "W9_now_rate", "W9_unforecast",
+          "W9_map_kept",
           "W10_three", "W10_three_was", "W10_three_is", "W10_three_will", "still_will"]
 # the declared protocols' chambers: T1 carries things (W8); T2 rolls them as well, with the
 # map's learned physics (W8 again, W9, W10)
