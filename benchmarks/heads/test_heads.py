@@ -13,11 +13,22 @@ import pytest
 
 
 def _load(name: str):
-    if name in sys.modules:
-        return sys.modules[name]
-    here = Path(__file__).parent
-    sys.path.insert(0, str(here))  # nets imports heads by name, as the grammar chamber's controls
-    spec = importlib.util.spec_from_file_location(name, here / f"{name}.py")
+    """This chamber's module ``name``: the one held under that name where it is this chamber's
+    file, else the file under a name of its own (other chambers hold a ``nets.py``)."""
+    here = Path(__file__).resolve().parent
+    path = here / f"{name}.py"
+    for key in (name, f"heads_chamber_{name}"):
+        held = sys.modules.get(key)
+        if held is None:
+            name = key
+            break
+        if Path(getattr(held, "__file__", "") or "").resolve() == path:
+            return held
+    else:
+        name = f"heads_chamber_{name}"
+    if str(here) not in sys.path:
+        sys.path.insert(0, str(here))  # nets imports heads by name, as the grammar's controls
+    spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
