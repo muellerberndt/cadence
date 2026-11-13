@@ -81,7 +81,7 @@ def changed_scene(p: nt.Parrot, rng: np.random.Generator, held: set[tuple[str, s
 
 def silencing(p: nt.Parrot, rng: np.random.Generator, held: set[tuple[str, str]],
               pr: dict[str, Any], base: dict[str, float], k: int = 12,
-              n: int = 48) -> dict[str, Any]:
+              n: int = 32) -> dict[str, Any]:
     """Each property: its ``k`` most tuned association units cut, its probe direction projected
     out, and ``k`` random association units cut; every form read again."""
     assoc = np.asarray(list(p.brain.connectome.populations["association"]))
