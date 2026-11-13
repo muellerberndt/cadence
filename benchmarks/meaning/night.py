@@ -343,6 +343,18 @@ class Parrot:
         self.synapses = int(self.brain.connectome.synapses)
         self.work = {"moments": 0, "stream_moments": 0, "act_sweeps": 0.0, "lesson_sweeps": 0.0,
                      "reward_row_sweeps": 0.0, "pistachios": 0, "gated": 0}
+        # the records of heard words (gene ``word_records``): a word heard as an answer is kept
+        # under the association region's settled pattern of the moment the question ended, and
+        # at the parrot's turn the record its present pattern recalls is replayed to its ear
+        self.records: Any = None
+        self.recalled = np.zeros((streams, self.forms.width))
+        if int(self.genome.get("word_records", 0)):
+            from cadence.longterm import LongTermMemory
+
+            assoc = len(self.brain.connectome.populations["association"])
+            self.records = LongTermMemory(width=assoc, value_width=self.forms.width,
+                                          capacity=2048, cosine=True, revise=0.995,
+                                          seed=self.seed)
 
     def said(self, unit: int) -> str | None:
         return None if int(unit) >= self.silence else self.voice[int(unit)]
@@ -355,6 +367,8 @@ class Parrot:
             code = self.forms(word) + self.forms(own[i])
             if praise[i]:
                 code = code + self.forms(PRAISE)
+            if self.records is not None:  # a recalled word, replayed to the ear
+                code = code + self.recalled[i]
             seen = ex.room.seen(rng)
             focus = next((x for x in seen if x.salient), None)
             if ex.scan and 0 <= t - ex.turn < len(ex.scan):  # the focus visits each thing
@@ -445,7 +459,40 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
             taken += int((w8 > 0).sum())
         return taken
 
+    assoc_at: dict[int, np.ndarray] = {}  # the association's settled pattern after each moment
+    assoc_idx = (np.asarray(list(brain.connectome.populations["association"]))
+                 if p.records is not None else None)
+    match = float(g.get("records_match", 0.85))
+
+    def recall(cue: np.ndarray) -> np.ndarray:
+        assert p.records is not None
+        if not p.records.count or not np.any(cue):
+            return np.zeros(p.forms.width)
+        got = p.records.read(cue, credit=learn)
+        slot = got.first()
+        if slot < 0:
+            return np.zeros(p.forms.width)
+        key = np.asarray(p.records.keys[slot], dtype=np.float64)
+        cos = float(key @ cue) / (np.linalg.norm(key) * np.linalg.norm(cue) + 1e-12)
+        return p.records.value(got) if cos >= match else np.zeros(p.forms.width)
+
+    def keep(i: int, at: int, word: str) -> None:
+        if p.records is not None and learn and at in assoc_at:
+            p.records.write(assoc_at[at][i], p.forms(word))
+            p.work["records"] = p.work.get("records", 0) + 1
+
     for t in range(moments):
+        if p.records is not None:
+            p.recalled = np.zeros((n, p.forms.width))
+            for i, ex in enumerate(exs):
+                if not ex.bite and ex.turn <= t < ex.turn + ex.turn_length \
+                        and ex.turn - 1 in assoc_at:
+                    p.recalled[i] = recall(assoc_at[ex.turn - 1][i])
+            for i, ex in enumerate(exs):  # the second trainer's answer, kept as a record
+                q = ex.question
+                if q is not None and learn and ex.extra.get("model") and \
+                        ex.turn - len(q.answer) <= t < ex.turn:
+                    keep(i, ex.turn - len(q.answer) - 1, q.answer[t - (ex.turn - len(q.answer))])
         x = p.observe(exs, t, own, praise[t], rng)
         if learn:
             # an exchange's end ends the episode, and the recall memory's slots with it; with
@@ -491,6 +538,9 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
             action = np.asarray(brain.act(x)).reshape(n, -1)
         else:
             action = np.asarray(brain.act(x, greedy=True)).reshape(n, -1)
+        if assoc_idx is not None:
+            assoc_at[t] = np.asarray(brain.basal_ganglia.state.activation[:, assoc_idx],
+                                     dtype=np.float64).copy()
         p.work["moments"] += 1
         p.work["stream_moments"] += n
         p.work["act_sweeps"] += n * float((brain.last_settlement or {}).get("steps", 0))
@@ -510,6 +560,9 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
                     praise[t + 1, i] = True
                     moment_x[i], moment_unit[i], moment_t[i] = [x[i]], [p.silence], [t]
             if t in echo_due[i]:
+                k = echo_due[i][t]
+                if ex.question is not None:  # the correction, kept as a record
+                    keep(i, ex.turn - 1, ex.question.answer[k])
                 echoes.append((i, echo_due[i].pop(t), int(voiced[i])))
             if in_turn and not ex.bite:
                 turn_x[i].append(x[i])
@@ -547,7 +600,7 @@ def make_exchange(r: Room, q: Question, mode: str, rng: np.random.Generator) -> 
     heard: list[str | None] = list(q.words)
     if mode == "model":
         heard += list(q.answer)
-    extra: dict[str, Any] = {"dagger": mode == "dagger"}
+    extra: dict[str, Any] = {"dagger": mode == "dagger", "model": mode == "model"}
     if q.scan:  # born serial search: the focus visits each thing once, in a drawn order
         looked = [t for t in r.things if t is not q.focus]
         extra["scan"] = [looked[int(j)] for j in rng.permutation(len(looked))]
