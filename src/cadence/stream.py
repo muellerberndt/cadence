@@ -775,12 +775,13 @@ def _roles(roles: Any, inputs: int) -> tuple[tuple[int, ...], ...]:
     return tuple(out)
 
 
-OPERATIONS = ("set", "write", "shift", "pop")  # what a role does to a group of a store
+# what a role does to a group of a store; ``move`` names a second group, the one moved to
+OPERATIONS = ("set", "write", "shift", "pop", "move")
 
 
-def _operations(operations: Any) -> tuple[tuple[tuple[str, int], ...], ...]:
-    """``operations`` as a tuple, one entry per role, each a tuple of ``(operation, group)``;
-    refused otherwise."""
+def _operations(operations: Any) -> tuple[tuple[tuple[Any, ...], ...], ...]:
+    """``operations`` as a tuple, one entry per role, each a tuple of ``(operation, group)``
+    (``("move", group, to)`` for a move); refused otherwise."""
     if operations is None:
         return ()
     try:
@@ -792,21 +793,30 @@ def _operations(operations: Any) -> tuple[tuple[tuple[str, int], ...], ...]:
         steps = []
         for step in role:
             if (
-                len(step) != 2
+                not step
                 or step[0] not in OPERATIONS
-                or isinstance(step[1], (bool, np.bool_))
-                or not isinstance(step[1], (int, np.integer))
-                or step[1] < 0
+                or len(step) != (3 if step[0] == "move" else 2)
+                or any(
+                    isinstance(g, (bool, np.bool_)) or not isinstance(g, (int, np.integer))
+                    or g < 0 for g in step[1:]
+                )
+                or (step[0] == "move" and step[1] == step[2])
             ):
                 raise ValueError(
                     "an operation is a pair (operation, group): one of "
-                    f"{', '.join(OPERATIONS)} and a group's index, 0 or above"
+                    f"{', '.join(OPERATIONS)} and a group's index, 0 or above; a move names "
+                    "the group moved from and another moved to"
                 )
-            steps.append((str(step[0]), int(step[1])))
+            steps.append((str(step[0]), *(int(g) for g in step[1:])))
         out.append(tuple(steps))
     if out and not any(out):
         raise ValueError("operations name at least one operation")
     return tuple(out)
+
+
+def _operated_groups(operations: tuple[tuple[tuple[Any, ...], ...], ...]) -> int:
+    """The groups a table of operations names: one more than its greatest group index."""
+    return 1 + max(int(g) for role in operations for step in role for g in step[1:])
 
 
 @dataclass
@@ -828,7 +838,11 @@ class HeldMessage(Message):
     operates. The table holds one entry per choice of a motor slot (the role slot), each a list
     of ``(operation, group)``: ``set`` puts the moment's settled activity into the group's one
     block, ``write`` appends it to the group, ``shift`` moves the group's head to its next block,
-    ``pop`` removes the group's last block. The state is ``groups * phases`` blocks, and the
+    ``pop`` removes the group's last block, and ``("move", group, to)`` takes the group's head
+    and appends it to another group. With ``alone`` the activity a block takes is the
+    association's settle of the moment's observation alone, every memory silent, where without
+    it the block takes the activity the moment settled to in its context (the brain gives
+    ``hear`` the one or the other). The state is ``groups * phases`` blocks, and the
     region holds one block per group, its head: a queue's first block not shifted past, a
     stack's (``stacks``) last block, silence where the group holds none. So the association
     reads every group's head at once through the region's plastic synapses, and a group's
@@ -860,7 +874,8 @@ class HeldMessage(Message):
     gains: int = 1
     target: str = "message"
     port: str = "message_read"
-    operations: tuple[tuple[tuple[str, int], ...], ...] = ()
+    operations: tuple[tuple[tuple[Any, ...], ...], ...] = ()
+    alone: bool = False  # a block takes the settle of the moment's observation alone
     stacks: tuple[int, ...] = ()
     slot: int = -1  # the motor slot that names a moment's role (the brain reads it)
     hearing: np.ndarray = field(init=False, repr=False)
@@ -904,7 +919,7 @@ class HeldMessage(Message):
                     "message operations work a store of settled activity: pass settled=True, "
                     "and no roles, read port or boundary"
                 )
-            groups = 1 + max(g for role in self.operations for _, g in role)
+            groups = _operated_groups(self.operations)
             try:
                 stacks = tuple(sorted({int(g) for g in self.stacks}))
             except (TypeError, ValueError) as exc:
@@ -912,8 +927,8 @@ class HeldMessage(Message):
             if any(not 0 <= g < groups for g in stacks):
                 raise ValueError("message stacks are indices of the groups the operations name")
             self.stacks = stacks
-        elif tuple(self.stacks):
-            raise ValueError("message stacks need the operations that work them")
+        elif tuple(self.stacks) or self.alone:
+            raise ValueError("message stacks and alone need the operations of a worked store")
         super().__post_init__()
         if len(self.glow) != self.shown * int(self.units):
             raise ValueError(
@@ -990,7 +1005,7 @@ class HeldMessage(Message):
     def groups(self) -> int:
         """The groups of blocks: with ``operations`` the groups they name."""
         if self.operations:
-            return 1 + max(g for role in self.operations for _, g in role)
+            return _operated_groups(self.operations)
         return len(self.roles) + 1 if self.roles else 1
 
     @property
@@ -1007,7 +1022,7 @@ class HeldMessage(Message):
         for i, role in enumerate(np.asarray(roles, dtype=np.int64).ravel()[:len(held)]):
             if not 0 <= role < len(self.operations):
                 continue
-            for operation, g in self.operations[int(role)]:
+            for operation, g, *to in self.operations[int(role)]:
                 given, behind = int(self.counts[i, g]), int(self.passed[i, g])
                 if operation == "set":
                     held[i, g] = 0.0
@@ -1019,6 +1034,18 @@ class HeldMessage(Message):
                 elif operation == "shift":
                     if behind < given:
                         self.passed[i, g] = behind + 1
+                elif operation == "move":
+                    if given > behind:  # the head leaves its group and joins the other's end
+                        last = g in self.stacks
+                        at = ((given - 1) if last else behind) % phases
+                        there = int(self.counts[i, to[0]])
+                        held[i, to[0], there % phases] = held[i, g, at]
+                        self.counts[i, to[0]] = there + 1
+                        if last:
+                            held[i, g, at] = 0.0
+                            self.counts[i, g] = given - 1
+                        else:
+                            self.passed[i, g] = behind + 1
                 elif given > behind:  # pop
                     held[i, g, (given - 1) % phases] = 0.0
                     self.counts[i, g] = given - 1
@@ -1231,8 +1258,9 @@ class HeldMessage(Message):
             "amplitude": self.amplitude,
             "gains": int(self.gains),
             **({"settled": True} if self.settled else {}),
-            **({"operations": [[[name, int(g)] for name, g in role] for role in self.operations],
-                "stacks": [int(g) for g in self.stacks], "slot": int(self.slot)}
+            **({"operations": [[list(step) for step in role] for role in self.operations],
+                "stacks": [int(g) for g in self.stacks], "slot": int(self.slot),
+                **({"alone": True} if self.alone else {})}
                if self.operations else {}),
             "target": self.target,
             "neurons": int(len(self.glow)),

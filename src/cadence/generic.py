@@ -108,6 +108,7 @@ from .stream import (
     Recall,
     Trace,
     _Heads,
+    _operated_groups,
     _operations,
     _route_matrix,
 )
@@ -713,7 +714,7 @@ _MESSAGE_FOUNDERS: dict[str, Any] = {
     "phases": 4, "winners": 5, "fan_in": 16, "amplitude": 1.5, "gains": 1, "read": False,
     "read_amplitude": 3.0, "read_rate": 0.01, "read_temperature": 0.25,
     "boundary": None, "boundary_holds": False, "roles": (), "settled": False,
-    "operations": (), "stacks": (), "slot": -1,
+    "operations": (), "stacks": (), "slot": -1, "alone": False,
 }
 
 
@@ -741,7 +742,7 @@ _CONSTRUCTION = frozenset({
     "history_decays",
     "message", "message_phases", "message_winners", "message_fan_in", "message_gains",
     "message_boundary", "message_boundary_holds", "message_roles", "message_settled",
-    "message_read", "message_operations", "message_stacks", "message_slot",
+    "message_read", "message_operations", "message_stacks", "message_slot", "message_alone",
     "longterm", *(f"longterm_{name}" for name in _LONGTERM_FOUNDERS),
     "carried_gain",
     *_EPISODIC_SETTINGS, "recall", *(f"recall_{name}" for name in Recall.CONSTRUCTION),
@@ -820,7 +821,7 @@ def _message_genes(message: Any, genes: Mapping[str, Any]) -> dict[str, Any]:
     out = {"units": _count("message", message, low=1), **_MESSAGE_FOUNDERS, **named}
     for name in ("phases", "winners", "fan_in", "gains"):
         out[name] = _count(f"message_{name}", out[name], low=1)
-    for name in ("read", "boundary_holds", "settled"):
+    for name in ("read", "boundary_holds", "settled", "alone"):
         if not isinstance(out[name], (bool, np.bool_)):
             raise ValueError(f"message_{name} must be boolean")
         out[name] = bool(out[name])
@@ -848,14 +849,16 @@ def _message_genes(message: Any, genes: Mapping[str, Any]) -> dict[str, Any]:
                 "message_operations work a store of settled activity: pass "
                 "message_settled=True, and no message_roles, message_read or message_boundary"
             )
-        groups = 1 + max(g for role in out["operations"] for _, g in role)
+        groups = _operated_groups(out["operations"])
         if any(not 0 <= g < groups for g in out["stacks"]):
             raise ValueError(
                 "message_stacks are indices of the groups message_operations name"
             )
         out["blocks"], out["shown"] = out["phases"] * groups, groups
-    elif out["stacks"] or out["slot"] != -1:
-        raise ValueError("message_stacks and message_slot need message_operations")
+    elif out["stacks"] or out["slot"] != -1 or out["alone"]:
+        raise ValueError(
+            "message_stacks, message_slot and message_alone need message_operations"
+        )
     if out["units"] % out["gains"]:
         raise ValueError("message_gains must divide the units of a block")
     for name in ("amplitude", "read_amplitude", "read_rate"):
@@ -2863,7 +2866,7 @@ class Brain:
                 read_temperature=messaged["read_temperature"],
                 port="message_read" if messaged["read"] else "",
                 operations=messaged["operations"], stacks=messaged["stacks"],
-                slot=messaged["slot"],
+                slot=messaged["slot"], alone=messaged["alone"],
             )
         # the long-term records (``longterm=records``): each stream's records keyed by its held
         # message at the turn, read before the settle onto regions the association reads
@@ -3999,10 +4002,12 @@ class Brain:
                 genes["message_settled"] = True
             if held.operations:
                 genes.update(
-                    message_operations=[[[name, int(g)] for name, g in role]
+                    message_operations=[[list(step) for step in role]
                                         for role in held.operations],
                     message_stacks=[int(g) for g in held.stacks], message_slot=int(held.slot),
                 )
+                if held.alone:
+                    genes["message_alone"] = True
             if held.reads:
                 genes.update(
                     message_read=True, message_read_amplitude=held.read_amplitude,
@@ -6311,7 +6316,8 @@ class Brain:
                     assert choice is not None
                     told.hear(
                         self._heard(value, code),
-                        np.asarray(_on_host(phase.state.activation))[:, self.association_index],
+                        self._settled_alone(value, code) if told.alone else np.asarray(
+                            _on_host(phase.state.activation))[:, self.association_index],
                         np.asarray(choice, dtype=np.int64).reshape(len(value), -1)[:, told.slot],
                     )
                 elif told is not None:
@@ -6455,6 +6461,23 @@ class Brain:
             drive = self._moment_drive(x)
             return drive, self._qualified(drive, self._activity(), operation="act")
 
+    def _settled_alone(self, x: np.ndarray, code: np.ndarray) -> np.ndarray:
+        """The association's settled activity of observations alone: the sensory neurons
+        stimulated, every memory silent, settled from rest to the learner's tolerance within
+        ``free_steps`` sweeps (the activity where the solve stops, qualified or not). A pure
+        read: the streams, the memories and the parameters stay as they are. A store worked
+        by operations takes it with ``message_alone``."""
+        cfg = self.learner.config
+        if cfg.tolerance is None:
+            raise ValueError("Brain answers require a finite residual tolerance")
+        drive = self._stimulus(x, code, memory=False)
+        phase = self._equilibrate(
+            drive, None, budget=int(cfg.free_steps), tolerance=float(cfg.tolerance)
+        )
+        return np.array(
+            np.asarray(_on_host(phase.state.activation))[:, self.association_index], dtype=float
+        )
+
     def _coded(self, x: np.ndarray) -> np.ndarray:
         """The observation code of the moment being acted on, computed by ``_settled``; of any
         other observations, computed here."""
@@ -6526,9 +6549,13 @@ class Brain:
             # (``HeldMessage.name``), runs its operations on the store with the moment's
             # settled activity
             roles = np.asarray(action, dtype=np.int64).reshape(len(x), -1)[:, self.message.slot]
-            cortex = None if state is None else np.asarray(
-                _on_host(state.activation))[:, self.association_index]
-            self.message.hear(self._heard(x, code), cortex, roles)
+            settled: np.ndarray | None
+            if self.message.alone:
+                settled = self._settled_alone(x, code)
+            else:
+                settled = None if state is None else np.asarray(
+                    _on_host(state.activation))[:, self.association_index]
+            self.message.hear(self._heard(x, code), settled, roles)
         elif self.message is not None:
             # the moment acted on joins the message, and its settled cortex addresses the
             # next moment's read of it
@@ -7250,6 +7277,7 @@ class Brain:
                     read_amplitude=built.read_amplitude, read_rate=built.read_rate,
                     read_temperature=built.read_temperature, port=built.port,
                     operations=built.operations, stacks=built.stacks, slot=built.slot,
+                    alone=built.alone,
                 )
                 message.trace = data["message/trace"].astype(float)
                 message.told = data["message/told"].astype(np.int64)

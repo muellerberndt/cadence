@@ -58,46 +58,80 @@ import meaning as mn  # noqa: E402
 GROUPS = ("agent", "verb", "patient", "distractor", "sequence", "stack", "start", "task")
 AGENT, VERB, PATIENT, DISTRACTOR, SEQUENCE, STACK, START, TASK = range(len(GROUPS))
 STACKS = (STACK,)  # groups whose head is their last block
-# the role slot's choices: a name and the operations it names, each ``(operation, group)``
-OPS: tuple[tuple[str, tuple[tuple[str, int], ...]], ...] = (
+BASE = (7, 11)  # the base inventory's groups and roles: the sentences of the say-back mix
+SILENCE = mn.PART_SLOTS[0]  # a stem for a moment that names no word
+DEPTH = 8  # blocks a group holds
+_CLAUSE = (
     ("none", ()),
     ("agent", (("set", AGENT),)),
     ("verb", (("set", VERB),)),
     ("patient", (("set", PATIENT),)),
     ("distractor", (("write", DISTRACTOR),)),
     ("said_distractor", (("shift", DISTRACTOR),)),
-    ("open", (("write", SEQUENCE), ("write", STACK))),
-    ("close", (("write", SEQUENCE), ("pop", STACK))),
-    ("said_bracket", (("shift", SEQUENCE),)),
-    ("said_close", (("pop", STACK),)),
-    ("start", (("set", START),)),
-    # the full inventory: what is asked of the sentence (the second grammar, a question)
+)
+# the full inventory's roles: what is asked of the sentence (the second grammar, a question)
+_TASKS = (
     ("verb_dialect", (("set", VERB), ("set", TASK))),
     ("dialect", (("set", TASK),)),
     ("question", (("set", TASK),)),
 )
-OP = {name: i for i, (name, _) in enumerate(OPS)}
-BASE = (7, 11)  # the base inventory's groups and roles: the sentences of the say-back mix
-SILENCE = mn.PART_SLOTS[0]  # the full inventory's stem for a moment that names no word
-DEPTH = 8  # blocks a group holds
 
 
-def inventory(full: bool) -> tuple[int, tuple[int, int, int]]:
-    """The store's groups and the motor's slots (a word's stem, its form, the moment's role):
-    the base inventory, or the full one with the task group, its roles and the silent stem."""
-    if full:
-        return len(GROUPS), (mn.PART_SLOTS[0] + 1, mn.PART_SLOTS[1], len(OPS))
-    return BASE[0], (*mn.PART_SLOTS, BASE[1])
+class Design:
+    """A store's design: the role slot's choices, each a name and the operations it names, and
+    what a block takes (``alone``: the settle of the moment's observation alone, in place of
+    the settle in its context)."""
+
+    def __init__(self, name: str, brackets: tuple[tuple[str, tuple[Any, ...]], ...],
+                 alone: bool) -> None:
+        self.name, self.alone = name, alone
+        self.roles = (*_CLAUSE, *brackets, ("start", (("set", START),)), *_TASKS)
+        assert len(self.roles) - len(_TASKS) == BASE[1]
+        self.op = {role: i for i, (role, _) in enumerate(self.roles)}
+        # a bracket's echo names its word only where the heard moment settles it
+        self.silent = alone
+
+    def inventory(self, full: bool) -> tuple[int, tuple[int, int, int]]:
+        """The store's groups and the motor's slots (a word's stem, its form, the moment's
+        role): the base inventory, or the full one with the task group and its roles. A
+        design with a silent stem holds it in either."""
+        stems = mn.PART_SLOTS[0] + (1 if full or self.silent else 0)
+        if full:
+            return len(GROUPS), (stems, mn.PART_SLOTS[1], len(self.roles))
+        return BASE[0], (stems, mn.PART_SLOTS[1], BASE[1])
+
+
+# ``context``: a block takes the moment's settle in its context; a heard close is settled to the
+# bracket it closes (the stack's head is read at the heard moment) and the prefix is said again
+# from the sequence. ``alone``: a block takes the settle of the observation alone; the heard
+# brackets join the sequence as heard, and saying them works the stack (an open said moves from
+# the sequence onto the stack, a close said takes the stack's head)
+DESIGNS = {
+    "context": Design("context", (
+        ("open", (("write", SEQUENCE), ("write", STACK))),
+        ("close", (("write", SEQUENCE), ("pop", STACK))),
+        ("said_bracket", (("shift", SEQUENCE),)),
+        ("said_close", (("pop", STACK),)),
+    ), alone=False),
+    "alone": Design("alone", (
+        ("bracket", (("write", SEQUENCE),)),
+        ("said_open", (("move", SEQUENCE, STACK),)),
+        ("said_match", (("shift", SEQUENCE), ("pop", STACK))),
+        ("said_close", (("pop", STACK),)),
+    ), alone=True),
+}
 
 
 class Store:
     """Groups of blocks of settled activity, per stream: ``apply`` runs the operations each
-    stream's role names, ``heads`` is what the groups show, ``state`` every block."""
+    stream's role names (``roles``, a design's), ``heads`` is what the groups show, ``state``
+    every block."""
 
-    def __init__(self, units: int, depth: int = DEPTH, groups: int = BASE[0],
+    def __init__(self, units: int, roles: tuple[tuple[str, tuple[Any, ...]], ...],
+                 depth: int = DEPTH, groups: int = BASE[0],
                  stacks: tuple[int, ...] = STACKS) -> None:
         self.units, self.depth, self.groups = int(units), int(depth), int(groups)
-        self.stacks = tuple(stacks)
+        self.roles, self.stacks = roles, tuple(stacks)
         self.reset(0)
 
     def reset(self, rows: int) -> None:
@@ -108,9 +142,9 @@ class Store:
     def apply(self, roles: np.ndarray, activity: np.ndarray) -> None:
         """Each stream's role runs its operations with the stream's settled ``activity``."""
         for i, role in enumerate(np.asarray(roles, dtype=np.int64)):
-            if not 0 <= role < len(OPS):
+            if not 0 <= role < len(self.roles):
                 continue
-            for operation, g in OPS[int(role)][1]:
+            for operation, g, *to in self.roles[int(role)][1]:
                 w, q = int(self.written[i, g]), int(self.passed[i, g])
                 if operation == "set":
                     self.blocks[i, g] = 0.0
@@ -126,6 +160,17 @@ class Store:
                     if w > q:
                         self.blocks[i, g, (w - 1) % self.depth] = 0.0
                         self.written[i, g] = w - 1
+                elif operation == "move":
+                    if w > q:  # the head leaves its group and joins the other's end
+                        at = ((w - 1) if g in self.stacks else q) % self.depth
+                        there = int(self.written[i, to[0]])
+                        self.blocks[i, to[0], there % self.depth] = self.blocks[i, g, at]
+                        self.written[i, to[0]] = there + 1
+                        if g in self.stacks:
+                            self.blocks[i, g, at] = 0.0
+                            self.written[i, g] = w - 1
+                        else:
+                            self.passed[i, g] = q + 1
                 else:
                     raise ValueError(f"unknown operation: {operation!r}")
 
@@ -146,7 +191,8 @@ class Store:
 
 
 def make_brain(founder: int, settings: dict[str, Any] | None = None, module: int = 256,
-               depth: int | None = DEPTH, full: bool = False) -> Any:
+               depth: int | None = DEPTH, full: bool = False,
+               design: Design | None = None) -> Any:
     """The chamber's brain with the role slot and the store: every row taught, the previous
     observation heard (``history_decays=(0.0,)``), the recall memory of the default
     composition. ``depth`` blocks a group is the library's store (``message_settled`` with
@@ -154,13 +200,15 @@ def make_brain(founder: int, settings: dict[str, Any] | None = None, module: int
     ``Store`` to write its heads onto (``install``). ``full`` is the full inventory."""
     import cadence as cd
 
-    groups, slots = inventory(full)
+    design = design or DESIGNS["context"]
+    groups, slots = design.inventory(full)
     settings = {"learning_surprise": False, "history_decays": [0.0], "message_amplitude": 3.0,
                 **(settings or {})}
     store = ({"message_phases": groups} if depth is None else
              {"message_phases": int(depth), "message_settled": True,
-              "message_operations": [list(steps) for _, steps in OPS[:slots[2]]],
-              "message_stacks": list(STACKS)})
+              "message_operations": [list(steps) for _, steps in design.roles[:slots[2]]],
+              "message_stacks": list(STACKS),
+              **({"message_alone": True} if design.alone else {})})
     return cd.Brain.compose(
         gr.INPUTS, sum(slots), modules=(module,), seed=int(founder), slots=slots,
         **{"backend": "cpu", "recall": True, "message": module, **store, **settings})
@@ -231,15 +279,22 @@ def question(row: gr.Row, ask: str, words: bool) -> gr.Row:
                   {**m, "question": ask, "heard_words": words})
 
 
-def heard_label(row: gr.Row, t: int) -> tuple[int, int, int] | None:
+def heard_label(row: gr.Row, t: int, design: Design) -> tuple[int, int, int] | None:
     """What a lesson at a row's ``t``-th heard moment names (an echo): the word's stem and form
     and the moment's role. A clause's moment names its word (a verb concept its stem alone: the
     form waits for the agent) and its role; a bracket moment its bracket (a close the bracket it
-    closes) and ``open`` or ``close``; a path's start its noun and ``start``. None where no
-    lesson is given: the facts a path hears."""
+    closes) and ``open`` or ``close``; a path's start its noun and ``start``. Where a block takes
+    the observation alone (``design.alone``) a bracket moment is a ``bracket`` and a close
+    names no word: the bracket it closes is settled when it is said. None where no lesson is
+    given: the facts a path hears."""
     x = row.pre[t]
+    OP = design.op
     if row.family == "dyck":
-        return (*mn.word_parts(row.target[t]), OP["close" if x[gr.C["CLOSE"]] else "open"])
+        close = bool(x[gr.C["CLOSE"]])
+        if design.alone:
+            word = (SILENCE, mn.NO_FORM) if close else mn.word_parts(row.target[t])
+            return (*word, OP["bracket"])
+        return (*mn.word_parts(row.target[t]), OP["close" if close else "open"])
     if row.family == "path":
         if t != len(row.pre) - 1:
             return None
@@ -263,10 +318,11 @@ def heard_label(row: gr.Row, t: int) -> tuple[int, int, int] | None:
     return None
 
 
-def said_label(row: gr.Row, j: int) -> tuple[int, int, int]:
+def said_label(row: gr.Row, j: int, design: Design) -> tuple[int, int, int]:
     """What a lesson at a row's ``j``-th said word names: the word's parts and the role, which
     is none but where the word leaves the store (a distractor said, a bracket of the prefix
     said, a closing bracket said)."""
+    OP = design.op
     if j >= len(row.target):
         return (*mn.word_parts(gr.END), OP["none"])
     role = "none"
@@ -276,7 +332,9 @@ def said_label(row: gr.Row, j: int) -> tuple[int, int, int]:
         if _word_role(row, j) == "distractor":
             role = "said_distractor"
     elif row.family == "dyck":
-        if j < row.meta["prefix"]:
+        if j < row.meta["prefix"] and design.alone:
+            role = "said_open" if row.target[j] in gr.OPENS else "said_match"
+        elif j < row.meta["prefix"]:
             role = "said_bracket"
         elif j < len(row.target) - 1:
             role = "said_close"
@@ -316,10 +374,10 @@ def _act(brain: Any, x: np.ndarray, work: dict[str, float]) -> tuple[np.ndarray,
     return words, roles
 
 
-def speak(brain: Any, rows: list[gr.Row], store: Store | None, *, teach: bool = False,
-          bar: bool = True, forced: bool = False, work: dict[str, float] | None = None,
-          cap: int = 4, watch: Any = None, echo: bool = True,
-          listen: bool = False) -> list[list[int]]:
+def speak(brain: Any, rows: list[gr.Row], store: Store | None, design: Design, *,
+          teach: bool = False, bar: bool = True, forced: bool = False,
+          work: dict[str, float] | None = None, cap: int = 4, watch: Any = None,
+          echo: bool = True, listen: bool = False) -> list[list[int]]:
     """One batch on fresh streams. Every heard moment is acted on and the store follows the
     role; from ``GO`` each moment hears the previous word and the brain says the next. With
     ``teach`` a lesson comes before every act (at a heard moment the echo, where
@@ -340,10 +398,12 @@ def speak(brain: Any, rows: list[gr.Row], store: Store | None, *, teach: bool = 
     if store is not None:
         store.reset(n)
 
-    def follow(labels: np.ndarray | None, roles: np.ndarray, taught: bool) -> None:
+    def follow(labels: np.ndarray | None, roles: np.ndarray, x: np.ndarray) -> None:
         # the instrument's store follows the given role, or the brain's own
         if store is not None:
-            store.apply(roles if labels is None else labels[:, 2], settled(brain, n))
+            held = (brain._settled_alone(x, brain._code(x)) if design.alone
+                    else settled(brain, n))
+            store.apply(roles if labels is None else labels[:, 2], held)
             install(brain, store)
 
     def give(labels: np.ndarray) -> None:
@@ -353,7 +413,7 @@ def speak(brain: Any, rows: list[gr.Row], store: Store | None, *, teach: bool = 
 
     for t in range(len(rows[0].pre)):
         x = np.stack([r.pre[t] for r in rows])
-        named = [heard_label(r, t) for r in rows]
+        named = [heard_label(r, t, design) for r in rows]
         labels = None if any(v is None for v in named) else np.array(named, dtype=np.int64)
         taught = teach and echo and labels is not None
         if taught and labels is not None:
@@ -362,7 +422,7 @@ def speak(brain: Any, rows: list[gr.Row], store: Store | None, *, teach: bool = 
         if given and not taught and labels is not None:
             give(labels)
         words, roles = _act(brain, x, work)
-        follow(labels if given else None, roles, taught)
+        follow(labels if given else None, roles, x)
         if watch is not None:
             watch("heard", t, words, roles, labels)
     if watch is not None:
@@ -384,11 +444,11 @@ def speak(brain: Any, rows: list[gr.Row], store: Store | None, *, teach: bool = 
             x = np.stack([gr.spoken(w) if w >= 0 else gr.concept("SPEAK") for w in before])
         if bar and j == rows[0].force:
             mn.bar_meaning(brain, rows)
-        labels = np.array([said_label(r, j) for r in rows], dtype=np.int64)
+        labels = np.array([said_label(r, j, design) for r in rows], dtype=np.int64)
         if not (teach and _lesson(brain, x, labels, work, said=True)) and (teach or forced):
             give(labels)
         words, roles = _act(brain, x, work)
-        follow(labels if teach or forced else None, roles, teach)
+        follow(labels if teach or forced else None, roles, x)
         if watch is not None:
             watch("said", j, words, roles, labels)
         for i, r in enumerate(rows):
@@ -408,19 +468,21 @@ def speak(brain: Any, rows: list[gr.Row], store: Store | None, *, teach: bool = 
 # --------------------------------------------------------------------------- the readings
 
 
-def panels(brain: Any, store: Store | None, tests: dict[str, list[list[gr.Row]]],
-           names: tuple[str, ...], bar: bool = True) -> dict[str, Any]:
+def panels(brain: Any, store: Store | None, design: Design,
+           tests: dict[str, list[list[gr.Row]]], names: tuple[str, ...],
+           bar: bool = True) -> dict[str, Any]:
     """Whole sentences, closed loop: the words and the roles the brain's own."""
     out = {}
     for name in names:
-        panel = gr.read_speaker(lambda rows: speak(brain, rows, store, bar=bar), None,
+        panel = gr.read_speaker(lambda rows: speak(brain, rows, store, design, bar=bar), None,
                                 tests[name], twins=name in gr.TWINS)
         panel["examples"] = panel["examples"][:2]
         out[name] = panel
     return out
 
 
-def by_kind(brain: Any, store: Store | None, batches: list[list[gr.Row]]) -> dict[str, Any]:
+def by_kind(brain: Any, store: Store | None, design: Design,
+            batches: list[list[gr.Row]]) -> dict[str, Any]:
     """With every previous word and every taught role given: each word said right by its kind
     (``words``), and the role named right at the heard moments a lesson names and at the said
     ones (``roles``): where a sentence is lost."""
@@ -432,7 +494,8 @@ def by_kind(brain: Any, store: Store | None, batches: list[list[gr.Row]]) -> dic
             if labels is None or when == "held":
                 return
             for i, r in enumerate(rows):
-                g = roles.setdefault(f"{r.family}_{when}_{OPS[int(labels[i, 2])][0]}", [0, 0])
+                name = design.roles[int(labels[i, 2])][0]
+                g = roles.setdefault(f"{r.family}_{when}_{name}", [0, 0])
                 g[0] += int(named[i] == labels[i, 2])
                 g[1] += 1
                 if when == "said" and index < len(r.target):
@@ -446,13 +509,13 @@ def by_kind(brain: Any, store: Store | None, batches: list[list[gr.Row]]) -> dic
                     g[0] += int(words[i] == word)
                     g[1] += 1
 
-        speak(brain, rows, store, forced=True, watch=watch)
+        speak(brain, rows, store, design, forced=True, watch=watch)
     return {"words": {k: round(v[0] / v[1], 4) for k, v in sorted(groups.items())},
             "roles": {k: round(v[0] / v[1], 4) for k, v in sorted(roles.items())}}
 
 
-def held_states(brain: Any, store: Store | None, batches: list[list[gr.Row]],
-                ) -> list[tuple[gr.Row, dict[str, Any]]]:
+def held_states(brain: Any, store: Store | None, design: Design,
+                batches: list[list[gr.Row]]) -> list[tuple[gr.Row, dict[str, Any]]]:
     """Each sentence's state after its last heard moment, the roles the brain's own: the
     settled association (``settled``), every block of the store (``message``) and the two
     together (``joint``)."""
@@ -467,7 +530,7 @@ def held_states(brain: Any, store: Store | None, batches: list[list[gr.Row]],
                 held["message"] = np.asarray(
                     brain.message.state if store is None else store.state(), dtype=np.float32)
 
-        speak(brain, rows, store, watch=watch, listen=True)
+        speak(brain, rows, store, design, watch=watch, listen=True)
         for i, row in enumerate(rows):
             spot = {"settled": held["settled"][i], "message": held["message"][i]}
             spot["joint"] = np.concatenate([spot["message"], spot["settled"]])
@@ -475,12 +538,12 @@ def held_states(brain: Any, store: Store | None, batches: list[list[gr.Row]],
     return items
 
 
-def probes(brain: Any, store: Store | None, founder: int, both: dict[str, list[list[gr.Row]]],
-           ) -> dict[str, Any]:
+def probes(brain: Any, store: Store | None, design: Design, founder: int,
+           both: dict[str, list[list[gr.Row]]]) -> dict[str, Any]:
     """Probes of every clause component after the last heard moment, fitted on trained
     combinations and scored on held-out ones (``meaning.transfer_probes``)."""
-    return mn.transfer_probes(founder, held_states(brain, store, both["trained"]),
-                              held_states(brain, store, both["held"]),
+    return mn.transfer_probes(founder, held_states(brain, store, design, both["trained"]),
+                              held_states(brain, store, design, both["held"]),
                               ("settled", "message", "joint"))
 
 
@@ -588,8 +651,11 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     emulated = bool(spec.get("emulated", False))
     train = str(spec.get("train", "sayback"))
     full = bool(spec.get("full", train == "all"))
-    brain = make_brain(founder, spec.get("settings"), module, None if emulated else depth, full)
-    store = Store(module, depth, inventory(full)[0]) if emulated else None
+    design = DESIGNS[str(spec.get("design", "context"))]
+    brain = make_brain(founder, spec.get("settings"), module, None if emulated else depth, full,
+                       design)
+    store = (Store(module, design.roles, depth, design.inventory(full)[0]) if emulated
+             else None)
     split = gr.Split.of(founder)
     count = int(spec.get("panel_batches", 4))
     tests = {**gr.panels(founder, count), **mn.sayback_panels(founder, count)}
@@ -599,6 +665,7 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     row: dict[str, Any] = {
         "kind": "store", "tag": spec.get("tag"), "founder": founder, "batches": batches,
         "module": module, "depth": depth, "emulated": emulated, "train": train, "full": full,
+        "design": design.name,
         "settings": spec.get("settings", {}),
         "echo": echo, "parameters": int(brain.parameters()), "cadence": cd.__version__,
         "curve": [],
@@ -606,9 +673,10 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     work = gr.new_work()
     checks = set(int(c) for c in spec.get("checkpoints", ()))
     for b in range(1, batches + 1):
-        speak(brain, lesson_batch(train, rng, split), store, teach=True, work=work, echo=echo)
+        speak(brain, lesson_batch(train, rng, split), store, design, teach=True, work=work,
+              echo=echo)
         if b in checks:
-            lean = panels(brain, store, {k: v[:2] for k, v in tests.items()}, LEAN)
+            lean = panels(brain, store, design, {k: v[:2] for k, v in tests.items()}, LEAN)
             row["curve"].append({"batches": b, "seconds": round(time.monotonic() - started, 1),
                                  **{k: mn._score(v, k) for k, v in lean.items()}})
             if spec.get("progress"):  # a file the checkpoints are appended to as they are read
@@ -619,14 +687,15 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     row["work"] = work
     row["synapses"] = int(brain.describe()["layout"]["synapses"])
     row["gains"] = dict(brain.carried_gains) if brain.hearing is not None else {}
-    row["panels"] = panels(brain, store, tests, mn.SAID)
-    row["sayback"] = panels(brain, store, tests, mn.BACK)
+    row["panels"] = panels(brain, store, design, tests, mn.SAID)
+    row["sayback"] = panels(brain, store, design, tests, mn.BACK)
     if train == "all":
-        row["more"] = panels(brain, store, tests, MORE)
-        row["kinds_more"] = by_kind(brain, store, [b for name in MORE if name.endswith("_held")
-                                                   for b in tests[name]])
+        row["more"] = panels(brain, store, design, tests, MORE)
+        row["kinds_more"] = by_kind(brain, store, design,
+                                    [b for name in MORE if name.endswith("_held")
+                                     for b in tests[name]])
         cross = cross_batches(founder, int(spec.get("held_probes", 4)))
-        states = {name: held_states(brain, store, cross[name]) for name in cross}
+        states = {name: held_states(brain, store, design, cross[name]) for name in cross}
         places = ("settled", "message", "joint")
         # fitted on one wording's trained combinations, scored on the other's held-out ones
         row["probes_cross"] = {
@@ -635,14 +704,15 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
         del states
     both = mn.split_batches(founder, int(spec.get("held_probes", 4)))
     words = {k: [[mn.sayback(r) for r in rows] for rows in both[k]] for k in both}
-    row["kinds"] = by_kind(brain, store, [b for name in ("clause", "dyck", "path")
-                                          for b in tests[name]])
-    row["kinds_held"] = by_kind(brain, store, both["held"][:12])
-    row["kinds_back"] = by_kind(brain, store, words["held"][:12])
-    row["kinds_long"] = by_kind(brain, store, tests["clause_long"] + tests["back_long"])
+    row["kinds"] = by_kind(brain, store, design, [b for name in ("clause", "dyck", "path")
+                                                  for b in tests[name]])
+    row["kinds_held"] = by_kind(brain, store, design, both["held"][:12])
+    row["kinds_back"] = by_kind(brain, store, design, words["held"][:12])
+    row["kinds_long"] = by_kind(brain, store, design,
+                                tests["clause_long"] + tests["back_long"])
     row["said_long"] = row["kinds_long"]["words"]
-    row["probes_held"] = probes(brain, store, founder, both)
-    row["probes_back"] = probes(brain, store, founder, words)
+    row["probes_held"] = probes(brain, store, design, founder, both)
+    row["probes_back"] = probes(brain, store, design, founder, words)
     row["seconds"] = round(time.monotonic() - started, 1)
     return row
 
