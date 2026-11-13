@@ -192,3 +192,25 @@ def test_the_voice_chooses_a_heard_word() -> None:
     assert lexicon.choose(("kind", 3), among="heard") is None  # no heard form names it
     with pytest.raises(ValueError, match="among"):
         lexicon.choose(("kind", 1), among="sung")
+
+
+def test_a_pistachio_makes_a_mark_a_link() -> None:
+    """Three factors: a word heard in focus leaves a mark that fades; a pistachio makes the marks
+    of its moment lasting links, in both directions; a word whose pistachio is withheld keeps
+    none."""
+    lexicon = Lexicon({"kind": 3, "colour": 2})
+    for _ in range(4):  # heard with no pistachio: the marks fade
+        lexicon.mark("dako", {("kind", 0): 0.6, ("colour", 1): 0.4})
+        for _ in range(12):
+            lexicon.fade()
+    assert not lexicon.marks and lexicon.hear("dako").max() < 0.02
+    assert lexicon.say(("kind", 0)) is None
+    for k, colour in ((0, 1), (0, 0), (0, 1)):  # heard, then a pistachio: a link
+        lexicon.mark("dako", {("kind", k): 0.6, ("colour", colour): 0.4})
+        assert lexicon.confirm(1.0) == 1
+    lexicon.mark("mipu", {("kind", 1): 0.6, ("colour", 0): 0.4})  # its pistachio withheld
+    for _ in range(12):
+        lexicon.fade()
+    assert int(np.argmax(lexicon.hear("dako"))) == lexicon.index("kind", 0)
+    assert lexicon.say(("kind", 0)) == "dako" and lexicon.say(("kind", 1)) is None
+    assert lexicon.hear("mipu").max() < 0.02
