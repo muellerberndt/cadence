@@ -1,16 +1,16 @@
 """A founder's life in the words chamber, and its readings (cadence#326).
 
 The brain is ``cadence.words.Words``: a map of things with each thing's colour on its own sheet
-(``Map(values={"colour": 6})``), the robot's body and a lexicon learned from naming. One life:
+(``Map(values={"colour": 6})``), the parrot's body and a lexicon learned from naming. One life:
 
 1. **Naming.** In each of ``naming_rooms`` rooms of trained kinds (no kind in its unseen colour)
-   the robot looks around (eight moments, an eighth of a turn apart), and the teacher names
-   ``namings`` things: each time the robot turns to a drawn heading, attends to a thing (in view
+   the parrot looks around (eight moments, an eighth of a turn apart), and the teacher names
+   ``namings`` things: each time the parrot turns to a drawn heading, attends to a thing (in view
    or held out of it) and hears one word, its kind's, its colour's or its place's (at the rates
    ``world.NAMING``).
 2. **Practice.** In each of ``practice_rooms`` rooms of three things of kinds 0 to 3 the teacher
    asks ``asked`` questions and says the answer: where a thing is, its colour, what has a
-   colour, what is at a place around the robot, a kind not in the room, a foil.
+   colour, what is at a place around the parrot, a kind not in the room, a foil.
 3. **The test.** In ``test_rooms`` fresh rooms of trained kinds, and ``unseen_rooms`` rooms with
    a thing in its kind's unseen colour, every question form is asked; nothing is taught.
 4. **New words.** Each new kind is shown in a room and named three times; then ``new_rooms``
@@ -42,7 +42,7 @@ DEFAULTS = {"naming_rooms": 40, "namings": 15, "practice_rooms": 24, "asked": 10
 
 def make_brain(seed: int, **settings: Any) -> Any:
     """The founder's brain: a map of the chamber's plane with one unit a kind and the colours
-    on its sheet, the robot at the middle, and a fresh lexicon."""
+    on its sheet, the parrot at the middle, and a fresh lexicon."""
     from cadence.space.map import Map
     from cadence.words import Words
 
@@ -52,7 +52,7 @@ def make_brain(seed: int, **settings: Any) -> Any:
 
 
 def look_around(brain: Any, r: world.Room) -> None:
-    """A new room: the map is emptied, the robot looks around in eight moments and turns back
+    """A new room: the map is emptied, the parrot looks around in eight moments and turns back
     to the room's heading."""
     brain.map.reset()
     for i in range(9):
@@ -62,7 +62,7 @@ def look_around(brain: Any, r: world.Room) -> None:
 
 
 def turn(brain: Any, r: world.Room, heading: float) -> None:
-    """The robot turns to ``heading``: one moment of sight there."""
+    """The parrot turns to ``heading``: one moment of sight there."""
     r.heading = heading
     brain.body.heading = heading
     brain.look(seen=world.seen(r, heading), lit=world.camera(heading))
@@ -81,7 +81,7 @@ def naming_word(lex: world.Lexicon, r: world.Room, t: world.Thing,
 def room_questions(lex: world.Lexicon, r: world.Room, rng: np.random.Generator, *,
                    absent: list[int], foils: list[int]) -> list[world.Question]:
     """Every question form about a room: where each thing is and its colour, what has a colour
-    held in the room, what is at each place around the robot, a kind not in the room, a foil."""
+    held in the room, what is at each place around the parrot, a kind not in the room, a foil."""
     out: list[world.Question] = []
     for t in r.things:
         out += [world.where(lex, r, t.kind), world.colour_of(lex, r, t.kind)]
@@ -114,9 +114,9 @@ def held_rate(brain: Any, r: world.Room) -> list[bool]:
 def script(seed: int, **given: Any) -> list[tuple[Any, ...]]:
     """A founder's life as events, the same for the brain and the controls:
 
-    - ``("room", room)``: a new room; the robot looks around and faces ``room.heading``;
-    - ``("turn", heading)``: the robot turns to ``heading`` (one moment of sight);
-    - ``("name", place, word, phase)``: the robot attends to the thing at ``place`` and hears
+    - ``("room", room)``: a new room; the parrot looks around and faces ``room.heading``;
+    - ``("turn", heading)``: the parrot turns to ``heading`` (one moment of sight);
+    - ``("name", place, word, phase)``: the parrot attends to the thing at ``place`` and hears
       ``word`` (``phase`` is ``"naming"`` or ``"new"``);
     - ``("practice", question)``: a question and the teacher's answer;
     - ``("ask", gate, question)``: a question of the test, answered and never taught."""

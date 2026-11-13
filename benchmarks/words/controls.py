@@ -3,8 +3,8 @@ the same script as the brain (cadence#326, W7).
 
 **What a control is given.** The brain holds the room on its map and knows where things are
 around its body; a control is given the same as tokens. Every sequence begins with the room:
-for each thing, ``THING``, its kind, its colour and its place around the robot as the robot faces
-at that moment (concept tokens, the same for every founder). Then:
+for each thing, ``THING``, its kind, its colour and its place around the parrot as it faces at
+that moment (concept tokens, the same for every founder). Then:
 
 - a naming, as two sequences: the attended thing's concepts and the heard word (``NAME kind
   colour place SAY -> word END``), and the word and the thing's concepts (``NAME word SAY ->
