@@ -174,14 +174,13 @@ def load(path: str) -> dict[int, np.ndarray]:
 
 
 def make(seed: int, **settings: Any) -> Any:
-    """The founder's brain with ears: the words chamber's brain, a lexicon of ``capacity``
-    word neurons, and an ``Ear``."""
-    from cadence.words.hearing import Ear, Hearing
+    """The founder's brain with ears and a voice: the words chamber's brain and an ``Ear``
+    (settings named ``ear_<setting>``)."""
+    from cadence.words.hearing import Hearing
 
     ear = {k[4:]: v for k, v in settings.items() if k.startswith("ear_")}
-    brain = words.make_brain(seed, capacity=int(settings.get("capacity", 4096)))
-    return Hearing(brain, Ear(**ear), answered=bool(settings.get("answered", True)),
-                   heard=settings.get("heard"), boost=float(settings.get("boost", 1.0)))
+    told = {k: v for k, v in settings.items() if k in ("things", "say_at")}
+    return Hearing(words.make_brain(seed), **told, **ear)
 
 
 def life(seed: int, sounds: dict[int, np.ndarray], *, record: Any = None,
@@ -198,6 +197,13 @@ def life(seed: int, sounds: dict[int, np.ndarray], *, record: Any = None,
     seconds: dict[str, float] = {}
     phase, began = "naming", time.time()
     r: world.Room | None = None
+    # the ear's first sounds: the namings' sounds heard once, before the life, for its fields
+    began = time.time()
+    for i, event in enumerate(events):
+        if event[0] == "name" and event[4] == "ear":
+            hearing.listen(sounds[i])
+    seconds["listening"] = time.time() - began
+    phase, began = "naming", time.time()
     for i, event in enumerate(events):
         kind = event[0]
         now = {"name": "naming", "practice": "practice", "read": "reading", "ask": "test",
@@ -214,7 +220,7 @@ def life(seed: int, sounds: dict[int, np.ndarray], *, record: Any = None,
         elif kind == "name":
             if event[4] == "ear":
                 hearing.name(sounds[i], event[1])
-                for key in hearing.last["keys"]:
+                for key in hearing.last["records"]:
                     told = heard_as.setdefault(key, {})
                     told[event[2]] = told.get(event[2], 0) + 1
             else:
@@ -236,12 +242,14 @@ def life(seed: int, sounds: dict[int, np.ndarray], *, record: Any = None,
             if record is not None:
                 record.append({"gate": gate, "question": q.text, "form": q.form,
                                "about": q.about, "answer": q.answer, "said": said, "right": ok,
-                               "heard": list(hearing.last.get("keys", []))
+                               "heard": list(hearing.last.get("records", []))
                                if event[3] == "ear" else None})
         elif kind == "probe":
-            by_eye = brain.lexicon.hear(event[1])
-            keys = hearing.heard(sounds[i], learn=False)
-            by_ear = brain.lexicon.hear(keys) if keys else np.zeros_like(by_eye)
+            sensed = np.zeros(brain.lexicon.concepts, dtype=bool)
+            for g in brain.senses.groups:
+                sensed[brain.lexicon.groups[g]] = True
+            by_eye = np.where(sensed, brain.lexicon.hear(event[1]), 0.0)
+            by_ear = np.where(sensed, hearing.heard(sounds[i], learn=False)[0], 0.0)
             cosine = float(by_eye @ by_ear / max(np.linalg.norm(by_eye) * np.linalg.norm(
                 by_ear), 1e-12))
             overlap.append((cosine, int(np.argmax(by_eye)) == int(np.argmax(by_ear))))
@@ -274,7 +282,7 @@ def readings_of(seed: int, settings: dict[str, Any], readings: dict[str, list[bo
     out["overlap_cosine"] = float(np.mean([c for c, _ in overlap])) if overlap else float("nan")
     out["overlap_same"] = float(np.mean([s for _, s in overlap])) if overlap else float("nan")
     out["parameters"] = hearing.parameters()
-    out["ear_units"] = hearing.ear.units
+    out["ear_records"] = hearing.ear.records
     out["words"] = len(hearing.brain.lexicon.forms)
     synapses = int(hearing.brain.map.connectome.synapses)
     work = hearing.brain.map.work
