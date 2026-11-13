@@ -963,6 +963,7 @@ def read(rows: list[dict[str, Any]], controls: list[dict[str, Any]], of: int = 1
                     lines.append(f"  {tag} {part}: " + ", ".join(
                         f"{k} {np.mean([d[k] for d in found if k in d]):.2f}" for k in names))
     lines += more_verdict(rows, controls, of)
+    lines += parity(rows, controls)
     lines += ["", "curves (batches: lean panels), mean"]
     for tag, lives in arms.items():
         points = sorted({p["batches"] for r in lives for p in r.get("curve", ())})
@@ -975,6 +976,39 @@ def read(rows: list[dict[str, Any]], controls: list[dict[str, Any]], of: int = 1
     for tag, lives in arms.items():
         lines.append(f"  {tag}: {np.mean([r['seconds'] for r in lives]):.0f} "
                      f"(lessons {np.mean([r['work']['seconds'] for r in lives]):.0f})")
+    return lines
+
+
+BOUND = 0.03  # parity: the paired mean at or above -.03 and not under zero by two s.e.
+
+
+def parity(rows: list[dict[str, Any]], controls: list[dict[str, Any]]) -> list[str]:
+    """P: on every panel a life reads (the chamber's, the say-back's and, with the full mix,
+    its own), each arm less the matched transformer and LSTM offline (within 2% of its
+    parameters), paired by founder: the mean at or above -.03 and not under zero by two
+    standard errors. Lists the panels that fail."""
+    lines = ["", "P, parity with the matched controls offline (-.03, two standard errors)"]
+    for tag, lives in mn._by_tag(rows).items():
+        size = int(lives[0]["parameters"])
+        names = mn.SAID + mn.BACK + (MORE if all("more" in r for r in lives) else ())
+        failed, read = [], 0
+        for model in ("lstm", "transformer"):
+            theirs = {c["founder"]: c for c in controls
+                      if c["model"] == model and c["mode"] == "offline"
+                      and abs(int(c.get("brain_parameters", 0)) - size) <= 0.02 * size}
+            pairs = [r for r in lives if r["founder"] in theirs]
+            if not pairs:
+                continue
+            for n in names:
+                section = "panels" if n in mn.SAID else "sayback" if n in mn.BACK else "more"
+                mine = [mn._score(r[section][n], n) or 0.0 for r in pairs]
+                other = [mn._score(theirs[r["founder"]]["panels"][n], n) or 0.0 for r in pairs]
+                mean, error = mn.paired(mine, other)
+                read += 1
+                if mean < -BOUND or mean < -2 * error:
+                    failed.append(f"{n} less {model} {mean:+.2f} ({error:.2f})")
+        lines.append(f"  {tag}: " + ("no pair of controls" if not read else
+                                     ("holds" if not failed else "fails on " + ", ".join(failed))))
     return lines
 
 
