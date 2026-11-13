@@ -568,7 +568,7 @@ class Map:
             fresh |= cells
             lost[units] = 0.0  # a thing of the kind with no place is found
         carried &= ~claimed
-        held_by_physics = np.zeros((self.count, self.units), dtype=bool)
+        held_by_physics = np.zeros((self.count, self.width), dtype=bool)
         pending: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
         if physics is not None and physics.taught:  # things out of view that move
             held_by_physics = self._predict(activity, claimed, sight, lit, write, clock, doubt,
@@ -765,7 +765,7 @@ class Map:
         from .physics import CORE, COUNT, ERROR, EST, HIDDEN, IDENT, TAIL, VEL
 
         ph = self.physics
-        held = np.zeros((self.count, self.units), dtype=bool)
+        held = np.zeros((self.count, self.width), dtype=bool)
         idents = self.motion[:, :, IDENT]
         alive = self.potential > 0
         lo, hi = self._inside()
