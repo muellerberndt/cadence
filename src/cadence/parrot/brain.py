@@ -140,11 +140,14 @@ class Parrot:
     """The parrot's brain and body. ``genes`` change the founder's (``GENES``)."""
 
     def __init__(self, genes: dict[str, Any] | None = None, *, seed: int = 0,
-                 control: Any = None, backend: Any = "cpu"):
+                 control: Any = None, voice: Any = None, backend: Any = "cpu"):
         # ``control``: an object that takes the distance neurons' place, reading the eyes'
         # images (``see(moment, images)``, ``read(queries)``, ``teach(queries, distances)``):
         # the matched controls of the chamber
         self.control = control
+        # ``voice``: when to speak, learned (``cadence.parrot.voice.Voice``): it hears each
+        # moment's frames and its onset opens the beak; a pistachio pays its act
+        self.voice = voice
         self.genes = dict(GENES)
         self.genes.update(genes or {})
         g = self.genes
@@ -281,7 +284,8 @@ class Parrot:
         return seen
 
     def moment(self, images: np.ndarray, *, learn: bool = True, ids: np.ndarray | None = None,
-               act: bool = True) -> dict[str, Any]:
+               act: bool = True, frames: np.ndarray | None = None, reward: float | None = None,
+               done: bool = False) -> dict[str, Any]:
         """One moment: the two eyes' images ``(2, rows, columns, 3)`` uint8, taken at the body's
         present pose. With ``learn`` the ground, the kinds and the sense of distance take their
         lessons; with ``act`` the head turns where the reflex looks. ``ids`` is the chamber's
@@ -407,12 +411,20 @@ class Parrot:
                     "yaw": self.body.joint("head_yaw"), "eyes": eyes.places.copy(),
                     "rotation": eyes.rotation.copy()})
         clock = self._time("teacher", clock)
+        # the voice: whether it starts, from what the ear holds; its onset opens the beak
+        vocalized = False
+        if self.voice is not None:
+            vocalized = bool(self.voice.moment(frames, reward=reward, done=done))
         # where to look next
         if act:
-            self.body.move(self._look())
+            targets = self._look()
+            if self.voice is not None:
+                targets[NAMES.index("beak_open")] = 0.0 if vocalized else -1.0
+            self.body.move(targets)
         self._time("look", clock)
         self.moments += 1
         self.last = {"figures": figures, "sightings": sightings, "taught": taught,
+                     "vocalized": vocalized,
                      "reach": activity, "kind_activity": kind_activity,
                      "reports": reports}
         return self.last
@@ -592,6 +604,8 @@ class Parrot:
         self.body.reset()
         self.sightings.clear()
         self.focus.reset()
+        if self.voice is not None:
+            self.voice.level = None
         self.focused = None
         self._next_look = self.moments
 
