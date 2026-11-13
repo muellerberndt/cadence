@@ -105,6 +105,7 @@ class Lexicon:
         self.forms: list[str] = []  # the form of each word neuron that has entered
         self._units: dict[str, int] = {}
         self.letters = np.zeros((self.capacity, self.length, len(LETTERS) + 1))
+        self.written = np.zeros(self.capacity, dtype=bool)  # a form with letters the motor says
         self.lessons = 0
         # settles run and their multiply-accumulates: a sweep reads every synapse once
         self.work = {"settles": 0, "macs": 0}
@@ -126,23 +127,35 @@ class Lexicon:
     def _form(word: str) -> str:
         return " ".join(str(word).lower().split())
 
-    def _enter(self, word: str) -> int:
-        """A form heard for the first time takes the next free word neuron, and the motor's
-        letters for it are written from the letters it was heard by."""
-        form = self._form(word)
+    def enter(self, key: str, *, written: bool = True) -> int:
+        """A form heard for the first time takes the next free word neuron. A written form
+        (``written``) is 1 to ``length`` of the letters, and the motor's letters for it are
+        written from the letters it was heard by. A form heard with no letters (the sound of a
+        word, keyed by a character outside the letters) takes a neuron the motor never says.
+        Gives the form's neuron."""
+        form = self._form(key)
         if form in self._units:
             return self._units[form]
         if len(self.forms) == self.capacity:
             raise ValueError(f"the lexicon holds {self.capacity} words: a larger capacity")
-        if not form or len(form) > self.length or any(c not in LETTERS for c in form):
+        if written and (not form or len(form) > self.length or any(
+                c not in LETTERS for c in form)):
             raise ValueError(f"a word is 1 to {self.length} of the letters {LETTERS!r}")
+        if not written and (not form or all(c in LETTERS for c in form)):
+            raise ValueError("a form with no letters is keyed by a character outside the "
+                             "letters")
         unit = len(self.forms)
         self.forms.append(form)
         self._units[form] = unit
-        for place in range(self.length):
-            letter = LETTERS.index(form[place]) if place < len(form) else len(LETTERS)
-            self.letters[unit, place, letter] = 1.0
+        self.written[unit] = bool(written)
+        if written:
+            for place in range(self.length):
+                letter = LETTERS.index(form[place]) if place < len(form) else len(LETTERS)
+                self.letters[unit, place, letter] = 1.0
         return unit
+
+    def _enter(self, word: str) -> int:
+        return self.enter(word)
 
     def _drive(self, rows: list[list[str]], *, enter: bool) -> np.ndarray:
         """The drive of heard words, ``(rows, neurons)``: each row's words' neurons."""
@@ -270,6 +283,7 @@ class Lexicon:
         another concept than the one said (a word for a kind that named the colour of the one
         thing it was shown on) gives way to the next most active, up to ``tries`` words."""
         active = self.words_for(concept)
+        active = np.where(self.written[: len(active)], active, -np.inf)  # the motor says letters
         if not len(active) or active.max() <= floor:
             return None
         vector = self._vector(concept)
@@ -306,6 +320,7 @@ class Lexicon:
         return {"efficacy": np.asarray(self.graph.efficacy, dtype=np.float64).copy(),
                 "letters": self.letters[: len(self.forms)].copy(),
                 "forms": np.array(self.forms, dtype=str),
+                "written": self.written[: len(self.forms)].copy(),
                 # each word's lessons by the groups they taught, and the lessons in all
                 "counted": np.array([",".join(k) for k in keys], dtype=str),
                 "counts": (np.stack([self.counts[k] for k in keys]) if keys
@@ -319,8 +334,11 @@ class Lexicon:
 
         told = dict(settings)
         out = cls(told.pop("concepts"), backend=backend, **told)
-        for form in [str(f) for f in np.asarray(arrays["forms"])]:
-            out._enter(form)
+        forms = [str(f) for f in np.asarray(arrays["forms"])]
+        written = (np.asarray(arrays["written"], dtype=bool) if "written" in arrays
+                   else np.ones(len(forms), dtype=bool))
+        for form, has_letters in zip(forms, written, strict=True):
+            out.enter(form, written=bool(has_letters))
         efficacy = np.asarray(arrays["efficacy"], dtype=np.float64)
         if efficacy.shape != (out.connectome.synapses,):
             raise ValueError("the lexicon's efficacy does not fit its words and concepts")

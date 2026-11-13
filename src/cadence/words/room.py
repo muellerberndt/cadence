@@ -217,7 +217,7 @@ class Words:
         described = self.senses.describe(place)
         return None if described is None else self.concepts(described, self.shares)
 
-    def name(self, word: str, at: Any) -> float:
+    def name(self, word: str | list[str], at: Any) -> float:
         """A naming: the brain attends to the thing at ``at`` and hears ``word``. Gives the
         lesson's error (as a share of its target), or nan where the map holds nothing there."""
         concepts = self.attend(at)
@@ -285,7 +285,7 @@ class Words:
         pick = int(self.rng.choice(len(groups), p=odds))
         return groups[pick], float(odds[pick])
 
-    def ask(self, question: str, *, explore: bool = False) -> list[str]:
+    def ask(self, question: str | list[str], *, explore: bool = False) -> list[str]:
         """The words the brain says to a question: one a thing found, said by the lexicon's
         motor; the word for the read that finds nothing where nothing is found. With
         ``explore`` the brain tries one read, drawn by ``choose``, in place of the reads'
@@ -342,11 +342,15 @@ class Words:
         return out
 
     @staticmethod
-    def _words(question: str) -> list[str]:
+    def _words(question: str | list[str]) -> list[str]:
+        """A question's words: a text split into words, or a list of words already heard
+        (written forms or heard keys), as it is."""
+        if not isinstance(question, str):
+            return [str(w) for w in question]
         return [w for w in "".join(c if c.isalpha() or c in " '" else " "
                                    for c in question.lower()).split()]
 
-    def practice(self, question: str, answer: str | list[str]) -> None:
+    def practice(self, question: str | list[str], answer: str | list[str]) -> None:
         """A question with the teacher's answer: one word (a form, which may hold spaces, as
         ``"i do not know"``) or a list of them. The answer's words are heard: where the lexicon
         names a group the brain can answer with, the question's words are taught that group's
