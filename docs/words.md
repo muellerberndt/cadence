@@ -97,7 +97,8 @@ that replaces it.
 | The colours | Six given categories, one unit each | Replaced by concepts learned from raw senses, with their boundaries learned from naming (`words-concepts`) |
 | The places around the body | Four fixed quarters | Replaced the same way: a direction around the body, its words' boundaries learned (`words-concepts`) |
 | Which word a heard form is | A word neuron a form, entered on first hearing, found by its exact form | Replaced by records of the recall memory keyed by the form, found by the memory's read (noisy and partial forms included), with the focused thing as context (#333) |
-| What a word names | Learned: reciprocal synapses, from naming (protocols 1 and 2) or from pistachios (protocol 3) | |
+| What a word names | Learned: reciprocal synapses, from naming (protocols 1 and 2) or from pistachios, three factors (protocol 3: a mark that fades, made a link by a pistachio) | The mark's fading (`keep`) and the trainer's pause are genes |
+| Where a thing was, and will be | `cadence.words.Episodes`: records of the places things left, and the map's forecast | The records are the library's long-term store; the forecast the map's learned physics; which source a question asks for is learned (the time lane's protocols) |
 | What a question asks for | Learned: the read neurons' synapses from answered questions or pistachios | The three read neurons are born, one a group of concepts; the next protocol makes the choice among groups a competition in the settle |
 | The concept asked about | The program takes the group whose most active concept is the most active | The next protocol: a competition in the settle |
 | The map's read by group | The program reads a kind by `where_is`, a value by `where_is_value`, a place by the cells it covers | The next protocol: the concept's pattern as the map's cue, one settle for every group |
