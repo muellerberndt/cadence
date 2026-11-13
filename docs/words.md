@@ -211,6 +211,41 @@ an object with `groups` (its concept groups, added to the lexicon) and any of:
 `Words(map, parts=[...])` takes them in order, and `Words(map, senses=...)` takes learned senses
 in place of the born ones: an object with `groups`, `describe(place)` and `find(group, pattern)`.
 
+## Several things, how many, is there
+
+A room may hold two balls, one red and one blue. `cadence.words.several.Several` is a part that
+answers questions about several things:
+
+```python
+from cadence.words import Words
+from cadence.words.several import Several
+
+parrot = Words(room, parts=[Several()])
+```
+
+- **"Where is the red ball?"** Each word of the question is heard alone and names its most active
+  concept: "red" a colour, "ball" a kind. The map settles on the balls, and the part keeps the
+  ball the map settles on as red there. The map holds the two balls as two things, each with its
+  colour on its own cells ([values carried with a thing](space.md#values-carried-with-a-thing)).
+- **"Where is the ball?"** names both balls: one word a thing found.
+- **"How many red things are there?"** and **"is there a ball?"** are two more reads of the things
+  found together: their count and whether there is one. The parrot is born with a sense of small
+  numbers (one neuron a count of the things a settle finds, from none to five or more); the
+  words for the counts, and yes and no, are learned from the teacher's answers alone.
+
+**How the count words are learned.** A question whose answer is one word no naming has shown
+(a number word, yes, no, "I do not know") is the part's lesson. The question's words of asking
+are taught the read whose motor would say the teacher's word, and the answer is named with what
+the parrot found (the count, whether there is one) at the gain of the question's read. A read
+whose concepts hold another firm word takes no part in naming the answer, so "no" goes to the
+truth where "zero" holds the count of none. The teacher asks "how many?" before "is there?": asked
+together from the first question, the two words for none can take each other's concept (the
+chamber reads both orders).
+
+| Setting | Default | What it sets |
+| --- | --- | --- |
+| `Several(numbers=)` | 6 | The counts of the number sense, from none (the last counts that many or more) |
+
 ## The chamber and its readings
 
 [`benchmarks/words`](../benchmarks/words/README.md) raises a brain over rooms of nonce words drawn
