@@ -349,6 +349,52 @@ held-out utterances. Three founders where no count is given.
 - A soft path whose sharpness rises over the epochs, and one that weighs blank down, read at
   or under CTC's (.453 to .461, and .37 after two epochs against .43; one founder).
 
+### The soft teacher, development
+
+Each step is taught the soft path of its text through the brain's own beliefs
+(`cadence.speech.align.soft_path`, [the guide](../../docs/speech.md#the-soft-lesson-every-path-of-the-transcript)),
+read from the brain itself before every batch (`log_beliefs(..., hold=True)`). Development
+founders 0 and 1 on the GPU, the round 4 arm otherwise unchanged (1,285,724 parameters).
+Characters / the letter from the sound:
+
+| Arm | Pass 1 | Pass 2 | Pass 3 |
+| --- | --- | --- | --- |
+| The forced path, round 4 (twelve founders) | .306 / .307 | .343 / .342 | .349 / .352 |
+| The soft path, lesson rates as composed (one founder at pass 3) | .360, .372 / .393, .398 | .340, .385 / .402, .408 | .394 / .397 |
+| The soft path, rates at 0.3 | .347, .375 / .391, .398 | .343, .375 / .410, .423 | .414, .410 / .426, .423 |
+| The soft path, rates at 0.1 | .223, .318 / .382, .382 | .268, .335 / .415, .410 | .394, .389 / .430, .417 |
+
+- **The soft path lifts the start.** At pass 1 the letter from the sound reads .39 to .40
+  against .31 under the forced path, and at pass 3 .42 to .43 against .35.
+- **Beliefs read several batches earlier teach blank.** Read every eighth batch, the brain says
+  only blank after half a pass, where read before every batch it reads .27 to .33 characters.
+- **The rates.** At 0.3 the letter reads highest at pass 3. Emission given the letter swings
+  between readings half a pass apart at every rate (.59 to .86 as composed, .59 to .88 at 0.3).
+  Rates falling from 0.3 to .04 or .01 over four passes read .405 and .379 at pass 4 (one
+  founder).
+- **Where the soft brain's letters are** (founder 0, pass 3, read link by link as in Step 0):
+  its pools .395 through a linear readout and .450 through a hidden layer of 256; its
+  association .421 through a linear readout after one epoch and .440 at most; its motor neurons
+  .419; the brain itself .414. The association holds more than the brain says.
+- **The heard history is the association's route to the sound.** Without it the brain reads
+  characters .03 to .10 at pass 1.5; with its learned gain held at the founder's 1, .30 and .34
+  at pass 1 against .35 and .38. The gain climbs to its bound (7.9 of 8), where the sensory
+  neurons, hearing the pools at unit length per row, sit at the floor of their activation (mean
+  .009). The pools heard at 4, 8 or 16 times their scale in the sensory drive read the letter as
+  without (.413 to .425 at pass 1.5 against .415 and .419) and say less of it; every synapse at
+  the composed step (no step at 64 over the association's width) reads within .01; the history
+  heard at twice its amplitude reads lower at pass 1 (.33 and .35).
+
+### Round 5, declared: the teacher
+
+Declared on [issue 304](https://github.com/muellerberndt/cadence/issues/304) before its first
+life: [`protocol-speech-r5.json`](protocol-speech-r5.json). The round 4 arm, its lessons the soft
+path through its own beliefs read before every batch, its lesson rates at 0.3 of the composed;
+twelve fresh founders (304600 to 304611), six passes, read after every pass, beside CTC controls
+at its parameter count (online six passes, offline to the stopping rule or 12 epochs; on the
+GPU). G1 and G2 as in round 4, at pass 6 against each founder's offline CTC transformer at its
+epoch 6.
+
 ## What this does and does not establish
 
 The chamber measures composed brains on one synthetic world with supplied sound timing and one
