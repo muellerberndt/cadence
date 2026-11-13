@@ -1,16 +1,16 @@
 """A founder's life in the words chamber, and its readings (cadence#326).
 
 The brain is ``cadence.words.Words``: a map of things with each thing's colour on its own sheet
-(``Map(values={"colour": 6})``), the robot's body and a lexicon learned from naming. One life:
+(``Map(values={"colour": 6})``), the parrot's body and a lexicon learned from naming. One life:
 
 1. **Naming.** In each of ``naming_rooms`` rooms of trained kinds (no kind in its unseen colour)
-   the robot looks around (eight moments, an eighth of a turn apart), and the teacher names
-   ``namings`` things: each time the robot turns to a drawn heading, attends to a thing (in view
+   the parrot looks around (eight moments, an eighth of a turn apart), and the teacher names
+   ``namings`` things: each time the parrot turns to a drawn heading, attends to a thing (in view
    or held out of it) and hears one word, its kind's, its colour's or its place's (at the rates
    ``world.NAMING``).
 2. **Practice.** In each of ``practice_rooms`` rooms of three things of kinds 0 to 3 the teacher
    asks ``asked`` questions and says the answer: where a thing is, its colour, what has a
-   colour, what is at a place around the robot, a kind not in the room, a foil.
+   colour, what is at a place around the parrot, a kind not in the room, a foil.
 3. **The test.** In ``test_rooms`` fresh rooms of trained kinds, and ``unseen_rooms`` rooms with
    a thing in its kind's unseen colour, every question form is asked; nothing is taught.
 4. **New words.** Each new kind is shown in a room and named three times; then ``new_rooms``
@@ -38,11 +38,15 @@ import world  # noqa: E402
 
 DEFAULTS = {"naming_rooms": 40, "namings": 15, "practice_rooms": 24, "asked": 10,
             "test_rooms": 30, "unseen_rooms": 16, "new_rooms": 16}
+# how practice teaches: "told" (the teacher says the answer), "reward" (the parrot answers,
+# trying a read, and a right answer earns a pistachio: a reward of 1), "withheld" (it answers
+# and no reward comes)
+PRACTICE = ("told", "reward", "withheld")
 
 
 def make_brain(seed: int, **settings: Any) -> Any:
     """The founder's brain: a map of the chamber's plane with one unit a kind and the colours
-    on its sheet, the robot at the middle, and a fresh lexicon."""
+    on its sheet, the parrot at the middle, and a fresh lexicon."""
     from cadence.space.map import Map
     from cadence.words import Words
 
@@ -52,20 +56,20 @@ def make_brain(seed: int, **settings: Any) -> Any:
 
 
 def look_around(brain: Any, r: world.Room) -> None:
-    """A new room: the map is emptied, the robot looks around in eight moments and turns back
+    """A new room: the map is emptied, the parrot looks around in eight moments and turns back
     to the room's heading."""
     brain.map.reset()
     for i in range(9):
         heading = r.heading + (i % 8) * math.pi / 4 if i < 8 else r.heading
         brain.body.heading = heading
-        brain.map.moment(seen=world.seen(r, heading), lit=world.camera(heading))
+        brain.look(seen=world.seen(r, heading), lit=world.camera(heading))
 
 
 def turn(brain: Any, r: world.Room, heading: float) -> None:
-    """The robot turns to ``heading``: one moment of sight there."""
+    """The parrot turns to ``heading``: one moment of sight there."""
     r.heading = heading
     brain.body.heading = heading
-    brain.map.moment(seen=world.seen(r, heading), lit=world.camera(heading))
+    brain.look(seen=world.seen(r, heading), lit=world.camera(heading))
 
 
 def naming_word(lex: world.Lexicon, r: world.Room, t: world.Thing,
@@ -81,7 +85,7 @@ def naming_word(lex: world.Lexicon, r: world.Room, t: world.Thing,
 def room_questions(lex: world.Lexicon, r: world.Room, rng: np.random.Generator, *,
                    absent: list[int], foils: list[int]) -> list[world.Question]:
     """Every question form about a room: where each thing is and its colour, what has a colour
-    held in the room, what is at each place around the robot, a kind not in the room, a foil."""
+    held in the room, what is at each place around the parrot, a kind not in the room, a foil."""
     out: list[world.Question] = []
     for t in r.things:
         out += [world.where(lex, r, t.kind), world.colour_of(lex, r, t.kind)]
@@ -114,9 +118,9 @@ def held_rate(brain: Any, r: world.Room) -> list[bool]:
 def script(seed: int, **given: Any) -> list[tuple[Any, ...]]:
     """A founder's life as events, the same for the brain and the controls:
 
-    - ``("room", room)``: a new room; the robot looks around and faces ``room.heading``;
-    - ``("turn", heading)``: the robot turns to ``heading`` (one moment of sight);
-    - ``("name", place, word, phase)``: the robot attends to the thing at ``place`` and hears
+    - ``("room", room)``: a new room; the parrot looks around and faces ``room.heading``;
+    - ``("turn", heading)``: the parrot turns to ``heading`` (one moment of sight);
+    - ``("name", place, word, phase)``: the parrot attends to the thing at ``place`` and hears
       ``word`` (``phase`` is ``"naming"`` or ``"new"``);
     - ``("practice", question)``: a question and the teacher's answer;
     - ``("ask", gate, question)``: a question of the test, answered and never taught."""
@@ -197,9 +201,14 @@ def gate_of(q: world.Question) -> str:
 def life(seed: int, *, record: Any = None, brain: Any = None, **given: Any) -> dict[str, Any]:
     """One founder's life on its script; the readings by gate. ``record`` (a list) takes every
     question asked in the test with what was said."""
+    practice = str(given.pop("practice", "told"))
+    if practice not in PRACTICE:
+        raise ValueError(f"practice is one of {PRACTICE}")
     settings = {**DEFAULTS, **{k: v for k, v in given.items() if k in DEFAULTS}}
     brain_settings = {k: v for k, v in given.items() if k not in DEFAULTS}
     events = script(seed, **settings)
+    rewarded: list[bool] = []
+    meant: dict[str, int] = {}
     lex = world.lexicon(seed)
     english = lex.english()
     brain = make_brain(seed, **brain_settings) if brain is None else brain
@@ -216,6 +225,11 @@ def life(seed: int, *, record: Any = None, brain: Any = None, **given: Any) -> d
                "practice": "practice", "ask": "test"}[kind]
         if now is not None and now != phase:
             seconds[phase] = seconds.get(phase, 0.0) + time.time() - began
+            if now == "practice":  # W11: what each named word names as practice begins
+                meant = named_meanings(brain)
+            elif now == "test" and phase == "practice":
+                kept = named_meanings(brain)
+                readings["W11_kept"] = [kept.get(w) == c for w, c in meant.items()]
             phase, began = now, time.time()
         if kind == "room":
             r = event[1]
@@ -227,7 +241,13 @@ def life(seed: int, *, record: Any = None, brain: Any = None, **given: Any) -> d
             brain.name(event[2], event[1])
         elif kind == "practice":
             q = event[1]
-            brain.practice(q.text, q.answer if len(q.answer) > 1 else q.answer[0])
+            if practice == "told":
+                brain.practice(q.text, q.answer if len(q.answer) > 1 else q.answer[0])
+            else:  # the answer is never told: a right one earns a pistachio
+                right = world.right(q, brain.ask(q.text, explore=True))
+                rewarded.append(right)
+                if practice == "reward":
+                    brain.reward(1.0 if right else 0.0)
         else:
             gate, q = event[1], event[2]
             assert r is not None
@@ -242,13 +262,20 @@ def life(seed: int, *, record: Any = None, brain: Any = None, **given: Any) -> d
                 readings.setdefault("W6_ablated", []).append(world.right(q, ablated.ask(q.text)))
             if gate.startswith("W1") and q.about == "out_of_view":
                 readings.setdefault("W4_out_of_view", []).append(ok)
+            if gate == "W5_by_place" and q.about == "several":  # a place that holds things
+                readings.setdefault("W5_by_place_held", []).append(ok)
             if record is not None:
                 record.append({"gate": gate, "question": q.text, "form": q.form,
                                "about": q.about, "answer": q.answer, "said": said, "right": ok,
                                "english": " ".join(english.get(w, w) for w in q.text.split()),
                                "said_english": [english.get(w, w) for w in said]})
     seconds[phase] = seconds.get(phase, 0.0) + time.time() - began
-    return readings_of(seed, settings, readings, held, brain, seconds)
+    out = readings_of(seed, settings, readings, held, brain, seconds)
+    out["practice"] = practice
+    if rewarded:
+        out["pistachios"] = int(sum(rewarded))
+        out["pistachios_last_half"] = float(np.mean(rewarded[len(rewarded) // 2:]))
+    return out
 
 
 def readings_of(seed: int, settings: dict[str, Any], readings: dict[str, list[bool]],
@@ -289,6 +316,20 @@ def _free_place(rng: np.random.Generator, r: world.Room) -> np.ndarray:
         if all(np.linalg.norm(p - t.place) >= 0.45 for t in r.things):
             return p
     raise RuntimeError("no free place in the room")
+
+
+def named_meanings(brain: Any) -> dict[str, int]:
+    """Each word the brain holds that names a concept of its senses, with the concept it names
+    most (W11: a word taught by naming is kept while practice teaches the questions)."""
+    groups = brain.lexicon.groups
+    among = np.concatenate([np.arange(groups[g].start, groups[g].stop)
+                            for g in brain.senses.groups])
+    out = {}
+    for word in brain.lexicon.forms:
+        heard = brain.lexicon.hear(word)[among]
+        if heard.max() > brain.floor:
+            out[word] = int(among[int(np.argmax(heard))])
+    return out
 
 
 def ablate(brain: Any) -> Any:

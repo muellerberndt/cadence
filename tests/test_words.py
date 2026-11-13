@@ -51,8 +51,12 @@ def test_three_namings_bind_a_new_word() -> None:
 def test_the_lexicon_as_arrays() -> None:
     lexicon, kinds, _ = _named(2, namings=60)
     again = Lexicon.from_arrays(lexicon.settings, lexicon.arrays())
-    assert again.forms == lexicon.forms
+    assert again.forms == lexicon.forms and again.lessons == lexicon.lessons
     assert np.allclose(again.hear(kinds[0]), lexicon.hear(kinds[0]))
+    assert all(np.array_equal(again.counts[k], lexicon.counts[k]) for k in lexicon.counts)
+    lexicon.name(kinds[1], {("kind", 1): 0.5})  # the next lesson: the same share in both
+    again.name(kinds[1], {("kind", 1): 0.5})
+    assert np.allclose(again.hear(kinds[1]), lexicon.hear(kinds[1]))
     with pytest.raises(ValueError, match="letters"):
         lexicon.name("Dako!", {("kind", 0): 1.0})
     with pytest.raises(ValueError, match="no concept"):
@@ -106,5 +110,72 @@ def test_a_brain_answers_about_its_room() -> None:
         assert brain.ask(f"where is {kinds[k]}") == [places[brain.body.place(p)]]
         assert brain.ask(f"what colour is {kinds[k]}") == [colours[c]]
     assert brain.ask("where is novu") == ["i do not know"]  # a word never named
-    with pytest.raises(ValueError, match="values"):
-        Words(Map((-1.0, 1.0, -1.0, 1.0)))
+    plain = Words(Map((-1.0, 1.0, -1.0, 1.0)))  # a map with no values: kinds and places
+    assert set(plain.senses.groups) == {"kind", "place"} and plain.answers == ["kind", "place"]
+
+
+def test_pistachios_teach_what_a_question_asks_for() -> None:
+    """Answers never told: a right answer earns a reward of 1, and the words of asking learn
+    the read the brain tried; with the reward withheld no read is learned."""
+    kinds, colours, places = ["dako", "mipu", "sefa"], ["ruka", "beto"], [
+        "fobe", "riza", "kosa", "lume"]
+
+    def raised(rewarded: bool) -> tuple[Words, list]:
+        held = Map((-2.0, 2.0, -2.0, 2.0), (24, 24), units=3, values={"colour": 2})
+        brain = Words(held, seed=1)
+        rng = np.random.default_rng(1)
+
+        def room() -> list:
+            turn = rng.uniform(0.0, 2 * math.pi)
+            things = [(k, 1.2 * np.array([math.cos(turn + 2.1 * k), math.sin(turn + 2.1 * k)]),
+                       int(rng.integers(2))) for k in range(3)]
+            held.reset()
+            brain.look(seen=[(k, p, {"colour": c}) for k, p, c in things])
+            return things
+
+        for _ in range(40):
+            things = room()
+            for _ in range(4):
+                k, p, c = things[int(rng.integers(3))]
+                brain.body.heading = float(rng.uniform(-math.pi, math.pi))
+                u = rng.random()
+                brain.name(kinds[k] if u < 0.5 else colours[c] if u < 0.75 else
+                           places[brain.body.place(p)], p)
+        brain.body.heading = 0.0
+        for _ in range(30):
+            things = room()
+            k, p, c = things[int(rng.integers(3))]
+            for question, right in ((f"where is {kinds[k]}", places[brain.body.place(p)]),
+                                    (f"what colour is {kinds[k]}", colours[c])):
+                said = brain.ask(question, explore=True)
+                if rewarded:
+                    brain.reward(1.0 if said == [right] else 0.0)
+        return brain, room()
+
+    brain, things = raised(True)
+    for k, p, c in things:
+        assert brain.ask(f"where is {kinds[k]}") == [places[brain.body.place(p)]]
+        assert brain.ask(f"what colour is {kinds[k]}") == [colours[c]]
+    # a word that names a kind keeps no read: its reads settle as silence does
+    reads = brain.lexicon.groups["read"]
+    assert brain.lexicon.hear("dako")[reads].max() < brain.floor
+    assert np.allclose(brain.lexicon.hear("dako")[reads], brain.lexicon.hear([])[reads],
+                       atol=0.02)
+    withheld, _ = raised(False)
+    assert max(withheld.hear(["where", "is", "dako"]).reads.values()) < withheld.floor
+
+
+def test_a_heard_form_with_no_letters() -> None:
+    """The sound of a word takes a word neuron of its own beside the written form's, which the
+    motor never says; one concept holds both."""
+    lexicon, kinds, _ = _named(3, namings=120)
+    unit = lexicon.enter("~7", written=False)
+    assert not lexicon.written[unit] and not lexicon.letters[unit].any()
+    for _ in range(3):
+        lexicon.name(["~7"], {("kind", 2): 0.5})
+    assert int(np.argmax(lexicon.hear(["~7"]))) == lexicon.index("kind", 2)
+    assert lexicon.say(("kind", 2)) == kinds[2]  # the motor says the written form
+    again = Lexicon.from_arrays(lexicon.settings, lexicon.arrays())
+    assert not again.written[unit] and again.say(("kind", 2)) == kinds[2]
+    with pytest.raises(ValueError, match="outside the letters"):
+        lexicon.enter("zuzo", written=False)  # a form of letters is a written form
