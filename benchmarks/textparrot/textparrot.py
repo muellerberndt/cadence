@@ -207,6 +207,7 @@ class BrainPolicy:
         self.lessons = 0
         self.taught = 0
         self.sweeps = 0.0  # rows times settle sweeps, lessons and acts: every synapse a MAC
+        self.refused = 0  # lessons and acts whose settle did not converge (skipped)
         self.watch = [0.0, 0.0]  # association units near saturation, units seen (reads only)
         assoc = self.brain.connectome.populations["association"]
         self.association = np.asarray(list(assoc))
@@ -216,7 +217,7 @@ class BrainPolicy:
         """A saved brain (``Brain.load``) as the chamber's learner."""
         self = cls.__new__(cls)
         self.layout, self.genome, self.brain = layout, dict(HAND_SET), brain
-        self.n = self.lessons = self.taught = 0
+        self.n = self.lessons = self.taught = self.refused = 0
         self.sweeps = 0.0
         self.watch = [0.0, 0.0]
         self.association = np.asarray(list(brain.connectome.populations["association"]))
@@ -233,13 +234,24 @@ class BrainPolicy:
             hold = float(self.genome.get("hold_weight", 1.0))
             if hold != 1.0:  # the gaze's rare act (a hold) weighs more in its lesson
                 w = w * np.where(labels[:, 1] == tc.HOLD, hold, 1.0)
-            self.brain.lesson(x, labels, weights=None if np.all(w == 1.0) else w)
+            try:
+                self.brain.lesson(x, labels, weights=None if np.all(w == 1.0) else w)
+            except RuntimeError:  # a settle that does not converge: the lesson is refused
+                self.refused += 1
+                return self._act(x, mask)
             self.lessons += 1
             report = self.brain.last_learning
             self.taught += int(report.get("demonstrations", mask.sum())
                                - report.get("demonstration_agreed_presentations", 0))
             self.sweeps += float(report.get("demonstration_total_row_sweeps", 0.0))
-        a = np.asarray(self.brain.act(x, greedy=True)).reshape(len(x), -1)
+        return self._act(x, mask, learn)
+
+    def _act(self, x: np.ndarray, mask: np.ndarray, learn: bool = True) -> np.ndarray:
+        try:
+            a = np.asarray(self.brain.act(x, greedy=True)).reshape(len(x), -1)
+        except RuntimeError:  # no settle: the moment passes in silence, the brain unchanged
+            self.refused += 1
+            return np.tile([self.layout.voice - 1, tc.PASS], (len(x), 1))
         self.sweeps += float(self.brain.last_settlement["steps"]) * len(x)
         if not learn:
             act = np.asarray(self.brain.basal_ganglia.state.activation)[:, self.association]

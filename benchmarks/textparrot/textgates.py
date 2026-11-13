@@ -89,7 +89,7 @@ def life(seed: int, arm: str, out_dir: Path, *, pistachio: bool = True) -> dict[
     policy, layout, record = tp.life(seed, genome=genome, caps=CAPS, log=log)
     record.update(arm=arm, genome=genome, parameters=policy.parameters(),
                   synapses=int(len(policy.brain.connectome.pre)),
-                  macs=policy.macs(), lessons=policy.lessons)
+                  macs=policy.macs(), lessons=policy.lessons, refused=policy.refused)
     policy.brain.save(f"{stem}.npz")
     Path(f"{stem}.json").write_text(json.dumps(record, indent=1, default=float))
     record["readings"] = readings(policy, layout, seed)
@@ -168,10 +168,11 @@ def control(seed: int, kind: str, out_dir: Path, brain_record: Path | None,
     else:
         policy = tcl.plain(kind, layout, seed, plan)
     seconds = time.time() - t
+    macs = getattr(policy, "macs", 0)
     record: dict[str, Any] = {"kind": kind, "seed": seed, "parameters": policy.parameters(),
                               "updates": getattr(policy, "updates", 0),
-                              "macs": getattr(policy, "macs", 0), "train_seconds": seconds,
-                              "plan": plan}
+                              "macs": float(macs() if callable(macs) else macs),
+                              "train_seconds": seconds, "plan": plan}
     record["readings"] = readings(policy, layout, seed)
     name = kind.replace(":", "-")
     Path(out_dir / f"{name}_{seed}.json").write_text(json.dumps(record, indent=1, default=float))
