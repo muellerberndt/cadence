@@ -1,9 +1,9 @@
 """The words chamber's rung of time (cadence#326, W8 to W10): "where was the ball?", "where is
 the ball?" and "where will the ball be?".
 
-The brain is ``cadence.words.episodes.Times``: the brain of ``words.py`` with its records (the
-places things left, keyed by the thing and the time), its forecast and a lexicon whose concepts
-add the three sources. The time words ("was", "will") are nonce words drawn for each founder
+The brain is ``cadence.words.Words`` with the part ``cadence.words.episodes.Episodes``: its
+records (the places things left, keyed by the thing and the time), its forecast and one concept
+a source in its lexicon. The time words ("was", "will") are nonce words drawn for each founder
 beside the founder's other words; "is" is the founder's word of protocol 1. One life:
 
 1. **Naming**, as in protocol 1: ``naming_rooms`` rooms of the 8 trained kinds, ``namings``
@@ -80,14 +80,24 @@ def time_words(seed: int) -> dict[str, str]:
 def make_brain(seed: int, *, physics: Any = False, ahead: int = 10, **settings: Any) -> Any:
     """The founder's brain in time: the map of protocol 1 (one unit a kind, the colours on its
     sheet), with learned physics where ``physics`` (True, or the physics' settings), and a
-    ``Times`` brain that forecasts ``ahead`` moments on."""
+    ``Words`` brain with the part ``Episodes`` (its records, and its forecast ``ahead`` moments
+    on)."""
     from cadence.space.map import Map
-    from cadence.words.episodes import Times
+    from cadence.words import Words
+    from cadence.words.episodes import Episodes
 
     held = Map(world.PLANE, world.CELLS, units=world.KINDS, values={"colour": world.COLOURS},
                seed=int(seed), physics=(dict(physics) if isinstance(physics, dict)
                                         else True if physics else None))
-    return Times(held, seed=int(seed), ahead=int(ahead), **settings)
+    return Words(held, parts=[Episodes(held, ahead=int(ahead), seed=int(seed))], seed=int(seed),
+                 **settings)
+
+
+def episodes(brain: Any) -> Any:
+    """The brain's part of time."""
+    from cadence.words.episodes import Episodes
+
+    return next(part for part in brain.parts if isinstance(part, Episodes))
 
 
 def look(brain: Any, r: world.Room) -> None:
@@ -95,13 +105,13 @@ def look(brain: Any, r: world.Room) -> None:
     for i in range(9):
         heading = r.heading + (i % 8) * math.pi / 4 if i < 8 else r.heading
         brain.body.heading = heading
-        brain.moment(seen=world.seen(r, heading), lit=world.camera(heading))
+        brain.look(seen=world.seen(r, heading), lit=world.camera(heading))
 
 
 def turn(brain: Any, r: world.Room, heading: float) -> None:
     r.heading = heading
     brain.body.heading = heading
-    brain.moment(seen=world.seen(r, heading), lit=world.camera(heading))
+    brain.look(seen=world.seen(r, heading), lit=world.camera(heading))
 
 
 def carry_to(rng: np.random.Generator, heading: float, at: dict[int, np.ndarray],
@@ -186,7 +196,7 @@ def watch(brain: Any, r: world.Room, heading: float, moments: int) -> None:
         for t in r.things:
             if t.kind in r.extra.get("rolling", {}):
                 t.place = t.place + r.extra["rolling"][t.kind]
-        brain.moment(seen=world.seen(r, heading), lit=world.camera(heading))
+        brain.look(seen=world.seen(r, heading), lit=world.camera(heading))
 
 
 def script(seed: int, **given: Any) -> list[tuple[Any, ...]]:
@@ -345,7 +355,7 @@ def forecast_holds(brain: Any, kind: int, place: np.ndarray) -> tuple[bool, floa
     distance in metres from ``place`` (the nearest)."""
     from cadence.words.episodes import forecast
 
-    ahead = forecast(brain.map, brain.ahead)
+    ahead = forecast(brain.map, episodes(brain).ahead)
     places = ahead.where_is(kind)
     if not len(places):
         return False, float("nan")
@@ -379,7 +389,7 @@ def life(seed: int, *, record: Any = None, brain: Any = None, **given: Any) -> d
             phase, began = now, time.time()
         if kind == "room":
             r = event[1]
-            brain.enter()
+            brain.map.reset()
             look(brain, r)
         elif kind == "turn":
             assert r is not None
@@ -409,8 +419,16 @@ def life(seed: int, *, record: Any = None, brain: Any = None, **given: Any) -> d
             readings.setdefault(gate, []).append(ok)
             readings.setdefault("W9_map_kept", []).append(all(
                 np.array_equal(kept[k], v) for k, v in brain.map.arrays().items()))
-            found = brain.last["found"]
-            concepts = {s: sorted({c for k, c in found[s] if k == q.kind}) for s in found}
+            part = episodes(brain)
+            gains = part.last.get("gains", np.zeros(3))
+            questions = brain.map.work["questions"]  # a reader's look leaves the work as it was
+            found = part.sources(brain, brain.last["heard"].about, part.last.get("map", []),
+                                 probe=True)
+            brain.map.work["questions"] = questions
+            concepts = {s: sorted({("place", int(np.argmax(d["place"]))) for _, d in found[s]
+                                   if int(np.argmax(d["kind"])) == q.kind
+                                   and np.asarray(d["place"]).max() > 0})
+                        for s in found}
             three = [concepts[s][0] if len(concepts[s]) == 1 else None
                      for s in ("records", "map", "forecast")]
             if None not in three and len(set(three)) == 3 and q.form in TIMES:
@@ -419,12 +437,12 @@ def life(seed: int, *, record: Any = None, brain: Any = None, **given: Any) -> d
                 readings.setdefault(f"W10_three_{q.form}", []).append(said == [
                     {"kind": lex.kind, "colour": lex.colour, "place": lex.place}[group][value]])
             if gate == "W9_future":
-                ahead, brain.ahead = brain.ahead, 0  # the forecast barred: it is the map now
+                ahead, part.ahead = part.ahead, 0  # the forecast barred: it is the map now
                 try:
                     readings.setdefault("W9_unforecast", []).append(
                         world.right(q, brain.ask(q.text)))
                 finally:
-                    brain.ahead = ahead
+                    part.ahead = ahead
                 right, error = forecast_holds(brain, q.kind, extra["will"])
                 readings.setdefault("W9_forecast_rate", []).append(right)
                 readings.setdefault("W9_error", []).append(error)
@@ -445,20 +463,20 @@ def life(seed: int, *, record: Any = None, brain: Any = None, **given: Any) -> d
                                                                       extra["now"]))
             barred_said: list[str] = []
             if gate == "W8_past":
-                brain.records.barred = True
+                part.records.barred = True
                 try:
                     barred_said = brain.ask(q.text)
                 finally:
-                    brain.records.barred = False
+                    part.records.barred = False
                 readings.setdefault("W8_barred", []).append(world.right(q, barred_said))
                 readings.setdefault("W8_barred_refused", []).append(
                     barred_said in ([lex.none], [""]))
             if record is not None:
                 record.append({"gate": gate, "question": q.text, "answer": q.answer,
-                               "read": brain.last.get("read"),
+                               "read": brain.last.get("taken"),
                                "said": said, "right": ok, "barred": barred_said,
                                "sources": {s: [list(c) for c in v] for s, v in concepts.items()},
-                               "gains": [round(float(g), 3) for g in brain.last["gains"]],
+                               "gains": [round(float(g), 3) for g in gains],
                                "english": " ".join(english.get(w, w) for w in q.text.split()),
                                "said_english": [english.get(w, w) for w in said]})
     seconds[phase] = seconds.get(phase, 0.0) + time.time() - began
@@ -482,12 +500,13 @@ def readings_of(seed: int, settings: dict[str, Any], readings: dict[str, list[bo
     out["W10_three_n"] = len(oks)
     if brain is not None:
         out["parameters"] = int(brain.lexicon.connectome.synapses // 2)
-        out["records"] = int(brain.records.store.count)
-        out["work"] = {**brain.map.work, **brain.work, **brain.records.work}
+        part = episodes(brain)
+        out["records"] = int(part.records.store.count)
+        out["work"] = {**brain.map.work, **part.work, **part.records.work}
         synapses = int(brain.map.connectome.synapses)
-        out["macs"] = int(brain.lexicon.work["macs"] + brain.records.work["macs"] + synapses * (
+        out["macs"] = int(brain.lexicon.work["macs"] + part.records.work["macs"] + synapses * (
             brain.map.work["moments"] + 2 * brain.map.work["questions"]
-            + brain.work["forecast_moments"] + 2 * brain.work["forecast_questions"]))
+            + part.work["forecast_moments"] + 2 * part.work["forecast_questions"]))
     out["seconds"] = seconds
     return out
 

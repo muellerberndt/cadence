@@ -26,15 +26,34 @@
   settle on the concept asked about and the read asked for; the map is asked by settling in both
   directions ("what colour is the ball?", "what is red?", "what is behind you?"); each answer is
   said by the lexicon's motor; "I do not know" is learned as the word of the read that finds
-  nothing.
-- **Time in words (`cadence.words.episodes.Times`).** A `Words` brain with two more sources.
-  Its records hold the places things left, written as it lives into a `LongTermMemory` keyed by
-  the thing and a drifting context (`Records`, `Clock`). Its forecast is the learned physics'
-  `Map.forecast(moments)`; a map with no physics forecasts itself. The lexicon gains one concept
-  a source, joined to every word by synapses from zero. "Was", "is" and "will" are nonce words:
-  which source a question asks for is learned from answered questions, and the settled source
-  activities are gains on what each source found. `moment(...)` runs the map's moment and then
-  the records'; `enter()` begins a room; `Records.barred` bars every recall.
+  nothing. The reads act as gains on each found thing's concepts and compete for them
+  (`sharpness`), and the motor hears a word before it says it. `Words(senses=, parts=)` takes
+  learned senses and plug-in parts (records, a forecast, relations, counting).
+- **Pistachios (`Words.ask(explore=True)`, `Words.reward(amount)`)**: a right answer earns a
+  reward, and the question's words of asking (those that name no concept) are taught the read the
+  answer took, at the reward's surprise. A word that names a concept keeps no read.
+- **`cadence.words.several.Several`** (#328), a part of `Words` (`Words(map,
+  parts=[Several()])`): several things of one kind told apart by their colours ("where is the red
+  ball?"), answers that name several things, "how many red things are there?" and "is there a
+  ball?". Each word of a question names its most active concept of a thing, and the part keeps
+  the things found that the senses give every named concept. Two more reads of the things found
+  together: their count, from a born number sense (one neuron a count of the things found), and
+  whether there is one. The number words and yes and no are learned from the teacher's answers
+  alone: the part takes the lessons of answers of several words and of one word no naming has
+  shown, teaching the words of asking each read whose concepts the motor would say as the
+  answer, and naming such an answer with the count and the truth found, at the gain of the
+  question's read. `Words.practice` takes no lesson of its own where a part's `takes` holds. The
+  chamber's rung is `benchmarks/words/several.py`
+  ([protocol](benchmarks/words/PROTOCOL_SEVERAL.md)).
+- **Time in words (`cadence.words.episodes.Episodes`)**, a part of `Words` (`Words(map,
+  parts=[Episodes(map)])`) with two more sources. Its records hold the places things left,
+  written as the brain lives into a `LongTermMemory` keyed by the thing and a drifting context
+  (`Records`, `Clock`). Its forecast is the learned physics' `Map.forecast(moments)`; a map with
+  no physics forecasts itself. The part adds one concept a source to the lexicon, joined to every
+  word by synapses from zero. "Was", "is" and "will" are nonce words: which source a question
+  asks for is learned from answered questions, and the settled source activities compete for the
+  sources' gains as the reads do. `Records.barred` bars every recall. The chamber's rung is
+  `benchmarks/words/times.py` ([protocols](benchmarks/words/PROTOCOL_TIME.md)).
 
 ## 0.99.0 - 2026-11-13
 

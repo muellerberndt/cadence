@@ -2,6 +2,6 @@
 its room from what its map holds (``docs/words.md``)."""
 
 from .lexicon import LETTERS, Lexicon
-from .room import PLACES, READS, Body, Words
+from .room import PLACES, Body, Heard, Senses, Words
 
-__all__ = ["LETTERS", "PLACES", "READS", "Body", "Lexicon", "Words"]
+__all__ = ["LETTERS", "PLACES", "Body", "Heard", "Lexicon", "Senses", "Words"]
