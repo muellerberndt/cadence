@@ -535,7 +535,9 @@ associative store: [memory](memory.md#associative-store-the-hippocampus).
 ```text
 LongTermMemory(width, value_width, capacity, temperature=0.0, candidates=256, expansion=8192,
                winners=64, depth=2.0, idle=None, hold=None, revise=0.9, fade=True, seed=0,
-               direct=None, dtype=float64, cosine=False, pairs=0, apart=0)
+               direct=None, dtype=float64, cosine=False, pairs=0, apart=0, grow=False,
+               path=None, sure=0.0)
+LongTermMemory.open(path)
 LongTermRead(slots, weights)
 ```
 
@@ -577,6 +579,20 @@ raises `ValueError` for `pairs` of 1 or above `winners`, a negative `apart`, a `
 `apart` or of another shape, a `fill` past the empty slots, and `cues` or `links` of another
 shape. [A million records](memory.md#a-million-records-opt-in).
 
+`grow=True` (with `pairs`) grows the table a cell at a time with the records (`cells`, `filed`,
+`entries`): `capacity` is then a bound, `fill(keys, values, file=False)` writes records without
+filing them and `file()` files them. `path=directory` keeps every array in a mapped file under
+the directory; `flush()` makes the files current, `close()` flushes and ends the store's threads,
+and `LongTermMemory.open(directory)` continues a store from its files. `sure=cosine` (with
+`pairs`) ends a read of one head at temperature 0 at a record found under the pairs of the cue's
+`pairs` most driven units, or of four times as many, whose key lies at that cosine to the cue.
+`to_dict()` names `grow`, `path` and `sure` only where they are set, and `nbytes` counts the
+records written and the cells held. It raises `ValueError` for `grow` or `sure` without the
+address of pairs, `sure` outside `[0, 1]`, a `path` that holds a store (open it), a `path` with
+the address of units, and `open` of a directory without a store or with one of other settings;
+`copy.deepcopy` of a store on disk raises `TypeError`.
+[Records at any size](memory.md#records-at-any-size-opt-in).
+
 `Brain.compose(..., longterm=records)` builds a `LongTermRecords` (in `cadence.longterm`) as
 `brain.longterm`: one `LongTermMemory` of `records` slots per stream (`stores`), keyed by the
 brain's held message from a turn; it needs `message=units`, `message_boundary` and
@@ -584,7 +600,9 @@ brain's held message from a turn; it needs `message=units`, `message_boundary` a
 (0.75), `longterm_revise` (0.999), `longterm_turn` (None) and `longterm_rare` (0.03) are
 construction settings, as are `longterm_pairs` (0), `longterm_expansion`, `longterm_winners`,
 `longterm_candidates` (None: the store's own) and `longterm_fade` (True), which build each
-stream's store (`address()` names those that differ from the store's founders); with `longterm_turn=channel` every moment with that input channel on is a
+stream's store (`address()` names those that differ from the store's founders), and
+`longterm_grow` (False), `longterm_path` (None), `longterm_sure` (0.0) and `longterm_apart`
+(False): [records at any size](memory.md#records-at-any-size-opt-in); with `longterm_turn=channel` every moment with that input channel on is a
 turn, a turn's key is the rare units of the message's codes heard since the last value
 (`content(window)`), and `window`, `key`, `heard` and `moments` hold the streams' windows, their
 keys and the units' counts. `longterm_distinct=share` (with `longterm_turn`) reads by codebook

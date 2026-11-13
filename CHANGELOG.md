@@ -1,5 +1,40 @@
 # Changelog
 
+## Unreleased
+
+### Records at any size (#310)
+
+A long-term memory that grows with its records, on disk, and a brain whose own records do.
+Every setting below is off by default: without them `cadence.LongTermMemory` and
+`Brain.compose(longterm=...)` are what they were, and a brain saves in the format it had. The
+guide is [docs/memory.md](docs/memory.md#records-at-any-size-opt-in).
+
+- **`LongTermMemory(grow=True)`: a table that grows.** The table of pairs starts at 64 cells and
+  takes a cell at a time as records are written (linear hashing, `cadence._pairs`). A write
+  splits the few cells its own entries call for, so no write rebuilds the table; `capacity` is a
+  bound that costs nothing until slots are written, and each record keeps the units it is filed
+  under (`filed`). `fill(keys, values, file=False)` writes records without filing them and
+  `file()` files them in one pass over the table, a part of the table at a time.
+- **`LongTermMemory(path=directory)`: records on disk.** Every array of the memory is a mapped
+  file under the directory, so a store holds more than the machine's memory. `flush()`,
+  `close()` and `LongTermMemory.open(directory)` keep and continue it. While reads wait for the
+  disk the rows a read needs are fetched by sixteen threads at once.
+- **`LongTermMemory(sure=cosine)`: a read that ends at its record.** A read of one head first
+  reads the pairs of the cue's `pairs` most driven units (120 cells in place of 32,640) and ends
+  where a record found there holds a key at that cosine to the cue; any other cue is read in
+  full, so the first choice is the whole read's.
+- **`Brain.compose(longterm_grow=, longterm_path=, longterm_sure=)`** give each stream's store
+  these settings. With `longterm_path` a stream's records lie under `stream-<n>`, a checkpoint
+  names the directory and holds none of them, and `brain.longterm.clear()` removes the files.
+- **`Brain.compose(longterm_apart=True)`: facts told apart by what was heard.** Two episodes
+  whose held messages are one key keep two records: the stream gives the store the moments
+  heard before the turn as the fact's source.
+- **A checkpoint format of its own.** A brain whose records grow, lie in files or are told
+  apart saves as `cadence-brain/5`, which 0.99.0 and earlier refuse by name. Every other brain
+  keeps its format.
+- A write under the address of pairs computes its key's address once where it computed it
+  twice; the slots and values are the same.
+
 ## 0.99.0 - 2026-11-13
 
 A map of what is where, held in the brain's own carried activity (`cadence.space.map.Map`,
