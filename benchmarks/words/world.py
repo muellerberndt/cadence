@@ -10,6 +10,11 @@ around the robot (in front, to the right, behind, to the left: quarters of the t
 of a question and the read that finds nothing. Every word is a nonce word drawn for the founder
 from consonant-vowel syllables, so no word can be built in, and the English names below serve
 the reader alone.
+
+The world grows by configuration for the chambers built on it: ``vocabulary`` draws a founder's
+nonce words for further concepts (relations, numbers, the words of time), distinct from its
+other words; a thing holds further groups of values beside its colour (``Thing.values``, drawn
+by ``room(groups=)``), which the camera reports with it.
 """
 
 from __future__ import annotations
@@ -47,6 +52,11 @@ class Lexicon:
     none: str
     foils: list[str]
 
+    def every(self) -> list[str]:
+        """Every form of the founder's base lexicon."""
+        return (self.kind + self.colour + self.place + list(self.question.values())
+                + [self.none] + self.foils)
+
     def english(self) -> dict[str, str]:
         """Each nonce word's English name, for a reader."""
         out = {w: n for w, n in zip(self.kind, KIND_NAMES, strict=True)}
@@ -57,16 +67,36 @@ class Lexicon:
         return out
 
 
-def lexicon(seed: int) -> Lexicon:
-    """The founder's nonce words: distinct forms of two or three consonant-vowel syllables."""
-    rng = np.random.default_rng(np.random.SeedSequence([int(seed), 326, 1]))
-    need = KINDS + COLOURS + len(PLACE_NAMES) + len(QUESTION_WORDS) + 1 + FOILS
+def nonce(seed: int, need: int, *, salt: int = 1, taken: Any = ()) -> list[str]:
+    """``need`` distinct nonce forms of two or three consonant-vowel syllables, drawn from the
+    founder's seed and ``salt``, none of them in ``taken``."""
+    rng = np.random.default_rng(np.random.SeedSequence([int(seed), 326, int(salt)]))
+    held = set(taken)
     forms: list[str] = []
     while len(forms) < need:
         form = "".join(str(rng.choice(list(CONSONANTS))) + str(rng.choice(list(VOWELS)))
                        for _ in range(int(rng.integers(2, 4))))
-        if form not in forms:
+        if form not in forms and form not in held:
             forms.append(form)
+    return forms
+
+
+def vocabulary(seed: int, groups: dict[str, Any], *, salt: int) -> dict[str, dict[str, str]]:
+    """The founder's nonce words for further concepts, by group (``{"time": ["was", "will"]}``
+    gives ``{"time": {"was": form, "will": form}}``): distinct from each other and from the
+    founder's base lexicon. Each chamber takes its own ``salt`` (above 9)."""
+    names = [(group, str(name)) for group, given in groups.items() for name in given]
+    forms = iter(nonce(seed, len(names), salt=salt, taken=lexicon(seed).every()))
+    out: dict[str, dict[str, str]] = {}
+    for group, name in names:
+        out.setdefault(group, {})[name] = next(forms)
+    return out
+
+
+def lexicon(seed: int) -> Lexicon:
+    """The founder's nonce words: distinct forms of two or three consonant-vowel syllables."""
+    need = KINDS + COLOURS + len(PLACE_NAMES) + len(QUESTION_WORDS) + 1 + FOILS
+    forms = nonce(seed, need)
     order = iter(forms)
     take = lambda n: [next(order) for _ in range(n)]  # noqa: E731
     return Lexicon(kind=take(KINDS), colour=take(COLOURS), place=take(len(PLACE_NAMES)),
@@ -85,6 +115,7 @@ class Thing:
     kind: int
     colour: int
     place: np.ndarray
+    values: dict[str, int] = field(default_factory=dict)  # further groups beside the colour
 
 
 @dataclass
@@ -98,9 +129,11 @@ class Room:
 
 
 def room(rng: np.random.Generator, kinds: list[int], count: int, *,
-         colour: Any = None, avoid: dict[int, int] | None = None) -> Room:
+         colour: Any = None, avoid: dict[int, int] | None = None,
+         groups: dict[str, int] | None = None) -> Room:
     """A room of ``count`` things of distinct kinds drawn from ``kinds``; a thing's colour is
-    ``colour(kind)`` where given, else drawn, never a kind's colour in ``avoid``."""
+    ``colour(kind)`` where given, else drawn, never a kind's colour in ``avoid``; each further
+    group of ``groups`` (a name and its count of values) is drawn for each thing."""
     chosen = [int(k) for k in rng.choice(kinds, size=count, replace=False)]
     things: list[Thing] = []
     for kind in chosen:
@@ -115,7 +148,8 @@ def room(rng: np.random.Generator, kinds: list[int], count: int, *,
             p = np.array([r * math.cos(a), r * math.sin(a)])
             if all(np.linalg.norm(p - t.place) >= 0.45 for t in things):
                 break
-        things.append(Thing(kind, c, p))
+        drawn = {g: int(rng.integers(n)) for g, n in (groups or {}).items()}
+        things.append(Thing(kind, c, p, drawn))
     return Room(things, heading=float(rng.uniform(-math.pi, math.pi)))
 
 
@@ -132,9 +166,9 @@ def camera(heading: float):
 
 
 def seen(r: Room, heading: float) -> list[tuple[int, np.ndarray, dict[str, int]]]:
-    """What the camera reports facing ``heading``: each thing in view, its kind, place and
-    colour."""
-    return [(t.kind, t.place.copy(), {"colour": t.colour}) for t in r.things
+    """What the camera reports facing ``heading``: each thing in view, its kind, place, colour
+    and further values."""
+    return [(t.kind, t.place.copy(), {"colour": t.colour, **t.values}) for t in r.things
             if in_view(heading, t.place)[0]]
 
 
