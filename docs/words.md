@@ -144,6 +144,57 @@ there (`what_is_at`). "What is behind you?" goes from a place around the body to
 map settles on what is on the cells behind the body (`what_is_at(cells=)`), one thing at a time.
 Every direction reads the same lexicon and the same map.
 
+## Pistachios: what a question asks for, from reward
+
+A question word is learned the way a noun is, from questions answered for the brain, and the
+answer need not be told: a right answer can earn a pistachio. `ask(question, explore=True)` tries
+a read (what to say of the things found: their kind, their colour or their place), drawn from the
+reads' settled activity at `temperature`; `reward(1.0)` gives the pistachio. The question's words
+of asking, those that name no concept of the senses, are taught the read the answer took, at the
+reward's surprise: the reward less the chance the brain gave that read. A word that names a kind,
+a colour or a place keeps no read, so a read learned with one colour word holds for all of them,
+and no lesson of reward touches what a word names. A wrong answer earns nothing and teaches
+nothing.
+
+```python
+def raised_on_pistachios(rounds=30):
+    """The first brain's namings, then questions answered only with pistachios."""
+    parrot = Words(Map((-2.0, 2.0, -2.0, 2.0), (24, 24), units=3, values={"colour": 2}), seed=1)
+    room_ = parrot.map
+
+    def room_of():
+        turn = rng.uniform(0.0, 2 * math.pi)
+        things = [(k, 1.2 * np.array([math.cos(turn + 2.1 * k), math.sin(turn + 2.1 * k)]),
+                   int(rng.integers(2))) for k in range(3)]
+        room_.reset()
+        parrot.look(seen=[(k, p, {"colour": c}) for k, p, c in things])
+        return things
+
+    for _ in range(40):
+        things = room_of()
+        for k, p, c in [things[int(rng.integers(3))] for _ in range(4)]:
+            parrot.body.heading = float(rng.uniform(-math.pi, math.pi))
+            u = rng.random()
+            parrot.name(kinds[k] if u < 0.5 else colours[c] if u < 0.75 else
+                        places[parrot.body.place(p)], p)
+    parrot.body.heading = 0.0
+    for _ in range(rounds):
+        k, p, c = room_of()[0]
+        for question, right in ((f"where is the {kinds[k]}", places[parrot.body.place(p)]),
+                                (f"what colour is the {kinds[k]}", colours[c])):
+            if parrot.ask(question, explore=True) == [right]:
+                parrot.reward(1.0)                     # a pistachio for a right answer
+    return parrot, room_of()
+
+
+parrot, things = raised_on_pistachios()
+k, p, c = things[2]
+assert parrot.ask(f"what colour is the {kinds[k]}") == [colours[c]]
+```
+
+In the [chamber](../benchmarks/words/PROTOCOL_2.md) a parrot that practises on pistachios alone
+is read beside one told the answers and one whose pistachios are withheld.
+
 ## Parts that plug in
 
 The question path is open to parts that add what the brain holds and how a question finds it
@@ -174,8 +225,10 @@ namings and questions ([the declared protocol](../benchmarks/words/PROTOCOL.md))
 | `rate` | 0.05 | The least share of its error a word's lesson closes |
 | `threshold` | 0.15 | A word neuron's threshold |
 | `steps` | 12 | Sweeps of a settle |
-| `Words(shares=)` | (0.4, 0.3, 0.3) | A naming's shares of the kind, the value and the place around the body |
+| `Words(shares=)` | the kind 0.4, the rest evenly | A naming's shares of the senses' groups |
 | `floor` | 0.05 | The activity a concept needs to count as named |
+| `sharpness` | 0.02 | How the reads compete for their gains when the brain answers |
+| `temperature` | 0.1 | How a read is drawn where the brain tries one (`ask(explore=True)`) |
 
 A settle of the lexicon reads every synapse once a sweep: 12 sweeps over 13,312 synapses at the
 defaults, about 160,000 multiply-accumulates. A question takes one settle to hear, one or more
