@@ -126,6 +126,7 @@ DESIGNS = {
     "alone": Design("alone", _ALONE, alone=True),
     # ``alone`` with a path's facts echoed (role ``none``) and its start leaving once said
     "alone_path": Design("alone_path", _ALONE, alone=True, facts=True, start_said=True),
+    "alone_facts": Design("alone_facts", _ALONE, alone=True, facts=True),  # the facts echoed
 }
 
 
@@ -689,7 +690,8 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     recall read's address as it is), ``panel_batches``,
     ``emulated`` (the instrument's own store in place of the library's), ``held_probes``
     (batches per shape), ``checkpoints`` (batch counts at which the lean
-    panels are read, appended to the file ``progress`` names), ``tag``."""
+    panels are read, appended to the file ``progress`` names), ``save`` (a folder the taught
+    brain is saved in, for a later reading), ``tag``."""
     warnings.simplefilter("ignore")
     import cadence as cd
 
@@ -739,6 +741,10 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
                                            **row["curve"][-1]}) + "\n")
     work["seconds"] = round(time.monotonic() - started, 1)
     row["work"] = work
+    if spec.get("save"):  # the taught brain kept for a later reading (a folder per life)
+        folder = Path(spec["save"])
+        folder.mkdir(parents=True, exist_ok=True)
+        row["saved"] = str(brain.save(folder / f"{row['tag']}_{founder}"))
     row["synapses"] = int(brain.describe()["layout"]["synapses"])
     row["gains"] = dict(brain.carried_gains) if brain.hearing is not None else {}
     row["panels"] = panels(brain, store, design, tests, mn.SAID)
