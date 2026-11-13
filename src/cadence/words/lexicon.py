@@ -178,12 +178,15 @@ class Lexicon:
             self._learners[groups] = learner
         return self._learners[groups]
 
-    def name(self, words: Any, concepts: Any, *, groups: Any = None) -> float:
+    def name(self, words: Any, concepts: Any, *, groups: Any = None,
+             weight: float = 1.0) -> float:
         """A naming lesson: ``words`` heard (one form, or the forms heard together) while
         ``concepts`` are active: an array over the concepts, or ``{(group, value): share}``.
         The lesson teaches the concept neurons of ``groups`` (every group unless given) and
-        leaves the others' synapses as they are. A form heard for the first time enters. Gives
-        the error before the lesson, as a share of the target's sum."""
+        leaves the others' synapses as they are. ``weight`` (0 to 1) scales the share of its
+        error the lesson closes: a lesson of reward takes the reward's surprise. A form heard
+        for the first time enters. Gives the error before the lesson, as a share of the
+        target's sum."""
         rows = [[words] if isinstance(words, str) else list(words)]
         target_shares = self._concepts(concepts)
         groups = tuple(self.groups) if groups is None else tuple(groups)
@@ -194,8 +197,11 @@ class Lexicon:
         # each heard word's share of its error: 1 / n at its n-th lesson, no less than rate
         counts = self.counts.setdefault(groups, np.zeros(self.capacity, dtype=np.int64))
         heard = sorted({int(u) for u in np.flatnonzero(drive[0, self.word])})
-        shares = {u: max(1.0 / (counts[u] + 1), self.rate) for u in heard}
+        weight = min(max(float(weight), 0.0), 1.0)
+        shares = {u: weight * max(1.0 / (counts[u] + 1), self.rate) for u in heard}
         top = max(shares.values()) if shares else self.rate
+        if top <= 0.0:
+            return float("nan")  # a lesson of no weight teaches nothing
         steps = np.ones(self.connectome.synapses)
         for u, share in shares.items():
             steps[self._touch[u]] = share / top
@@ -294,10 +300,17 @@ class Lexicon:
     # -- the state
 
     def arrays(self) -> dict[str, np.ndarray]:
-        """What a file keeps of a lexicon: its synapses, the motor's letters and the forms."""
+        """What a file keeps of a lexicon: its synapses, the motor's letters, the forms, and
+        each word's lessons (a reloaded word goes on at its next lesson's share)."""
+        keys = sorted(self.counts)
         return {"efficacy": np.asarray(self.graph.efficacy, dtype=np.float64).copy(),
                 "letters": self.letters[: len(self.forms)].copy(),
-                "forms": np.array(self.forms, dtype=str)}
+                "forms": np.array(self.forms, dtype=str),
+                # each word's lessons by the groups they taught, and the lessons in all
+                "counted": np.array([",".join(k) for k in keys], dtype=str),
+                "counts": (np.stack([self.counts[k] for k in keys]) if keys
+                           else np.zeros((0, self.capacity), dtype=np.int64)),
+                "lessons": np.array(self.lessons, dtype=np.int64)}
 
     @classmethod
     def from_arrays(cls, settings: dict[str, Any], arrays: Any, backend: Any = "cpu") -> Lexicon:
@@ -313,4 +326,9 @@ class Lexicon:
             raise ValueError("the lexicon's efficacy does not fit its words and concepts")
         out.graph = Graph(out.connectome, out._model, efficacy=efficacy.copy(), bias=out._bias,
                           backend=backend)
+        if "counts" in arrays:  # a file without them restarts every word at its first lesson
+            counted = [str(k) for k in np.asarray(arrays["counted"])]
+            for key, row in zip(counted, np.asarray(arrays["counts"]), strict=True):
+                out.counts[tuple(key.split(","))] = np.asarray(row, dtype=np.int64).copy()
+            out.lessons = int(np.asarray(arrays["lessons"]))
         return out
