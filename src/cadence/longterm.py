@@ -2431,6 +2431,8 @@ class LongTermRecords:
             full = store.arrays()
             count = int(state[0])
             for name in (*self.SAVED_ROWS, *by_rows):
+                if f"store/{s}/{name}" not in arrays:
+                    raise ValueError(f"missing saved long-term records: store/{s}/{name}")
                 given = np.asarray(arrays[f"store/{s}/{name}"])
                 if given.shape != (count, *full[name].shape[1:]):
                     raise ValueError(f"invalid saved long-term records: {name}")
