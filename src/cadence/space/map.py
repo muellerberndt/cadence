@@ -699,7 +699,7 @@ class Map:
         thing's whole pattern over the units moves with it. Gives the cells the physics holds;
         the drive goes into ``write``, the clock, doubt and lost into their arrays, and each
         thing's record into ``pending``."""
-        from .physics import CORE, COUNT, EST, HIDDEN, IDENT, TAIL, VEL, errors
+        from .physics import CORE, COUNT, ERROR, EST, HIDDEN, IDENT, TAIL, VEL
 
         ph = self.physics
         held = np.zeros(self.count, dtype=bool)
@@ -725,12 +725,12 @@ class Map:
             if cm + tm <= 0:  # not moving out of view
                 if k > 0 or not (self.clock[cells] < 0.5).any():
                     continue  # at rest out of view: the map holds it
-                share = ph.moving(rec[VEL], int(rec[COUNT]))
+                share = ph.moving(rec[VEL], int(rec[COUNT]), float(rec[ERROR][2]))
                 if share < 1e-3:  # seen at rest: the map holds it
                     rec[HIDDEN] = 1.0
                     pending.append((cells, cells, units, rec))
                     continue
-                px, pxv, pv = errors(min(int(rec[COUNT]), ph.line), ph.noise)
+                px, pxv, pv = rec[ERROR]  # the line's own error as it went out of view
                 rec[CORE:CORE + 8] = [*rec[EST], *rec[VEL], px, pxv, pv, share * whole]
                 trail = (1.0 - share) * field
                 cm = share * whole

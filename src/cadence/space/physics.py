@@ -45,9 +45,11 @@ import numpy as np
 # a thing's motion record: what the brain knows of how it moves, carried at its cells
 EST, VEL, PREV = slice(0, 2), slice(2, 4), slice(4, 6)
 COUNT, LOUD, SURPRISE, FIT, IDENT, HIDDEN = 6, 7, 8, 9, 10, 11
+ERROR = slice(12, 15)  # the line's own error, an axis: place, place with velocity, velocity
 SLOTS = 4
-SLOT = 12  # each slot: x0, y0, vx0, vy0, n0, k
-CORE = SLOT + 6 * SLOTS  # x, y, vx, vy, px, pxv, pv, mass
+SLOT = 15  # each slot: x0, y0, vx0, vy0, n0, k, and the line's error then (3)
+WIDTH = 9
+CORE = SLOT + WIDTH * SLOTS  # x, y, vx, vy, px, pxv, pv, mass
 TAIL = CORE + 8  # x, y, variance, mass
 FIELDS = TAIL + 4
 
@@ -68,6 +70,17 @@ def errors(n: int, noise: float) -> tuple[float, float, float]:
         return s2, s2, 2.0 * s2
     return (s2 * 2.0 * (2 * n - 1) / (n * (n + 1)), s2 * 6.0 / (n * (n + 1)),
             s2 * 12.0 / (n * (n * n - 1)))
+
+
+def corrected(error: np.ndarray, a: float, b: float, noise: float) -> np.ndarray:
+    """A line's own error (place, place with velocity, velocity; an axis) one moment on and
+    corrected by a report of error ``noise`` with gains ``a`` and ``b``: exact for any gains."""
+    px, pxv, pv = (float(x) for x in error)
+    px, pxv = px + 2.0 * pxv + pv, pxv + pv  # one moment on
+    s2 = noise * noise
+    return np.array([(1 - a) ** 2 * px + a * a * s2,
+                     (1 - a) * (pxv - b * px) + a * b * s2,
+                     pv - 2.0 * b * pxv + b * b * px + b * b * s2])
 
 
 def ahead_error(n: int, noise: float, k: Any) -> Any:
@@ -133,12 +146,14 @@ class Physics:
         self.ahead, self.aside = float(self.estimate[2]), float(self.estimate[3])
         self.speed = float(np.sqrt(speed2 / starts)) if starts > 0 else None
 
-    def moving(self, velocity: np.ndarray, n: int) -> float:
+    def moving(self, velocity: np.ndarray, n: int, pv: float | None = None) -> float:
         """The share of a thing that moves: the evidence of its line (``velocity`` through ``n``
-        reports) against a thing at rest, with velocities as large as the things watched."""
+        reports, velocity error ``pv`` an axis) against a thing at rest, with velocities as
+        large as the things watched."""
         if self.speed is None or n < 3:
             return 0.0
-        pv = errors(min(int(n), self.line), self.noise)[2]
+        pv = errors(min(int(n), self.line), self.noise)[2] if pv is None else max(float(pv),
+                                                                                    1e-12)
         v0 = self.speed ** 2 / 2.0  # an axis
         lbf = 0.5 * float(velocity @ velocity) / pv * (v0 / (v0 + pv)) - np.log1p(v0 / pv)
         return float(1.0 / (1.0 + np.exp(-np.clip(lbf, -50.0, 50.0))))
@@ -159,19 +174,20 @@ class Physics:
             keep = rec[IDENT]
             rec[:] = 0.0
             rec[IDENT], rec[COUNT], rec[EST], rec[PREV], rec[FIT] = keep, 1.0, r, r, 1.0
+            rec[ERROR] = (self.noise ** 2, 0.0, 0.0)
             return rec
-        slots = rec[SLOT:CORE].reshape(SLOTS, 6)
+        slots = rec[SLOT:CORE].reshape(SLOTS, WIDTH)
         est = rec[EST] + rec[VEL]  # where the line puts it now
         active = slots[:, 4] > 0
         if active.any():  # the lessons launched before: their imagined line against the report
             slots[active, 5] += 1.0
             self.watch(slots[active, 0:2], slots[active, 2:4], slots[active, 4], r,
-                       slots[active, 5], inside)
+                       slots[active, 5], inside, slots[active, 6:9])
             slots[slots[:, 5] >= self.horizon] = 0.0
         count = int(rec[COUNT])
-        n = min(count, self.line)
         s2 = self.noise ** 2
-        z2 = float(((r - est) ** 2).sum()) / (2.0 * (s2 + ahead_error(n, self.noise, 1)))
+        px, pxv, pv = rec[ERROR]
+        z2 = float(((r - est) ** 2).sum()) / (2.0 * (s2 + px + 2.0 * pxv + pv))
         rec[LOUD] = rec[LOUD] + 1.0 if z2 > self.surprise ** 2 else 0.0
         rec[SURPRISE] += (z2 - rec[SURPRISE]) / 4.0
         if z2 <= 1.0:
@@ -187,21 +203,25 @@ class Physics:
         rec[EST] = est + a * e
         rec[VEL] = rec[VEL] + b * e
         rec[COUNT], rec[PREV] = count, r
+        # the line's own error: exact from two reports on, for the gains it used
+        rec[ERROR] = (s2, s2, 2.0 * s2) if count == 2 else corrected(rec[ERROR], a, b, self.noise)
         if count >= 4 and count % self.every == 0 and rec[SURPRISE] <= self.settled:
             free = np.flatnonzero(slots[:, 4] <= 0)
             at = int(free[0]) if len(free) else int(np.argmax(slots[:, 5]))
-            slots[at] = [*rec[EST], *rec[VEL], min(count, self.line), 0.0]
+            slots[at] = [*rec[EST], *rec[VEL], min(count, self.line), 0.0, *rec[ERROR]]
         return rec
 
     # -- lessons
 
     def watch(self, starts: np.ndarray, velocities: np.ndarray, counts: np.ndarray,
-              place: np.ndarray, horizons: np.ndarray, inside: tuple[np.ndarray, np.ndarray]
-              ) -> int:
+              place: np.ndarray, horizons: np.ndarray, inside: tuple[np.ndarray, np.ndarray],
+              error: np.ndarray | None = None) -> int:
         """Lessons: things whose lines through ``counts`` reports put them at ``starts`` with
-        ``velocities`` were seen at ``place`` ``horizons`` moments later. ``inside`` is the
-        plane's low and high corners less its margin: a lesson whose line leaves it, or whose
-        place lies within 3 cm of its edge, is no lesson. Gives the lessons taken."""
+        ``velocities`` were seen at ``place`` ``horizons`` moments later. ``error`` holds each
+        line's own error then (place, place with velocity, velocity; an axis), least squares
+        through ``counts`` reports where omitted. ``inside`` is the plane's low and high corners
+        less its margin: a lesson whose line leaves it, or whose place lies within 3 cm of its
+        edge, is no lesson. Gives the lessons taken."""
         if not self.learning or len(starts) == 0:
             return 0
         x0 = np.asarray(starts, dtype=np.float64).reshape(-1, 2)
@@ -211,7 +231,11 @@ class Physics:
         r = np.asarray(place, dtype=np.float64).reshape(2)
         lo, hi = inside
         s2 = self.noise ** 2
-        pv = s2 * 12.0 / (n * (n * n - 1))  # the line's velocity error, an axis
+        if error is None:
+            error = np.stack([s2 * 2.0 * (2 * n - 1) / (n * (n + 1)), s2 * 6.0 / (n * (n + 1)),
+                              s2 * 12.0 / (n * (n * n - 1))], axis=1)
+        own = np.asarray(error, dtype=np.float64).reshape(-1, 3)
+        pv = own[:, 2]  # the line's velocity error, an axis
         speed = np.sqrt((v0 ** 2).sum(1))
         end = x0 + k[:, None] * v0
         ok = (n >= self.reports) & (speed >= 3.0 * np.sqrt(pv)) & (k >= 1) & (k <= self.horizon)
@@ -219,13 +243,12 @@ class Physics:
         ok &= bool(((r >= lo + 0.03) & (r <= hi - 0.03)).all())
         if not ok.any():
             return 0
-        x0, v0, n, k, pv, speed = x0[ok], v0[ok], n[ok], k[ok], pv[ok], speed[ok]
+        x0, v0, n, k, pv, speed, own = x0[ok], v0[ok], n[ok], k[ok], pv[ok], speed[ok], own[ok]
         u = v0 / speed[:, None]
         e = r - x0 - k[:, None] * v0
         short = -(e * u).sum(1)
         side = e[:, 0] * -u[:, 1] + e[:, 1] * u[:, 0]
-        line = s2 + s2 * (2.0 * (2 * n - 1) / (n * (n + 1)) + 12.0 * k / (n * (n + 1))
-                          + 12.0 * k * k / (n * (n * n - 1)))  # the report's and the line's error
+        line = s2 + own[:, 0] + 2.0 * k * own[:, 1] + k * k * own[:, 2]  # report and line
         self._expect(k, short, side, speed, line)
         self.fit()
         return int(ok.sum())
@@ -285,5 +308,5 @@ class Physics:
                 "aside": self.aside, "speed": self.speed, "lessons": self.lessons}
 
 
-__all__ = ["CORE", "COUNT", "EST", "FIELDS", "HIDDEN", "IDENT", "SLOT", "SLOTS", "TAIL", "VEL",
-           "Physics", "ahead_error", "errors", "gains"]
+__all__ = ["CORE", "COUNT", "ERROR", "EST", "FIELDS", "HIDDEN", "IDENT", "SLOT", "SLOTS", "TAIL",
+           "VEL", "WIDTH", "Physics", "ahead_error", "corrected", "errors", "gains"]
