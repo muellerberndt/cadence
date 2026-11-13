@@ -1722,6 +1722,10 @@ recall memory's read.
 | `longterm_pairs` | `0`, off | construction | Files each record under the pairs of this many units: [a million records](#a-million-records-opt-in) |
 | `longterm_expansion`, `longterm_winners`, `longterm_candidates` | the store's own | construction | The address's units, a cue's winners and the slots a read scores |
 | `longterm_fade` | `True` | construction | `False` for records written once: the fading touches every slot each moment |
+| `longterm_grow` | `False` | construction | Each stream's table of pairs grows with its records, and `longterm` is a bound: [records at any size](#records-at-any-size-opt-in) |
+| `longterm_path` | `None` | construction | A directory: each stream's records are files under `stream-<n>` there |
+| `longterm_sure` | `0.0`, off | construction | The cosine at which a read ends at the record that holds the message's key |
+| `longterm_apart` | `False` | construction | Two episodes whose held messages are one key keep two records, told apart by the moments heard |
 
 **A stream of a million records.** A stream of more than 16,384 records reads through an
 address. `longterm_pairs=16, longterm_expansion=16384, longterm_winners=256,
@@ -1735,6 +1739,46 @@ statements agreed, reads) and `clear()`. `save` keeps every stream's records and
 checkpoint format `cadence-brain/4`, which 0.96.0 and earlier refuse, and `load` continues the
 streams where they stopped. `grow` and `graft` refuse a brain with records, as they refuse a
 message.
+
+**A brain's records at any size.** `longterm_grow=True`, `longterm_path=directory` and
+`longterm_sure=0.999` give each stream's store the three settings of [records at any
+size](#records-at-any-size-opt-in). With `longterm_path` the records are the files': a
+checkpoint names the directory and holds none of them, `brain.longterm.clear()` removes the
+files, and a brain made over a directory that holds records continues them.
+
+```python
+library = Brain.compose(15, 4, modules=(32,), seed=0, backend="cpu", message=70,
+                        message_boundary=TURN, message_boundary_holds=True,
+                        longterm=100_000, longterm_pairs=8, longterm_expansion=256,
+                        longterm_winners=32, longterm_candidates=8, longterm_fade=False,
+                        longterm_grow=True, longterm_sure=0.999, longterm_path="brain-records")
+for agent in range(6):
+    for verb in range(4):
+        library.reset()
+        for moment in (seen(agent), seen(6 + verb), seen(TURN), seen(10 + (agent + verb) % 4)):
+            library.act(moment, greedy=True)             # a fact heard once: a record on disk
+shelf = library.longterm.stores[0]
+assert shelf.count == 24 and shelf.path.endswith("stream-0")
+library.reset()
+for moment in (seen(3), seen(8), seen(TURN)):            # a question: agent 3, verb 2
+    library.act(moment, greedy=True)
+library.stimulus(np.zeros((1, 15)))                      # the answer's moment reads the record
+found = int(library.longterm.read_slots[0, 0])
+assert np.array_equal(shelf.values[found], seen(10 + (3 + 2) % 4)[0])
+```
+
+**Facts told apart by what was heard.** Two different episodes can give the held message the
+same units, and then they share a key: the second telling would revise the first. With
+`longterm_apart=True` a stream also keeps the sum of the moments it heard before the turn, as
+they were heard, and gives it to the store as the fact's source ([keys held
+apart](#keys-held-apart-opt-in)). A write whose key a record holds revises that record only
+where the heard moments agree. A read takes, among the records that hold its key, the one
+whose heard moments it shares. It is built for records keyed by a held message from a turn,
+without `longterm_turn`.
+
+A brain whose records grow, lie in files or are told apart saves in checkpoint format
+`cadence-brain/5`, which 0.99.0 and earlier refuse by name ("unsupported Brain checkpoint
+format"). Every other brain keeps the format it had.
 
 The streams' records are read, written and faded as one bank. Each stream's keys are kept as an
 index of the slots that hold each unit, and a read sums the index rows of the cue's units over
@@ -2617,6 +2661,9 @@ copy stays behind to split the read.
 | `cosine` | `False` | Scores the fine read and a write's recognition by the cosine in place of the dot product |
 | `pairs` | `0`, off | Files a record under the pairs of its `pairs` most driven units: [a million records](#a-million-records-opt-in) |
 | `apart` | `0`, off | The width of a fact's source, whose signature tells two facts with one key apart: [keys held apart](#keys-held-apart-opt-in) |
+| `grow` | `False` | The table of pairs grows with its records, and the capacity is a bound: [records at any size](#records-at-any-size-opt-in) |
+| `path` | `None` | A directory that holds every array of the memory as a file: [records at any size](#records-at-any-size-opt-in) |
+| `sure` | `0.0`, off | The cosine at which a record found under the most pairs ends a read: [records at any size](#records-at-any-size-opt-in) |
 
 `read(cue, heads=1, credit=True)` returns a `LongTermRead` (`slots`, `weights`, `first(head)`,
 `mass(slot, head)`); `value(read, head)` is what a head holds; `write(key, value)` returns the
@@ -2707,6 +2754,61 @@ On one core a read at 1,000,000 records takes 3.4 ms through the address of pair
 without Numba), 5.0 ms through the address of units and 48 ms for the scan (codes of 128); from
 100,000 to 1,000,000 records the pairs' read grows 1.3 to 1.5 times, the units' about 7 times.
 At 100,000 records the address of units is the cheaper read (.7 ms against 2.5 ms).
+
+#### Records at any size (opt-in)
+
+The table of pairs above is sized when the memory is made, and everything sits in the machine's
+memory. Three settings lift both limits. Each is off unless you set it.
+
+- **`grow=True`: a table that grows.** The table starts at 64 cells and takes a cell at a time
+  as records are written. A write splits the few cells its own entries call for (four or five
+  for a record of 28 pairs, twenty for one of 120), so no write stops to rebuild the table.
+  `capacity` becomes a bound on the slots. The bound costs nothing until slots are written, so
+  set it generously: 134,217,727 (2 to the 27th, less one) keeps five bits of every entry for
+  its tag.
+- **`path=directory`: records on disk.** Every array of the memory is a file under the
+  directory, mapped into memory. The machine keeps in memory the pages that reads and writes
+  touch, so a store can hold far more than the machine's memory. `flush()` makes the files
+  current, `close()` flushes and ends the store's threads, and `cd.LongTermMemory.open(directory)`
+  continues the store in another process. While reads wait for the disk, the rows a read needs
+  are fetched by sixteen threads at once.
+- **`sure=cosine`: a read that ends at its record.** A cue that is a key the memory holds needs
+  few of its pairs. With `sure=0.999` a read of one head first reads the pairs of the cue's
+  `pairs` most driven units, 120 cells in place of 32,640. Where a record found there holds a key
+  at that cosine to the cue, the read ends with it. A cue that no record holds so closely (a
+  noisy or partial one) is read in full, so the first choice is the one the whole read makes.
+
+```python
+store = cd.LongTermMemory(width=32, value_width=8, capacity=100_000, pairs=8, expansion=512,
+                          winners=32, candidates=64, direct=0, cosine=True, fade=False,
+                          dtype="float32", grow=True, sure=0.999, path="records")
+store.fill(keys[:2000], values[:2000])               # the table takes the cells they call for
+for key, value in zip(keys[2000:], values[2000:]):   # records added one by one, no rebuild
+    store.write(key, value, recognised=-1)
+assert store.count == 3000 and store.nbytes < 3000 * 1000    # bytes follow the records held
+read = store.read(keys[40], credit=False)
+assert read.first() == 40 and len(read.slots) <= store.CHECK  # the read ended at its record
+store.close()                                                 # the files are current
+again = cd.LongTermMemory.open("records")                     # another process continues it
+assert again.count == 3000 and again.read(keys[2999], credit=False).first() == 2999
+again.close()
+```
+
+- **Many records at once.** `fill(keys, values, file=False)` writes records without filing them
+  under their pairs, so a store larger than memory is filled part by part. One `file()` then
+  files them all, the table's cells in order, a part of the table at a time. The next `write`
+  files what a fill left.
+- **The address's units are set once.** A record's place depends on `expansion`, so it stays
+  what the store was made with. For a store meant to reach 100,000,000 records the declared
+  reading uses `expansion=65536`; a read then costs the same at 100,000 records as at
+  100,000,000.
+- **What a record costs.** Beside its key and value a record takes 64 bytes for the units it is
+  filed under and about 1,280 bytes of table at `pairs=16` (120 entries of 4 bytes, six to a
+  cell of sixteen).
+- **Limits.** A store holds under 268,435,456 slots (an entry's 28 bits). A store on disk reads
+  through the address of pairs or scores every slot. `copy.deepcopy` refuses a store on disk:
+  open it again instead. Without Numba the table grows through NumPy, a record at a time, which
+  suits small stores; install the `fast` extra for large ones.
 
 #### Keys held apart (opt-in)
 

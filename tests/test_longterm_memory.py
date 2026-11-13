@@ -706,17 +706,17 @@ def test_a_store_on_disk_continues_from_its_files(tmp_path):
     rng, keys, values, _ = growing()
     folder = tmp_path / "records"
     settings = {**PAIRED, "grow": True, "path": folder}
-    store = LongTermMemory(32, 8, 1 << 20, **settings)  # a bound of a million slots
+    store = LongTermMemory(32, 8, 1 << 17, **settings)  # a bound far past the records
     store.fill(keys[:2000], values[:2000])
     assert store.to_dict()["path"] == str(folder) and store.count == 2000
     files = {f.name for f in folder.iterdir()}
     assert files >= {"store.json", "state.npy", "keys.npy", "values.npy", "cells.npy",
                      "filed.npy", "projection.npy", "norms.npy"}
     # the files' lengths are the bound's; the blocks on the disk follow the records
-    assert (folder / "keys.npy").stat().st_size > (1 << 20) * 32 * 4
+    assert (folder / "keys.npy").stat().st_size > (1 << 17) * 32 * 4
     assert store.nbytes < (folder / "keys.npy").stat().st_size
     with pytest.raises(ValueError, match="holds a store"):
-        LongTermMemory(32, 8, 1 << 20, **settings)
+        LongTermMemory(32, 8, 1 << 17, **settings)
     with pytest.raises(TypeError, match="one store"):
         deepcopy(store)
     cells = table(store).copy()
