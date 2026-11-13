@@ -1609,6 +1609,9 @@ assert not speaker.message.state.any()                    # a new stream starts 
 | `message_roles` | `()`, off | construction | Groups of input channels: a moment's role chooses its blocks, below |
 | `message_settled` | `False` | construction | A block holds the association's own settled activity of the latest moment that joined it, in place of the fixed code; `message` is then the association's width |
 | `message_read` | `False` | construction | The read of one block at a time, below |
+| `message_operations` | `()`, off | construction | With `message_settled`: per choice of a motor slot, the operations a moment runs on groups of blocks; the region holds each group's head, [below](#a-store-the-brain-works-itself-opt-in) |
+| `message_stacks` | `()` | construction | Groups whose head is their last block |
+| `message_slot` | `-1` | construction | The motor slot that names a moment's role |
 
 **A read of one block (`message_read=True`).** A port of `units` neurons holds one block of the
 message, chosen by the present moment: the moment as heard and the association's activity of the
@@ -1632,6 +1635,64 @@ assert np.allclose(drive[0, port], 3.0 * blocks.mean(axis=0))   # a newborn read
 report = reader.lesson(np.eye(6)[[1]], [2])                     # a lesson also steps the read
 assert "message_rows" in report
 ```
+
+### A store the brain works itself (opt-in)
+
+A message of a fixed code holds what was heard, block by block in the order it was heard. With
+`message_settled=True` and `message_operations` the region is a store the brain works with its own
+choice, and what it holds is the brain's own settled activity:
+
+- **A block** is one unit per association neuron and holds the association's settled activity of
+  one moment, as the settle left it.
+- **A group** is `message_phases` blocks. The store holds as many groups as the operations name.
+- **The role slot** is one of the brain's motor slots (`message_slot`, the last one unless named).
+  `message_operations` holds one entry per choice of that slot, each a list of
+  `(operation, group)`:
+  - `"set"` puts the moment's settled activity into the group's one block (a register);
+  - `"write"` appends it to the group;
+  - `"shift"` moves the group's head on to its next block;
+  - `"pop"` removes the group's last block.
+
+  After each act the role the brain named runs its operations. A choice with an empty list, or
+  one past the table, runs none.
+- **The heads.** The region holds one block per group, its head: a group's first block not yet
+  shifted past, or for a group in `message_stacks` its last block. A group with no such block
+  shows silence. The association reads every head at once through plastic synapses, at
+  `message_amplitude` times a [learned gain](#how-strongly-a-carried-region-is-heard) per group.
+- **Lessons name the role.** A lesson's label for the role slot is taught as any label is, and
+  the act that follows the lesson on the same observations runs the taught role's operations:
+  the store follows the lesson, as the next moment hears the taught word. In an act no lesson
+  named, the store follows the brain's own choice. `brain.message.name(roles)` names the roles
+  of the next moment without a lesson.
+
+So a word's place in the store is the brain's own settled choice, a queue's blocks pass one head
+(the fourth item of a list is read through the synapses the first three taught), and a stack gives
+back the latest item first.
+
+```python
+ROLES = [[], [("set", 0)], [("write", 1)], [("shift", 1)]]    # none; a register; a queue; its shift
+worker = Brain.compose(inputs=6, actions=3 + 4, slots=(3, 4), modules=(16,), seed=0,
+                       message=16, message_settled=True, message_phases=4,
+                       message_operations=ROLES)
+store = worker.message
+assert (store.groups, store.blocks, store.shown) == (2, 8, 2)   # the region holds two heads
+moments = np.eye(6)[[0, 3, 5]]
+worker.lesson(moments[[0]], [[0, 2]])                 # a lesson names the role: write the queue
+worker.act(moments[[0]], greedy=True)                 # the act that follows runs it
+first = worker.working_memory.last.copy()             # the association's settled activity
+store.name([2])                                       # a role named without a lesson
+worker.act(moments[[1]], greedy=True)
+heads = store.heads().reshape(2, 16)
+assert not heads[0].any() and np.allclose(heads[1], first)      # a queue shows its first block
+store.name([3])
+worker.act(moments[[2]], greedy=True)                 # shift: the head moves to the second block
+assert np.allclose(store.heads().reshape(2, 16)[1], store.state.reshape(2, 4, 16)[1, 1])
+```
+
+`brain.message.state` is every block, `(streams, groups * phases * units)`, `counts` the blocks a
+group was given and `passed` those its head moved past; a checkpoint keeps all three. A store
+worked by operations holds no fixed code, no `message_roles`, `message_read` or
+`message_boundary`, and keys no long-term records.
 
 `brain.message` is a `HeldMessage` (the standalone [`cd.Message`](#a-held-message) on the brain's
 neurons): `state`, `key()`, `told`, and with the read `maps` and `last`. A checkpoint keeps the
