@@ -9,7 +9,8 @@ Every moment (about 300 ms):
 
 1. ``see(things)``: what the parrot holds, each thing a dict with its ``kind``, ``colour``,
    ``material``, ``direction`` (radians from where the head points, left positive),
-   ``distance`` (metres) and ``focus`` (clicked or held up). Only its features enter the brain.
+   ``distance`` (metres) and ``focus`` (clicked or held up). Only its features enter the brain;
+   the thing in focus is also seen in a place of its own (the glimpse).
 2. ``hear(word)``: the word a trainer says this moment (or None).
 3. ``moment()``: the brain settles and acts; it returns the word the voice says (None: silence
    or held while the trainer has more to say). ``more=True`` holds the voice.
@@ -75,7 +76,10 @@ class MeaningParrot:
     def observation(self) -> np.ndarray:
         order = self.rng.permutation(len(self.things))
         scene = self.eyes.scene([self.things[int(i)] for i in order])
-        return np.concatenate([scene, self.code(self.heard) + self.code(self.own)])[None]
+        focus = next((t for t in self.things if t.salient), None)
+        glimpse = [self.eyes.slot(focus)] if self.spec.get("glimpse") else []
+        return np.concatenate(glimpse + [scene, self.code(self.heard) + self.code(self.own)])[
+            None]
 
     def moment(self, *, more: bool = False, greedy: bool = True) -> str | None:
         """One moment: settle on what is seen and heard, act; the word said, or None."""

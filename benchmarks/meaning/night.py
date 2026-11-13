@@ -1,5 +1,9 @@
 """The night's chamber (cadence#334, plan v3): the parrot learns what words mean from pistachios.
 
+**The glimpse.** The thing in focus (clicked, held up, or the one the trainers attend to while
+they ask about it: joint attention) is reported again in a place of its own before the scene:
+what the eyes see where the parrot looks, the tectum's winner gated in (born attention).
+
 **The world.** Things of eight kinds (an apple, a banana, a ball, a block, a cup, a key, a book, a
 bottle), each in a colour, of a material (fruit, wood, metal, glass, cloth, plastic), around the
 parrot. The eyes report a thing's hue, lightness, shape, size, surface (gloss, roughness,
@@ -224,7 +228,8 @@ def ask(form: str, r: Room, rng: np.random.Generator) -> Question | None:
         x.focus = True
         return Question(["what", "is", "this"], [x.kind], form, focus=x)
     if form == "colour_of":
-        return Question(["what", "colour", "has", "the", x.kind], [x.colour], form)
+        x.focus = True  # the trainers' joint attention on the thing asked about
+        return Question(["what", "colour", "has", "the", x.kind], [x.colour], form, focus=x)
     if form == "by_colour":
         same = [t for t in things if t.colour == x.colour]
         return Question(["what", "is", x.colour], [x.kind], form) if len(same) == 1 else None
@@ -233,6 +238,7 @@ def ask(form: str, r: Room, rng: np.random.Generator) -> Question | None:
         return Question(["what", "objects", "are", "round"], kinds, form, several=True) \
             if kinds else None
     if form == "where":
+        x.focus = True
         words = [direction_of(r.heading, x.place)]
         if float(np.linalg.norm(x.place)) > FAR:
             words.append("far")
@@ -241,14 +247,17 @@ def ask(form: str, r: Room, rng: np.random.Generator) -> Question | None:
         found = [t for t in things if t is not x and (
             left_of(r, t, x) if form == "left_of" else left_of(r, x, t))]
         side = "left" if form == "left_of" else "right"
+        x.focus = len(found) == 1
         return Question(["what", "is", side, "of", "the", x.kind], [found[0].kind], form) \
             if len(found) == 1 else None
     if form == "next_to":
         found = [t for t in things if next_to(t, x)]
+        x.focus = len(found) == 1
         return Question(["what", "is", "next", "to", "the", x.kind], [found[0].kind], form) \
             if len(found) == 1 else None
     if form == "opposite":
         found = [t for t in things if t is not x and opposite(r, t, x)]
+        x.focus = len(found) == 1
         return Question(["what", "is", "opposite", "the", x.kind], [found[0].kind], form) \
             if len(found) == 1 else None
     if form == "material":
@@ -260,6 +269,7 @@ def ask(form: str, r: Room, rng: np.random.Generator) -> Question | None:
         return Question(["what", "can", "you", "eat"], kinds, form, several=True) \
             if kinds else None
     if form == "can_eat":
+        x.focus = True
         return Question(["can", "you", "eat", "the", x.kind],
                         ["yes" if x.material in EDIBLE else "no"], form)
     if form == "can_eat_this":  # the focus on a thing, its name unsaid
@@ -300,7 +310,9 @@ class Parrot:
         for w in WORDS:
             self.forms(w)
         self.ear = self.forms.width
-        self.inputs = self.eyes.width + self.ear
+        # the glimpse: what the eyes report of the thing in focus, in a place of its own (the
+        # tectum's winner looked at, its features gated in: born attention), then the scene
+        self.inputs = self.eyes.slot_width + self.eyes.width + self.ear
         self.brain = compose(self.genome, self.inputs, len(self.voice), ear=self.ear, gaze=2,
                              seed=self.seed, backend=backend)
         self.synapses = int(self.brain.connectome.synapses)
@@ -318,7 +330,9 @@ class Parrot:
             code = self.forms(word) + self.forms(own[i])
             if praise[i]:
                 code = code + self.forms(PRAISE)
-            rows.append(np.concatenate([self.eyes.scene(ex.room.seen(rng)), code]))
+            seen = ex.room.seen(rng)
+            focus = next((x for x in seen if x.salient), None)
+            rows.append(np.concatenate([self.eyes.slot(focus), self.eyes.scene(seen), code]))
         return np.asarray(rows)
 
 
@@ -387,6 +401,10 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
             for i, unit, bit, weight in rows_of:
                 labels[i] = (unit, bit)
                 w8[i] = weight
+            if not hasattr(snap, "learner"):  # a control: the lesson on that moment's input
+                brain.lesson(xm, labels, weights=w8)
+                taken += int((w8 > 0).sum())
+                continue
             graph = snap.learner.brain
             eff, bias = np.array(graph.efficacy, copy=True), np.array(graph.bias, copy=True)
             rep = snap.lesson(xm, labels, weights=w8)
@@ -689,6 +707,7 @@ def export_spec(p: Parrot, path: str | Path) -> None:
     feature prototypes."""
     e = p.eyes
     spec = {
+        "glimpse": True,
         "eyes": {"slots": e.slots, "hues": e.hues, "lights": e.lights, "shapes": e.shapes,
                  "per_shape": e.per_shape, "sizes": e.sizes, "directions": e.directions,
                  "distances": e.distances, "surfaces": e.surfaces, "per_surface": e.per_surface},

@@ -247,20 +247,22 @@ def owner_room() -> nt.Room:
     return nt.Room(things, heading=0.0)
 
 
-OWNER = [  # the owner's five exchanges in the owner's room, with the teacher's answers
-    (["what", "colour", "has", "the", "apple"], ["red"]),
-    (["what", "is", "left", "of", "the", "apple"], ["block"]),
-    (["where", "is", "the", "apple"], ["left", "far"]),
-    (["where", "is", "the", "cup"], ["behind"]),
-    (["what", "objects", "are", "round"], ["apple", "cup"]),
+OWNER = [  # the owner's five exchanges in the owner's room, the teacher's answers, the focus
+    (["what", "colour", "has", "the", "apple"], ["red"], "apple"),
+    (["what", "is", "left", "of", "the", "apple"], ["block"], "apple"),
+    (["where", "is", "the", "apple"], ["left", "far"], "apple"),
+    (["where", "is", "the", "cup"], ["behind"], "cup"),
+    (["what", "objects", "are", "round"], ["apple", "cup"], None),
 ]
 
 
 def exam_owner(p: nt.Parrot, rng: np.random.Generator) -> list[dict[str, Any]]:
     """The owner's five, each asked on every stream of a block, read greedily."""
     out = []
-    for words, answer in OWNER:
+    for words, answer, focus in OWNER:
         r = owner_room()
+        for t in r.things:  # the apple clicked (or attended to) while the question is asked
+            t.focus = t.kind == focus
         several = words[1] == "objects"
         q = nt.Question(list(words), list(answer), "owner", several=several)
         exs = [nt.Exchange(copy.deepcopy(r), list(words), len(words) - 1, q)
