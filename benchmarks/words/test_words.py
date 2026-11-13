@@ -13,9 +13,23 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
-import controls  # noqa: E402
 import words  # noqa: E402
 import world  # noqa: E402
+
+
+def _controls():
+    """The chamber's controls under a name of their own: several chambers hold a
+    ``controls.py``, and a plain ``controls`` left in ``sys.modules`` would be handed to the
+    next chamber that asks for its own (#306)."""
+    import importlib.util
+
+    if "words_controls" not in sys.modules:
+        spec = importlib.util.spec_from_file_location("words_controls", HERE / "controls.py")
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["words_controls"] = module
+        spec.loader.exec_module(module)
+    return sys.modules["words_controls"]
 
 SHORT = {"naming_rooms": 16, "namings": 15, "practice_rooms": 10, "asked": 10, "test_rooms": 3,
          "unseen_rooms": 3, "new_rooms": 3}
@@ -59,6 +73,7 @@ def test_a_short_life() -> None:
 
 def test_the_controls_read_the_same_script() -> None:
     pytest.importorskip("torch")
+    controls = _controls()
     items = controls.sequences(5, **SHORT)
     script = words.script(5, **SHORT)
     assert sum(k == "ask" for k, _, _ in items) == sum(e[0] == "ask" for e in script)
