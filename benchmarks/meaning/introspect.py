@@ -186,6 +186,46 @@ def probes_by_region(p: nt.Parrot, rng: np.random.Generator, held: set[tuple[str
     return out
 
 
+def question_gating(p: nt.Parrot, rng: np.random.Generator, held: set[tuple[str, str]],
+                    count: int = 384) -> dict[str, Any]:
+    """Does the question switch what a region reads of one thing? The same focused things under
+    "what is this" and "what colour has the <kind>": per region, a probe of the thing's colour
+    (red) and of its shape (round) fitted and read under each question (what it then says, in
+    the gap, is the forms' reading of ``name`` and ``colour_of``)."""
+    pairs = scenes(p, rng, count, held, test=False)
+    pops = p.brain.connectome.populations
+    out: dict[str, Any] = {}
+    for label_q, words_of in (("what is this", lambda t: ["what", "is", "this"]),
+                              ("what colour has the X",
+                               lambda t: ["what", "colour", "has", "the", t.kind])):
+        brain = frozen(p)
+        codes: dict[str, list[np.ndarray]] = {}
+        said: list[str | None] = []
+        for i in range(0, len(pairs), p.streams):
+            chunk = pairs[i:i + p.streams]
+            pad = p.streams - len(chunk)
+            rooms = [r for r, _ in chunk] + [chunk[-1][0]] * pad
+            heard = [words_of(t) for _, t in chunk] + [words_of(chunk[-1][1])] * pad
+            got, s = settle(p, brain, rooms, heard, rng)
+            for r in got:
+                codes.setdefault(r, []).append(got[r][:len(chunk)])
+            said += s[:len(chunk)]
+            brain.reset()
+        half = len(pairs) // 2
+        reads: dict[str, dict[str, float]] = {}
+        for region in [r for r in REGIONS if r in pops and r in codes]:
+            x = np.concatenate(codes[region])
+            for prop in ("red", "round"):
+                y = np.array([label(t, r.heading, prop) for r, t in pairs], float)
+                if y[:half].min() == y[:half].max():
+                    continue
+                pr = fit_probe(x[:half], y[:half])
+                reads.setdefault(region, {})[prop] = float(
+                    np.mean((probe_read(pr, x[half:]) > 0.5) == (y[half:] > 0.5)))
+        out[label_q] = reads
+    return out
+
+
 def neighbours(p: nt.Parrot, rng: np.random.Generator, held: set[tuple[str, str]],
                per: int = 32) -> dict[str, Any]:
     """Each kind's mean code (the lemon's too, never shown) and its cosine to the others."""
