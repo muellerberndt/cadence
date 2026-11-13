@@ -520,6 +520,8 @@ def by_kind(brain: Any, store: Store | None, design: Design,
     groups: dict[str, list[int]] = {}
     roles: dict[str, list[int]] = {}
     own: dict[str, int] = {}  # the roles the brain names where no lesson names one
+    reads: dict[str, list[Any]] = {}  # with the read of one head: its mean attention by kind
+    told = brain.message if store is None else None
     for rows in batches:
         def watch(when: str, index: int, words: Any, named: Any, labels: Any,
                   rows: list[gr.Row] = rows) -> None:
@@ -545,11 +547,19 @@ def by_kind(brain: Any, store: Store | None, design: Design,
                     g = groups.setdefault(kind, [0, 0])
                     g[0] += int(words[i] == word)
                     g[1] += 1
+                    if told is not None and told.reads and told.last is not None:
+                        p = np.asarray(told.last[2])
+                        if len(p) == len(rows):
+                            seen = reads.setdefault(kind, [np.zeros(p.shape[1]), 0])
+                            seen[0] = seen[0] + p[i]
+                            seen[1] += 1
 
         speak(brain, rows, store, design, forced=True, watch=watch)
     return {"words": {k: round(v[0] / v[1], 4) for k, v in sorted(groups.items())},
             "roles": {k: round(v[0] / v[1], 4) for k, v in sorted(roles.items())},
-            **({"own": dict(sorted(own.items()))} if own else {})}
+            **({"own": dict(sorted(own.items()))} if own else {}),
+            **({"reads": {k: [round(float(a), 3) for a in v[0] / v[1]]
+                          for k, v in sorted(reads.items())}} if reads else {})}
 
 
 def held_states(brain: Any, store: Store | None, design: Design,
