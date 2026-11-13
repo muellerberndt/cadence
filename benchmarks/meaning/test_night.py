@@ -1,0 +1,63 @@
+"""The night's chamber (cadence#334): a tiny life runs, resumes, and lives with a control in the
+brain's place; the page's host steps a saved brain."""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+import numpy as np
+
+HERE = Path(__file__).resolve().parent
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+
+import night as nt  # noqa: E402
+
+TINY = {k: 1 for k in ("N0", "N1", "N2", "N3", "N4", "N5", "N6")}
+
+
+def test_every_question_form_has_one_right_answer_in_its_room():
+    rng = np.random.default_rng(0)
+    held = nt.founder_held(0)
+    for form in ("name", "colour_of", "by_colour", "round", "where", "left_of", "right_of",
+                 "next_to", "opposite", "material", "eat", "can_eat", "can_eat_this"):
+        ex = nt.exchange(nt.Parrot(0, streams=1), rng, form, "turn", held)
+        assert ex.question is not None and ex.question.answer
+        assert ex.turn == len(ex.heard) - 1
+
+
+def test_a_tiny_life_reads_every_step_and_resumes_from_its_checkpoint(tmp_path):
+    first = nt.life(3, blocks=TINY, streams=2, reads=2, master=False, ckpt=str(tmp_path),
+                    steps=["N0", "N1"])
+    assert sorted(first["steps"]) == ["N0", "N1"]
+    meta = json.loads((tmp_path / "ckpt_3.json").read_text())
+    assert meta["step"] == 2 and meta["block"] == 0
+    again = nt.life(3, blocks=TINY, streams=2, reads=2, master=False, ckpt=str(tmp_path),
+                    steps=["N0", "N1", "N2"])
+    assert sorted(again["steps"]) == ["N0", "N1", "N2"]
+
+
+def test_a_control_lives_the_same_exchanges_in_the_brains_place():
+    got = nt.life(4, blocks=TINY, streams=2, reads=2, master=False, steps=["N0", "N1"],
+                  control="table")
+    assert set(got["steps"]["N1"]) >= {"imitate", "name"}
+
+
+def test_the_page_host_steps_a_saved_brain_and_takes_a_pistachio(tmp_path):
+    from cadence.meaning.host import MeaningParrot
+
+    p = nt.Parrot(5, streams=1)
+    nt.export_spec(p, tmp_path / "spec.json")
+    p.brain.save(tmp_path / "brain.npz")
+    m = MeaningParrot(tmp_path / "brain.npz", tmp_path / "spec.json")
+    m.see([{"kind": "apple", "colour": "red", "material": "fruit", "direction": 1.0,
+            "distance": 1.4, "focus": True}])
+    for word in ("what", "is"):
+        m.hear(word)
+        assert m.moment(more=True) is None  # held while the trainer has more to say
+    m.hear("this")
+    said = [m.moment(), m.moment(), m.moment()]
+    assert all(w is None or w in nt.WORDS for w in said)
+    assert m.pistachio() == sum(w is not None for w in said)
