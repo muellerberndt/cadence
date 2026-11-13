@@ -632,8 +632,13 @@ def test_the_compiled_and_the_numpy_forms_make_the_same_growing_table():
     np.testing.assert_array_equal(plain_top[5], np.arange(20, 28))
     if _pairs._TOP is not None:
         out = np.zeros((50, 8), dtype=np.int32)
-        _pairs._TOP(drive, 8, out)
+        _pairs._TOP(drive, np.zeros(50, dtype=np.float32), np.zeros(300, dtype=np.float32), 8,
+                    out)
         np.testing.assert_array_equal(out, plain_top)
+        mean = np.linspace(-1, 1, 50).astype(np.float32)
+        sums = np.random.default_rng(6).standard_normal(300).astype(np.float32)
+        _pairs._TOP(drive, mean, sums, 8, out)  # centred as the address of pairs centres a key
+        np.testing.assert_array_equal(out, _pairs.top_units(drive - mean[:, None] * sums, 8))
 
 
 def test_a_write_under_a_growing_table_recognises_revises_and_refiles():

@@ -339,17 +339,20 @@ def _unfile(row: Any, slot: Any, flat: Any, depth: Any, expansion: Any, bits: An
     return removed
 
 
-def _top(drive: Any, k: Any, out: Any) -> None:
+def _top(drive: Any, mean: Any, sums: Any, k: Any, out: Any) -> None:
     """Each row's ``k`` most driven units, those driven above zero, in ascending order of
-    unit and then -1: ``out[r]`` for ``drive[r]``. Among equal drives the lower unit wins."""
+    unit and then -1: ``out[r]`` for ``drive[r]`` less ``mean[r] * sums`` (a key's projection
+    less its mean times the units' summed weights, as the address of pairs centres a key).
+    Among equal drives the lower unit wins."""
     rows, wide = drive.shape
     for r in _prange(rows):
         best = np.empty(k, dtype=drive.dtype)
         unit = np.empty(k, dtype=np.int64)
         n = 0
         least = 0  # the place of the weakest kept unit once k are kept (the higher among equals)
+        centre = mean[r]
         for u in range(wide):
-            v = drive[r, u]
+            v = drive[r, u] - centre * sums[u]
             if not v > 0:
                 continue
             if n < k:

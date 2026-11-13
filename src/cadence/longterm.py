@@ -1244,8 +1244,9 @@ class LongTermMemory:
                     # sum's order differs from the whole product's in a drive's last bits)
                     _pairs._TOP_FEW(np.ascontiguousarray(rows), self.projection, self._sums,
                                     self.pairs, into)
-                elif compiled:
-                    _pairs._TOP(self._drive(rows), self.pairs, into)
+                elif compiled:  # the keys' projection, centred where the units are chosen
+                    _pairs._TOP(rows @ self.projection, rows.mean(axis=1), self._sums,
+                                self.pairs, into)
                 else:
                     self.filed[slots] = _pairs.top_units(self._drive(rows), self.pairs)
             elif self.coarse and self.pairs:
