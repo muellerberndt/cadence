@@ -508,7 +508,7 @@ FastSynapses(pre, post, decay=1.0, rate=1.0, amplitude=1.0, normalize=False,
              replace=False, rule="hebb", separator=None, writes=0)
 SynapticMemory(pre, post, decay=0.9, rate=1.0, amplitude=1.0, normalize=False,
                replace=False, rule="delta", separator=None, writes=0,
-               consolidation=0.05, gate_noise=None, maturity=None)
+               consolidation=0.05, gate_noise=None, maturity=None, fade=0.0, fade_keep=0.0)
 PatternSeparator(inputs, expansion, winners, seed=0, center=0.0, fan_in=0, cover=0)
 ```
 
@@ -525,7 +525,9 @@ array, each record's noise scale) and `maturity` (a `Maturity`) set, its writes 
 surprise-gated ([maturity](memory.md#maturity-and-surprise-gated-writes)); a composed brain
 with `maturity=True` sets them on its place records, shares its actor's `Maturity` with them and
 saves `gate_noise` with `arrays()`. `GATE_WIDTH` (2.0) and `GATE_RATE` (0.05) are the gate's
-constants.
+constants. `fade` (`memory_fade`) fades idle records by `fade_moment(key)`, and `fade_keep`
+(0, off) is the depth past which a coordinate's records stop fading; it refuses a `fade_keep`
+without a `fade`.
 `PatternSeparator` codes keys by a fixed random projection keeping `winners` of `expansion`:
 `code(key, learn=False)`, `habituate(keys)`, `arrays()`, `channels`, `to_dict()`; it raises
 `ValueError` for nonpositive sizes, `winners > expansion`, a `fan_in` or `cover` without room,
@@ -535,16 +537,25 @@ associative store: [memory](memory.md#associative-store-the-hippocampus).
 ```text
 LongTermMemory(width, value_width, capacity, temperature=0.0, candidates=256, expansion=8192,
                winners=64, depth=2.0, idle=None, hold=None, revise=0.9, fade=True, seed=0,
-               direct=None, dtype=float64, cosine=False, pairs=0, apart=0)
+               direct=None, dtype=float64, cosine=False, pairs=0, apart=0, blend=False,
+               familiar=0.0, keep=0.0, forget=0.0, novelty=0.0)
 LongTermRead(slots, weights)
 ```
 
 `LongTermMemory` (in `cadence.longterm`) holds records, a key with a value, for one stream under a
 budget of `capacity` slots; no `Brain.compose` setting builds it. `write(key, value,
-recognised=None) -> (slot, revised)` rewrites the record whose key it recognises (cosine
-`revise`), else takes an empty slot, else the most faded one (`fade=False`: the slot written
-longest ago); `recognised` is a caller's recognition from its own read (the slot, or -1 for none),
-and the write then reads nothing itself. `read(cue, heads=1,
+recognised=None, source=None, surprise=None) -> (slot, revised)` rewrites the record whose key
+it recognises (cosine `revise`), else takes an empty slot, else the most faded one
+(`fade=False`: the slot written longest ago); `recognised` is a caller's recognition from its
+own read (the slot, or -1 for none), and the write then reads nothing itself. `surprise` (0 or
+more) adds that many tellings to the record's depth; without it a store with `novelty` reads
+it from its nearest record. A record's strength ([memory](memory.md#a-records-strength-opt-in),
+#336, each off by default): `blend` (needs `cosine`) moves a record told again toward the new
+take by `1 / (1 + deep)`; `familiar` adds `familiar * log(1 + deep)` to a read's scores;
+`keep` is the depth at which a record is kept for good (it stops fading; a full memory replaces
+the most faded record not kept, else the shallowest kept one); `forget` the fade at which a
+record below it is forgotten (no read finds it); both need `fade=True`, and `kept` and `gone`
+are their state, saved with `arrays()`. `read(cue, heads=1,
 credit=True) -> LongTermRead` picks `candidates` slots by a sparse address of `winners` of
 `expansion` units and reads them as the recall memory reads its slots, at `temperature` (0: each
 head reads its first choice among the slots left, whole), scoring each by its key's dot product

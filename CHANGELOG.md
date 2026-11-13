@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### A record's strength (#336)
+
+A long-term record grows strong when it comes up again and again or when it came with a large
+surprise, is kept for good past a threshold, and fades away below it. Every setting is off by
+default: without them `cadence.LongTermMemory` and `SynapticMemory` are what they were, to the
+bit. The guide is [docs/memory.md](docs/memory.md#a-records-strength-opt-in).
+
+- **`LongTermMemory.write(..., surprise=s)`**: a write counts `1 + s` tellings in its record's
+  depth. **`LongTermMemory(novelty=weight)`** reads the surprise of a write that gives none as
+  `weight` times how far its nearest record lies from the key (1 less their cosine, at most 1).
+- **`LongTermMemory(keep=depth)`**: a record whose depth (tellings, surprise and recall's
+  attention) reaches it is kept for good: it stops fading and is replaced last.
+- **`LongTermMemory(forget=fade)`**: a record below `keep` that fades that far is forgotten; no
+  read finds it and a new record takes its slot first.
+- **`LongTermMemory(blend=True)`** (with `cosine=True`): a take told again moves its record
+  toward it by `1 / (1 + deep)`, so the record holds the mean of its takes.
+- **`LongTermMemory(familiar=weight)`**: a read's score gains `weight * log(1 + deep)`, so the
+  deeper of two equal matches is read first.
+- **`SynapticMemory(fade_keep=depth)`**: with a fade, the records along a key coordinate whose
+  depth has reached it stop fading.
+- **A chamber**, `benchmarks/memory_strength/strength.py`: the dose curve, the one-shot write
+  and the clean form beside the store without the settings.
+
 ## 0.99.0 - 2026-11-13
 
 A map of what is where, held in the brain's own carried activity (`cadence.space.map.Map`,

@@ -2110,8 +2110,10 @@ billionth of itself a moment. One left alone for about fifteen thousand moments 
 is shallow and far more slowly once its depth passes 2,000. Each stream keeps its residual
 around the shared records. No count is kept anywhere: both sums are leaky integrals of
 activity, as [maturity](reward.md#maturity-opt-in)'s use is. The constants are
-`SynapticMemory.FADE_SCALE`, `FADE_ORDER`, `FADE_IDLE` and `FADE_FLOOR`. `memory_fade` is a
-construction setting: `retune` refuses it, and `grow`, `graft`, `save` and `load` keep it with
+`SynapticMemory.FADE_SCALE`, `FADE_ORDER`, `FADE_IDLE` and `FADE_FLOOR`. A standalone
+`SynapticMemory(fade=..., fade_keep=depth)` keeps for good the records along a coordinate whose
+depth has reached `fade_keep` ([a record's strength](#a-records-strength-opt-in)); no
+`Brain.compose` setting passes it. `memory_fade` is a construction setting: `retune` refuses it, and `grow`, `graft`, `save` and `load` keep it with
 its sums. A brain with the setting saves checkpoint format `cadence-brain/3`, which 0.95.2 and
 earlier refuse ([checkpoint format](api.md#checkpoint-format)); without it a brain saves the
 format it saved before.
@@ -2617,6 +2619,11 @@ copy stays behind to split the read.
 | `cosine` | `False` | Scores the fine read and a write's recognition by the cosine in place of the dot product |
 | `pairs` | `0`, off | Files a record under the pairs of its `pairs` most driven units: [a million records](#a-million-records-opt-in) |
 | `apart` | `0`, off | The width of a fact's source, whose signature tells two facts with one key apart: [keys held apart](#keys-held-apart-opt-in) |
+| `blend` | `False` | A record told again moves toward the new take, so it holds the mean of its takes (needs `cosine=True`): [a record's strength](#a-records-strength-opt-in) |
+| `familiar` | `0.0`, off | A read's score gains `familiar * log(1 + deep)`: the deeper of two equal matches is read first |
+| `keep` | `0.0`, off | The depth at which a record is kept for good: it stops fading and is replaced last |
+| `forget` | `0.0`, off | The fade at which a record below `keep` is forgotten: no read finds it, and it is replaced first |
+| `novelty` | `0.0`, off | The tellings a write of a wholly new key counts as, where the caller gives no `surprise` |
 
 `read(cue, heads=1, credit=True)` returns a `LongTermRead` (`slots`, `weights`, `first(head)`,
 `mass(slot, head)`); `value(read, head)` is what a head holds; `write(key, value)` returns the
@@ -2731,6 +2738,71 @@ assert np.array_equal(facts.value(facts.read(key, source=second, credit=False)),
 slot, revised = facts.write(key, paris, source=first)         # the first fact, told again
 assert revised and facts.count == 2
 ```
+
+#### A record's strength (opt-in)
+
+A record grows strong in two ways: it comes up again and again, or it came with a large surprise.
+Its depth sums both. Every write adds one telling, a told-again write lands on the same record,
+and every read adds the attention it gave. `write(key, value, surprise=s)` adds `s` more
+tellings, for the caller's measure of how surprising the moment was (a prediction error, a
+salience). Without it, a store with `novelty` reads the surprise itself: `novelty` times how far
+its nearest record lies from the new key (1 less their cosine, at most 1). Five settings act on
+the depth. Each is off unless you set it, and off the memory is the memory it was, to the bit.
+
+- **`keep=depth`: kept for good.** A record whose depth reaches it is consolidated: it stops
+  fading and is replaced only when every slot is kept (then the shallowest kept record goes).
+  One write at surprise 7 reaches `keep=8` at once, as eight tellings do.
+- **`forget=fade`: the rest fades away.** A record below `keep` that fades that far is
+  forgotten: no read finds it, and its slot is the first a new record takes. A record told n
+  times and never read is forgotten after about `forget * (1 + (n / depth) ** 4)` moments, so
+  each doubling of the tellings keeps it about sixteen times longer.
+- **`blend=True`: a clean form.** A take told again moves its record toward it by
+  `1 / (1 + deep)`, so a record told n times and never read holds the mean of its n takes. Ten
+  noisy takes of one sound settle on a record nearer the clean sound than any one take. The
+  read is by cosine (`cosine=True`), since a mean of noisy takes is shorter than a take.
+- **`familiar=weight`: the stronger first.** A read's score gains `weight * log(1 + deep)`, so
+  of two records that match a cue as well, the deeper one is read. A small weight (0.01 to
+  0.05 on a cosine) decides near ties and leaves clear matches alone.
+- **`revise`** decides what counts as told again: two noisy takes of one pattern meet at a
+  cosine well under the founder's 0.9, so a sensory store sets it lower (0.6 in the example).
+
+```python
+import numpy as np
+import cadence as cd
+
+rng = np.random.default_rng(3)
+clean = rng.standard_normal(32)
+clean /= np.linalg.norm(clean)
+
+def take():                                          # a noisy hearing, cosine about .86
+    t = clean + 0.6 * rng.standard_normal(32) / np.sqrt(32)
+    return t / np.linalg.norm(t)
+
+sounds = cd.LongTermMemory(width=32, value_width=4, capacity=100, cosine=True, revise=0.6,
+                           blend=True, keep=8.0, forget=50.0, familiar=0.02)
+heard = [take() for _ in range(10)]
+for t in heard:
+    sounds.write(t, np.eye(4)[0])                    # one word, heard ten times
+best_take = max(t @ clean for t in heard)
+assert sounds.count == 1 and sounds.kept[0]          # told often enough: kept for good
+assert sounds.keys[0] @ clean / np.linalg.norm(sounds.keys[0]) > best_take   # the clean form
+sounds.write(rng.standard_normal(32), np.eye(4)[1], surprise=7.0)  # one shock: kept at once
+sounds.write(rng.standard_normal(32), np.eye(4)[2])                # heard once, no surprise
+for _ in range(100):
+    sounds.moment()                                  # a hundred idle moments
+assert sounds.kept[:3].tolist() == [True, True, False] and sounds.gone[2]  # it is forgotten
+```
+
+The [strength chamber](../benchmarks/memory_strength/README.md) reads the dose curve (a record
+told 1, 2 and 4 times and never read is forgotten after 54, 100 and 850 idle moments at
+`forget=50`; one told 8 and 16 times is kept), the one-shot write (one write at surprise 7 is
+kept as eight tellings are; at surprise 0 to 3 it is forgotten) and the clean form (the record's
+cosine to the clean pattern .99 after 16 takes, the nearest take's .90).
+
+The associative store's place records have the same threshold: `SynapticMemory(fade_keep=depth)`
+keeps the records along a key coordinate whose [fade](#records-that-fade-with-disuse-opt-in) depth has reached
+it, so they stop fading. Repetition sums in its slow matrix already, and `salience` raises its
+slow write rate.
 
 **Beside a brain.** The memory's read of a moment's key is held on input coordinates of its own,
 as a recall port is held through a settle, and lessons teach the brain to answer from it:
