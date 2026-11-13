@@ -816,8 +816,13 @@ class Map:
         for old, now, units, rec in pending:
             self.motion[np.ix_(old, units)] = 0.0
             self.motion[np.ix_(now, units)] = rec
+        extra = np.arange(self.units, self.potential.shape[1])  # units beyond the kinds' codes
         for (_, place, _), (units, rec) in zip(reports, lines, strict=True):
             cells = np.flatnonzero(self.weights(place) > 0)
+            # the record goes with every unit the report's thing holds there, so all of its
+            # pattern moves with it
+            units = np.concatenate([units, extra[(self.potential[np.ix_(cells, extra)] > 0).any(
+                axis=0)]]) if len(extra) else units
             self.motion[np.ix_(cells, units)] = rec
         self.motion[(self.motion[:, :, IDENT] > 0) & (self.potential <= 0)] = 0.0
 
