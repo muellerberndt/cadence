@@ -93,6 +93,7 @@ full.
 from __future__ import annotations
 
 import json
+import mmap
 import os
 import shutil
 from collections.abc import Mapping
@@ -297,6 +298,9 @@ class LongTermMemory:
     GATHER = 64
     WAITS = 32
     FORMAT = "cadence-longterm/1"
+    # whether a store on disk tells the system that its files are read at places of no order,
+    # so a page fault fetches its page alone
+    SCATTERED: ClassVar[bool] = True
     # a source's signature: its units, the units they are drawn from, the shared units at which
     # two signatures are one source's, and the score within which two records tie
     SIGN = 8
@@ -518,6 +522,9 @@ class LongTermMemory:
             if mapped.shape != tuple(shape) or mapped.dtype != np.dtype(dtype):
                 raise ValueError(f"{name} has another shape: a store of other settings")
         self._maps[name] = mapped
+        advise = getattr(getattr(mapped, "_mmap", None), "madvise", None)
+        if self.SCATTERED and advise is not None and hasattr(mmap, "MADV_RANDOM"):
+            advise(mmap.MADV_RANDOM)
         return np.asarray(mapped)
 
     def _fixed(self, name: str, drawn: np.ndarray | None) -> np.ndarray:

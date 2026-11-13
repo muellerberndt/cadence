@@ -247,6 +247,8 @@ def read(cell: dict[str, Any], root: Path) -> list[dict[str, Any]]:
     founder, n, form, width = cell["founder"], cell["n"], cell["form"], cell["width"]
     value_width = int(cell.get("value_width", 64))
     folder = root / name_of(cell)
+    if "scattered" in cell:
+        LongTermMemory.SCATTERED = bool(cell["scattered"])  # type: ignore[misc]
     t0 = time.perf_counter()
     store = LongTermMemory.open(folder)
     opened = time.perf_counter() - t0
@@ -270,9 +272,10 @@ def read(cell: dict[str, Any], root: Path) -> list[dict[str, Any]]:
                                  wanted[: timed_reads if label == "again" else None])})
     if cell.get("scan", True):
         t0 = time.perf_counter()
+        in_order = np.load(folder / "keys.npy", mmap_mode="r")  # read from end to end
         for kind in KINDS:
             wanted, asked = cues[kind]
-            first = scan_parts(store.keys, n, asked)
+            first = scan_parts(in_order, n, asked)
             rows.append({**base, "step": "read", "arm": "scan", "cue": kind,
                          "trials": len(asked), "found": round(float(np.mean(first == wanted)), 4),
                          "macs": n * width, "scored": n})

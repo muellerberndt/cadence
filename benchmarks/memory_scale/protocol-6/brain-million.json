@@ -1,0 +1,41 @@
+{
+ "founders": [
+  3220,
+  3221,
+  3222,
+  3223,
+  3224,
+  3225,
+  3226,
+  3227,
+  3228,
+  3229,
+  3230,
+  3231
+ ],
+ "n": [
+  1000000
+ ],
+ "rounds": 1500,
+ "questions": 400,
+ "capacity": 2000000,
+ "nouns": 512,
+ "verbs": 1024,
+ "streams": 1,
+ "store": {
+  "pairs": 16,
+  "expansion": 16384,
+  "winners": 256,
+  "candidates": 4096,
+  "fade": false,
+  "grow": true,
+  "sure": 0.999,
+  "apart": true,
+  "path": "/data/records/million"
+ },
+ "arms": [
+  {
+   "arm": "records"
+  }
+ ]
+}

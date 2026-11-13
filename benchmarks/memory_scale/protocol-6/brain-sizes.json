@@ -1,0 +1,43 @@
+{
+ "founders": [
+  3240,
+  3241,
+  3242,
+  3243,
+  3244,
+  3245,
+  3246,
+  3247,
+  3248,
+  3249,
+  3250,
+  3251
+ ],
+ "n": [
+  1000,
+  10000,
+  100000
+ ],
+ "rounds": 1500,
+ "questions": 400,
+ "capacity": 2000000,
+ "nouns": 256,
+ "verbs": 256,
+ "streams": 1,
+ "store": {
+  "pairs": 16,
+  "expansion": 16384,
+  "winners": 256,
+  "candidates": 4096,
+  "fade": false,
+  "grow": true,
+  "sure": 0.999,
+  "apart": true,
+  "path": "/data/records/sizes"
+ },
+ "arms": [
+  {
+   "arm": "records"
+  }
+ ]
+}
