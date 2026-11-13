@@ -119,7 +119,7 @@ REHEARSAL = 0.3  # the share of a step's blocks that revisit the earlier steps' 
 NIGHT: dict[str, Any] = {"actor_hold": 0.93, "actor_eta": 0.1, "ear_entry": "module_0",
                          "history_decays": (0.0, 0.5, 0.8), "self_reward": 0.1,
                          "reply_suppression": 1, "gated_lesson": 1.0, "recall": 0,
-                         "correction_lesson": 1.0}
+                         "correction_lesson": 1.0, "vocal_until": "N0b"}
 
 
 @dataclass
@@ -346,6 +346,7 @@ class Parrot:
         # the records of heard words (gene ``word_records``): a word heard as an answer is kept
         # under the association region's settled pattern of the moment the question ended, and
         # at the parrot's turn the record its present pattern recalls is replayed to its ear
+        self.vocal_period = True  # the self-hearing lesson's sensitive period (gene vocal_until)
         self.records: Any = None
         self.recalled = np.zeros((streams, self.forms.width))
         if int(self.genome.get("word_records", 0)):
@@ -502,7 +503,7 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
                 report = brain.learn(reward[t], done, x)
                 p.work["reward_row_sweeps"] += n * (float(report.get("free_steps", 0.0)) + 24)
             heard_self = np.array([w is not None for w in own], float)
-            if int(g["babble_lesson"]) and heard_self.any():
+            if int(g["babble_lesson"]) and heard_self.any() and p.vocal_period:
                 labels = np.stack([voiced, np.zeros(n, dtype=np.int64)], axis=1)
                 report = brain.lesson(x, labels, weights=heard_self)
                 p.work["lesson_sweeps"] += float(report.get("total_row_sweeps", 0.0))
@@ -705,8 +706,8 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
          save: str | None = None, master: bool = True,
          control: str | None = None, ckpt: str | None = None) -> dict[str, Any]:
     """One founder's night through the steps; each step read on a frozen copy after it."""
-    budget = {"N0": 1500, "N0b": 300, "N1": 1500, "N2": 2000, "N3": 1500, "N4": 3000, "N5": 2000,
-              "N6": 1500, **(blocks or {})}
+    budget = {"N0": 1500, "N0b": 300, "N1": 1000, "N2": 1200, "N3": 800, "N4": 1500, "N5": 1200,
+              "N6": 800, **(blocks or {})}
     rng = np.random.default_rng(np.random.SeedSequence([int(seed), 334, 31]))
     held = held_of(rng)
     p = Parrot(seed, genome, streams=streams, backend=backend)
@@ -744,7 +745,11 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
                                     "paid": paid[-60:], "work": p.work}, default=float))
         part.replace(meta_path)
 
+    order = [n for n, _, _ in STEPS]
+    until = str(p.genome.get("vocal_until", "N6"))
     for index, (name, mix, tests) in enumerate(STEPS):
+        # the sensitive period of vocal learning: the self-hearing lesson through ``vocal_until``
+        p.vocal_period = order.index(name) <= order.index(until) if until in order else True
         if steps is not None and name not in steps or index < start[0]:
             continue
         keys, weights = list(mix), np.array(list(mix.values()))
