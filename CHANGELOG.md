@@ -9,7 +9,7 @@
   the brain's motor slots (the role slot, `message_slot`, the last unless named) works. The table
   holds one entry per choice of that slot, each a list of `(operation, group)`: `"set"` puts the
   moment's settled activity into the group's one block, `"write"` appends it to the group,
-  `"shift"` moves the group's head on, `"pop"` removes the group's last block and
+  `"shift"` moves the group's head on, `"pop"` removes the group's last block, `"clear"` empties it and
   `("move", group, to)` takes the group's head onto another group. The region holds one block per
   group, its head (a queue's first block not shifted past; for a group in `message_stacks` its
   last block), and the association reads every head at once through plastic synapses, with a

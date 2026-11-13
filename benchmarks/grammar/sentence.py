@@ -81,14 +81,19 @@ class Design:
     """A store's design: the role slot's choices, each a name and the operations it names, and
     what a block takes (``alone``: the settle of the moment's observation alone, in place of
     the settle in its context). With ``facts`` a path's heard facts are echoed with the role
-    ``none`` (each heard word named, nothing written), and with ``start_said`` a path's start
-    leaves the store once said (``said_start``)."""
+    ``none`` (each heard word named, nothing written), with ``start_said`` a path's start
+    leaves the store once said (``said_start``), and with ``clears`` a path's start empties
+    every other group: the facts heard before it, words like a clause's, may have been written
+    as a clause's parts."""
 
     def __init__(self, name: str, brackets: tuple[tuple[str, tuple[Any, ...]], ...],
-                 alone: bool, facts: bool = False, start_said: bool = False) -> None:
+                 alone: bool, facts: bool = False, start_said: bool = False,
+                 clears: bool = False) -> None:
         self.name, self.alone, self.facts = name, alone, facts
         said = (("said_start", (("shift", START),)),) if start_said else ()
-        self.roles = (*_CLAUSE, *brackets, ("start", (("set", START),)), *said, *_TASKS)
+        cleared = tuple(("clear", g) for g in range(len(GROUPS)) if g != START) if clears else ()
+        self.roles = (*_CLAUSE, *brackets, ("start", (("set", START), *cleared)), *said,
+                      *_TASKS)
         self.base = len(self.roles) - len(_TASKS)  # the say-back mix's roles
         assert self.base == BASE[1] + len(said)
         self.op = {role: i for i, (role, _) in enumerate(self.roles)}
@@ -98,11 +103,13 @@ class Design:
     def inventory(self, full: bool) -> tuple[int, tuple[int, int, int]]:
         """The store's groups and the motor's slots (a word's stem, its form, the moment's
         role): the base inventory, or the full one with the task group and its roles. A
-        design with a silent stem holds it in either."""
+        design with a silent stem holds it in either, and one whose start clears every group
+        holds the task group in either."""
         stems = mn.PART_SLOTS[0] + (1 if full or self.silent else 0)
         if full:
             return len(GROUPS), (stems, mn.PART_SLOTS[1], len(self.roles))
-        return BASE[0], (stems, mn.PART_SLOTS[1], self.base)
+        groups = 1 + max(g for _, steps in self.roles[:self.base] for _, g, *_ in steps)
+        return max(BASE[0], groups), (stems, mn.PART_SLOTS[1], self.base)
 
 
 # ``context``: a block takes the moment's settle in its context; a heard close is settled to the
@@ -127,6 +134,7 @@ DESIGNS = {
     # ``alone`` with a path's facts echoed (role ``none``) and its start leaving once said
     "alone_path": Design("alone_path", _ALONE, alone=True, facts=True, start_said=True),
     "alone_facts": Design("alone_facts", _ALONE, alone=True, facts=True),  # the facts echoed
+    "alone_clean": Design("alone_clean", _ALONE, alone=True, clears=True),  # the start clears
 }
 
 
@@ -168,6 +176,9 @@ class Store:
                     if w > q:
                         self.blocks[i, g, (w - 1) % self.depth] = 0.0
                         self.written[i, g] = w - 1
+                elif operation == "clear":
+                    self.blocks[i, g] = 0.0
+                    self.written[i, g], self.passed[i, g] = 0, 0
                 elif operation == "move":
                     if w > q:  # the head leaves its group and joins the other's end
                         at = ((w - 1) if g in self.stacks else q) % self.depth

@@ -1653,6 +1653,7 @@ choice, and what it holds is the brain's own settled activity:
   - `"write"` appends it to the group;
   - `"shift"` moves the group's head on to its next block;
   - `"pop"` removes the group's last block;
+  - `"clear"` empties the group;
   - `("move", group, to)` takes the group's head and appends it to the group `to`.
 
   After each act the role the brain named runs its operations. A choice with an empty list, or

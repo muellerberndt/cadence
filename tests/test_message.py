@@ -539,6 +539,20 @@ def test_a_move_takes_a_head_onto_another_group_and_alone_holds_the_moment_itsel
                          message_settled=True, message_operations=[[], [("move", 0, 0)]])
 
 
+def test_a_clear_empties_a_group():
+    table = [[], [("write", 0)], [("clear", 0)]]
+    brain = cd.Brain.compose(12, 4 + 3, modules=(16,), seed=5, backend="cpu", slots=(4, 3),
+                             message=16, message_settled=True, message_phases=3,
+                             message_operations=table)
+    stream = _stream(np.random.default_rng(7), 3)
+    _say(brain, stream[0], [1, 1, 0])
+    _say(brain, stream[1], [1, 2, 0])  # the second stream's group emptied after its write
+    told = brain.message
+    assert told.counts[:, 0].tolist() == [2, 0, 0] and told.passed[:, 0].tolist() == [0, 0, 0]
+    assert not told.state.reshape(3, 3, 16)[1].any() and told.heads()[0].any()
+    assert not told.heads()[1].any()
+
+
 def test_a_worked_store_is_read_one_group_head_at_a_time(tmp_path):
     brain = _worked(message_read=True)
     told = brain.message

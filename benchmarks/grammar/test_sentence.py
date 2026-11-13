@@ -159,3 +159,20 @@ def test_a_quiet_echo_leaves_the_reads_address_as_it_is():
     assert {name: getattr(recall, name) for name in st._READ_RATES} == rates
     assert st._lesson(brain, x, labels, work, said=False)
     assert any(not np.array_equal(a, b) for a, b in zip(before, recall.head_map(0), strict=True))
+
+
+def test_a_paths_start_can_clear_the_store():
+    warnings.simplefilter("ignore")
+    clean = st.DESIGNS["alone_clean"]
+    start = dict(clean.roles)["start"]
+    assert start[0] == ("set", st.START) and {g for _, g in start[1:]} == (
+        set(range(len(st.GROUPS))) - {st.START})
+    assert clean.inventory(False)[0] == len(st.GROUPS)
+    brain = st.make_brain(0, {"learning_surprise": False}, 16, st.DEPTH, False, clean)
+    store = st.Store(16, clean.roles, st.DEPTH, len(st.GROUPS))
+    store.reset(1)
+    store.apply(np.array([clean.op["agent"]]), np.ones((1, 16)))
+    store.apply(np.array([clean.op["start"]]), np.full((1, 16), 2.0))
+    heads = store.heads().reshape(len(st.GROUPS), 16)
+    assert not heads[st.AGENT].any() and (heads[st.START] == 2.0).all()
+    assert brain.message.groups == len(st.GROUPS)

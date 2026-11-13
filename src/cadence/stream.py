@@ -776,7 +776,7 @@ def _roles(roles: Any, inputs: int) -> tuple[tuple[int, ...], ...]:
 
 
 # what a role does to a group of a store; ``move`` names a second group, the one moved to
-OPERATIONS = ("set", "write", "shift", "pop", "move")
+OPERATIONS = ("set", "write", "shift", "pop", "move", "clear")
 
 
 def _operations(operations: Any) -> tuple[tuple[tuple[Any, ...], ...], ...]:
@@ -838,13 +838,14 @@ class HeldMessage(Message):
     operates. The table holds one entry per choice of a motor slot (the role slot), each a list
     of ``(operation, group)``: ``set`` puts the moment's settled activity into the group's one
     block, ``write`` appends it to the group, ``shift`` moves the group's head to its next block,
-    ``pop`` removes the group's last block, and ``("move", group, to)`` takes the group's head
-    and appends it to another group. With ``alone`` the activity a block takes is the
-    association's settle of the moment's observation alone, every memory silent, where without
-    it the block takes the activity the moment settled to in its context (the brain gives
-    ``hear`` the one or the other). The state is ``groups * phases`` blocks, and the
-    region holds one block per group, its head: a queue's first block not shifted past, a
-    stack's (``stacks``) last block, silence where the group holds none. So the association
+    ``pop`` removes the group's last block, ``clear`` empties the group, and
+    ``("move", group, to)`` takes the group's head and appends it to another group. With
+    ``alone`` the activity a block takes is the association's settle of the moment's
+    observation alone, every memory silent, where without it the block takes the activity the
+    moment settled to in its context (the brain gives ``hear`` the one or the other). The
+    state is ``groups * phases`` blocks, and the region holds one block per group, its head: a
+    queue's first block not shifted past, a stack's (``stacks``) last block, silence where the
+    group holds none. So the association
     reads every group's head at once through the region's plastic synapses, and a group's
     blocks pass one head. After each act ``hear`` runs the operations of the role the brain
     named (or the role a lesson named for the moment).
@@ -1061,6 +1062,9 @@ class HeldMessage(Message):
                             self.counts[i, g] = given - 1
                         else:
                             self.passed[i, g] = behind + 1
+                elif operation == "clear":  # the group holds no block
+                    held[i, g] = 0.0
+                    self.counts[i, g], self.passed[i, g] = 0, 0
                 elif given > behind:  # pop
                     held[i, g, (given - 1) % phases] = 0.0
                     self.counts[i, g] = given - 1
