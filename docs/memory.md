@@ -1870,14 +1870,14 @@ third's, and the brain says the three places with three motor slots.
   says a name as its value is no record about that name.
 - **Gates say which context a head holds to.** A head holds one gate per place in the question,
   counted from the question's first word and from its last, read from a map of the question's
-  key. Every record about the focus holds the focus, so the context tells them apart: a
-  record's level is the share its key holds of the question's context words, each at its gate.
-  The head takes the record of the highest level and holds it where the level reaches
-  `longterm_match`. The maps start at zero, so a newborn head weighs every context word alike.
+  key. A record's level is the share its key holds of what the head looks for: the focus and
+  the context words, each at its gate. The head takes the record of the highest level and holds
+  it where the level reaches `longterm_match`. The maps start at zero, so a newborn head weighs
+  every context word alike.
 - **A head with no record holds nothing.** A word no record holds and few questions hold is a
   telling word with no record: its head stays silent and the next head reads the next word. A
-  subject that lacks the relation asked is silent as well: in a question of one relation its
-  other records hold none of the context.
+  head reads only the records that hold some of the question's context, so a subject that lacks
+  the one relation asked of it is silent as well: its other records answer other questions.
 - **A chain.** A head with no telling word of the question left takes what the head before it
   read as its focus. "The home of the boss of ada" reads ada's boss on the first head, then
   the boss's home on the second. A chain lies on its regions from its end, the record that
