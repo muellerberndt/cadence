@@ -136,6 +136,8 @@ def main(argv: list[str]) -> None:
     pr = ii.probes(p, rng, held, count=768)
     out["probes"] = {"accuracy": pr["accuracy"], "base_rate": pr.get("base_rate")}
     print("probes", json.dumps(out["probes"]), flush=True)
+    out["probes_by_region"] = ii.probes_by_region(p, rng, held, count=512)
+    print("probes_by_region", json.dumps(out["probes_by_region"]), flush=True)
     nb = ii.neighbours(p, rng, held, per=48)
     out["neighbours"] = {"nearest": nb["nearest"], "kinds": nb["kinds"], "cosine": nb["cosine"]}
     print("neighbours", json.dumps(nb["nearest"]), flush=True)

@@ -130,6 +130,10 @@ def anatomy(genome: dict[str, Any], inputs: int, ear: int, actions: int,
     first = base.regions[1].name  # the lowest processing region (the association when flat)
     entry = str(g["ear_entry"])
     sensory = [Projection("sensory/eyes", first, reciprocal=False, scale=scale)]
+    if str(g.get("eyes_entry", "module_0")) == "both" and first != "association":
+        # what the eyes see reaches the association region directly too (as the tectofugal
+        # pathway's entopallium reaches the nidopallium), beside the chain below it
+        sensory.append(Projection("sensory/eyes", "association", reciprocal=False, scale=scale))
     if entry in ("association", "both") and first != "association":
         sensory.append(Projection("sensory/ear", "association", reciprocal=False, scale=scale))
     if entry in ("module_0", "both") or first == "association":

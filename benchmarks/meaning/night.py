@@ -117,10 +117,15 @@ TAIL = CATCH + 2
 MASTERY = {"N0": .92, "N0b": .9, "N1": .92, "N2": .9, "N3": .88, "N4": .88, "N5": .9, "N6": .85}
 SAMPLED_GATE = 0.5
 REHEARSAL = 0.3  # the share of a step's blocks that revisit the earlier steps' forms
-NIGHT: dict[str, Any] = {"actor_hold": 0.93, "actor_eta": 0.1, "ear_entry": "module_0",
+NIGHT: dict[str, Any] = {"actor_hold": 0.93, "actor_eta": 0.1, "ear_entry": "both",
                          "history_decays": (0.0, 0.5, 0.8), "self_reward": 0.1,
                          "reply_suppression": 1, "gated_lesson": 1.0, "recall": 0,
-                         "correction_lesson": 1.0, "vocal_until": "N6", "records_agree": 3}
+                         "correction_lesson": 1.0, "vocal_until": "N6", "records_agree": 3,
+                         "word_records": 1, "sleep_scale": 0.5, "correction_label": "given",
+                         "babble_in_turn": 0}
+# the steps a night lives: echo across the gap (N0b) is left out, since the correction's label
+# is the voice's take of the trainer's word and no longer the parrot's own echo of it
+NIGHT_STEPS = ["N0", "N1", "N2", "N3", "N4", "N5", "N6"]
 
 
 @dataclass
@@ -725,14 +730,14 @@ def imitate_block(p: Parrot, rng: np.random.Generator, held: set[tuple[str, str]
         w = WORDS[int(rng.integers(len(WORDS)))]
         q = Question([w], [w], "echo" if gap else "imitate")
         exs.append(Exchange(r, [w, None], 1, q, extra={"dagger": dagger}) if gap
-                   else Exchange(r, [w], 0, q))
+                   else Exchange(r, [w], 0, q, extra={"dagger": dagger}))
     return exs
 
 
 def blocks_of(p: Parrot, rng: np.random.Generator, form: str, mode: str,
               held: set[tuple[str, str]], *, test: bool = False) -> list[Exchange]:
     if form == "imitate":
-        return imitate_block(p, rng, held)
+        return imitate_block(p, rng, held, dagger=mode == "dagger")
     if form == "echo":
         return imitate_block(p, rng, held, gap=True, dagger=mode == "dagger")
     return block(p, rng, form, mode, held, test=test)
@@ -801,6 +806,7 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
         import meaning_controls
 
         meaning_controls.control(control, p, parameters=int(p.brain.parameters()), seed=seed)
+        p.records = None  # the records are keyed by the association; a control has its own memory
     out: dict[str, Any] = {"seed": int(seed), "parameters": int(p.brain.parameters()),
                            "synapses": p.synapses, "streams": streams, "steps": {},
                            "pistachio": pistachio, "held": sorted(held)}
@@ -854,7 +860,8 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
                 checkpoint(index, b)
             if earlier and rng.random() < REHEARSAL:  # the trainer revisits earlier words
                 old = str(rng.choice(earlier))
-                key = old if old == "imitate" else f"{old}:dagger"
+                key = f"{old}:dagger" if old != "imitate" or int(
+                    p.genome.get("imitate_corrected", 0)) else old  # imitation with correction
             else:
                 key = keys[int(rng.choice(len(keys), p=weights / weights.sum()))]
             form, mode = key.split(":") if ":" in key else (key, "turn")

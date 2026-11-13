@@ -35,7 +35,8 @@ if str(HERE) not in sys.path:
 import night as nt  # noqa: E402
 
 PROPERTIES = ("round", "red", "food", "metal", "near", "left")
-REGIONS = ("association", "module_1", "module_0")
+# the association and the processing regions below it, top first (a deeper brain has more)
+REGIONS = ("association",) + tuple(f"module_{k}" for k in range(7, -1, -1))
 
 
 def label(t: nt.Thing, heading: float, prop: str) -> int:
@@ -156,6 +157,32 @@ def probes(p: nt.Parrot, rng: np.random.Generator, held: set[tuple[str, str]],
         out["probes"][prop] = pr
         out["accuracy"][prop] = float(np.mean((probe_read(pr, xb) > 0.5) == (yb > 0.5)))
         out.setdefault("base_rate", {})[prop] = float(max(yb.mean(), 1 - yb.mean()))
+    return out
+
+
+def probes_by_region(p: nt.Parrot, rng: np.random.Generator, held: set[tuple[str, str]],
+                     count: int = 512) -> dict[str, dict[str, float]]:
+    """Where the concept code lives: each property's probe fitted on one region's code alone,
+    read on held-out scenes (and the share a probe of that region would read by chance)."""
+    train = scenes(p, rng, count, held, test=False)
+    test = scenes(p, rng, count // 2, held, test=True)
+    pops = p.brain.connectome.populations
+    widths = [(r, len(pops[r])) for r in REGIONS if r in pops]
+    xa, _ = codes_of(p, train, rng)
+    xb, _ = codes_of(p, test, rng)
+    out: dict[str, dict[str, float]] = {}
+    at = 0
+    for region, width in widths:
+        part_a, part_b = xa[:, at:at + width], xb[:, at:at + width]
+        at += width
+        for prop in PROPERTIES:
+            ya = np.array([label(t, r.heading, prop) for r, t in train], float)
+            yb = np.array([label(t, r.heading, prop) for r, t in test], float)
+            if ya.min() == ya.max():
+                continue
+            pr = fit_probe(part_a, ya)
+            out.setdefault(region, {})[prop] = float(
+                np.mean((probe_read(pr, part_b) > 0.5) == (yb > 0.5)))
     return out
 
 
