@@ -167,6 +167,9 @@ things under a camera that turns, [`hosts.py`](hosts.py) the map held by a host 
 [`gates_map.py`](gates_map.py) reads a run's files against the declared gates of
 [`PROTOCOL.md`](PROTOCOL.md).
 
-`--physics '{"per": 3}' --train 800 --watched 0 50 200` raises learned physics on a nursery of
-the founder's scenes (`nursery`, the shares in `MIX`) and reads it after each number of scenes
-watched. [`belief.py`](belief.py) is a classical grid filter, a control.
+`--physics '{}' --watch 400 --watched 0 25 100 400` gives the map learned physics
+(`cadence.space.physics`, [the guide](../../docs/space.md#learned-physics-on-the-map)): the map
+watches 400 scenes of the founder's world (`reaches`: a person's hand drawn as the test scenes
+are, from the training seed, half among discs of the scene's own) and is read on every panel
+after each number of scenes watched, its learning paused while it is read. `--save` writes the
+taught map. [`belief.py`](belief.py) is a classical grid filter, a control.

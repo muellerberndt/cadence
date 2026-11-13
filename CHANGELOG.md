@@ -45,6 +45,26 @@
   question's read. `Words.practice` takes no lesson of its own where a part's `takes` holds. The
   chamber's rung is `benchmarks/words/several.py`
   ([protocol](benchmarks/words/PROTOCOL_SEVERAL.md)).
+### Learned physics on the map (#324)
+
+- **`Map(physics=True)`**: the map predicts where a thing it cannot see has gone, by how it has
+  seen things move. Four numbers are learned by watching (`rest`, `leave`, `ahead`, `aside`:
+  how often a moving thing comes to rest or leaves its line, and how far ahead and aside a thing
+  that left goes), from imagined lessons: every few moments of a thing in view the brain
+  imagines it out of view and compares the imagined line with where it is seen. A thing out of
+  view that moves is held as a core on its line, a trail where it may have come to rest and a
+  tail where it may have left its line; sight takes away what it sees of each. A fresh physics
+  answers as the map. On twelve fresh founders, after 400 scenes watched, a person's hand out
+  of view reads 9.4 cm against the map's 22.9 (10.3 after 25), stops 10.6 against 21.1, straight
+  movement 2.9 against the Kalman filter's 1.65; the area at .90 holds .87 (its gate is .90: hands
+  that turn out of view fall outside it). Two hands moving out of view: 7.4 ms a moment under
+  Pyodide.
+- **`Map.forecast(moments)`**: the map that many moments on as its physics predicts, a copy;
+  the map is left as it is and nothing is learned from it. `things()` gives a thing the physics
+  carries the state `"moving"` and its `velocity`.
+- **`cadence.space.physics.Physics`**: the learned part, shareable by several maps, kept in a
+  map's file.
+- No default changes: with physics unset the map is as on 0.99.0.
 
 ## 0.99.0 - 2026-11-13
 
