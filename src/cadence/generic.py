@@ -583,6 +583,14 @@ def _image_shape(inputs: Any) -> tuple[int, int, int] | None:
     return height, width, rest[0] if rest else 1
 
 
+def _matched_slots(answer: Any, labels: Any) -> float:
+    """How many slots, over every row, ``answer`` gives as ``labels`` show: with one motor slot
+    the rows that agree, with several every agreeing slot of every row. Zero for labels of
+    another shape than the answer, which the lesson refuses."""
+    given, shown = np.asarray(answer), np.asarray(labels)
+    return float(np.count_nonzero(given == shown)) if given.shape == shown.shape else 0.0
+
+
 def _count(name: str, value: Any, low: int = 0) -> int:
     """A Python or NumPy integer of at least ``low``; booleans are refused."""
     if (
@@ -709,10 +717,35 @@ _MESSAGE_FOUNDERS: dict[str, Any] = {
 # The founders of the brain's long-term records (``longterm=records`` names the records a stream
 # holds): heads, the drive of a held record, the cosine at which a record holds the message's key
 # for a read, and at which a write is that record told again (only the same key, for keys of
-# zeros and ones: two keys of a held message that differ in one unit are two facts, #288).
+# zeros and ones: two keys of a held message that differ in one unit are two facts, #288);
+# with ``longterm_turn`` the input channel that marks a turn, several in an episode, and the share
+# of the moments heard at or below which a code unit is content for a turn's key (#305); and
+# each stream's store (#310): the units whose pairs file a record (0: the store's address of
+# units), the address's units, the cue's winners and the candidates a read scores (None: the
+# store's own founders), and whether the records fade (False for records written once: the
+# fading touches every slot each moment)
 _LONGTERM_FOUNDERS: dict[str, Any] = {
-    "heads": 1, "amplitude": 3.0, "match": 0.75, "revise": 0.999,
+    "heads": 1, "amplitude": 3.0, "match": 0.75, "revise": 0.999, "turn": None, "rare": 0.03,
+    "distinct": None, "best": False, "rest": False,
+    "pairs": 0, "expansion": None, "winners": None, "candidates": None, "fade": True,
 }
+# The settings a brain is composed with and keeps for its life: ``retune`` refuses each of them
+# as a construction setting, and ``grow`` names those it does not add as construction choices.
+_CONSTRUCTION = frozenset({
+    "inputs", "actions", "modules", "observers", "lateral", "scales", "slots", "seed",
+    "features", "field", "learned_fields", "ports", "fields_motor",
+    "episodic", "backend", "device", "precision", "dense_limit", "connectome",
+    "history_decays",
+    "message", "message_phases", "message_winners", "message_fan_in", "message_gains",
+    "message_boundary", "message_boundary_holds", "message_roles", "message_settled",
+    "message_read",
+    "longterm", *(f"longterm_{name}" for name in _LONGTERM_FOUNDERS),
+    "carried_gain",
+    *_EPISODIC_SETTINGS, "recall", *(f"recall_{name}" for name in Recall.CONSTRUCTION),
+    *(f"recall_{name}" for name in Recall.CONSTRUCTION_OPTIONS), "code",
+    "learned_code", *(f"learned_code_{name}" for name in LearnedCode.GENES),
+    "attention", "apical", "maturity", "tied", "trained",
+})
 
 
 def _longterm_genes(longterm: Any, genes: Mapping[str, Any]) -> dict[str, Any]:
@@ -737,6 +770,32 @@ def _longterm_genes(longterm: Any, genes: Mapping[str, Any]) -> dict[str, Any]:
         out[name] = real(f"longterm_{name}", out[name], low=0)
         if out[name] > 1:
             raise ValueError(f"longterm_{name} is a cosine: it lies in [0, 1]")
+    if out["turn"] is not None:
+        out["turn"] = _count("longterm_turn", out["turn"], low=0)
+    out["rare"] = real("longterm_rare", out["rare"], low=0)
+    if not 0 < out["rare"] <= 1:
+        raise ValueError("longterm_rare is a share of the moments heard: it lies in (0, 1]")
+    if out["distinct"] is not None:
+        out["distinct"] = real("longterm_distinct", out["distinct"], low=0)
+        if out["turn"] is None or not 0 < out["distinct"] <= 1:
+            raise ValueError("longterm_distinct is a share of a cue's heaviest weight in (0, 1], "
+                             "and it reads turns: it needs longterm_turn=channel")
+    for name in ("best", "rest"):
+        if not isinstance(out[name], (bool, np.bool_)):
+            raise ValueError(f"longterm_{name} must be boolean")
+        out[name] = bool(out[name])
+        if out[name] and out["distinct"] is None:
+            raise ValueError(f"longterm_{name} reads records by what tells them apart: it "
+                             "needs longterm_distinct")
+    out["pairs"] = _count("longterm_pairs", out["pairs"], low=0)
+    if out["pairs"] == 1:
+        raise ValueError("longterm_pairs is 0 or the units whose pairs file a record: at least 2")
+    for name in ("expansion", "winners", "candidates"):
+        if out[name] is not None:
+            out[name] = _count(f"longterm_{name}", out[name], low=1)
+    if not isinstance(out["fade"], (bool, np.bool_)):
+        raise ValueError("longterm_fade must be boolean")
+    out["fade"] = bool(out["fade"])
     return out
 
 
@@ -871,7 +930,7 @@ def _load_composition(value: Any, learner: Learner) -> dict[str, Any] | None:
                 "sensory_scale", "working_memory_scale", "seed"}
     if not isinstance(value, dict) or set(value) - {
         "history_scale", "recall_scale", "image", "code", "learned_code", "attention", "apical",
-        "learned_fields", "ports", "tied",
+        "learned_fields", "ports", "tied", "fields_motor",
     } != expected:
         raise ValueError("invalid saved composition provenance")
     if "tied" in value and not _saved_tied(value["tied"]):
@@ -1532,14 +1591,15 @@ def _validate_longterm_state(
     if (
         not isinstance(kept, dict)
         or not isinstance(told, dict)
-        or told.get("boundary") is None
-        or told.get("boundary_holds") is not True
+        or (kept.get("turn") is None and (told.get("boundary") is None
+                                          or told.get("boundary_holds") is not True))
     ):
         raise ValueError("saved long-term records need a held message held from a turn")
     try:
         settings = _longterm_genes(
             kept["capacity"],
-            {f"longterm_{name}": kept[name] for name in _LONGTERM_FOUNDERS},
+            {f"longterm_{name}": kept.get(name, founder)
+             for name, founder in _LONGTERM_FOUNDERS.items()},
         )
         streams = kept["records"]
         seed = kept["seed"]
@@ -2039,6 +2099,7 @@ def _layout(
     learned_fields: int | None = None,
     ports: int = 0,
     tied: Any = None,
+    fields_motor: float = 0.0,
 ) -> tuple[Genome, dict[str, Any]]:
     """The layout ``Brain.compose`` develops (``Genome.composed``) and the settings it resolved.
     ``options`` are compose's other settings; the efference copy, the heard history, the recall
@@ -2274,8 +2335,28 @@ def _layout(
                 "blocks do not follow: a tie on it needs ports=0"
             )
         projections[named[0]] = replace(projections[named[0]], tied=blocks)
+    if (
+        isinstance(fields_motor, (bool, np.bool_))
+        or not isinstance(fields_motor, (int, float, np.integer, np.floating))
+        or not np.isfinite(fields_motor)
+        or fields_motor < 0
+    ):
+        raise ValueError("fields_motor must be a finite nonnegative scale")
+    fields_motor = float(fields_motor)
+    if fields_motor and not fields:
+        raise ValueError(
+            "fields_motor reads the pools of learned fields: inputs=(height, width[, channels]) "
+            "with learned_fields=features"
+        )
+    if fields_motor:
+        # Appended last: the brain with the pathway is the brain without it plus one plastic
+        # projection from the pools (and ports) to the motor region, beside the association's
+        projections.append(
+            Projection("sensory", "motor", scale=fields_motor, reciprocal=False)
+        )
     genome = Genome(tuple(regions), tuple(projections), label="composed-brain")
     return genome, {
+        "fields_motor": fields_motor,
         "inputs": inputs,
         "actions": actions,
         "units": units,
@@ -2741,7 +2822,12 @@ class Brain:
             self.longterm = LongTermRecords(
                 connectome, self.message, kept_records["records"], heads=kept_records["heads"],
                 amplitude=kept_records["amplitude"], match=kept_records["match"],
-                revise=kept_records["revise"], seed=seed,
+                revise=kept_records["revise"], seed=seed, turn=kept_records["turn"],
+                rare=kept_records["rare"], distinct=kept_records["distinct"],
+                best=kept_records["best"], rest=kept_records["rest"],
+                pairs=kept_records["pairs"], expansion=kept_records["expansion"],
+                winners=kept_records["winners"], candidates=kept_records["candidates"],
+                fade=kept_records["fade"],
             )
         # The index memory of the stream's moments. Populations named ``recall`` and ``next``
         # without ``recall=True`` are ordinary ones: an instrument may name and drive its own.
@@ -2880,6 +2966,9 @@ class Brain:
         )
         self.rehearsal_seen = 0
         self.rehearsal_draws = 0
+        # a map of things this brain holds (``cadence.space.map.Map``, opt-in): a graph of its
+        # own inside the brain object, saved and loaded with it
+        self.space: Any = None
 
     @property
     def brain(self) -> NeuralGraph:
@@ -3186,10 +3275,18 @@ class Brain:
         learned_fields: int | None = None,
         ports: int = 0,
         tied: Mapping[tuple[str, str], Sequence[int]] | None = None,
+        fields_motor: float = 0.0,
+        trained: Sequence[Any] | None = None,
         **options: Any,
     ) -> Brain:
         """Compose one continuing brain: senses, reciprocal processing regions, a motor choice and
         its memories, settling together.
+
+        ``trained=[module, ...]`` (opt-in; ``cadence.modules``) builds the brain around trained
+        modules: each module's regions stand beside the brain's own under the module's name
+        (``name/region``), its inputs follow the brain's own in the observation, the first
+        module region reads what it publishes through one-way synapses that start at zero, and
+        its trained synapses are grafted in and held (``graft``, ``freeze=True``).
 
         ``inputs`` is a vector length or an image shape ``(height, width[, channels])``, whose
         sensory region is a ``visual_cortex`` of ``features`` maps of ``field`` by ``field``
@@ -3209,7 +3306,9 @@ class Brain:
         fields that a local rule shapes, pooled over overlapping regions, in place of the visual
         cortex: the first module reads the pools and the memories key on them. ``ports=k``
         beside them reads ``k`` further values per row (a body's own senses) after the flattened
-        image, as sensory neurons beside the pools.
+        image, as sensory neurons beside the pools. ``fields_motor=scale`` (opt-in, with
+        ``learned_fields``) adds a plastic projection from the pools to the motor region at that
+        scale, beside the association's, taught by the same lessons.
         ``tied={(pre, post): (blocks of pre, blocks of post)}`` (opt-in) ties a projection of
         the layout across equal blocks of its regions: ``(k, 1)`` reads every block of ``pre``
         through one set of synapses, ``(1, k)`` writes every block of ``post`` through one, and
@@ -3246,6 +3345,16 @@ class Brain:
         refusal.
         """
 
+        if trained:
+            return _compose_trained(
+                cls, inputs, actions,
+                [trained] if hasattr(trained, "record") else list(trained),
+                connectome=connectome, modules=modules,
+                observers=observers, lateral=lateral, teaching=teaching, scales=scales,
+                features=features, field=field, code=code, learned_code=learned_code,
+                attention=attention, seed=seed, slots=slots, learned_fields=learned_fields,
+                ports=ports, tied=tied, fields_motor=fields_motor, options=options,
+            )
         if not isinstance(attention, bool):
             raise ValueError("attention must be boolean")
         if attention:
@@ -3300,6 +3409,7 @@ class Brain:
             scales=scales, features=features, field=field, code=code,
             learned_code=learned_code, seed=seed, slots=slots, learned_fields=learned_fields,
             ports=ports, tied=None if connectome is not None else tied,
+            fields_motor=fields_motor,
         )
         # the tied projections by the connectome's populations: the layout's own, or the ones
         # the caller names on a custom anatomy
@@ -3339,10 +3449,11 @@ class Brain:
                 or lateral is not None
                 or scales is not None
                 or (features, field) != (8, 3)
+                or layout["fields_motor"]
             ):
                 raise ValueError(
                     "a connectome brings its own layout: modules, observers, lateral, "
-                    "scales, features and field are compose's layout settings"
+                    "scales, features, field and fields_motor are compose's layout settings"
                 )
             populations = connectome.populations
             sensory = populations.get("sensory", populations.get("visual/input", ()))
@@ -3440,6 +3551,8 @@ class Brain:
             result._composition["ports"] = layout["ports"]
         if layout["tied"]:
             result._composition["tied"] = _tied_rows(layout["tied"])
+        if layout["fields_motor"]:
+            result._composition["fields_motor"] = layout["fields_motor"]
         if attention:
             result._composition["attention"] = True
         if result.brain.apical is not None:
@@ -3477,25 +3590,11 @@ class Brain:
         and reward references and keeps its age and work counters. Returns this same brain.
         """
         options = dict(genes)
-        construction = {
-            "inputs", "actions", "modules", "observers", "lateral", "scales", "slots", "seed",
-            "episodic", "backend", "device", "precision", "dense_limit", "connectome",
-            "history_decays",
-            "message", "message_phases", "message_winners", "message_fan_in", "message_gains",
-            "message_boundary", "message_boundary_holds", "message_roles", "message_settled",
-            "message_read",
-            "longterm", *(f"longterm_{name}" for name in _LONGTERM_FOUNDERS),
-            "carried_gain",
-            *_EPISODIC_SETTINGS, "recall", *(f"recall_{name}" for name in Recall.CONSTRUCTION),
-            *(f"recall_{name}" for name in Recall.CONSTRUCTION_OPTIONS), "code",
-            "learned_code", *(f"learned_code_{name}" for name in LearnedCode.GENES),
-            "attention", "apical", "maturity", "tied",
-        }
         for name in options:
             refusal = rescaled(name)
             if refusal is not None:
                 raise ValueError(refusal)
-            if name in construction:
+            if name in _CONSTRUCTION:
                 raise ValueError(f"{name} is a construction setting; retune preserves the brain")
         point = options.pop("teaching", None)
         if point is not None and "learning" in options:
@@ -3698,9 +3797,14 @@ class Brain:
         *,
         into: str | None = None,
         joints: str = "zero",
-        freeze: bool = False,
+        freeze: bool | None = None,
     ) -> Brain:
         """This brain with trained regions of another brain, as a new brain; both are unchanged.
+
+        ``donor`` is a brain, or a trained module (``cadence.modules``): a module is grafted
+        into the populations that hold its regions here (``name/region``, or the regions' own
+        names), and a brain that lacks one is refused by that region's name. ``freeze`` is off
+        for a brain and on for a module unless given.
 
         ``regions`` names populations of ``donor`` grafted into this brain's populations of the
         same names, or maps a donor population to one of this brain's (``{"association":
@@ -3731,11 +3835,34 @@ class Brain:
         different neuron model, apical compartment or apical role; a learned code's region, or
         a joint landing on it; tied synapses and rates set by hand. See ``docs/grow.md``.
         """
+        from .modules import Module
+        from .modules import host as _module_regions
+
+        if isinstance(donor, Module):
+            if regions is None and into is None:
+                regions = _module_regions(donor, self)
+            donor = donor.brain()
+            freeze = True if freeze is None else freeze
+        freeze = False if freeze is None else freeze
         if self.message is not None or getattr(donor, "message", None) is not None:
             raise ValueError("a brain with a message is not grafted in this version")
         if self.fields is not None or getattr(donor, "fields", None) is not None:
             raise ValueError("grow and graft take a brain without learned fields in this version")
         return _graft(self, donor, regions, into, joints, freeze)
+
+    def save_module(self, path: str | Path, *, name: str, inputs: Sequence[str],
+                    published: Sequence[str], regions: Sequence[str] | None = None,
+                    interface: Mapping[str, Any] | None = None,
+                    card: Mapping[str, Any] | None = None) -> Path:
+        """Write this brain's trained regions as a module file (``cadence.modules.save``): the
+        populations ``regions``, of which ``inputs`` are driven by the module's own senses and
+        ``published`` are read by a host, with the module's own ``interface`` record and its
+        ``card``. This brain is unchanged."""
+        from .modules import save as _save_module
+
+        return _save_module(self, path, name=name, inputs=inputs, published=published,
+                            regions=regions, interface=None if interface is None
+                            else dict(interface), card=None if card is None else dict(card))
 
     def describe(self) -> dict[str, Any]:
         """Describe the brain without changing live state: four sections, and ``placement``, where
@@ -3831,6 +3958,15 @@ class Brain:
             genes.update(longterm=kept.capacity, longterm_heads=kept.heads,
                          longterm_amplitude=kept.amplitude, longterm_match=kept.match,
                          longterm_revise=kept.revise)
+            if kept.turn is not None:
+                genes.update(longterm_turn=kept.turn, longterm_rare=kept.rare)
+            if kept.distinct is not None:
+                genes["longterm_distinct"] = kept.distinct
+            if kept.best:
+                genes["longterm_best"] = True
+            if kept.rest:
+                genes["longterm_rest"] = True
+            genes.update({f"longterm_{name}": value for name, value in kept.address().items()})
         maturity = self.basal_ganglia.maturity
         if maturity is not None:
             genes.update(maturity=True, maturity_scale=maturity.scale,
@@ -5257,8 +5393,10 @@ class Brain:
         key = self._decision_key(code)  # of the decision the lesson is shown for
         answer = None
         tokens = None if labels is None else self._token_rows(labels)
+        matched = 0.0  # the slots, over every row, the judging answer gives as shown
         if judged is not None:
             answer = judged[1]
+            matched = _matched_slots(answer, labels)
         elif self.learner.config.surprise and labels is not None:
             # the brain's own answer, the act it would issue: its complete greedy choice on the
             # settle its act reads, warm from the stream, with the episodic vote under the
@@ -5274,6 +5412,8 @@ class Brain:
                 answer = np.where(
                     tokens.reshape((-1,) + (1,) * (np.ndim(answer) - 1)), answer, -1
                 )
+            # after the mask: a row taught at every lesson counts no agreed slot
+            matched = _matched_slots(answer, labels)
         agreed = None
         whole = None
         differs = None if judged is None else judged[2]
@@ -5321,6 +5461,9 @@ class Brain:
         if self.message is not None and self.message.reads:
             # the read's lesson: the message's blocks scored against the lesson's movement
             teaching.update(self.message.learn(self.learner.brain, lesson))
+        # a row of several motor slots agrees only where every slot does, so beside the rows
+        # the report counts the slots: zero where the lesson does not judge its rows
+        teaching["agreed_slots"] = matched
         named = self.__dict__.get("_agreed_report") if agreed is not None else None
         if named is None or named[0] != teaching:
             named = (
@@ -6631,7 +6774,9 @@ class Brain:
         ``history``, ``recall``, ``hippocampus``, ``episodic``) with the memory's settings
         under ``memories`` in the metadata; with ``learning_rehearsal`` the reservoir of lessons
         with their episodes and the streams' episodes (``rehearsal/...``, the counts under
-        ``rehearsal``). ``Learner.save`` saves the slow learned response alone.
+        ``rehearsal``); with a map of things (``space``, a ``cadence.space.map.Map``) its record
+        under ``space`` and its codes and carried state under ``space/``. ``Learner.save`` saves
+        the slow learned response alone.
         ``compressed=False`` writes a plain archive, as ``cadence.checkpoint.save`` does: larger
         on disk, and a large brain's is written in a small part of the time deflating takes.
         """
@@ -6764,6 +6909,10 @@ class Brain:
                 np.concatenate(moments) if moments else np.zeros((0, self.inputs))
             )
             data["rehearsal/labels"] = labels
+        if self.space is not None:  # a map of things: its record and its carried state
+            record, arrays = self.space.parts()
+            metadata["space"] = record
+            data.update({f"space/{name}": value for name, value in arrays.items()})
         data["brain"] = np.array(canonical_json(metadata))
         return _write(data, path, compressed=compressed)
 
@@ -6946,7 +7095,8 @@ class Brain:
                     if kept is None
                     else {
                         "longterm": kept["capacity"],
-                        **{f"longterm_{name}": kept[name] for name in _LONGTERM_FOUNDERS},
+                        **{f"longterm_{name}": kept.get(name, founder)
+                           for name, founder in _LONGTERM_FOUNDERS.items()},
                     }
                 ),
                 **(
@@ -7315,6 +7465,12 @@ class Brain:
                 result._awaiting = (acted, sensed)
             if "rehearsal" in meta or any(name.startswith("rehearsal/") for name in data):
                 _load_episodes(result, meta, data)
+            if "space" in meta:  # a map of things held in the brain object
+                from .space.map import Map
+
+                result.space = Map.from_parts(meta["space"], {
+                    name[len("space/"):]: data[name] for name in data
+                    if name.startswith("space/")})
         return result
 
 
@@ -7558,6 +7714,15 @@ def _grow_parts(brain: Brain, settings: Mapping[str, Any]) -> dict[str, Any]:
                 f"{name}: the hippocampus and its episodic memory are a construction choice grow "
                 "does not add or change; compose the brain with them"
             )
+        if name == "trained":
+            raise ValueError(
+                "trained is a construction choice grow does not add; compose the brain with "
+                "it, or graft a module into a brain that holds its regions (graft(module))"
+            )
+        if name in _CONSTRUCTION:
+            raise ValueError(
+                f"{name} is a construction choice grow does not add; compose the brain with it"
+            )
         raise ValueError(f"{name} is not a part; retune changes a living brain's settings")
     return changes
 
@@ -7786,6 +7951,9 @@ def _grown_checkpoint(
             continue
         if name.startswith("rehearsal/"):
             continue  # the reservoir's labels may lack a new slot: the grown brain starts afresh
+        if name.startswith("space/"):  # a map of things the brain holds goes with it as it is
+            data[name] = value
+            continue
         if name not in new:
             raise RuntimeError(f"grow could not lay this brain out again: {name} is missing")
         target = new[name]
@@ -7859,6 +8027,70 @@ def _grown_array(
 
 
 # -- grafting trained regions of one brain into another (``Brain.graft``)
+
+
+def _compose_trained(
+    cls: type[Brain], inputs: Any, actions: int, trained: list[Any], *,
+    connectome: Connectome | None, options: dict[str, Any], seed: int, **layout: Any,
+) -> Brain:
+    """``Brain.compose(..., trained=[module, ...])``: the composed layout with every module's
+    regions beside it as ``name/region``, the modules' inputs after the brain's own in the
+    observation, one-way synapses from what a module publishes to the first module region, and
+    the modules grafted in, held."""
+    from .modules import Module
+
+    if connectome is not None:
+        raise ValueError("trained modules join a composed layout: graft them into an anatomy "
+                         "of your own with graft(module)")
+    for name in ("code", "learned_code", "learned_fields", "tied"):
+        if layout.get(name):
+            raise ValueError(f"trained modules take a vector brain without {name} in this version")
+    if isinstance(inputs, bool) or not isinstance(inputs, (int, np.integer)) or layout.get("ports"):
+        raise ValueError("trained modules take a vector brain in this version: inputs is a count")
+    if inputs < 1:
+        raise ValueError("a brain around a module holds one input of its own or more")
+    if any(type(m).__name__ == "Map" for m in trained or ()):
+        raise ValueError("a map of things (cadence.space.map.Map) joins a brain as brain.space; "
+                         "trained= takes trained modules, brains saved with save_module")
+    if not trained or any(not isinstance(m, Module) for m in trained):
+        raise ValueError("trained is a list of trained modules (cadence.load_module of a file "
+                         "save_module wrote)")
+    held = [m.name for m in trained]
+    if len(set(held)) != len(held):
+        raise ValueError("two trained modules share one name")
+    options = dict(options)
+    if "recall" not in options:
+        options["recall"] = True  # the memory a new brain holds
+    if options["recall"] is True and not options.get("recall_founder", False):
+        options.setdefault("history_decays", _COMPOSED_SETTINGS["history_decays"])
+    total = int(inputs) + sum(m.width for m in trained)
+    shape = {k: v for k, v in layout.items() if k not in ("teaching", "attention")}
+    genome = Genome.composed(total, actions, seed=seed, **shape, **options)
+    first = next(p.post for p in genome.projections if p.pre == "sensory")
+    scale = next(p.scale for p in genome.projections if p.pre == "sensory")
+    regions = [Region("sensory", int(inputs)) if r.name == "sensory" else r
+               for r in genome.regions]
+    projections = list(genome.projections)
+    donors = [m.brain() for m in trained]
+    for module, donor in zip(trained, donors, strict=True):
+        if module.name in {r.name for r in regions}:
+            raise ValueError(f"a region of this brain is named {module.name!r} as the module is")
+        regions.append(Region(module.name, circuit=donor.connectome))
+        projections.extend(Projection(f"{module.name}/{region}", first, scale=scale,
+                                      reciprocal=False) for region in module.published)
+    anatomy = develop(Genome(tuple(regions), tuple(projections), label=genome.label), seed=seed)
+    populations = anatomy.populations
+    sensory = list(populations["sensory"])
+    for module in trained:
+        for region in module.inputs:
+            sensory.extend(populations[f"{module.name}/{region}"])
+    anatomy = anatomy.with_populations(sensory=sensory)
+    # the anatomy holds the layout the caller named (modules, observers, lateral, scales)
+    brain = cls.compose(total, actions, connectome=anatomy, seed=seed, slots=layout["slots"],
+                        teaching=layout["teaching"], attention=layout["attention"], **options)
+    for module, donor in zip(trained, donors, strict=True):
+        brain = brain.graft(donor, into=module.name, freeze=True)
+    return brain
 
 
 def _graft(

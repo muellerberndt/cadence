@@ -1532,7 +1532,11 @@ Use it to alternate or sequence the brain's own actions under identical input: i
 efference_decay=0.0`) alternation reads 0.97 and 0.93 against 0.50 and 0.40 with the trace
 alone and 0.50 for uniform random. Leave it off for delayed credit: in the
 [key-door chamber](../benchmarks/keydoor/README.md) a copy at amplitude 0.3 feeds less at every
-delay, and at 3.0 the creature does not feed.
+delay, and at 3.0 the creature does not feed. Taught on its own path, a brain with the copy learns
+more slowly at first: on the [cart-pole chamber's ablation](../benchmarks/coaching/README.md#which-opt-ins-a-coached-brain-needs)
+its first round balanced 23, 4 and 0 starts of 32 against 32, 13 and 21 without the copy, and both
+balanced 32 of 32 by the third. On a default brain with the copy (the chamber's `coach+efference`
+arm) one founder of three stays at 0 of 32 through four rounds.
 
 ## Heard history
 
@@ -1724,6 +1728,15 @@ recall memory's read.
 | `longterm_amplitude` | `3.0` | construction | Drive of a record's value on its region |
 | `longterm_match` | `0.75` | construction | The cosine at which a record holds the message's key for a read |
 | `longterm_revise` | `0.999` | construction | The cosine at which a write is a record told again: the same key, for keys of zeros and ones |
+| `longterm_pairs` | `0`, off | construction | Files each record under the pairs of this many units: [a million records](#a-million-records-opt-in) |
+| `longterm_expansion`, `longterm_winners`, `longterm_candidates` | the store's own | construction | The address's units, a cue's winners and the slots a read scores |
+| `longterm_fade` | `True` | construction | `False` for records written once: the fading touches every slot each moment |
+
+**A stream of a million records.** A stream of more than 16,384 records reads through an
+address. `longterm_pairs=16, longterm_expansion=16384, longterm_winners=256,
+longterm_candidates=4096, longterm_fade=False` gives each stream's store the address of pairs, so
+a read's cost grows far slower than the records. The read before the settle is the write's
+recognition, as in the bank.
 
 `brain.longterm` is a `LongTermRecords`: `stores` (one `cd.LongTermMemory` per stream),
 `read_slots` (each head's record at the latest read, -1 for none), `counts` (writes, revisions,
@@ -1757,6 +1770,97 @@ found at 10,000 records reads 1.000 on every founder over the facts whose key is
 .9875 to 1.000 over all facts: two facts whose key is one key are one record. On one core a
 moment with 10,000 records a stream costs 1.3 times a moment without them over one stream and 1.7
 times over 16 streams; on a GPU, with the stores read one by one, 1.7 times over one stream.
+
+### Turns in a conversation (opt-in)
+
+In a conversation one episode tells many facts, and a question shares few words with the
+statement it asks about: "mary went to the kitchen" and "where is mary ?" share "mary" alone.
+`longterm_turn=channel` keys the records for that. Every heard moment with the input channel on
+is a turn, and an episode holds as many turns as it hears.
+
+- **The key is what the turn is about.** A turn's key is made of the moments heard since the
+  last value: their codes under the message's code, kept only on the units that are rare. A
+  unit counts as rare when it has been on in at most `longterm_rare` (3%) of the moments the
+  brain has heard. The frequent words ("the", "is", "where") drive units that drop out, so a
+  statement and a question about one person share the person's units.
+- **Every turn writes.** The moment after a turn is its value, written under the turn's key
+  as any record is: the same key with another value revises the record. The next key starts
+  after the value. No reset is needed between facts, so the recall memory keeps the episode.
+- **The read** happens at the moment after a turn: the answer's moment after a question, or
+  a fact's value. Lessons at that moment see the record on its region, so the association
+  learns to answer from it.
+
+The message needs no boundary here; it is held over the episode as without records.
+
+```python
+TURN = 14                                  # agents 0-5, verbs 6-9, patients 10-13, the turn 14
+talker = Brain.compose(inputs=15, actions=4, modules=(32,), seed=0, message=70, longterm=64,
+                       longterm_turn=TURN, longterm_rare=1.0)    # every unit counts as content
+for on in (0, 6, TURN, 12, 1, 7, TURN, 13):                     # two facts in one episode
+    talker.act(seen(on), greedy=True)
+assert talker.longterm.stores[0].count == 2                     # a record at each turn
+for on in (0, 6, TURN):                                         # the first fact asked again
+    talker.act(seen(on), greedy=True)
+drive = talker.stimulus(np.zeros((1, 15)))
+assert np.allclose(drive[0, talker.connectome.populations["longterm"]], 3.0 * seen(12)[0])
+```
+
+| Setting | Founder | Changed by | What it sets |
+| --- | --- | --- | --- |
+| `longterm_turn` | `None`, off | construction | The input channel that marks a turn; several turns in an episode |
+| `longterm_rare` | `0.03` | construction | The share of the moments heard at or below which a code unit is content for a key |
+
+`save` keeps the turns' windows and keys and the units' counts.
+
+**Records read by what tells them apart (`longterm_distinct`).** A bar on how often a unit is on
+depends on the lexicon: with four people, a name is as frequent as the bar and drops out.
+`longterm_distinct=share` (with `longterm_turn`) reads by what tells the stream's records apart
+instead.
+
+- Each distinct heard moment is one entry of a codebook, so two words whose codes share units
+  stay two entries. A record holds the whole statement: its window's entries and its value's.
+- An entry weighs `log((n + 1) / (records holding it + 1))` among the stream's `n` records: an
+  entry every record holds ("the", ".") weighs nothing, one that only a person's records hold
+  weighs most. An entry no record holds ("where", "?") weighs nothing.
+- A question's cue keeps its entries of at least `share` times its heaviest weight, and the read
+  takes the latest record holding at least `longterm_match` of the cue's weight. Every value is a
+  record of its own, so a fact told again is read from its latest telling.
+- With `longterm_heads=2` the second head chains: of the first record's entries outside the cue,
+  the one the most records hold (what the record is about: a person recurs in more records than
+  the words around them) cues the latest other record holding it. "Where is the football?" reads
+  "john picked up the football" and then where john went.
+
+A stream's records are kept as lists: each record's entries, and for each entry the records
+that hold it. A read touches only the records that hold the cue's entries, so the records and the
+codebook grow to a hundred thousand records and more.
+
+**The record that holds the most (`longterm_best=True`).** A question that names a subject and a
+relation ("what is the capital of italy ?") shares its subject with every fact about the subject
+and its relation with every fact of the relation. The latest record above the match may hold only
+one of them. With `longterm_best=True` the read takes the record that holds the largest share of
+the cue's weight, at least `longterm_match`, and the latest among records holding the same share.
+The record of both the subject and the relation is read, and a fact told again is read from its
+latest telling, which holds the same share as the earlier one.
+
+**What the question asks beyond the first record (`longterm_rest=True`).** A question of two
+facts ("what is the capital of the citizenship of ada lovelace ?") is answered by two records: the
+first names the country, the second holds the country's capital. With `longterm_rest=True` a
+second read is cued by the first record's entries outside the question (its value, the country)
+together with the question's entries the first record does not hold and that weigh at least
+`longterm_distinct` of the question's heaviest ("capital"). The regions hold the chain from its
+end: the record that answers (the capital) on `longterm`, and with `longterm_heads=2` the first
+record (the country) on `longterm_1`, so the brain says an answer from one region whether the
+question asks one fact or two. Where the first record holds every such entry, the question asks
+one fact and that record is the chain.
+
+| Setting | Founder | Changed by | What it sets |
+| --- | --- | --- | --- |
+| `longterm_distinct` | `None`, off | construction | A cue keeps its entries of at least this share of its heaviest weight |
+| `longterm_best` | `False` | construction | The read takes the record holding the most of the cue's weight; needs `longterm_distinct` |
+| `longterm_rest` | `False` | construction | A second read takes what the question asks beyond the first record; the answering record on `longterm`; needs `longterm_distinct` |
+
+The [encyclopedia chamber](../benchmarks/encyclopedia/README.md) reads these settings on facts
+from Wikidata.
 
 ## How strongly a carried region is heard
 
@@ -2520,12 +2624,122 @@ copy stays behind to split the read.
 | `seed` | `0` | Draws the address's projection |
 | `dtype` | `float64` | The type the keys and values are held in; `"float32"` halves their bytes |
 | `cosine` | `False` | Scores the fine read and a write's recognition by the cosine in place of the dot product |
+| `pairs` | `0`, off | Files a record under the pairs of its `pairs` most driven units: [a million records](#a-million-records-opt-in) |
+| `apart` | `0`, off | The width of a fact's source, whose signature tells two facts with one key apart: [keys held apart](#keys-held-apart-opt-in) |
 
 `read(cue, heads=1, credit=True)` returns a `LongTermRead` (`slots`, `weights`, `first(head)`,
 `mass(slot, head)`); `value(read, head)` is what a head holds; `write(key, value)` returns the
 slot and whether the write revised a record. `to_dict()` gives the settings and `arrays()` the
 state, which `restore(arrays)` takes back: a saved memory continues as the one it was saved
 from. `Brain.save` does not save it; the caller does.
+
+#### A million records (opt-in)
+
+The address above lists every slot under each of its 64 winning units. A cue's units then name
+about half of the slots, however many there are, so the address's work grows with the records:
+at 100,000 records a read takes .7 ms on one core, at 1,000,000 about 5 ms.
+
+`pairs=units` files a record another way. The record's `pairs` most driven units are taken two at
+a time, and the slot is written into a table cell for each pair. A cue's `winners` name the pairs
+it reads. A record far from the cue shares a unit with it now and then, and a pair of units far
+more rarely, so the slots a read touches grow far slower than the records. The slots found under
+the most pairs, `candidates` of them, go to the same competition as before.
+
+```python
+rng = np.random.default_rng(2)
+keys = rng.standard_normal((3000, 32)).astype(np.float32)
+keys /= np.linalg.norm(keys, axis=1, keepdims=True)
+values = np.eye(8, dtype=np.float32)[np.arange(3000) % 8]
+library = cd.LongTermMemory(width=32, value_width=8, capacity=3000, pairs=8, expansion=512,
+                            winners=32, candidates=64, direct=0, cosine=True, fade=False,
+                            dtype="float32")
+library.fill(keys, values)                         # many records told once, in one pass
+read = library.read(keys[40], credit=False)
+assert read.first() == 40 and len(read.slots) <= 64               # 64 of 3,000 slots scored
+assert np.array_equal(library.value(read), values[40])
+```
+
+- **`fill(keys, values)`** writes rows of records told once. Nothing is read, so a key told twice
+  holds two records; `write` recognises and revises as before.
+- **Sizes.** For a million records the declared reading uses `pairs=16, expansion=16384,
+  winners=256, candidates=4096`. A record then costs 960 bytes of table beside its key and value.
+  Keep `fade=False` for records written once: the fading touches every slot each moment.
+- **Any key.** A key is centred before it drives the units, so a key of zeros and ones (a held
+  message's) and a dense key are filed alike.
+- **Compiled where Numba is installed.** The count over the pairs runs in one compiled loop with
+  the `fast` extra (`pip install "cadence-net[fast]"`), and through NumPy without it. Both give
+  the same slots.
+
+**Several parts, and chains.** A question of several parts gives each head a cue of its own:
+`read_each(cues)` reads `cues[h]` with head `h`, among the slots the heads before it left. One
+cue that sums four unrelated keys holds each of them weakly, and a read of it misses some; four
+heads with a part each find all four. A chain reads a record, lays its value on the next cue and
+reads again:
+
+```python
+entities, relations = np.eye(16)[:8], np.eye(16)[8:]         # 8 entities, 8 relations
+facts = cd.LongTermMemory(width=32, value_width=16, capacity=64, cosine=True)
+facts.write(np.concatenate([entities[0], relations[0]]), entities[3])   # 0 --r0--> 3
+facts.write(np.concatenate([entities[3], relations[1]]), entities[5])   # 3 --r1--> 5
+facts.write(np.concatenate([entities[0], relations[2]]), entities[7])   # 0 --r2--> 7
+both = facts.read_each(np.stack([np.concatenate([entities[0], relations[0]]),
+                                 np.concatenate([entities[0], relations[2]])]), credit=False)
+assert [both.first(0), both.first(1)] == [0, 2]               # two parts, two records
+hops = facts.chain(np.concatenate([entities[0], relations[0]]),
+                   [np.concatenate([np.zeros(16), relations[1]])], credit=False)
+assert np.array_equal(facts.value(hops[-1]), entities[5])     # 0 --r0--> 3 --r1--> 5
+about = facts.read(np.concatenate([entities[0], np.zeros(16)]), heads=2, credit=False)
+assert {about.first(0), about.first(1)} == {0, 2}             # the subject alone: its facts
+```
+
+Here a key has two parts on coordinates of their own, the subject beside the relation. A cue with
+one part silent reads every record that holds the other, and a value that is an entity's code can
+be the next cue's subject (`at` says where it lies).
+
+**What it reads** ([memory-scale benchmark](../benchmarks/memory_scale/README.md#the-fourth-declaration-a-million-records),
+#310; declared on twelve fresh founders, the address of pairs at `pairs=16, expansion=16384,
+winners=256, candidates=4096`, beside the scan that scores every record):
+
+| Reading among 1,000,000 records | The address of pairs | The scan |
+| --- | --- | --- |
+| The right record from its exact key | 1.000 | 1.000 |
+| From a key with noise of its own energy, codes of 128 | .997 to 1.000 | 1.000 |
+| From a key with half of its coordinates silent, codes of 128 | .996 to 1.000 | 1.000 |
+| The same, keys of 280 with 15 to 22 units on | .973 to .986 | .982 to .992 |
+| The subject alone, 8 heads: 8 different facts about it | .994 to 1.000 | 1.000 |
+| A question of four parts, a head for each part | 1.000 | 1.000 |
+| The same four parts summed into one cue | .000 to .006 | .000 to .010 |
+| A chain of three facts from an exact cue | .998 to 1.000 | 1.000 |
+| Records a read scores; bytes a record (codes of 128) | 4,096; 1,783 | 1,000,000; 772 |
+
+On one core a read at 1,000,000 records takes 3.4 ms through the address of pairs (4.6 ms
+without Numba), 5.0 ms through the address of units and 48 ms for the scan (codes of 128); from
+100,000 to 1,000,000 records the pairs' read grows 1.3 to 1.5 times, the units' about 7 times.
+At 100,000 records the address of units is the cheaper read (.7 ms against 2.5 ms).
+
+#### Keys held apart (opt-in)
+
+Two facts whose keys are one key are one record: the second write revises the first. This happens
+where a code maps two different sentences to the same units. `apart=width` lets a write take the
+fact's `source` as well, a row of `width` values that the key was coded from (the sentence's raw
+form, or a second code of it). The memory keeps a small signature of the source. A write whose key
+is held revises that record only where the signatures agree; another signature is another fact
+and takes a slot of its own. A read that carries its source gets its own fact:
+
+```python
+key = np.eye(16)[0]
+rome, paris = np.eye(8)[1], np.eye(8)[2]
+first, second = rng.standard_normal(20), rng.standard_normal(20)     # two sentences, one key
+facts = cd.LongTermMemory(width=16, value_width=8, capacity=32, cosine=True, revise=0.999,
+                          apart=20)
+facts.write(key, rome, source=first)
+slot, revised = facts.write(key, paris, source=second)
+assert not revised and facts.count == 2                       # another fact, its own record
+assert np.array_equal(facts.value(facts.read(key, source=first, credit=False)), rome)
+assert np.array_equal(facts.value(facts.read(key, source=second, credit=False)), paris)
+slot, revised = facts.write(key, paris, source=first)         # the first fact, told again
+assert revised and facts.count == 2
+```
 
 **Beside a brain.** The memory's read of a moment's key is held on input coordinates of its own,
 as a recall port is held through a settle, and lessons teach the brain to answer from it:

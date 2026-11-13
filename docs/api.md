@@ -13,6 +13,8 @@ keyword.
 | [The graph](#neuralgraph-cadence) | `NeuralGraph`, `BrainState`, `Equilibrium`, `Nudge`, `Connectome`, `NeuronModel`, `Adaptation`, blocks, `Certificate`, the neuron-by-neuron reference |
 | [Wiring and instruments](#regions-and-genome-cadenceregions-cadencegenome) | `Region`, `regions`, `Projection`, `Genome`, `develop`, `evolve`, `genes`, `Receipt` |
 | [Recording](#record-every-settling-step) | `record_settlements` |
+| [Population code](#population-code-cadencetuning) | `PopulationCode` |
+| [Modules](#modules-cadencemodules), [the map of things](#the-map-of-things-cadencespacemap) | `load_module`, `Module`, `modules.names`, `modules.load`, `modules.save`, `modules.host`, `Map`, `Sense`, `sparse_codes` |
 
 `cadence.__version__` is the installed release string.
 
@@ -24,7 +26,7 @@ keyword.
 Brain.compose(inputs, actions, *, connectome=None, modules=(64,), observers=(),
               lateral=None, teaching=None, scales=None, features=8, field=3, code=None,
               learned_code=None, attention=False, seed=0, slots=1, learned_fields=None,
-              ports=0, tied=None, **options) -> Brain
+              ports=0, tied=None, fields_motor=0.0, trained=None, **options) -> Brain
 ```
 
 The composed System 1 brain, with optional System 2 `observers` in the same graph.
@@ -52,6 +54,9 @@ The composed System 1 brain, with optional System 2 `observers` in the same grap
 - `ports=k` (opt-in, with `learned_fields`): `k` further values per observation row after the
   flattened image, read by `k` sensory neurons beside the pools and keyed on with them
   ([ports beside the screen](senses.md#ports-beside-the-screen)).
+- `fields_motor=scale` (opt-in, with `learned_fields`): a plastic projection from the pools to the
+  motor region at that scale, beside the association's, taught by the same lessons
+  ([spoken words](senses.md#spoken-words-a-spectrogram-as-an-image)).
 - `tied={(pre, post): (blocks of pre, blocks of post)}` (opt-in): ties a projection of the
   layout, named by its two regions, across equal blocks of them: `(k, 1)` reads every block of
   `pre` through one set of synapses, `(1, k)` writes every block of `post` through one, `(k, k)`
@@ -59,6 +64,12 @@ The composed System 1 brain, with optional System 2 `observers` in the same grap
   and its copies hold one efficacy; `parameters()` counts it once. With `connectome` it names
   two of the anatomy's populations (`Genome.tied`)
   ([tied projections](tune.md#tied-projections-opt-in)).
+- `trained=[module, ...]` (opt-in): builds the brain around trained modules
+  ([`cadence.modules`](#modules-cadencemodules)). Each module's populations stand beside the
+  brain's own as `name/region`, its inputs follow the brain's own in the observation, the
+  association region reads what it publishes through one-way synapses that start at zero, and
+  its synapses are grafted in and held. The brain records no construction
+  ([a trained module](modules.md#a-trained-module)).
 - `scales`: maps `"sensory"` and `"trace"` to the initial magnitudes of the projections from
   those regions (founders 1.0 and 1.2; a name left out keeps its founder), fixed at
   construction. The history's and the recall memory's projections start at 1.2, a constant.
@@ -127,7 +138,8 @@ Brain(connectome, *, episodic=True, consolidation=0.05,
       maturity_recovery=200000.0,
       working_memory_decay=0.0, working_memory_amplitude=3.0,
       efference_decay=0.2, efference_amplitude=0.0,
-      history_decays=(), history_amplitude=3.0, message=None, carried_gain=0.0, recall=False,
+      history_decays=(), history_amplitude=3.0, message=None, longterm=None, carried_gain=0.0,
+      recall=False,
       learning=None,
       reward=None, slots=1, arousal=None, seed=0,
       backend="cpu", device=None, precision=None, inputs=None, code=None, learned_code=None, apical=0.0,
@@ -140,7 +152,9 @@ neuron) for an efference copy, `history` (one sensory-width block per entry of
 `history_decays`; one block of `learned_code` units with a learned code) for a heard
 history, with `message=units` a `message` population of `message_phases * units` neurons (and
 with `message_read=True` a `message_read` population of `units`) for a
-[held message](memory.md#held-message), with `recall=True` the `recall` and `next` regions, and with `learned_code=units` a
+[held message](memory.md#held-message), with `longterm=records` beside that message a `longterm` population of one
+neuron per sensory neuron (and `longterm_h` for each further head, `LongTermRecords.ports(heads)`) for its
+[long-term records](memory.md#long-term-records), with `recall=True` the `recall` and `next` regions, and with `learned_code=units` a
 `code` population of that many neurons with its complete dictionary, lateral and predictor
 synapses ([the learned code](senses.md#the-learned-code)).
 `inputs` names the observation width when the sensory region is a `code` of that width.
@@ -150,7 +164,7 @@ further neurons for the values a row carries after the image.
 `tied` maps two of the connectome's populations `(pre, post)` to `(blocks of pre, blocks of
 post)`: the synapses from `pre` to `post` at one place in their blocks are one tie group of the
 learner, and the blocks start as copies of one block ([tied projections](anatomy.md#tied-projections)).
-`genes` carries the `recall_*` settings and `learned_code_fields`. `learning` and `reward` default to the composed
+`genes` carries the `recall_*`, `message_*` and `longterm_*` settings and `learned_code_fields`. `learning` and `reward` default to the composed
 `LearnerConfig` and `ActorCriticConfig`; `arousal` is `True`, a field mapping or an
 `ArousalConfig`. With the store, `compose` fills in `memory_rate=0.2` (`memory_rate=1.0` keeps
 the last outcome); with `memory_choice=True` it fills in `memory_context=0.5` and
@@ -164,8 +178,8 @@ of 8 decisions, demonstrations recorded at 1.0, 24 active separation cells) are 
 | `memory_fade` in `[0, 1)`, and above 0 needs `episodic=True` ([records that fade](memory.md#records-that-fade-with-disuse-opt-in)) | `ValueError` |
 | `memory_context`, `memory_extinction` need `memory_choice`; `memory_context_hold` (`"unchanged"` or `"punished"`) needs `memory_choice` and `memory_context` | `ValueError` |
 | `learned_code` at least 2; `learned_code_fields` without it, `code` beside it, an image brain, the `torch` backend, or a connectome without the region's populations and complete synapses | `ValueError` |
-| `learned_fields` at least 2, on an image of at least 8 by 8 pixels, without `code` or `learned_code`; `image` or `ports` without `learned_fields`; `ports` negative or not an integer; `grow` and `graft` of a brain that holds them | `ValueError` |
-| `tied` a mapping from `(pre, post)` to two positive integers, one of them 1 or the two equal; a projection the layout lacks or a population the connectome lacks; blocks that do not divide a region; blocks that hold different synapses or start at different signs or contact counts; a synapse two ties name; a learned code's own projections; the sensory region of `learned_fields` with `ports`; `retune`, `Lives` and `graft` of a tied brain, and `grow` of a region a tie cuts into blocks | `ValueError` |
+| `learned_fields` at least 2, on an image of at least 8 by 8 pixels, without `code` or `learned_code`; `image`, `ports` or `fields_motor` without `learned_fields`; `ports` negative or not an integer; `fields_motor` negative or not finite; `grow` and `graft` of a brain that holds them | `ValueError` |
+| `tied` a mapping from `(pre, post)` to two positive integers, one of them 1 or the two equal; a projection the layout lacks or a population the connectome lacks; blocks that do not divide a region; blocks that hold different synapses or start at different signs or contact counts; a synapse two ties name; a learned code's own projections; the sensory region of `learned_fields` with `ports`; `retune(tied=...)`, a construction setting (`retune` changes a tied brain's other settings); `Lives` and `graft` of a tied brain, and `grow` of a region a tie cuts into blocks | `ValueError` |
 | `memory_context` in `[0, 1)`; `memory_extinction` in `[0, 1]`; `working_memory_decay`, `efference_decay` in `[0, 1)` | `ValueError` |
 | `maturity` boolean; `maturity_scale` and `maturity_recovery` other than their founders (10.0 and 200,000) need `maturity` | `ValueError` |
 | `maturity_scale` finite and at least `1e-12`; `maturity_recovery` finite and at least 1 | `ValueError` |
@@ -191,7 +205,8 @@ projections start at 1.2, a constant (`scales["history"]` and `scales["recall"]`
 | `fit(observations, labels, *, epochs=30, batch=32) -> list[float]`, `predict(observations)`, `accuracy(observations, labels)` | Independent samples, without traces or recall; `fit` resets the streams first, keeping the arousal, and returns training accuracy per epoch. Noninteger labels and mismatched batches raise before any update. | [independent-sample controls](evaluate.md#independent-sample-controls) |
 | `retune(**genes) -> Brain` | Changes mutable settings in the same life, atomically, and resets nothing (`brain.arousal.reset()` resets the arousal). Refuses construction settings, absent components, and the recall address genes under `recall_address_reward` while a sampled action awaits feedback. | [retune the same life](tune.md#retune-the-same-life) |
 | `grow(**parts) -> Brain` | A new brain: this trained brain with new parts (`recall=True` with any `recall_*` setting but `recall_tokens`, `recall_heads`, `history_decays`, `efference_amplitude` above zero, `slots` extending the brain's own), everything learned, recorded and set carried, the streams afresh; the new synapses start at zero, so it settles and chooses as this brain does until learning gives them weight. Refuses a brain that records no construction (a custom anatomy), a part inside the loop (`modules`, `observers`, a code), arousal, maturity and the episodic memory, settings that `retune` changes, recall tokens, slots where a memory is laid out per action or would join an apical pool, new neurons in a region a [tied projection](tune.md#tied-projections-opt-in) cuts into blocks, tie groups and rates set by hand. A composed tie grows with the brain, its copies at one efficacy. The rates a brain's width gave it stay, and a new slot's synapses with the association take the pair's. This brain is unchanged. | [grow a brain](grow.md#grow-a-trained-brain) |
-| `graft(donor, regions=None, *, into=None, joints="zero", freeze=False) -> Brain` | A new brain: this brain with trained regions of `donor`; `regions` names or maps donor populations onto this brain's, `into` grafts the whole donor into one population. The grafted synapses keep the donor's weights, the joints start at zero (`joints="kept"` keeps this brain's), and `freeze=True` stops the graft learning. Refuses populations of other sizes or either brain lacks, regions that share no synapse, donor wiring this brain lacks among the grafted neurons or a one-way donor synapse on half of a reciprocal pair, another neuron model, apical compartment or apical role, a learned code's region or a joint landing on it, tied synapses and rates set by hand. Every synapse steps at this brain's rates. Both brains are unchanged. | [graft trained regions](grow.md#graft-trained-regions-into-a-larger-brain) |
+| `graft(donor, regions=None, *, into=None, joints="zero", freeze=None) -> Brain` | A new brain: this brain with trained regions of `donor`; `regions` names or maps donor populations onto this brain's, `into` grafts the whole donor into one population. The grafted synapses keep the donor's weights, the joints start at zero (`joints="kept"` keeps this brain's), and `freeze=True` stops the graft learning. `donor` is a brain or a trained module: a module is grafted into the populations that hold its regions (`name/region`, or the regions' own names), a brain that lacks one is refused by that region's name, and `freeze` is off for a brain and on for a module unless given ([a trained module](modules.md#a-trained-module)). Refuses populations of other sizes or either brain lacks, regions that share no synapse, donor wiring this brain lacks among the grafted neurons or a one-way donor synapse on half of a reciprocal pair, another neuron model, apical compartment or apical role, a learned code's region or a joint landing on it, tied synapses and rates set by hand. Every synapse steps at this brain's rates. Both brains are unchanged. | [graft trained regions](grow.md#graft-trained-regions-into-a-larger-brain) |
+| `save_module(path, *, name, inputs, published, regions=None, interface=None, card=None) -> Path` | Writes this brain's trained regions as a module file (`cadence-module/1`): `inputs` the populations its own senses drive, `published` those a host reads, `regions` every region of the module (where omitted, the inputs and the published), `interface` the module's own record and `card` what it was trained on. The brain is saved at rest and is unchanged. Refuses a name that is empty or holds `/`, a region that is no population, no inputs or no published regions, an input region that is no input of this brain, and a brain with a learned code. | [a trained module](modules.md#a-trained-module) |
 | `reset(*, keep=("arousal",))` | Clears per-stream state and eligibility; keeps records and weights. `keep` names what carries over: `"arousal"` (the default) the whole arousal state, `"slots"` the recall slots, ending each stream's episode; a reset that does not keep `"arousal"` begins it calm with its references cleared and its age kept. Other names raise `ValueError`, checked before anything changes; an unknown keyword raises `TypeError`. | [reset and save](start.md#reset-and-save) |
 | `placement` | Where the brain runs and why: `backend`, `device`, `precision`, `chosen_by`, `why`, `refused`, `pending`, and after a load `saved_on` ([the default backend](backends.md#the-default-backend)). | [backends](backends.md#the-default-backend) |
 | `describe() -> dict` | JSON-safe `layout` (regions, `code`, `composition`, `projection_rates` where the brain holds per-synapse rates, `tied` where it holds tied projections: each one's `pre`, `post`, `blocks` and shared `synapses`), `genes` (every setting by its `compose` name; at `teaching="custom"`, `learning` gives the six effective expert teaching settings), `memories` (each member's `to_dict()`) and `pending`, and `placement` where the brain is not on the CPU by name. | [defaults](tune.md#defaults-and-expert-overrides) |
@@ -305,7 +320,7 @@ population, so action indices keep their meaning after loading. A saved maturity
 Lives(inputs, actions, lives, *, seeds=None, backend="cpu", device=None, precision=None, **options)
 ```
 
-Many continuing brains of one anatomy, each composed by `Brain.compose(inputs, actions, seed=seeds[i],
+Many continuing brains of one anatomy (no trained module: `trained=` is refused by name), each composed by `Brain.compose(inputs, actions, seed=seeds[i],
 **options)`, the default composition with its store of place records (`episodic=False` composes without it;
 seeds `range(lives)` by default), stepped together, one stream each. Every life has its own parameters, optimizer, critic, eligibility, recall
 memory (its slots, its address and position maps), carried gains, working trace and random state.
@@ -333,9 +348,10 @@ records, with `memory_fade` and `maturity` where named), with or without the rec
 heard history and its gains per block, the carried gains and arousal (`arousal=True`, for `live`), at any
 teaching point, with one or several regions, observers and motor slots. It refuses, naming the part:
 `memory_choice`, a store with a separator, a learned or fixed code, an apical compartment, rehearsal, qualified
-teaching, the efference copy, a recall memory with several heads, a window, the command, the read of when or tokens,
-image inputs, and MPS, which has no float64 for the settles' checks. A moment any life refuses is refused for
-every life.
+teaching, the efference copy, a held message (`message`), long-term records (`longterm`), tied projections
+(`tied`), `actor_entropy`, a recall memory with several heads, a window, the command, the read of when, tokens or
+the cortex at unit norm, image inputs, and MPS, which has no float64 for the settles' checks. A moment any life
+refuses is refused for every life.
 
 ## Arousal (`cadence.arousal`)
 
@@ -519,7 +535,7 @@ associative store: [memory](memory.md#associative-store-the-hippocampus).
 ```text
 LongTermMemory(width, value_width, capacity, temperature=0.0, candidates=256, expansion=8192,
                winners=64, depth=2.0, idle=None, hold=None, revise=0.9, fade=True, seed=0,
-               direct=None, dtype=float64)
+               direct=None, dtype=float64, cosine=False, pairs=0, apart=0)
 LongTermRead(slots, weights)
 ```
 
@@ -547,11 +563,39 @@ nonpositive `depth`, `idle` or `hold` of one moment or less, `winners` above `ex
 entry.
 [A long-term memory of records](memory.md#a-long-term-memory-of-records).
 
+`pairs=units` (0: off) files a record under every pair of its `pairs` most driven units in a
+table of cells (`cells`, `fills`; `dropped` counts the entries a full cell did not take), and a
+cue's `winners` name the pairs a read looks under; the `candidates` slots found under the most
+pairs are scored. `fill(keys, values, sources=None)` writes rows of records told once into empty
+slots and returns their slots. `read_each(cues, credit=True)` reads `cues[h]` with head `h`, and
+`chain(cue, links, at=0, credit=True)` returns the reads of a chain, each value added to the next
+link on coordinates `at : at + value_width`. `apart=width` (0: off) keeps a signature of each
+write's `source` (`write(key, value, source=row)`, `signs`): a held key is revised only where the
+signatures agree, and `read(cue, source=row)` takes its own among records that tie.
+`LongTermMemory.COMPILED = False` reads the pairs through NumPy where Numba is installed. It
+raises `ValueError` for `pairs` of 1 or above `winners`, a negative `apart`, a `source` without
+`apart` or of another shape, a `fill` past the empty slots, and `cues` or `links` of another
+shape. [A million records](memory.md#a-million-records-opt-in).
+
 `Brain.compose(..., longterm=records)` builds a `LongTermRecords` (in `cadence.longterm`) as
 `brain.longterm`: one `LongTermMemory` of `records` slots per stream (`stores`), keyed by the
 brain's held message from a turn; it needs `message=units`, `message_boundary` and
 `message_boundary_holds=True`. `longterm_heads` (1), `longterm_amplitude` (3.0), `longterm_match`
-(0.75) and `longterm_revise` (0.999) are construction settings. `read_slots` holds each head's
+(0.75), `longterm_revise` (0.999), `longterm_turn` (None) and `longterm_rare` (0.03) are
+construction settings, as are `longterm_pairs` (0), `longterm_expansion`, `longterm_winners`,
+`longterm_candidates` (None: the store's own) and `longterm_fade` (True), which build each
+stream's store (`address()` names those that differ from the store's founders); with `longterm_turn=channel` every moment with that input channel on is a
+turn, a turn's key is the rare units of the message's codes heard since the last value
+(`content(window)`), and `window`, `key`, `heard` and `moments` hold the streams' windows, their
+keys and the units' counts. `longterm_distinct=share` (with `longterm_turn`) reads by codebook
+entries weighted by their rarity among the stream's records (`codebook`, `sets`, `stamps`,
+`weights(row)`, `entry(code)`, `entries`), the latest record holding `longterm_match` of the
+cue's weight, and a second head chains from what the first record is about; each stream's records
+are kept as lists, and `sets`, `wset` and `cue` build the tables of entries from them.
+`longterm_best=True` reads the record holding the most of the cue's weight, the latest among
+equals, and `longterm_rest=True` cues a second read with the first record's entries outside the
+cue and the cue's entries the first record does not hold, the regions holding the chain from its
+end (the answering record on `longterm`). `read_slots` holds each head's
 record at the latest read (-1 for none), `counts` the writes, revisions, statements agreed and
 reads, and `clear()` empties every stream's records. `LongTermRecords.ports(heads)` names the
 regions (`longterm`, `longterm_1`, ...). The streams' records are read, written and faded as one
@@ -603,6 +647,148 @@ action or outcome restores the previous code step; attempted-work diagnostics ma
 `LearnedCode.founders()` and `LearnedCode.setting(name, value)` give and validate the one
 setting, `fields`, which `GENES` names. Guide:
 [the learned code](senses.md#the-learned-code).
+
+## Population code (`cadence.tuning`)
+
+```text
+PopulationCode(ranges, per=16, floor=0.05, clamp=True)
+```
+
+A fixed code of continuous readings for a brain's senses: each reading's `(low, high)` range is
+tiled by `per` inputs with Gaussian tuning curves one spacing wide, and a response under `floor`
+reads zero. A value outside its range is read at the nearer end (`clamp=True`), or fades to
+nothing past it (`clamp=False`). `code(readings)` takes `(readings,)` or `(rows, readings)` finite values and returns
+`(rows, inputs)` rows; `inputs` is `per` times the number of readings, and `preferred` and
+`spacing` hold the tuning. It refuses an empty or non-finite range, a range whose low is not
+below its high, `per` under 2, a `floor` outside `[0, 1)`, a `clamp` that is no bool, and readings of another width or not
+finite. It learns nothing and is not part of a checkpoint. Guide:
+[continuous readings](senses.md#continuous-readings-a-population-code).
+
+## Modules (`cadence.modules`)
+
+```text
+cadence.modules.names() -> list[str]
+cadence.modules.load(name) -> Map
+cadence.load_module(path) -> Map or Module           # cadence.modules.load_file
+cadence.modules.save(brain, path, *, name, inputs, published, regions=None, interface=None,
+                     card=None) -> Path              # Brain.save_module
+cadence.modules.host(module, brain) -> {region: population}
+Module(record, arrays)
+```
+
+A module is a part that arrives as a file, one NumPy archive of arrays and one JSON record with
+a checksum of every array and no pickled object. `load_module` reads either kind and runs
+nothing from it: a map file (`cadence-space-map/1`, written by `Map.save`) as a
+[`Map`](#the-map-of-things-cadencespacemap), a trained module (`cadence.modules.FORMAT`,
+`cadence-module/1`, written by `save`) as a `Module`. It checks the record field by field and
+every array against its checksum, and refuses a file by what is wrong with it (`ValueError`).
+`names` lists the modules the library ships and `load` returns one, a new object at every call,
+refusing a name the library ships none by; the built-in `place` is a map. `host` names the
+population of `brain` that holds each region of `module` and refuses a brain that lacks one or
+holds it at another size.
+
+A `Module` has `name`, `regions` (each region's size), `inputs` and `published` (region names),
+`width` (the inputs it adds to an observation), `interface`, `card`, `record` and `arrays`.
+`brain(*, backend=None, device=None, precision=None)` is the brain it was trained in, a brain of
+its own at every call, and `columns(brain, prefix=None)` where its inputs lie in a brain's
+observation. `Brain.compose(..., trained=[module])` builds a brain around it and
+`Brain.graft(module)` grafts it; a map joins a brain as `brain.space`. Guide:
+[modules](modules.md#modules-parts-that-arrive-as-files).
+
+## The map of things (`cadence.space.map`)
+
+```text
+Map(plane, cells=(32, 26), *, units=16, kinds=None, weight=3, codes=None, level=0.02,
+    empty="near", reach=0.15, step=0.15, stride=0.5, margin=0.02, seed=0, trace=False,
+    backend="cpu")
+```
+
+What is where, held in a sheet's own settled activity: `cells` of the `plane` (`(x low, x high,
+y low, y high)`, metres) by `units` of a kind's code. Imported by name; `import cadence` loads
+none of it. The map's graph has no taught synapse.
+
+| Call | What it does |
+| --- | --- |
+| `moment(seen=(), heard=(), felt=(), lit=None)` | One moment: each sense's reports as `(kind, (x, y))`; `lit` the cells in sight, flags `(cells,)` or a function of `(points, 2)` places. A report writes its place on its kind's units; a thing whose held place the camera sees with no report is driven once onto the cells out of sight within `reach` (`empty="near"`; `"clear"` and `"keep"` are the other rules); sight only takes cells away from a thing in doubt |
+| `where_is(kind) -> (things, 2)` | The places of a kind, by a settle with the kind's code as the cue |
+| `what_is_at(place, within=None) -> int or None` | The kind at a place, by a settle that keeps the cells around it |
+| `things() -> list[dict]` | The inventory read off the map: `kind`, `place`, `cells`, `pieces`, `since`, `state` (`seen`, `heard`, `felt`, `held`, `near`, `not known where`) |
+| `area(kind, rate=0.9)`, `sheet(kind=None)` | The smallest set of cells holding `rate` of a kind's activity; its activity as a picture |
+| `observation()` | `where` and `what` as the latest moment settled them, for a brain that holds the map (`Brain.space`) |
+| `reset()`, `arrays()`, `save(path, card=None)`, `Map.load(path)`, `Map.card_of(path)` | The carried state emptied, read, written with a checksum of every array, read back (refusing a pickled object, a changed array, arrays that do not fit) |
+| `trajectory` | With `trace=True`, every region's activity by sweep of the latest settle |
+
+`sparse_codes(kinds,
+units, weight=3, seed=0)` gives codes of `weight` units, any two sharing one at most. `Sense(map,
+ranges, per, rate=0.3)` is a taught projection of a reading onto the map's cells (`teach`,
+`named`). `cadence.modules.load("place")` and `cadence.load_module(path)` read a map file as a
+`Map`; `Brain.save` and `Brain.load` keep a brain's `space`. Refuses a plane whose low is not
+below its high, under 3 cells an axis, an `empty` other than the three, codes that are not zeros
+and ones with a one in every row. Guide: [space](space.md).
+
+## Hearing, alignment and decoding (`cadence.speech.frontend`, `cadence.speech.align`, `cadence.speech.decode`)
+
+Opt-in: `import cadence` loads none of them. Guide: [speech](speech.md).
+
+```text
+log_mel(audio, *, rate=16000, mels=40, frame=400, hop=160, fft=512, bank=None) -> (frames, mels)
+mel_bank(mels=40, *, rate=16000, fft=512) -> (mels, fft // 2 + 1)
+windows(frames, *, window=24, stack=4) -> (steps, window, mels)
+Hearing(mean, std, window=24, stack=4, clip=3.0, scale=0.3)
+Hearing.fit(utterances, *, window=24, stack=4, clip=3.0, scale=0.3, floor=1e-3) -> Hearing
+LogMel(hearing, *, rate=16000, frame=400, hop=160, fft=512)
+even_path(steps, transcript) -> (steps,)
+forced_path(log_beliefs, transcript, *, blank=0, states=False) -> (steps,)
+log_beliefs(brain, utterances) -> list of (steps, symbols)
+Alignments(*, blank=0)
+Alphabet(letters="abcdefghijklmnopqrstuvwxyz'")
+collapse(symbols, *, blank=0) -> list[int]
+greedy(log_beliefs, alphabet=None) -> str
+WordBeam(words, *, counts=None, alphabet=None, beam=16, top=8, prior_weight=0.0, word_bonus=0.0)
+```
+
+The guide explains `log_mel` and `Hearing` under [hearing](speech.md#hearing-audio-as-an-image),
+`Alignments`, `forced_path` and `log_beliefs` under
+[training from transcripts](speech.md#training-from-transcripts), and `Alphabet`, `collapse` and
+`WordBeam` under [reading text](speech.md#reading-text-with-and-without-a-word-list), with their
+settings and refusals in [one table](speech.md#settings-refusals-and-cost). The other five names:
+
+| Name | Behaviour |
+| --- | --- |
+| `frontend.mel_bank` | The triangular filters, evenly spaced on the mel scale from 0 Hz to half the rate, that `log_mel` sums a frame's power spectrum through. `log_mel(audio, bank=bank)` takes a bank built once. Refuses fewer than one band, a rate that is not positive and a spectrum of fewer than two points. |
+| `frontend.windows` | The `window` latest frames at the end of each step of `stack` frames, the first frame repeated before the audio began, each window less its own mean; a trailing part of a step is dropped. `Hearing.rows(windows)` standardizes them, and `Hearing.steps(frames)` does both. Refuses frames that are not `(frames, mels)` with at least one frame, and a window or stack that is not positive. |
+| `frontend.LogMel` | `log_mel` at named settings joined to a `Hearing`: samples in, a brain's rows out. `steps(samples)` gives the rows of `hearing.steps(log_mel(samples))`, with `log_mel(samples)`, `rows(held)` and `shape` beside it; `window` and `hop` hold a frame's length and stride in samples, `stack` and `frames` the frames of a step and of its window. |
+| `align.even_path` | Each step's symbol on an even split of the steps among the transcript's symbols, with no blank: the path `Alignments.even` keeps before the brain believes anything. Refuses fewer than one step and an empty transcript. |
+| `decode.greedy` | The text of the most believed symbol at each step, repeats and blanks collapsed: `alphabet.decode(collapse(...))` of the beliefs' argmax, with `Alphabet()` where none is given. |
+
+## Corrections and streaming (`cadence.speech.correct`, `cadence.speech.stream`)
+
+Opt-in: `import cadence` loads neither. Guide: [speech](speech.md).
+
+```text
+Rehearsal(rows=3, weight=0.25, budget=64 * 2**20, seed=0)
+StreamReader(brain, hearing, *, alphabet=None, words=None, temperature=None)
+```
+
+`Rehearsal` keeps earlier utterances in a bank: `remember(rows, labels)` adds one (`rows` a finite
+`(steps, inputs)` array, one nonnegative integer label a step); when the bank would pass `budget`
+bytes, utterances chosen at random (seeded) leave it; `len()` and `nbytes` report it.
+`correct(brain, rows, labels)` resets the brain and hears the utterance as one stream beside
+`rows` banked utterances (those of its length first, then the nearest), each step a
+`lesson(..., weights=)` before a greedy `act`: the correction at weight one, the banked utterances
+at `weight`, every stream past its own last row at zero. It leaves the brain at rest and returns
+the streams, the steps, the lessons a learning phase refused and the actions taken on the
+correction. Refused with `ValueError`: negative `rows` or `weight`, a budget of no bytes, an
+utterance larger than the budget, labels not one a step, banked rows of another width.
+
+`StreamReader` runs one stream of `brain` on audio heard through a `frontend.Hearing`.
+`push(samples)` takes the next 16 kHz samples in blocks of any size and returns the text its
+answers add (repeats and blanks collapsed); `text()` is the transcript so far, `finish()` the
+transcript read by `words` (a `decode.WordBeam`) where one is given; `actions` and `beliefs` hold
+each step's answer and log beliefs; `latency()` the median and 95th-percentile seconds per step
+and the seconds per second of audio; `reset()` begins a new utterance. Its rows are those of
+`hearing.steps(log_mel(audio))` for the whole recording. Refused with `ValueError`: a brain whose
+motor neurons do not match the alphabet, samples not finite.
 
 ## Learning (`cadence.learning`)
 
@@ -685,7 +871,7 @@ names the release that retired its setting ([CHANGELOG](../CHANGELOG.md)).
 ```text
 ActorCritic(learner, critic, config=None, seed=0)
 ActorCriticConfig(gamma=0.99, lam=0.9, eta=0.5, eta_bias=None, eta_critic=0.05,
-                  dopamine_cap=1.0, eligibility_steps=None)
+                  dopamine_cap=1.0, eligibility_steps=None, hold=None, entropy=0.0)
 Maturity(scale, recovery, use=0.0)
 ```
 
@@ -694,7 +880,10 @@ critic on the `critic` neurons, eligibility traces and a dopamine signal. Fields
 and the decision contract are in [learning from reward](reward.md#settings). `dopamine_cap`
 and `eligibility_steps` are constants of a composed brain (1.0 and 12; `actor_dopamine_cap` and
 `actor_eligibility_steps` are refused by name); an `ActorCriticConfig`
-given as `reward=` is the expert route and keeps them as given.
+given as `reward=` is the expert route and keeps them as given. `hold` and `entropy` are a composed
+brain's opt-ins `actor_hold` ([a reward many moments after the
+decision](reward.md#a-reward-many-moments-after-the-decision)) and `actor_entropy`
+([exploration](reward.md#exploration-over-long-reward-lives-opt-in)).
 
 | Member | Behaviour |
 | --- | --- |

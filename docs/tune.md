@@ -167,6 +167,10 @@ code's own projections and the sensory region of `learned_fields` with `ports` t
 Unset, the brain is the brain without the option, to the bit. An anatomy of your own declares
 the tie on its projection ([tied projections in a genome](anatomy.md#tied-projections)).
 
+One reading: an image brain's pooled fields lie in three rows, and a read tied across them
+answers objects in a band of places no lesson showed at .977 against .947, at half the
+parameters ([learned receptive fields](senses.md#learned-receptive-fields)).
+
 ## Defaults and expert overrides
 
 Set only the values you intend to change; the rest keep their composed founders, which are the

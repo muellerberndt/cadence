@@ -245,3 +245,98 @@ def test_the_colour_controls_and_other_channel_counts():
         LearnedFields(16, 16, 3, 8, colour="grey")
     with pytest.raises(ValueError, match="at least 3 fields"):
         LearnedFields(16, 16, 3, 2, colour="channels")
+
+
+def test_fields_motor_adds_a_plastic_pathway_from_the_pools_to_the_motor_region():
+    plain = Brain.compose(inputs=(16, 16), actions=3, seed=0, learned_fields=4, recall=False,
+                          backend="cpu")
+    direct = Brain.compose(inputs=(16, 16), actions=3, seed=0, learned_fields=4, recall=False,
+                           backend="cpu", fields_motor=1.0)
+    c = direct.connectome
+    pools = np.asarray(c.populations["sensory"])
+    motor = np.asarray(c.populations["motor"])
+    reaches = np.isin(c.pre, pools) & np.isin(c.post, motor)
+    assert reaches.sum() == len(pools) * len(motor)
+    assert not (np.isin(c.post, pools) & np.isin(c.pre, motor)).any()
+    assert direct.parameters() == plain.parameters() + len(pools) * len(motor)
+    assert direct.describe()["layout"]["composition"]["fields_motor"] == 1.0
+    assert "fields_motor" not in plain.describe()["layout"]["composition"]
+    frame = np.random.default_rng(0).random((2, 256))
+    before = np.asarray(direct.brain.efficacy)[reaches].copy()
+    direct.lesson(frame, [0, 2])
+    assert not np.array_equal(before, np.asarray(direct.brain.efficacy)[reaches])
+    for bad in (-1.0, float("nan"), True):
+        with pytest.raises(ValueError):
+            Brain.compose(inputs=(16, 16), actions=3, learned_fields=4, recall=False,
+                          fields_motor=bad)
+    with pytest.raises(ValueError):
+        Brain.compose(inputs=256, actions=3, recall=False, fields_motor=1.0)
+
+
+def test_a_brain_with_fields_motor_saves_and_loads_to_the_bit(tmp_path):
+    brain = Brain.compose(inputs=(16, 16), actions=3, seed=1, learned_fields=4, recall=False,
+                          backend="cpu", fields_motor=0.5)
+    brain.lesson(np.random.default_rng(1).random((2, 256)), [1, 2])
+    brain.save(tmp_path / "b.npz")
+    again = Brain.load(tmp_path / "b.npz")
+    frame = np.random.default_rng(2).random((3, 256))
+    assert np.array_equal(brain.predict(frame), again.predict(frame))
+    assert again.describe()["layout"]["composition"]["fields_motor"] == 0.5
+
+
+def test_frames_read_again_under_the_same_tables_return_the_kept_code(monkeypatch):
+    fields = LearnedFields(24, 24, 1, features=4, seed=0)
+    frames = np.stack([_frame().reshape(-1), _frame(at=(10, 4)).reshape(-1)])
+    computed = []
+    responses = LearnedFields.responses
+
+    def counted(self, patches):
+        if self is fields:
+            computed.append(len(patches))
+        return responses(self, patches)
+
+    monkeypatch.setattr(LearnedFields, "responses", counted)
+    first = fields.code(frames)
+    again = fields.code(frames.copy())  # equal values, another array
+    np.testing.assert_array_equal(again, first)
+    assert len(computed) == 1 and fields.work["codes"] == 2 and fields.work["code_rows"] == 4
+    again[:] = 0.0  # the caller's array: the kept code stays as read
+    np.testing.assert_array_equal(fields.code(frames), first)
+    frames[0, 0] += 0.5  # frames changed in place are read afresh
+    fresh = LearnedFields(24, 24, 1, features=4, seed=0)
+    np.testing.assert_array_equal(fields.code(frames), fresh.code(frames))
+    assert len(computed) == 2
+    assert fields.learn(frames)  # new tables: the frames are read afresh
+    fields.code(frames)
+    assert len(computed) == 3
+    with pytest.raises(ValueError):
+        fields.code(np.full_like(frames, np.nan))
+
+
+def test_a_life_with_kept_codes_is_the_life_without_them_to_the_bit(tmp_path, monkeypatch):
+    rng = np.random.default_rng(0)
+    x = np.clip(rng.standard_normal((5, 3, 40 * 24)), -3, 3) * 0.3
+    labels = rng.integers(29, size=(5, 3))
+    lives = {}
+    for kept in (0, LearnedFields.KEPT):
+        monkeypatch.setattr(LearnedFields, "KEPT", kept)
+        brain = Brain.compose((40, 24), 29, seed=3, learned_fields=8, modules=(32,),
+                              fields_motor=1.0, learning_surprise=False, backend="cpu")
+        for t in range(len(x)):
+            brain.step(x[t], teacher=labels[t])
+        brain.reset()
+        brain.lesson(x[0], labels[0])
+        lives[kept] = brain
+    a, b = lives[0], lives[LearnedFields.KEPT]
+    np.testing.assert_array_equal(a.brain.efficacy, b.brain.efficacy)
+    np.testing.assert_array_equal(a.brain.bias, b.brain.bias)
+    np.testing.assert_array_equal(a.fields.dictionary, b.fields.dictionary)
+    np.testing.assert_array_equal(a.fields.thresholds, b.fields.thresholds)
+    assert a.fields.work == b.fields.work
+    np.testing.assert_array_equal(a.act(x[1], greedy=True), b.act(x[1], greedy=True))
+    np.testing.assert_array_equal(a.basal_ganglia.state.activation,
+                                  b.basal_ganglia.state.activation)
+    with np.load(a.save(tmp_path / "a.npz")) as one, np.load(b.save(tmp_path / "b.npz")) as two:
+        assert sorted(one.files) == sorted(two.files)
+        for name in one.files:
+            np.testing.assert_array_equal(one[name], two[name])

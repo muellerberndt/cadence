@@ -10,6 +10,7 @@ reads them:
 | `code=units` | a fixed sparse code of the observation, which the memories key on and a vector brain's cortex reads | [the observation code](#the-observation-code) |
 | `learned_code=units` (opt-in) | a code that a region of the brain's own neurons learns while the brain lives | [the learned code](#the-learned-code) |
 | `attention=True` with `learned_code` | Recall selects a recent event and its successor by an ordered pair of learned codes | [single-head attention](memory.md#single-head-learned-code-attention-opt-in) |
+| `PopulationCode(ranges)` before the brain | a few continuous readings (an angle, a velocity, a distance), each spread over tuned inputs | [continuous readings](#continuous-readings-a-population-code) |
 
 ```python
 import numpy as np
@@ -61,7 +62,11 @@ assert not eyes.observation_code(np.full((1, 84, 84), 0.7)).any()  # a uniform s
 The pools are laid out by pool row, then pool column, then field, so the sensory region is
 three equal blocks, one per pool row. `tied={("sensory", "association"): (3, 1)}` reads the
 three rows through one set of synapses ([tied projections](tune.md#tied-projections-opt-in)):
-a field's response in a column drives the association alike in whichever row it lies.
+a field's response in a column drives the association alike in whichever row it lies. On twelve
+fresh founders of the pixel chamber that brain answers the untrained band at .977 against .947
+at the same .965 on fresh frames, every founder's band within .05 against 9 of 12, with 23,236
+parameters against 47,812. The lighting panel reads .781 against .818
+([the third run](../benchmarks/pixels/README.md#the-third-run-the-pool-rows-tied)).
 
 ### What the fields are for
 
@@ -98,6 +103,48 @@ linear readout of one founder's pools after 16,384 frames reads .914 on fresh fr
 the band): the 64 fields divide among the six hues an object takes. At 160 by 120 the pools read
 the band at .996 for a linear readout, and the brain's readout of them trails, as on the two
 grey founders above.
+
+### Spoken words: a spectrogram as an image
+
+A second of speech, as 98 log-mel frames of 40 bands, is an image: the bands are its rows and
+the frames its columns. The fields read it as they read a screen, so a sound pattern is read
+the same at every moment of the window and in every band it reaches.
+
+```python
+import numpy as np
+from cadence import Brain
+
+ears = Brain.compose(inputs=(40, 98), actions=37, seed=0, learned_fields=16, recall=False)
+window = np.zeros((40, 98))
+window[8:20, 40:70] = 1.0                            # a burst of energy in the middle bands
+ears.lesson(window.reshape(1, -1), [5])              # the fields learn from what is heard
+assert ears.observation_code(window.reshape(1, -1)).shape == (1, 16 * 9)
+```
+
+In the spoken-phrase chamber (`benchmarks/spoken/`), a brain hears phrases of the 35 words of
+Speech Commands every 0.49 s and says each word, silence or `end`. After 24,000 phrases the
+fields' pools hold the word at a word step at .626 for a linear readout, where the same fields at
+their draw hold .553 and the window itself .309 (two development founders). The brain reads
+less than its pools hold: with the default association of 64 it says the right word at .272 of
+the word steps and silence at .449, and with `modules=(256,)` at .421 and .259, against a
+transformer with CTC at the same parameter count trained online on the same phrases at .73.
+The term that trails is the brain's read of its pools
+([issue 303](https://github.com/muellerberndt/cadence/issues/303)).
+
+Two changes read more of what the pools hold. `fields_motor=scale` (opt-in, with
+`learned_fields`) adds a plastic projection from the pools straight to the motor region, beside
+the association's, taught by the same lessons; at 576 pools and 37 actions it holds 21,312
+synapses. And the chamber's lessons can teach the step after a word step, whose window holds
+the word's last frame as well, the word and silence at half each (`Brain.lesson(targets=...)`).
+Together, at `modules=(256,)` (1,296,996 parameters), the brain says the right word at .537 of
+the word steps and silence at .104, and reads .556 word accuracy, where the same brain without
+them says .421 and reads .425 (two development founders).
+
+```python
+direct = Brain.compose(inputs=(40, 98), actions=37, seed=0, learned_fields=16,
+                       recall=False, fields_motor=1.0)
+assert direct.parameters() == ears.parameters() + 16 * 9 * 37   # pools to motor, one per pair
+```
 
 ### What the stage is
 
@@ -159,12 +206,55 @@ width.
 the stage a new brain holds the recall memory: its key is `features * 9` wide (576 at 64
 fields), where an 84 by 84 frame's own 7,056 coordinates are refused.
 
+The fields read on the host, whatever the brain's backend. A moment reads the same frames
+more than once (the outcome before it, its lesson and its act); the fields keep the codes of
+the latest two frames they read (`LearnedFields.KEPT`) and return a kept code for frames and
+tables equal to the ones it was read from, the same array to the bit, so a training step reads
+the frames' code once where it read it three times.
+
 A checkpoint saves the fields' settings and work counts under `learned_fields` and their
 tables as `learned_fields/dictionary` and `learned_fields/thresholds`; `describe()` reports
 them, the code's kind as `"fields"`, and `parameters()` counts both tables
 (`64 * channels * features + features`). At 84 by 84 the map holds 39 by 39 positions: a
 frame's responses take `1,521 * 64 * channels * features` multiply-adds, and a learning step
 about three times that on a frame whose every patch carries structure.
+
+## Continuous readings: a population code
+
+A reading such as a pole's angle or a cart's velocity arrives as one number, and as one input its
+size is all the brain hears: a small angle drives the cortex a little and a large one a lot, in one
+direction. `PopulationCode(ranges, per=16)` spreads each reading over `per` inputs whose preferred
+values tile its range `(low, high)`, with Gaussian tuning curves one spacing wide, the way place
+and head-direction cells tile a space. A value lights the inputs within two spacings of it, five at
+most, and every other input reads zero (`floor=0.05`). A value outside the range is read at the
+nearer end (`clamp=True`), so a reading never goes dark; with `clamp=False` it fades there and
+reads nothing 2.45 spacings past the end (1.55 at `floor=0.3`). The code is fixed, learns nothing
+and is not saved with a brain: build it once and compose the brain with `code.inputs` inputs.
+
+Give each reading the range the brain's own states will cover, which is wider than a
+demonstrator's: a brain that errs leaves the states it was shown. On the
+[cart-pole chamber](../benchmarks/coaching/README.md), ranges from the 1st to the 99th percentile
+of each reading in demonstrated episodes hold the pole 83 steps on average over three founders
+unclamped and 144 clamped, against 374 for the ranges of the task's limits.
+
+```python
+from cadence import PopulationCode
+
+code = PopulationCode([(-2.4, 2.4), (-3.0, 3.0), (-0.21, 0.21), (-3.0, 3.0)], per=16)
+x = code([0.1, -0.5, 0.02, 0.3])            # a cart-pole's position, velocity, angle, spin
+assert x.shape == (1, 64) and 4 <= (x > 0).sum() <= 20  # a few lit inputs per reading
+rows = code(np.zeros((3, 4)))               # rows of readings code to rows of inputs
+assert rows.shape == (3, 64)
+pole = Brain.compose(inputs=code.inputs, actions=2, seed=0)
+assert pole.act(x, greedy=True).shape == (1,)
+```
+
+On the [cart-pole chamber](../benchmarks/coaching/README.md) (CartPole-v1's dynamics, a default
+brain per founder, eight watched demonstrations, 32 held-out starts, three founders) the four raw
+readings balance 0 starts of 32 for 500 steps (31 to 78 steps on average); through the code, 1 to 22
+starts (323 to 476 steps). Keep the inputs quiet where nothing happens: the same code beside 40
+inputs that read 0.75 at every moment balances 0 of 32 (183 to 297 steps), since a drive that sits
+on every moment makes every moment look alike.
 
 ## The observation code
 

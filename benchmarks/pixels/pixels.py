@@ -13,8 +13,15 @@ At each budget (frames seen) the panels are read on the life without changing it
 ``predict`` (each frame on its own, from rest, without memories). The readings at the last
 budget add the probes (``probe``): a linear readout fitted by ridge regression on a fixed set
 of training-range frames, read on every panel, from the representation the arm's cortex reads
-(``code``) and from the association region's settled state (``association``). The probes are
-readings of what a representation holds and never enter a life.
+(``code``) and from the association region's settled state (``association``), and for a brain
+with learned fields from its pools summed over the pool rows (``rows``, what a read tied
+across the rows receives). The probes are readings of what a representation holds and never
+enter a life.
+
+Every life reports its parameters and its analytic multiply-accumulates (``macs``): a brain's
+lesson as its phases' sweeps of every synapse and the fields' reading and learning of the
+frame, a read as the settle's sweeps and the fields' reading; the baseline's forward pass, and
+a training step as three of them (a backward pass at twice the forward).
 
     PYTHONPATH=src python benchmarks/pixels/pixels.py --arms visual pooled conv \\
         --founders 0 1 --budgets 1024 4096 --out results/step0.jsonl --workers 2
@@ -79,10 +86,17 @@ ARMS: dict[str, dict[str, Any]] = {
                      "compose": {"learned_fields": 64, "teaching": "normalized"}},
     "fields_channels": {"sees": "image", "colour": "channels",
                         "compose": {"learned_fields": 64, "teaching": "normalized"}},
+    # the fields' three pool rows read through one set of synapses (``tied``, cadence#308):
+    # a field's response in a pool column drives the association alike in whichever row it lies
+    "fields_tied": {"sees": "image",
+                    "compose": {"learned_fields": 64, "teaching": "normalized",
+                                "tied": {("sensory", "association"): (3, 1)}}},
     # the baseline at the hidden width of the Atari network
     "conv": {"sees": "image", "conv": {"hidden": 256}},
     # the baseline at the parameter count of the ``fields`` arm's brain
     "conv_matched": {"sees": "image", "conv": {"hidden": "fields"}},
+    # the baseline at the parameter count of the ``fields_tied`` arm's brain
+    "conv_matched_tied": {"sees": "image", "conv": {"hidden": "fields_tied", "least": 1}},
 }
 
 
@@ -130,7 +144,9 @@ class Life:
             hidden = ARMS[arm]["conv"]["hidden"]
             if isinstance(hidden, str):  # matched to that arm's brain
                 count = compose(hidden, shape, founder, condition).parameters()
-                hidden = cn.hidden_for(shape, ch.ACTIONS, count)
+                hidden = cn.hidden_for(
+                    shape, ch.ACTIONS, count, ARMS[arm]["conv"].get("least", 16)
+                )
             self.learner: Any = cn.ConvActorCritic(
                 shape, ch.ACTIONS, int(hidden), founder, condition
             )
@@ -147,6 +163,9 @@ class Life:
         self.pending: np.ndarray | None = None  # the last actions awaiting their reward
         self.labels: np.ndarray | None = None
         self.paid: list[float] = []
+        # the work of the lessons and of the reads: frames, and a brain's rows times sweeps
+        self.work = {"lesson_frames": 0, "lesson_row_sweeps": 0.0, "read_frames": 0,
+                     "read_row_sweeps": 0.0}
 
     def parameters(self) -> int:
         return int(self.learner.parameters())
@@ -157,14 +176,43 @@ class Life:
             part = batch[start : start + CHUNK]
             out.append(np.asarray(self.learner.predict(
                 part if self.conv else seen(self.arm, part))).reshape(-1))
+            self.work["read_frames"] += len(part)
+            if not self.conv:
+                settled = self.learner.last_settlement or {}
+                self.work["read_row_sweeps"] += len(part) * float(settled.get("steps", 0))
         return np.concatenate(out)
+
+    def macs(self) -> dict[str, float] | None:
+        """Analytic multiply-accumulates per frame of the life so far, ``lesson`` (a frame
+        taught) and ``read`` (a frame answered), and the lessons' total; None for a life under
+        reward, whose steps report no sweeps."""
+        if self.condition != "lesson":
+            return None
+        taught, read = self.work["lesson_frames"], self.work["read_frames"]
+        if self.conv:
+            forward = float(cn.macs(self.shape, ch.ACTIONS, self.learner.hidden))
+            lesson, answer = 3.0 * forward, forward
+        else:
+            brain = self.learner
+            synapses = float(brain.connectome.synapses)
+            fields = {"code": 0, "learn": 0} if brain.fields is None else brain.fields.macs()
+            learns = brain.fields is not None and brain.fields.learning
+            lesson = fields["code"] + (fields["learn"] if learns else 0) + (
+                synapses * self.work["lesson_row_sweeps"] / taught if taught else 0.0
+            )
+            answer = fields["code"] + (
+                synapses * self.work["read_row_sweeps"] / read if read else 0.0
+            )
+        return {"lesson": float(lesson), "read": float(answer), "lessons": float(lesson * taught)}
 
     def experience(self, batch: np.ndarray, labels: np.ndarray) -> None:
         if self.condition == "lesson":
+            self.work["lesson_frames"] += len(batch)
             if self.conv:
                 self.learner.lesson(batch, labels)
             else:
-                self.learner.lesson(seen(self.arm, batch), labels)
+                report = self.learner.lesson(seen(self.arm, batch), labels)
+                self.work["lesson_row_sweeps"] += float(report.get("total_row_sweeps", 0.0))
             return
         if self.conv:
             actions = self.learner.act(batch)
@@ -212,6 +260,13 @@ class Life:
                 for s in range(0, len(batch), CHUNK)
             ])
         return seen(self.arm, batch)
+
+    def rows(self, batch: np.ndarray) -> np.ndarray:
+        """A fields brain's pools summed over the pool rows: per pool column and field, what a
+        read tied across the rows receives."""
+        pools = self.code(batch)
+        count = self.learner.fields.POOLS
+        return np.asarray(pools.reshape(len(pools), count, -1).sum(axis=1))
 
     def association(self, batch: np.ndarray) -> np.ndarray:
         if self.conv:
@@ -307,7 +362,7 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {
         "arm": arm, "founder": founder, "condition": condition, "shape": list(shape),
         "rows": rows, "control": control, "extra": spec.get("extra"), "panel": size,
-        "parameters": built.parameters(), "readings": readings,
+        "parameters": built.parameters(), "readings": readings, "macs": built.macs(),
     }
     if built.conv:
         hidden = built.learner.hidden
@@ -315,8 +370,10 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     if spec.get("probe"):
         fit_frames, fit_labels = probe_set(founder, shape)
         probes = {}
-        for kind in ("code", "association"):
-            read = built.code if kind == "code" else built.association
+        kinds = {"code": built.code, "association": built.association}
+        if not built.conv and built.learner.fields is not None and not built.learner.ports:
+            kinds["rows"] = built.rows
+        for kind, read in kinds.items():
             probes[kind] = ridge_probe(
                 read(fit_frames), fit_labels,
                 {name: read(frames) for name, (frames, _) in panels.items()},

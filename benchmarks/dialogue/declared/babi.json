@@ -1,0 +1,40 @@
+{
+ "founders": [
+  3050,
+  3051,
+  3052,
+  3053,
+  3054,
+  3055
+ ],
+ "tasks": [
+  1,
+  2
+ ],
+ "data": "en",
+ "epochs": 5,
+ "arms": [
+  {
+   "arm": "turns"
+  },
+  {
+   "arm": "turns",
+   "label": "turns_nearest",
+   "longterm": {
+    "match": 0.0
+   }
+  },
+  {
+   "arm": "previous_word"
+  }
+ ],
+ "readings": [
+  {
+   "name": "B"
+  },
+  {
+   "name": "B-records",
+   "erase": "records"
+  }
+ ]
+}

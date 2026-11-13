@@ -41,6 +41,7 @@ from .learning import (
 from .lives import Lives
 from .longterm import LongTermMemory, LongTermRead
 from .memory import SynapticMemory
+from .modules import load_file as load_module
 from .neuron import Adaptation, NeuronModel
 from .plasticity import ActorCritic, ActorCriticConfig, Maturity
 from .receipts import Receipt, canonical_json
@@ -56,6 +57,7 @@ from .stream import (
     Recall,
     Trace,
 )
+from .tuning import PopulationCode
 
 __all__ = [
     "Arousal",
@@ -67,6 +69,7 @@ __all__ = [
     "lipschitz_constant",
     "row_mass",
     "PatternSeparator",
+    "PopulationCode",
     "ActorCritic",
     "ActorCriticConfig",
     "Maturity",
@@ -116,6 +119,7 @@ __all__ = [
     "seam_report",
     "load",
     "save",
+    "load_module",
 ]
 
-__version__ = "0.97.0"
+__version__ = "0.99.0"

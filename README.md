@@ -1,15 +1,20 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/muellerberndt/cadence/main/docs/assets/cadence-logo.png" alt="Cadence: a continuing brain with local state, memory and repair" width="100%">
+  <a href="https://cadence.floatingpragma.ai/"><img src="https://raw.githubusercontent.com/muellerberndt/cadence/main/docs/assets/cadence-logo.png" alt="Cadence: a continuing brain with local state, memory and repair. Try the brains live at cadence.floatingpragma.ai" width="100%"></a>
 </p>
 
 # Cadence
 
-[Pragma Research](https://floatingpragma.ai/) · [Documentation](https://github.com/muellerberndt/cadence/blob/main/docs/README.md) · [Application demos](https://github.com/muellerberndt/cadence-demos) · [Paper](https://philpapers.org/rec/MUECAP-2) · [PyPI](https://pypi.org/project/cadence-net/)
+[**Live demos**](https://cadence.floatingpragma.ai/) · [Pragma Research](https://floatingpragma.ai/) · [Documentation](https://github.com/muellerberndt/cadence/blob/main/docs/README.md) · [Application demos](https://github.com/muellerberndt/cadence-demos) · [Paper](https://philpapers.org/rec/MUECAP-2) · [PyPI](https://pypi.org/project/cadence-net/)
 
 [![CI](https://github.com/muellerberndt/cadence/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/muellerberndt/cadence/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](https://github.com/muellerberndt/cadence/blob/main/LICENSE)
 
 **One continuing equilibrium brain: learn a world, act in it, repair what fails.**
+
+<p align="center">
+  <a href="https://cadence.floatingpragma.ai/"><img src="docs/assets/cadence-live-demos.jpg" alt="Cadence live demos: one brain design that sees, moves, plays and keeps learning. Robot arm, robot arena, Atari, Castlevania, Patch World and Tron, all running live in the browser. 363 of 400 games won against the perfect Connect Four solver." width="100%"></a>
+</p>
+<h3 align="center">▶ <a href="https://cadence.floatingpragma.ai/">Try the brains live: cadence.floatingpragma.ai</a></h3>
 
 Cadence is a Python library (NumPy, Python 3.11 or later) for brains that settle rather than
 compute a pass: a graph of rate neurons relaxes to an equilibrium under the observation, the
@@ -17,7 +22,7 @@ action is read from that equilibrium, and every synapse learns from the differen
 settles, with no backward pass and no training/inference switch.
 
 ```sh
-python -m pip install cadence-net==0.97.0
+python -m pip install cadence-net==0.99.0
 ```
 
 ```python
@@ -57,7 +62,7 @@ episodic memory, a learned code, images.
 The [documentation index](https://github.com/muellerberndt/cadence/blob/main/docs/README.md)
 lists the rest: wide inputs, growing and grafting, evaluation, your own anatomy, how the
 brain settles, backends; the
-[released documentation](https://github.com/muellerberndt/cadence/blob/v0.97.0/docs/README.md)
+[released documentation](https://github.com/muellerberndt/cadence/blob/v0.99.0/docs/README.md)
 describes the APIs of the installed package. Integrated learned world prediction, repair
 localized to what failed and cheap stable operation are work in progress; Cadence is alpha
 research software.

@@ -1,0 +1,26 @@
+{
+ "founders": [
+  0,
+  1,
+  2
+ ],
+ "tasks": [
+  1,
+  2,
+  6
+ ],
+ "data": "en",
+ "epochs": 5,
+ "models": [
+  "lstm",
+  "transformer"
+ ],
+ "modes": [
+  "online",
+  "offline"
+ ],
+ "target_arm": "records",
+ "readings": [
+  {}
+ ]
+}

@@ -49,7 +49,10 @@ brain ([observers](#add-optional-observers)). `arousal=True` gives the brain the
 | `modules` | the sizes of the processing regions, `(64,)` by default ([larger brains](tune.md#larger-brains)) |
 
 `brain.describe()` lists every setting a brain holds, and
-[tune and read a living brain](tune.md#defaults-and-expert-overrides) explains them.
+[tune and read a living brain](tune.md#defaults-and-expert-overrides) explains them. To build a
+brain for a purpose of your own, [parts of a brain](modules.md) lists every part you can add
+(senses, regions, memories, ways to learn, modules that arrive as files) and composes five
+whole brains from them.
 
 ## 2. Observations, actions and streams
 
@@ -209,6 +212,7 @@ assert same.pending_feedback                 # the loaded brain awaits the same 
 
 ## Where to go next
 
+- [Parts of a brain](modules.md): the catalogue of every part, and brains composed for a purpose.
 - [Train a brain](teach.md): every way to train, rates, evaluation and failure modes.
 - [Memory](memory.md): which memory to use for which task.
 - [Learning from reward](reward.md): eligibility traces, the actor's rates, delayed credit.
@@ -510,8 +514,11 @@ sweep.
 
 A save carries parameters, critic, the learner's optimizer, random state, every trace and
 memory, arousal, an action awaiting feedback and what a waiting stream has sensed; load
-validates them ([formats](api.md#brain-cadence)). Resume the same rows, supply the pending
-outcome once and save the environment separately. If `live` refuses an answer, the
+validates them ([formats](api.md#brain-cadence)). On the CPU the resumed brain continues to
+the same bits; on the NumPy path that holds at one BLAS thread count, so a reloaded life
+compared to the bit runs with the thread variables at 1
+([a reloaded brain and BLAS threads](backends.md#a-reloaded-brain-and-blas-threads)).
+Resume the same rows, supply the pending outcome once and save the environment separately. If `live` refuses an answer, the
 [qualification rules](#qualification-and-refusal) say how to retry without reporting an outcome
 twice.
 

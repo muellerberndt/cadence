@@ -625,3 +625,15 @@ def test_the_sentence_run_plans_its_arms_and_reads_its_gates():
     lines = mn.sentence_verdict(rows, [control], of=1)
     assert sum("H1" in line and "H2" in line for line in lines) == len(small)
     assert any("less lstm" in line for line in lines)
+
+
+def test_a_knock_life_leaves_the_shared_battery_as_it_is():
+    # the sequence battery every other test reads keeps its own make_brain (#306)
+    warnings.simplefilter("ignore")
+    shared = gr.BATTERY.make_brain
+    spec = mn.declared_plan((0,))["knock"][0]
+    row = mn.knock_life({**spec, "lessons": 1, "tests": 1, "module": 8})
+    assert row["kind"] == "knock" and row["chamber"] == "battery"
+    assert gr.BATTERY.make_brain is shared
+    brain = gr.BATTERY.make_brain(gr.BATTERY.TwoHop(), "recipe64", 0, module=8)
+    assert brain.describe()["genes"]["recall_position"] == 64

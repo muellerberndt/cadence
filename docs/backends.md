@@ -8,7 +8,7 @@ NumPy float64 unless you pick another. Start from the NumPy-only
 [installation](../README.md#get-started) and add an extra:
 
 ```bash
-python -m pip install "cadence-net[fast]==0.97.0"
+python -m pip install "cadence-net[fast]==0.99.0"
 ```
 
 `[fast]` installs Numba and SciPy, `[accel]` PyTorch and `[apple]` MLX (0.21.1 or later); from a checkout, use
@@ -80,6 +80,15 @@ an apical compartment or a learned code ([`tests/test_mlx_backend.py`](../tests/
 [`tests/test_mlx_launch.py`](../tests/test_mlx_launch.py), [`tests/test_mlx_memory.py`](../tests/test_mlx_memory.py)).
 On a float32 backend a brain reloaded from its checkpoint continues within that rounding, not
 bit for bit; on the CPU the reloaded brain is exact.
+
+<a id="a-reloaded-brain-and-blas-threads"></a>
+On the NumPy path (`CADENCE_FUSED=0`) a reloaded brain's continued life repeats to the bit at
+one BLAS thread count. In a reading of 35 compositions on an x86-64 machine, four continued after
+a load to other last bits with the thread variables unset than at one thread, where the life
+before the save read the same at either count, and each count repeated its own bits (#315). For
+a reloaded life that repeats to the bit on another run or machine, set
+`OMP_NUM_THREADS=OPENBLAS_NUM_THREADS=MKL_NUM_THREADS=1` before NumPy is imported. The fused
+path read one set of bits at either count.
 
 `available_backends()` asks MLX for its device in a child interpreter, once per process, so an
 unsupported Metal or system configuration that aborts MLX's discovery ends only the child. MLX
@@ -383,6 +392,24 @@ brain on the CPU under the sizes where a device passes one core.
 The load moves these readings: above a load of 4 an MLX act
 at the speech size has read twice its quiet time.
 
+### The read-speech recipe on a device
+
+The read-speech recipe's brain, `Brain.compose((40, 24), 29, learned_fields=64, modules=(256,),
+fields_motor=1.0, learning_surprise=False)`, trains on CUDA float32 and on MLX with 32 and 128
+utterances heard side by side as streams, its lessons within the settle's tolerance of the CPU's
+and its saves loading on every backend to the same parameters
+([on a device](../benchmarks/letters/README.md#on-a-device-issue-314-r3)). Seconds of training
+per hour of audio, a lesson and the alignment's greedy act per step:
+
+| Where | 32 streams | 128 streams |
+| --- | ---: | ---: |
+| NVIDIA A10G, CUDA float32 | 187 | 126 |
+| One CPU core of the same machine | 770 | 691 |
+| Apple M4, MLX, shared (load 20 to 37) | 456 to 1,083 | 251 to 501 |
+
+Its learned fields read and learn on the host whatever the backend; on the A10G at 128 streams
+they take about 60% of a lesson step.
+
 Cap BLAS and Numba threads for parallel workers. To compare two implementations, use identical
 dtype, steps and tolerances over several seeds, warm up, alternate the order, synchronize
 around each timed call, and compare residuals and states too.
@@ -544,9 +571,10 @@ they would run on the host or MLX's CPU stream.
 (`episodic=False`) or the history (`history_decays=()`), with or without the recall memory, the carried gains, arousal,
 `memory_fade` and maturity, at any teaching point, with one or several regions, observers and motor slots. It refuses,
 naming the part: `memory_choice` and a store with a separator; a learned or fixed code and image inputs; an apical
-compartment; rehearsal and qualified teaching; the efference copy; a recall memory with several heads, a
-window, the command, the read of when or tokens; MPS and MLX. A moment any life refuses is refused for every
-life. Each life holds its own synapses, their dense blocks, two optimizer moments and an eligibility, five arrays
+compartment; rehearsal and qualified teaching; the efference copy; a held message (`message`) and long-term
+records (`longterm`); tied projections (`tied`); `actor_entropy`; a recall memory with several heads, a
+window, the command, the read of when, tokens or the cortex at unit norm; MPS and MLX. A moment any life
+refuses is refused for every life. Each life holds its own synapses, their dense blocks, two optimizer moments and an eligibility, five arrays
 of one float per synapse, and in float32 a float64 copy of the blocks for the settles' checks.
 
 ## Precision matters

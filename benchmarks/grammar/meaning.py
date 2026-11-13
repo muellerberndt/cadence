@@ -1708,15 +1708,17 @@ def knock_life(spec: dict[str, Any]) -> dict[str, Any]:
         return brain_class.compose(inputs, actions, modules=(module,), seed=founder,
                                    **{"backend": "cpu", "recall": True, **extra})
 
+    # each chamber's own copy of its module: the copy's make_brain is replaced, and the module
+    # every other test and chamber shares keeps its own (#306)
     if spec["chamber"] == "battery":
-        battery = gr.BATTERY
+        battery = gr._module("grammar_knock_battery", HERE.parent / "sequence" / "battery.py")
         battery.make_brain = lambda task, arm, f, settings=None, module=64: composed(
             task.inputs, task.actions, module, settings or {})
         row = battery.run_life({k: v for k, v in spec.items()
                                 if k not in ("chamber", "message", "tag")} | {"arm": "table"})
         row["settings"] = spec.get("settings", {})
     elif spec["chamber"] == "routes":
-        routes = gr._module("routes", HERE / "routes.py")
+        routes = gr._module("grammar_knock_routes", HERE / "routes.py")
         routes.make_brain = lambda speaker, f, settings=None, module=64: composed(
             routes.INPUTS, routes.ACTIONS, module, settings or {})
         row = routes.run_life({k: v for k, v in spec.items()
