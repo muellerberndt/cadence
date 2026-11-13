@@ -8,8 +8,8 @@ chamber keeps the truth for the readings only.
 Readings, on fresh test scenes after the life (no lessons):
 
 - **E1, seen and held**: after a look-around, the share of things the map holds within
-  ``margin`` of their place; then each thing put behind the head, in the blind spot, for
-  ``behind`` moments: the share still held there.
+  ``margin`` of their place; then each thing so held that the neck can put in the blind spot,
+  there for ``behind`` moments: the share still held there.
 - **E2, the same thing from another view**: the head turned so that the thing is seen by the
   left eye alone, by the right eye alone, then in front by both: the share of things held as
   exactly one thing near their place, with no other thing near them.
@@ -129,7 +129,7 @@ def distance_errors(parrot: Parrot, scene: Scene, records: list[dict[str, Any]],
         if r["truth"] < 0 or (eye is not None and r["eye"] != eye):
             continue
         true = truth_distance(scene, r["truth"], r["origin"])
-        read = r["distance"] if np.isfinite(r["distance"]) else float(parrot.genes["default"])
+        read = r["distance"] if np.isfinite(r["distance"]) else float(parrot.genes["place_default"])
         out.append(abs(math.log(read / true)))
     return out
 
@@ -155,6 +155,13 @@ def one_each(parrot: Parrot, scene: Scene, margin: float, alone: float) -> list[
         close = [d for d in near if d <= alone]
         out.append(len(close) == 1 and close[0] <= margin)
     return out
+
+
+def gap_to(parrot: Parrot, thing: Thing) -> float:
+    """The distance from a thing to the nearest place the map holds (inf for an empty map)."""
+    here = np.array([thing.x, thing.z])
+    places = [np.asarray(t["place"]) for t in parrot.map.things() if t["place"] is not None]
+    return min((float(np.linalg.norm(p - here)) for p in places), default=math.inf)
 
 
 def bearing_error(parrot: Parrot, scene: Scene) -> list[float]:
@@ -214,11 +221,14 @@ def front(parrot: Parrot, scene: Scene, cover: str | None) -> list[dict[str, Any
 
 
 def test(parrot: Parrot, rng: np.random.Generator, *, scenes: int, moments: int, behind: int,
-         margin: float, alone: float, panel: str = "stands") -> dict[str, Any]:
-    """The test readings on fresh scenes (no lessons)."""
+         margin: float, alone: float, panel: str = "stands", front_panel: bool = True
+         ) -> dict[str, Any]:
+    """The test readings on fresh scenes (no lessons); ``front_panel`` False leaves out the
+    panel of things in front with an eye covered (the fitness never reads it)."""
     seen, kept, same, bearing = [], [], [], []
     both_err, one_err, records = [], [], []
     details: list[dict[str, Any]] = []
+    after_gaps: list[float] = []
     for _ in range(scenes):
         scene = place_things(rng, int(rng.integers(3, 7)), panel)
         # E1: a look-around by the parrot's own reflex
@@ -246,14 +256,16 @@ def test(parrot: Parrot, rng: np.random.Generator, *, scenes: int, moments: int,
         bearing += bearing_error(parrot, scene)
         # E1, behind: each thing the neck can put in the blind spot, there for ``behind``
         # moments
+        before = held(parrot, scene, margin)
         for k, thing in enumerate(scene.things):
             yaw = look_at(thing, 180.0)
-            if yaw is None:
+            if yaw is None or not before[k]:
                 continue
             turn(parrot, yaw)
             for _ in range(behind):
                 step(parrot, scene, learn=False, act=False)
             kept.append(held(parrot, scene, margin)[k])
+            after_gaps.append(gap_to(parrot, thing))
         # E2: the left eye alone, the right eye alone and both, as far as the neck turns (two
         # views or more), then the parrot's own looking
         parrot.reset()
@@ -273,23 +285,37 @@ def test(parrot: Parrot, rng: np.random.Generator, *, scenes: int, moments: int,
         alone_held = one_each(parrot, scene, margin, alone)
         same += [alone_held[k] for k in tested]
         # E3: in front, both eyes and one eye covered
+        if not front_panel:
+            continue
         b = front(parrot, scene, None)
         o = front(parrot, scene, "left") + front(parrot, scene, "right")
         both_err += [abs(math.log((r["distance"] if np.isfinite(r["distance"])
-                                   else parrot.genes["default"]) / r["true"]))
+                                   else parrot.genes["place_default"]) / r["true"]))
                      for r in b if r["eye"] == 2]
         one_err += [abs(math.log((r["distance"] if np.isfinite(r["distance"])
-                                  else parrot.genes["default"]) / r["true"])) for r in o]
+                                  else parrot.genes["place_default"]) / r["true"])) for r in o]
         records += [r for r in b if r["eye"] == 2]
     looked = [r for r in records if r["eye"] == 2]
-    return {"E1_seen": float(np.mean(seen)), "E1_behind": float(np.mean(kept)) if kept
+    looked_one = [r for r in records if r["eye"] != 2]
+
+    def median_error(rs: list[dict[str, Any]]) -> float:
+        if not rs:
+            return math.nan
+        return float(np.median([abs(math.log((r["distance"] if np.isfinite(r["distance"]) else
+                                              parrot.genes["place_default"]) / r["true"]))
+                                for r in rs]))
+
+    return {"E3_looked_one": median_error(looked_one),
+            "gap_seen": float(np.median([min(d["gap"], 0.3) for d in details])),
+            "gap_behind": float(np.median([min(g, 0.3) for g in after_gaps])) if after_gaps
+            else math.nan,"E1_seen": float(np.mean(seen)), "E1_behind": float(np.mean(kept)) if kept
             else math.nan, "E1_behind_count": len(kept), "E2_one": float(np.mean(same)) if same
             else math.nan, "E2_count": len(same), "bearing": float(np.median(bearing)),
             "E3_both": float(np.median(both_err)) if both_err else math.nan,
             "E3_one": float(np.median(one_err)) if one_err else math.nan,
             "E3_both_count": len(both_err), "E3_one_count": len(one_err),
             "E3_looked": float(np.median([abs(math.log((r["distance"] if np.isfinite(
-                r["distance"]) else parrot.genes["default"]) / r["true"])) for r in looked]))
+                r["distance"]) else parrot.genes["place_default"]) / r["true"])) for r in looked]))
             if looked else math.nan, "E3_looked_count": len(looked),
             "details": details, "records": records}
 
@@ -307,6 +333,34 @@ def information(a: np.ndarray, which: np.ndarray, bins: int) -> float:
     pa, pd = joint.sum(axis=1, keepdims=True), joint.sum(axis=0, keepdims=True)
     nz = joint > 0
     return float((joint[nz] * np.log2(joint[nz] / (pa @ pd)[nz])).sum())
+
+
+def probe_panel(parrot: Parrot, rng: np.random.Generator, things: int = 24,
+                steps: int = 8) -> list[dict[str, Any]]:
+    """The probe's own panel: one thing at a time in front of the beak, at ``steps`` distances
+    from 0.22 to 0.6 m in a shuffled order, each time at a new scale and on a new stand, so
+    that only its distance and disparity follow how far it is; the sightings by both eyes."""
+    out: list[dict[str, Any]] = []
+    for _ in range(things):
+        kind = KINDS[int(rng.integers(len(KINDS)))]
+        bearing = float(rng.uniform(-math.radians(60.0), math.radians(60.0)))
+        for far in rng.permutation(np.linspace(0.22, 0.6, steps)):
+            thing = Thing("probe", kind, float(far) * math.sin(bearing),
+                          float(far) * math.cos(bearing), float(rng.uniform(0.0, 6.28)),
+                          float(rng.uniform(0.7, 1.4)), float(rng.uniform(0.0, 0.25)))
+            scene = Scene([thing])
+            yaw = look_at(thing)
+            if yaw is None:
+                continue
+            parrot.reset()
+            turn(parrot, yaw)
+            parrot.record = []
+            step(parrot, scene, learn=False, act=False)
+            parrot.record = []
+            step(parrot, scene, learn=False, act=False)
+            out += [r for r in truths(scene, parrot.record) if r["eye"] == 2]
+    parrot.record = None
+    return out
 
 
 def probe(records: list[dict[str, Any]], bins: int = 6, shuffles: int = 5,
@@ -364,11 +418,13 @@ def founder(seed: int, genes: dict[str, Any] | None = None, *, life: dict[str, A
     curve = live(parrot, rng, life["scenes"], life["moments"], tuple(life["things"]))
     test_rng = np.random.default_rng(np.random.SeedSequence([int(seed), 332, 2]))
     reading = test(parrot, test_rng, **tests)
-    records = reading.pop("records")
+    reading.pop("records")
     out: dict[str, Any] = {"seed": int(seed), "curve": curve, "tests": reading,
                            "parameters": parrot.parameters(), "lessons": parrot.lessons,
                            "kinds": parrot.kinds.used, "genes": parrot.genes}
-    tuned = probe(records, seed=seed)
+    panel = probe_panel(parrot, np.random.default_rng(np.random.SeedSequence([int(seed), 332,
+                                                                               5])))
+    tuned = probe(panel, seed=seed)
     if tuned and silence:
         group = found(tuned["info"], parrot)
         out["found"] = {"units": group.tolist(), "regions": {
@@ -383,7 +439,7 @@ def founder(seed: int, genes: dict[str, Any] | None = None, *, life: dict[str, A
         out["silenced"].pop("records")
         pick = np.random.default_rng(np.random.SeedSequence([int(seed), 332, 3]))
         others = np.setdiff1d(parrot.settling, group)
-        parrot.silence(pick.choice(others, size=len(group), replace=False))
+        parrot.silence(pick.choice(others, size=min(len(group), len(others)), replace=False))
         out["silenced_others"] = test(parrot, np.random.default_rng(
             np.random.SeedSequence([int(seed), 332, 2])), **small)
         out["silenced_others"].pop("records")

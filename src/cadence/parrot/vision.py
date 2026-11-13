@@ -33,30 +33,46 @@ MARGIN = 12  # columns beyond the overlap on either side kept in the binocular g
 
 
 def components(mask: np.ndarray) -> np.ndarray:
-    """Labels of the 4-connected pieces of a ``(rows, columns)`` mask: each piece the index of
-    one of its pixels, -1 outside the mask."""
+    """Labels of the 4-connected pieces of a ``(rows, columns)`` mask, numbered 0, 1, ... in the
+    order of their first pixel, -1 outside the mask. The mask's runs along each row are joined
+    where they touch a run of the row below."""
     h, w = mask.shape
-    n = h * w
-    big = n
-    flat = mask.ravel()
-    lab = np.where(flat, np.arange(n), big)
-    padded = np.full(n + 1, big)
-    for _ in range(2 * (h + w)):
-        grid = lab.reshape(h, w)
-        best = grid.copy()
-        best[1:] = np.minimum(best[1:], np.where(mask[:-1], grid[:-1], big))
-        best[:-1] = np.minimum(best[:-1], np.where(mask[1:], grid[1:], big))
-        best[:, 1:] = np.minimum(best[:, 1:], np.where(mask[:, :-1], grid[:, :-1], big))
-        best[:, :-1] = np.minimum(best[:, :-1], np.where(mask[:, 1:], grid[:, 1:], big))
-        new = np.where(flat, best.ravel(), big)
-        padded[:n] = new
-        for _ in range(3):  # each label points to its own label's label
-            new = np.where(flat, padded[new], big)
-            padded[:n] = new
-        if np.array_equal(new, lab):
-            break
-        lab = new
-    return np.asarray(np.where(flat, lab, -1).reshape(h, w))
+    padded = np.zeros((h, w + 2), dtype=np.int8)
+    padded[:, 1:-1] = mask
+    step = np.diff(padded, axis=1)
+    rows_s, starts = np.nonzero(step == 1)
+    rows_e, ends = np.nonzero(step == -1)  # one past the run's last column
+    out = np.full((h, w), -1, dtype=np.int64)
+    count = len(starts)
+    if count == 0:
+        return out
+    parent = np.arange(count)
+
+    def root(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = int(parent[i])
+        return i
+
+    first = np.searchsorted(rows_s, np.arange(h + 1))
+    for r in range(h - 1):
+        a0, a1, b1 = first[r], first[r + 1], first[r + 2]
+        if a0 == a1 or a1 == b1:
+            continue
+        sa, ea = starts[a0:a1], ends[a0:a1]
+        sb, eb = starts[a1:b1], ends[a1:b1]
+        touch = (sa[:, None] < eb[None, :]) & (sb[None, :] < ea[:, None])
+        for i, j in zip(*np.nonzero(touch), strict=True):
+            ri, rj = root(int(a0 + i)), root(int(a1 + j))
+            if ri != rj:
+                parent[max(ri, rj)] = min(ri, rj)
+    roots = np.array([root(i) for i in range(count)])
+    _, label = np.unique(roots, return_inverse=True)
+    lengths = ends - starts
+    cols = np.repeat(starts - np.repeat(np.cumsum(lengths) - lengths, 1), lengths) + np.arange(
+        int(lengths.sum()))
+    out[np.repeat(rows_s, lengths), cols] = np.repeat(label, lengths)
+    return out
 
 
 def _cover(edge: np.ndarray, inner: np.ndarray, outer: np.ndarray) -> float:
@@ -163,12 +179,22 @@ class Ground:
             return np.ones(rgb.shape[:-1])
         near = np.full(len(flat), np.inf)
         for i in range(len(colours)):
-            near = np.minimum(near, np.linalg.norm(flat - colours[i], axis=1))
-            for j in range(i + 1, len(colours)):
-                a, b = colours[i], colours[j]
-                span = b - a
-                t = np.clip((flat - a) @ span / max(float(span @ span), 1e-12), 0.0, 1.0)
-                near = np.minimum(near, np.linalg.norm(flat - (a + t[:, None] * span), axis=1))
+            near = np.minimum(near, np.abs(flat - colours[i]).sum(axis=1))
+        # a pixel of a ground colour itself is ground; the rest are read against the mixtures
+        rest = np.nonzero(near > 0.02)[0]
+        if len(rest):
+            some = flat[rest]
+            best = np.full(len(rest), np.inf)
+            for i in range(len(colours)):
+                best = np.minimum(best, np.linalg.norm(some - colours[i], axis=1))
+                for j in range(i + 1, len(colours)):
+                    a, b = colours[i], colours[j]
+                    span = b - a
+                    t = np.clip((some - a) @ span / max(float(span @ span), 1e-12), 0.0, 1.0)
+                    best = np.minimum(best, np.linalg.norm(some - (a + t[:, None] * span),
+                                                           axis=1))
+            near[rest] = best
+        near[near <= 0.02] = 0.0
         return np.asarray(np.minimum(near / self.soft, 1.0).reshape(rgb.shape[:-1]))
 
     def arrays(self) -> dict[str, np.ndarray]:
@@ -317,20 +343,23 @@ class Vision:
         (w_l, lab_l, figs_l), (w_r, lab_r, figs_r) = planes
         on_grid_l = self._to_grid(0, np.ones(lab_l.shape))[0] > 0
         on_grid_r = self._to_grid(1, np.ones(lab_r.shape))[0] > 0
+        lab_l_grid = self._to_grid(0, lab_l.astype(np.float64) + 1.0) - 1.0
         lab_r_grid = self._to_grid(1, lab_r.astype(np.float64) + 1.0) - 1.0
+        w_l_grid, w_r_grid = self._to_grid(0, w_l), self._to_grid(1, w_r)
+        x = np.arange(len(self.grid), dtype=np.float64)
         for k, fig in enumerate(figs_l):
-            own = self._to_grid(0, (lab_l == k).astype(np.float64))
-            if own.sum() < 1.0:
+            rows_k = np.nonzero((lab_l_grid == k).any(axis=1))[0]
+            if len(rows_k) == 0:
                 continue
-            # the left figure's weight on the grid, and the right image's weight for pixels
-            # of the figure's colour
-            left = self._to_grid(0, np.where(lab_l == k, w_l, 0.0))
+            band = slice(int(rows_k[0]), int(rows_k[-1]) + 1)
+            own = (lab_l_grid[band] == k).astype(np.float64)
+            left = np.where(own > 0, w_l_grid[band], 0.0)
             # the right figures of the left figure's colour, each whole (its edges as seen)
             similar = np.zeros(len(figs_r) + 1)
             for j, other in enumerate(figs_r):
                 similar[j] = math.exp(-0.5 * (float(np.linalg.norm(other.rgb - fig.rgb))
                                               / self.colour) ** 2)
-            right = self._to_grid(1, w_r * similar[lab_r])
+            right = w_r_grid[band] * similar[lab_r_grid[band].astype(np.int64)]
             # edges along azimuth, the left figure's own only (one column around it)
             grow = own.copy()
             grow[:, 1:] = np.maximum(grow[:, 1:], own[:, :-1])
@@ -347,7 +376,6 @@ class Vision:
             if energy <= 1e-9 or float((g_r ** 2).sum()) <= 1e-9:
                 continue
             answer = np.zeros(len(self.channels))
-            x = np.arange(len(self.grid), dtype=np.float64)
             for i, delta in enumerate(self.channels):
                 # the right edges at azimuth a + delta, sampled at every grid column a
                 at = x + float(delta)
@@ -366,7 +394,7 @@ class Vision:
             # the right figure under the left figure's pixels shifted by the best disparity
             at = np.rint(x + best).astype(np.int64)
             ok = (at >= 0) & (at < len(self.grid))
-            values = lab_r_grid[:, at[ok]][own[:, ok] > 0]
+            values = lab_r_grid[band][:, at[ok]][own[:, ok] > 0]
             under = values[values >= 0].astype(np.int64)
             if len(under):
                 j = int(np.bincount(under).argmax())

@@ -9,7 +9,8 @@ row 99 is 50 degrees below it. A pixel is the mean of 2 x 2 rays over its patch.
 
 The renderer casts rays: the table, the floor, the walls and the ceiling in their flat colours,
 and the things as stand-ins of their kinds (``kinds.json``) lit by one light from above, with no
-shadows. The same file renders the eyes in the chamber and on the page, so the brain sees the same
+shadows; the room behind a pixel is read on the pixel's middle ray, the things on its 2 x 2
+rays. The same file renders the eyes in the chamber and on the page, so the brain sees the same
 images in both. The images carry no distance and no label; ``Sight.truth`` keeps, for the
 chamber's readings only, which thing each pixel shows.
 """
@@ -85,6 +86,7 @@ class Renderer:
         e_step = math.radians(2.0 * TOP) / self.height
         offsets = (np.arange(s) + 0.5) / s - 0.5  # within a pixel, in pixels
         self._local = []
+        self._centre = []  # each pixel's middle ray: the room behind is read once a pixel
         for eye in (0, 1):
             a = columns(eye, self.width)
             # a column's rays spread over its patch; the left eye's azimuth falls with the column
@@ -95,6 +97,7 @@ class Renderer:
             grid_e = sub_e[:, None, :, None]  # (height, 1, s, 1)
             d = directions(grid_a, grid_e)  # (height, width, s, s, 3)
             self._local.append(d.reshape(-1, 3))
+            self._centre.append(directions(a[None, :], rows(self.height)[:, None]).reshape(-1, 3))
         room = self.table["room"]
         self._table_rect = (room["table"]["x"], room["table"]["z"])
         self._albedo = {name: np.asarray(room[name]["albedo"], dtype=np.float64)
@@ -218,7 +221,8 @@ class Renderer:
                 continue
             origin = eyes.places[eye]
             d = self._local[eye] @ eyes.rotation.T  # world directions
-            colour, far = self._background(origin, d)
+            colour, far = self._background(origin, self._centre[eye] @ eyes.rotation.T)
+            colour, far = np.repeat(colour, s2, axis=0), np.repeat(far, s2)
             hit = np.full(len(d), -1, dtype=np.int64)
             for k, thing in enumerate(things):
                 spec = self.table["kinds"][thing.kind]

@@ -36,7 +36,8 @@ def main() -> None:
             a, b = t[i], t[i + 1]
             same = a["truth"] == b["truth"] and a["truth"] >= 0
             for x in (a, b):
-                true = truth_distance(scene, x["truth"], x["origin"]) if x["truth"] >= 0 else math.nan
+                true = (truth_distance(scene, x["truth"], x["origin"]) if x["truth"] >= 0
+                        else math.nan)
                 rows.append({"scene": k, "same": same, "binocular": x["binocular"],
                              "angle": x["angle"], "gap": x["gap"], "target": x["target"],
                              "true": true})
@@ -47,11 +48,13 @@ def main() -> None:
                 for r in recs if r["eye"] == 2 and np.isfinite(r["distance"])]
         one = [abs(math.log(r["distance"] / truth_distance(scene, r["truth"], r["origin"])))
                for r in recs if r["eye"] != 2 and np.isfinite(r["distance"])]
-        print(f"scene {k}: lessons {len(t)} reads both {len(both)} {np.median(both) if both else math.nan:.3f}"
-              f" one {len(one)} {np.median(one) if one else math.nan:.3f}", flush=True)
+        both_m = np.median(both) if both else math.nan
+        one_m = np.median(one) if one else math.nan
+        print(f"scene {k}: lessons {len(t)} reads both {len(both)} {both_m:.3f}"
+              f" one {len(one)} {one_m:.3f}", flush=True)
     same = np.array([r["same"] for r in rows])
-    err = np.array([abs(math.log(r["target"] / r["true"])) if np.isfinite(r["true"]) else math.nan
-                    for r in rows])
+    err = np.array([abs(math.log(r["target"] / r["true"])) if np.isfinite(r["true"])
+                    else math.nan for r in rows])
     ang = np.array([r["angle"] for r in rows])
     bino = np.array([r["binocular"] for r in rows])
     print("lessons", len(rows), "same thing", same.mean().round(3))
@@ -74,7 +77,8 @@ def main() -> None:
             print("  scene %d true disp %.2f peak %.2f true %.3f read %.3f" % tuple(row))
     # the field on binocular codes: read against truth
     print("wrong-thing lessons target/true", np.round(
-        [r["target"] / r["true"] for r in rows if not r["same"] and np.isfinite(r["true"])][:20], 2))
+        [r["target"] / r["true"] for r in rows
+         if not r["same"] and np.isfinite(r["true"])][:20], 2))
 
 
 if __name__ == "__main__":
