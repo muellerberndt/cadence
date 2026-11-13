@@ -1,0 +1,301 @@
+{
+ "genes": {
+  "figure_thickness": 2.2,
+  "disparity_form": "energy",
+  "disparity_channels": 48,
+  "disparity_max": 14.154070598287376,
+  "disparity_tuning": 0.2413019349476171,
+  "disparity_colour": 0.12,
+  "disparity_match": 0.15,
+  "parallax_delay": 6,
+  "parallax_channels": 11,
+  "parallax_baselines": 6,
+  "parallax_window": 8.0,
+  "parallax_least": 0.003,
+  "reach_bins": 25,
+  "reach_span": [
+   0.12,
+   1.2
+  ],
+  "reach_width": 1.8937587811913172,
+  "reach_rate": 0.7164599999301093,
+  "reach_floor": 0.02,
+  "size_units": 8,
+  "elevation_units": 8,
+  "p_wulst_dl": 1,
+  "p_glimpse_dl": 1,
+  "p_both_cues": 0,
+  "wiring": "full",
+  "agreement_views": "both",
+  "agreement_scale": 0.004993391231794224,
+  "agreement_parallax": 2.011737475910358,
+  "agreement_baseline": 0.003,
+  "agreement_window": 14,
+  "agreement_lessons": 8,
+  "place_keep": "one",
+  "place_keep_angle": 3.0720009403603896,
+  "place_default": 0.4,
+  "map_cells": 54,
+  "empty_rule": "keep",
+  "match_step": 0.07926851861567073,
+  "match_stride": 0.19739669153359835,
+  "map_reach": 0.15,
+  "kinds_capacity": 12,
+  "kinds_vigilance": 0.28091600258760274,
+  "focus_appear": 1.0,
+  "focus_move": 0.8,
+  "novelty": 2.2009948690684595,
+  "isthmi_local": 3.9123201129115115,
+  "focus_habituate": 5.027820594493256,
+  "focus_return": 30.0,
+  "isthmi_global": 2.0,
+  "focus_explore": 0.11955856115371127,
+  "focus_fixation": 5,
+  "peer_amplitude": 0.5081340021523171,
+  "peer_period": 7
+ },
+ "fitness_on_selection_worlds": -2.318328317175032,
+ "generations": [
+  {
+   "generation": 0,
+   "best_fitness": -3.567735676396045,
+   "mean_fitness": -5.268157778065021
+  },
+  {
+   "generation": 1,
+   "best_fitness": -2.69078921302129,
+   "mean_fitness": -4.79090004264352
+  },
+  {
+   "generation": 2,
+   "best_fitness": -2.318328317175032,
+   "mean_fitness": -4.2719840601573225
+  },
+  {
+   "generation": 3,
+   "best_fitness": -3.791232559491122,
+   "mean_fitness": -5.688364589995425
+  },
+  {
+   "generation": 4,
+   "best_fitness": -3.026396763755453,
+   "mean_fitness": -4.669950988138572
+  },
+  {
+   "generation": 5,
+   "best_fitness": -2.7876268526932044,
+   "mean_fitness": -4.232699910725671
+  },
+  {
+   "generation": 6,
+   "best_fitness": -2.41823280422691,
+   "mean_fitness": -4.699294285490346
+  },
+  {
+   "generation": 7,
+   "best_fitness": -3.097150281274871,
+   "mean_fitness": -4.782980355657111
+  },
+  {
+   "generation": 8,
+   "best_fitness": -3.211394721919974,
+   "mean_fitness": -5.1673752068318155
+  },
+  {
+   "generation": 9,
+   "best_fitness": -2.5336774640303386,
+   "mean_fitness": -4.764739000019428
+  },
+  {
+   "generation": 10,
+   "best_fitness": -3.112542398465952,
+   "mean_fitness": -4.780063780611226
+  },
+  {
+   "generation": 11,
+   "best_fitness": -2.9998255978819186,
+   "mean_fitness": -4.291323323056107
+  },
+  {
+   "generation": 12,
+   "best_fitness": -3.2124325102560194,
+   "mean_fitness": -5.179144056801084
+  },
+  {
+   "generation": 13,
+   "best_fitness": -3.736264992156363,
+   "mean_fitness": -5.2457154832330115
+  },
+  {
+   "generation": 14,
+   "best_fitness": -2.8654966196453016,
+   "mean_fitness": -4.317521328667457
+  },
+  {
+   "generation": 15,
+   "best_fitness": -4.124935094030807,
+   "mean_fitness": -5.584138939083531
+  }
+ ],
+ "space": {
+  "disparity_channels": [
+   "int",
+   12,
+   48
+  ],
+  "disparity_max": [
+   "log",
+   0.2,
+   8.0,
+   24.0
+  ],
+  "disparity_tuning": [
+   "log",
+   0.3,
+   0.2,
+   2.0
+  ],
+  "disparity_form": [
+   "choice",
+   "edges",
+   "energy"
+  ],
+  "parallax_delay": [
+   "int",
+   1,
+   6
+  ],
+  "parallax_channels": [
+   "int",
+   4,
+   24
+  ],
+  "reach_bins": [
+   "int",
+   6,
+   36
+  ],
+  "reach_rate": [
+   "log",
+   0.3,
+   0.05,
+   1.0
+  ],
+  "reach_width": [
+   "log",
+   0.3,
+   0.5,
+   4.0
+  ],
+  "p_glimpse_dl": [
+   "choice",
+   0,
+   1
+  ],
+  "p_both_cues": [
+   "choice",
+   0,
+   1
+  ],
+  "agreement_views": [
+   "choice",
+   "before-after",
+   "binocular",
+   "both"
+  ],
+  "agreement_scale": [
+   "log",
+   0.3,
+   0.004,
+   0.04
+  ],
+  "agreement_parallax": [
+   "log",
+   0.3,
+   0.3,
+   4.0
+  ],
+  "agreement_window": [
+   "int",
+   2,
+   20
+  ],
+  "place_keep_angle": [
+   "log",
+   0.3,
+   2.0,
+   15.0
+  ],
+  "match_step": [
+   "log",
+   0.3,
+   0.05,
+   0.4
+  ],
+  "match_stride": [
+   "log",
+   0.3,
+   0.1,
+   1.0
+  ],
+  "kinds_vigilance": [
+   "linear",
+   0.05,
+   0.1,
+   0.5
+  ],
+  "novelty": [
+   "log",
+   0.3,
+   0.1,
+   3.0
+  ],
+  "isthmi_local": [
+   "log",
+   0.3,
+   0.2,
+   5.0
+  ],
+  "focus_habituate": [
+   "log",
+   0.3,
+   1.0,
+   30.0
+  ],
+  "focus_explore": [
+   "linear",
+   0.05,
+   0.0,
+   0.5
+  ],
+  "peer_amplitude": [
+   "linear",
+   0.1,
+   0.0,
+   1.0
+  ],
+  "peer_period": [
+   "int",
+   2,
+   12
+  ]
+ },
+ "reference": {
+  "m1": 5.838554294281306,
+  "m2": 4.039429332129044,
+  "m3": 0.325,
+  "m4": 0.19415690153610124,
+  "cost": 691196.4453621212
+ },
+ "random": true,
+ "selection": {
+  "script": "benchmarks/parrot/evolve.py",
+  "seed": 33290000,
+  "generations": 16,
+  "population": 32,
+  "keep": 4,
+  "worlds": 2,
+  "rate": 0.15,
+  "commit": "69eec0a0"
+ }
+}
