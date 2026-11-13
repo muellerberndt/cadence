@@ -209,6 +209,7 @@ def life(seed: int, *, record: Any = None, brain: Any = None, **given: Any) -> d
     phase, began = "naming", time.time()
     r: world.Room | None = None
     held_for: world.Room | None = None  # the room whose things out of view were counted
+    ablated: Any = None  # W6: the same map and body, the lexicon's synapses at zero
     for event in events:
         kind = event[0]
         now = {"room": None, "turn": None, "name": event[3] if kind == "name" else None,
@@ -236,6 +237,9 @@ def life(seed: int, *, record: Any = None, brain: Any = None, **given: Any) -> d
             said = brain.ask(q.text)
             ok = world.right(q, said)
             readings.setdefault(gate, []).append(ok)
+            if gate.startswith("W1"):
+                ablated = ablated if ablated is not None else ablate(brain)
+                readings.setdefault("W6_ablated", []).append(world.right(q, ablated.ask(q.text)))
             if gate.startswith("W1") and q.about == "out_of_view":
                 readings.setdefault("W4_out_of_view", []).append(ok)
             if record is not None:
@@ -271,6 +275,9 @@ def readings_of(seed: int, settings: dict[str, Any], readings: dict[str, list[bo
         out["work"] = dict(brain.map.work)
         out["lessons"] = brain.lexicon.lessons
         out["words"] = len(brain.lexicon.forms)
+        synapses = int(brain.map.connectome.synapses)
+        out["macs"] = int(brain.lexicon.work["macs"] + synapses * (
+            brain.map.work["moments"] + 2 * brain.map.work["questions"]))
     out["seconds"] = seconds
     return out
 
@@ -282,6 +289,17 @@ def _free_place(rng: np.random.Generator, r: world.Room) -> np.ndarray:
         if all(np.linalg.norm(p - t.place) >= 0.45 for t in r.things):
             return p
     raise RuntimeError("no free place in the room")
+
+
+def ablate(brain: Any) -> Any:
+    """W6's twin: the brain's map and body, and its lexicon with every word it heard and its
+    synapses at zero."""
+    from cadence.words import Lexicon, Words
+
+    arrays = brain.lexicon.arrays()
+    arrays["efficacy"] = np.zeros_like(arrays["efficacy"])
+    return Words(brain.map, lexicon=Lexicon.from_arrays(brain.lexicon.settings, arrays),
+                 body=brain.body)
 
 
 def brain_parameters(brain: Any) -> int:

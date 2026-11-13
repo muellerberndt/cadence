@@ -30,6 +30,31 @@ tracking what is where.
 - **`cadence.space.physics.Physics`**: the learned part, shareable by several maps, kept in a
   map's file with whether it is still learning.
 - No default changes: with physics unset the map is as on 0.99.0, to the bit.
+### Words for things (#326)
+
+`cadence.words` is imported by name, and `import cadence` loads none of it. The guide is
+[docs/words.md](docs/words.md); the chamber is [benchmarks/words](benchmarks/words/README.md).
+
+- **Values carried with a thing (`Map(values=)`, opt-in).** `Map(plane, values={"colour": 6})`
+  gives every cell one more unit a value, after the kinds' units. A report may name values
+  (`(kind, place, {"colour": 2})`); they are written on its cells with its kind's weights,
+  carried with the thing (a report with no value takes the value of the thing it claims), moved
+  with it by the near rule, and read by settling: `values_at`, `where_is_value(group, value)`,
+  `what_is_at(None, cells=flags)` and `things()` entries' `values`. Which report is which thing
+  reads the kinds' units alone. With `values` unset the map is as on 0.99.0, to the bit.
+- **`cadence.words.Lexicon`**: words bound to a brain's concepts, learned from naming. A word
+  takes a neuron when it is first heard; reciprocal synapses between the word neurons and the
+  concept neurons start at zero and are taught at naming by the library's free and nudged phases
+  (a word's n-th lesson closes 1/n of its error, no less than `rate`), so a word keeps what its
+  namings share. Hearing and saying are settles over the same synapses; the motor says the most
+  active word's letters. A word never heard names nothing.
+- **`cadence.words.Words`**: a brain that answers typed questions about its room from its map
+  (with colours), its body (the places in front, to the right, behind, to the left) and its
+  lexicon: `name(word, at)`, `ask(question)`, `practice(question, answer)`. The question's words
+  settle on the concept asked about and the read asked for; the map is asked by settling in both
+  directions ("what colour is the ball?", "what is red?", "what is behind you?"); each answer is
+  said by the lexicon's motor; "I do not know" is learned as the word of the read that finds
+  nothing.
 
 ## 0.99.0 - 2026-11-13
 

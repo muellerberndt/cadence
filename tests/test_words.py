@@ -1,0 +1,110 @@
+"""Words for things: the lexicon learned from naming and the brain that answers about its room
+(``cadence.words``, #326)."""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+import pytest
+
+from cadence.space.map import Map
+from cadence.words import PLACES, Body, Lexicon, Words
+
+
+def _named(seed: int = 0, namings: int = 300) -> tuple[Lexicon, list[str], list[str]]:
+    """A lexicon taught by namings in which a word names a kind or a colour of the thing
+    attended, the other concept present by chance."""
+    rng = np.random.default_rng(seed)
+    lexicon = Lexicon({"kind": 4, "colour": 3, "none": 1})
+    kinds, colours = ["dako", "mipu", "sefa", "lobi"], ["ruka", "beto", "gani"]
+    for _ in range(namings):
+        k, c = int(rng.integers(4)), int(rng.integers(3))
+        word = kinds[k] if rng.random() < 0.6 else colours[c]
+        lexicon.name(word, {("kind", k): 0.5, ("colour", c): 0.5})
+    return lexicon, kinds, colours
+
+
+def test_a_word_keeps_what_its_namings_share() -> None:
+    lexicon, kinds, colours = _named()
+    for k, word in enumerate(kinds):
+        assert int(np.argmax(lexicon.hear(word))) == lexicon.index("kind", k)
+        assert lexicon.say(("kind", k)) == word
+    for c, word in enumerate(colours):
+        assert int(np.argmax(lexicon.hear(word))) == lexicon.index("colour", c)
+        assert lexicon.say(("colour", c)) == word
+    assert lexicon.unit("dako") is not None and lexicon.unit("never") is None
+    # a word never heard settles where silence does: it names nothing
+    assert np.array_equal(lexicon.hear("never"), lexicon.hear([]))
+    assert lexicon.hear("never").max() < 0.02
+    assert lexicon.say(("none", 0)) is None  # a concept never named has no word
+
+
+def test_three_namings_bind_a_new_word() -> None:
+    lexicon, _, _ = _named(1)
+    for _ in range(3):
+        lexicon.name("tovez", {("kind", 3): 0.5, ("colour", 1): 0.3})
+    heard = lexicon.hear("tovez")
+    assert int(np.argmax(heard)) == lexicon.index("kind", 3) and heard.max() > 0.1
+
+
+def test_the_lexicon_as_arrays() -> None:
+    lexicon, kinds, _ = _named(2, namings=60)
+    again = Lexicon.from_arrays(lexicon.settings, lexicon.arrays())
+    assert again.forms == lexicon.forms
+    assert np.allclose(again.hear(kinds[0]), lexicon.hear(kinds[0]))
+    with pytest.raises(ValueError, match="letters"):
+        lexicon.name("Dako!", {("kind", 0): 1.0})
+    with pytest.raises(ValueError, match="no concept"):
+        lexicon.index("kind", 9)
+
+
+def test_the_body_places() -> None:
+    body = Body((0.0, 0.0), heading=0.0)
+    assert [PLACES[body.place(p)] for p in ([1, 0], [0, -1], [-1, 0], [0, 1])] == [
+        "front", "right", "behind", "left"]
+    body.heading = math.pi / 2
+    assert PLACES[body.place([1, 0])] == "right"
+    flags = body.cells(2, np.array([[0.0, -1.0], [0.0, 1.0]]))
+    assert flags.tolist() == [True, False]
+
+
+def test_a_brain_answers_about_its_room() -> None:
+    held = Map((-2.0, 2.0, -2.0, 2.0), (24, 24), units=3, values={"colour": 2})
+    brain = Words(held)
+    kinds, colours, places = ["dako", "mipu", "sefa"], ["ruka", "beto"], [
+        "fobe", "riza", "kosa", "lume"]
+    rng = np.random.default_rng(0)
+
+    def room() -> list[tuple[int, np.ndarray, int]]:
+        """Three things at drawn places around the robot, each in a drawn colour."""
+        turn = rng.uniform(0.0, 2 * math.pi)
+        things = [(k, 1.2 * np.array([math.cos(turn + 2.1 * k), math.sin(turn + 2.1 * k)]),
+                   int(rng.integers(2))) for k in range(3)]
+        held.reset()
+        held.moment(seen=[(k, p, {"colour": c}) for k, p, c in things])
+        return things
+
+    for _ in range(40):  # namings: a thing's kind, colour or place around the robot
+        things = room()
+        for _ in range(4):
+            k, p, c = things[int(rng.integers(3))]
+            brain.body.heading = float(rng.uniform(-math.pi, math.pi))
+            u = rng.random()
+            word = kinds[k] if u < 0.5 else (colours[c] if u < 0.75 else
+                                              places[brain.body.place(p)])
+            brain.name(word, p)
+    brain.body.heading = 0.0
+    for _ in range(4):  # practice: where a thing is, its colour, a word never named
+        things = room()
+        k, p, c = things[int(rng.integers(3))]
+        brain.practice(f"where is {kinds[k]}", places[brain.body.place(p)])
+        brain.practice(f"what colour is {kinds[k]}", colours[c])
+        brain.practice("where is zuzo", "i do not know")
+    things = room()
+    for k, p, c in things:
+        assert brain.ask(f"where is {kinds[k]}") == [places[brain.body.place(p)]]
+        assert brain.ask(f"what colour is {kinds[k]}") == [colours[c]]
+    assert brain.ask("where is novu") == ["i do not know"]  # a word never named
+    with pytest.raises(ValueError, match="values"):
+        Words(Map((-1.0, 1.0, -1.0, 1.0)))
