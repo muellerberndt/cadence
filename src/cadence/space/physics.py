@@ -108,7 +108,7 @@ class Physics:
     @property
     def taught(self) -> bool:
         """Whether any lesson was taken: an untaught physics leaves the map as it is."""
-        return self.stats[2] > 0
+        return bool(self.stats[2] > 0)
 
     def fit(self) -> None:
         """The numbers acted on, from the lessons so far: ``prior`` moments of a thing at rest

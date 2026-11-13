@@ -533,7 +533,7 @@ class Map:
             lost[units] = 0.0  # a thing of the kind with no place is found
         carried &= ~claimed
         held_by_physics = np.zeros(self.count, dtype=bool)
-        pending: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
+        pending: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
         if physics is not None and physics.taught:  # things out of view that move
             held_by_physics = self._predict(claimed, sight, lit, write, clock, doubt, lost,
                                             pending)
@@ -687,7 +687,7 @@ class Map:
                 record = self.motion[held[int(np.argmax(self.potential[held, units[0]]))],
                                      units[0]]
         ident = float(self.motion[:, :, IDENT].max()) + 1.0 if record is None else 0.0
-        return self.physics.see(record, place, ident, self._inside())
+        return np.asarray(self.physics.see(record, place, ident, self._inside()))
 
     def _predict(self, claimed: np.ndarray, sight: np.ndarray, lit: Any, write: np.ndarray,
                  clock: np.ndarray, doubt: np.ndarray, lost: np.ndarray,
@@ -945,7 +945,7 @@ class Map:
         moving = records[:, CORE + 7] + records[:, TAIL + 3] > 0
         if not moving.any():
             return None
-        return records[int(np.flatnonzero(moving)[0]), CORE + 2:CORE + 4].copy()
+        return np.array(records[int(np.flatnonzero(moving)[0]), CORE + 2:CORE + 4])
 
     def forecast(self, moments: int = 1) -> Map:
         """With physics: the map ``moments`` moments on as its physics predicts, with nothing
