@@ -32,10 +32,14 @@ said = brain.act(x[None])                      # one unit a word, and one for si
 
 ## The brain
 
-- **The regions.** `modules=` regions end in the association region; the eyes reach the lowest
-  region, and the ear reaches it too (`ear_entry`), so a heard word and a seen thing settle in one
-  chain. The apical compartment (`apical=`) carries what the upper regions hold down to the lower
-  ones.
+- **The regions.** `modules=` regions end in the association region. The eyes reach the lowest
+  region (and with `eyes_entry="both"` the association too). The ear reaches the lowest region,
+  the association, or both (`ear_entry`), so a heard word and a seen thing settle in one chain.
+  The apical compartment (`apical=`) carries what the upper regions hold down to the lower ones.
+- **Two routes to the voice.** With `ear_motor`, what the ear hears also reaches the voice
+  directly, as the song system's core carries auditory input to the vocal motor nuclei. Saying a
+  heard word back then has synapses of its own, and the association's route carries meaning.
+  Through one shared route, imitation and naming took each other's place.
 - **The voice** is a motor slot of one unit for each word the parrot has heard (each says that
   word's remembered sound) and one for silence.
 - **No unit names a concept.** A concept is the settled pattern of the regions; a linear probe
@@ -50,8 +54,15 @@ Every rule is the brain's own; only the world and the teacher are designed.
 - **The pistachio makes the act lasting:** a lesson on the parrot's own reply, taken on the brain
   as it was when it replied, when a pistachio follows (three factors: the act, its trace, the
   reward).
-- **The correction:** after a wrong reply the trainer says the right word; the parrot's own echo
-  of it labels the state it replied from (DAgger on its own states).
+- **The correction:** after a wrong reply the trainer says the right word. The voice's take of
+  that word labels the state the parrot replied from: DAgger on its own states, the label the
+  parrot's mirror of a heard word. The lesson is taken on the brain as it was at the reply, and
+  it takes the living brain's optimizer step.
+- **The word records:** a word the trainer gives as an answer is kept under the association's
+  pattern of the moment the question ended. At the parrot's turn, the records its pattern recalls
+  (where the three nearest agree) are replayed to its ear. A recalled record is rewritten under
+  the present pattern once its reply is judged (reconsolidation).
+- **Sleep:** between steps every efficacy is scaled down by half, so the brain can learn again.
 - **The actor-critic:** the pistachio is the reward, its delay bridged by the eligibility
   (`actor_hold`).
 
@@ -66,7 +77,12 @@ word heard alone, silencing, a new object and a new word by pistachios alone
 
 | Part | Evidence | Learned replacement |
 | --- | --- | --- |
-| The voice held while a trainer has more to say | Feed-forward inhibition holds a call back while a songbird listens | Turn-taking learned from pistachios |
+| The voice held while a trainer speaks (a question, a correction) | Feed-forward inhibition holds a call back while a songbird listens | Turn-taking learned from pistachios |
+| The ear reaching the voice directly | The song system's core: auditory input to the vocal motor nuclei | None: anatomy |
+| The correction's label: the voice's take of the trainer's word | HVC neurons fire alike when a bird sings a syllable and hears it | The parrot's own echo, once its inverse model holds in a question's context |
+| The practice lesson kept off replies to a trainer's question | Social context gates vocal exploration: directed song suppresses it | None |
+| Sleep between steps: every efficacy scaled down by half | The synaptic homeostasis of sleep | None |
+| Reconsolidation of a recalled word record | A memory is labile when recalled | None |
 | The glimpse: the thing in focus seen in a place of its own | The tectum's winner is looked at, and its window is read | A focus the brain moves itself |
 | The scan: for a question about the whole scene, the focus visits each thing in turn | Serial search with inhibition of return | A learned gaze |
 | A word's code drawn per form | The ear's record of a heard word | The hearing module's records |

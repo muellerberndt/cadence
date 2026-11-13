@@ -603,6 +603,13 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
                         mt = turn_t[i][place]
                         entries.setdefault(mt, []).append(
                             (i, unit, 0, float(g["correction_lesson"])))
+                        if k == 0 and kinds and q is not None and int(g.get("scan_silence", 0)):
+                            # the trainer named the right things alone: at each other thing the
+                            # focus visited, the right reply was to say nothing
+                            for j, kind in enumerate(kinds[: len(turn_t[i])]):
+                                if kind not in q.answer:
+                                    entries.setdefault(turn_t[i][j], []).append(
+                                        (i, p.silence, 0, float(g["correction_lesson"])))
                 p.work["corrected"] = p.work.get("corrected", 0) + teach_at(entries)
                 echoes = []
             if any(ex.turn <= t < ex.turn + ex.turn_length for ex in exs):
