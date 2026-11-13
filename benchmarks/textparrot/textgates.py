@@ -44,8 +44,8 @@ ARMS["d2a25all"] = {"modules": [160, 128], "apical": 0.25, "learning_surprise": 
 EXAM = ("colour", "relation", "where", "which_shape", "which_colour", "which_size",
         "which_material", "which_food", "can_eat", "know_shape", "know_food")
 SENTENCES = ("describe", "describe_rel")
-CAPS = {"words": 200, "properties": 400, "relations": 400, "questions": 300, "sentences": 300,
-        "scenes": 400}
+CAPS = {"words": 200, "properties": 600, "relations": 600, "questions": 400, "sentences": 300,
+        "scenes": 600}
 if os.environ.get("TEXTPARROT_CAPS"):  # a run's own caps, as JSON
     CAPS = {**CAPS, **json.loads(os.environ["TEXTPARROT_CAPS"])}
 

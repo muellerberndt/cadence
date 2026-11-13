@@ -269,9 +269,9 @@ def unique(scene: Scene, t: Thing, depth: int) -> bool:
     return len(same) == 1
 
 
-FORMS = ("it", "it_colour", "it_shape", "echo", "which_colour", "which_shape", "which_size",
-         "which_material", "which_food", "know_shape", "know_food", "colour", "can_eat", "where",
-         "relation", "describe", "describe_rel")
+FORMS = ("it", "it_colour", "it_shape", "echo", "prompt", "which_colour", "which_shape",
+         "which_size", "which_material", "which_food", "know_shape", "know_food", "colour",
+         "can_eat", "where", "relation", "describe", "describe_rel")
 
 
 def question(form: str, scene: Scene, rng: np.random.Generator, *, depth: int = 1,
@@ -295,6 +295,12 @@ def question(form: str, scene: Scene, rng: np.random.Generator, *, depth: int = 
             return None
         return Question(form, ["what", "shape", "is", "it", "?"], None,
                         {0: [things[0].shape]}, [])
+    if form == "prompt":  # the trainer asks "what is it ?" and says a name; the parrot says it
+        if len(things) != 1:
+            return None
+        # the thing's name two times in three, a nonce word otherwise (a prompt, never a name)
+        w = word or (things[0].kind if rng.random() < 2 / 3 else str(rng.choice(NONCE)))
+        return Question(form, ["what", "is", "it", "?", w], None, {0: [w]}, [], meta={"word": w})
     if form == "echo":  # the trainer says a word with one thing in view; the parrot says it back
         if len(things) != 1:
             return None

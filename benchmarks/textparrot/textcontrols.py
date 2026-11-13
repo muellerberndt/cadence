@@ -43,6 +43,7 @@ def build(model: str, width: int, inputs: int, voice: int, seed: int) -> Any:
     import torch
     from torch import nn
 
+    torch.set_num_threads(1)  # one core a life, as the brain's
     torch.manual_seed(int(seed))
 
     class Heads(nn.Module):  # type: ignore[misc]

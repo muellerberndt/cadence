@@ -59,8 +59,8 @@ wood, what can you eat, is a key long, can you eat a banana), relations (where, 
 questions (what colour has, can you eat the), sentences (what do you see, one or two things),
 scenes (what do you see, what do you see left of). Three blocks in ten revisit the earlier
 stages' forms. A third of the echoes are nonce words (heard and said back, never a name). A stage ends at mastery (a frozen greedy read of its forms at .90, every 20 blocks)
-or its cap (words 200, properties 400, relations 400, questions 300, sentences 300, scenes 400
-blocks of 64 exchanges).
+or its cap (words 200, properties 600, relations 600, questions 400, sentences 300, scenes 600
+blocks of 64 exchanges; amendment 3).
 
 ## The arm
 
@@ -117,3 +117,16 @@ teacher asks about what is there four times in five (`ASKS_PRESENT`: the value o
 view, or a relation some thing stands in): at block 50 the brain names 132 of 144 matching
 things. Training and reading scenes alike. The lives started before were stopped before any
 reading. Founders and gates unchanged.
+
+## Amendment 3 (before any gated reading)
+
+- **The prompt game** joins the words stage: "what is it ? W" with one thing in view, W the
+  thing's name two times in three and a nonce word otherwise; the parrot says W. In development
+  (founders 906, 907) a parrot taught the bare echo said "zabu" back with a lemon in view on 19 of
+  20 echo trials and never said it to "what is it ?" (0 of 40 trials, "ball"); taught the prompt
+  game, prompted trials carry the pistachio into the naming state (founder 906: "zabu" at 1.00 by
+  trial 26).
+- **Stage caps** raised to properties 600, relations 600, questions 400, scenes 600 blocks (the
+  development sweep's stages ended at their caps unmastered).
+- The gated lives restarted under amendments 1 to 3; no earlier life is read. G5's trials are
+  declared in full before any life reaches G5.

@@ -3,8 +3,9 @@
 After pretraining, on a copy of the parrot, one exchange a trial, the parrot's voice sampled from
 its own motor activity (``temperature``):
 
-- odd trials, **the trainer names it**: the lemon alone in view, the trainer says "zabu" (the
-  echo game of the words stage); a pistachio where the parrot says "zabu" back;
+- odd trials, **the trainer prompts it**: the lemon alone in view, the trainer asks "what is it ?"
+  and says "zabu" after it (the prompt game of the words stage, with nonce words among the
+  prompts); a pistachio where the parrot says "zabu";
 - even trials, **the trainer asks**: the lemon alone in view, "what is it ?"; a pistachio where
   the parrot says "zabu".
 
@@ -133,8 +134,9 @@ def new_word(policy: Any, rng: np.random.Generator, *, trials: int = 60,
     pistachios, curve, learned = 0, [], None
     for trial in range(1, trials + 1):
         sc = lemon_alone(rng)
-        if trial % 2 == 1:
-            item = (sc, tw.Question("echo", [NEW_WORD], None, {0: [NEW_WORD]}, []))
+        if trial % 2 == 1:  # the trainer's prompt: the question and the new word after it
+            item = (sc, tw.Question("prompt", ["what", "is", "it", "?", NEW_WORD], None,
+                                    {0: [NEW_WORD]}, []))
         else:
             item = (sc, tw.Question("it", ["what", "is", "it", "?"], None, {0: [NEW_WORD]}, []))
         eps = tc.run(sampler, q.layout, [item], "free", learn=False)

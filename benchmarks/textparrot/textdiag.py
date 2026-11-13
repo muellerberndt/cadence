@@ -31,10 +31,10 @@ def mode(b: int, rng: np.random.Generator) -> str:
     return "teacher" if b <= 20 or rng.random() > 0.3 else "dagger"
 
 
-def rates(scale: float, form: str, seed: int, depth: str) -> None:
+def rates(scale: float, form: str, seed: int, depth: str, genome: dict | None = None) -> None:
     modules = [160, 128] if depth == "d2" else [128] * 4
     layout = tc.Layout.founder(seed)
-    p = tp.BrainPolicy(layout, {"eta_scale": scale, "modules": modules}, seed)
+    p = tp.BrainPolicy(layout, {"eta_scale": scale, "modules": modules, **(genome or {})}, seed)
     forms = dict(tp.STAGES)["properties"] if form == "props" else (form,)
     rng = np.random.default_rng(seed)
     t = time.time()
@@ -92,6 +92,7 @@ def errors(form: str, seed: int, genome: dict) -> None:
 
 if __name__ == "__main__":
     if sys.argv[1] == "rates":
-        rates(float(sys.argv[2]), sys.argv[3], int(sys.argv[4]), sys.argv[5])
+        rates(float(sys.argv[2]), sys.argv[3], int(sys.argv[4]), sys.argv[5],
+              json.loads(sys.argv[6]) if len(sys.argv) > 6 else None)
     else:
         errors(sys.argv[2], int(sys.argv[3]), json.loads(sys.argv[4]))

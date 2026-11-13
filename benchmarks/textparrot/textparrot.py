@@ -86,7 +86,7 @@ def anatomy(g: dict[str, Any], layout: tc.Layout, memory: dict[str, Any]) -> Any
     return Genome(regions=regions, projections=tuple(sensory) + rest, label="text parrot")
 
 STAGES: list[tuple[str, tuple[str, ...]]] = [
-    ("words", ("it", "it_colour", "it_shape", "echo")),
+    ("words", ("it", "it_colour", "it_shape", "echo", "prompt")),
     ("properties", ("which_colour", "which_shape", "which_size", "which_material", "which_food",
                     "know_shape", "know_food")),
     ("relations", ("where", "relation")),
@@ -101,7 +101,7 @@ HELD_DEPTH = frozenset({("where", 2), ("can_eat", 2)})
 
 
 def things_for(form: str, rng: np.random.Generator, stage: str | None = None) -> int:
-    if form in ("it", "it_colour", "it_shape", "echo"):
+    if form in ("it", "it_colour", "it_shape", "echo", "prompt"):
         return 1
     if form in ("know_shape", "know_food"):
         return 0
