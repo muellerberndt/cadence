@@ -1,5 +1,5 @@
-"""Several things of one kind, answers that name several things, and how many: the brain of
-``cadence.words.several`` (#328)."""
+"""Several things of one kind, answers that name several things, and how many: the part
+``cadence.words.several.Several`` of a ``Words`` brain (#328)."""
 
 from __future__ import annotations
 
@@ -9,15 +9,15 @@ import numpy as np
 import pytest
 
 from cadence.space.map import Map
-from cadence.words import Lexicon
-from cadence.words.several import READS, Several
+from cadence.words import Lexicon, Words
+from cadence.words.several import Several
 
 KINDS, COLOURS = ["ball", "cup", "box"], ["red", "blue", "gold"]
 PLACES = ["front", "right", "behind", "left"]
 NUMBERS, TRUTHS, NOTHING = ["zero", "one", "two", "three"], ["no", "yes"], "i do not know"
 
 
-def _room(brain: Several, rng: np.random.Generator) -> list[tuple[int, np.ndarray, int]]:
+def _room(brain: Words, rng: np.random.Generator) -> list[tuple[int, np.ndarray, int]]:
     """Two balls of two colours, and a cup and a box each held or not, seen at once."""
     kinds = [0, 0] + [k for k in (1, 2) if rng.random() < 0.7]
     turn = rng.uniform(0.0, 2 * math.pi)
@@ -31,7 +31,7 @@ def _room(brain: Several, rng: np.random.Generator) -> list[tuple[int, np.ndarra
     return things
 
 
-def _questions(brain: Several, things: list[tuple[int, np.ndarray, int]],
+def _questions(brain: Words, things: list[tuple[int, np.ndarray, int]],
                stage: int) -> list[tuple[str, str | list[str]]]:
     """The teacher's questions about a room and their answers, in the teacher's order: what and
     where, then how many as well, then whether there is one as well."""
@@ -58,10 +58,11 @@ def _questions(brain: Several, things: list[tuple[int, np.ndarray, int]],
 
 
 @pytest.fixture(scope="module")
-def raised() -> Several:
+def raised() -> Words:
     """A brain named and practised in rooms of two balls and a cup and a box."""
     rng = np.random.default_rng(3)
-    brain = Several(Map((-2.0, 2.0, -2.0, 2.0), (24, 24), units=3, values={"colour": 3}))
+    brain = Words(Map((-2.0, 2.0, -2.0, 2.0), (24, 24), units=3, values={"colour": 3}),
+                  parts=[Several()])
     for _ in range(40):  # naming: the parrot attends to a thing and hears one word
         things = _room(brain, rng)
         for _ in range(4):
@@ -78,7 +79,7 @@ def raised() -> Several:
     return brain
 
 
-def test_several_of_one_kind_told_apart_counted_and_found(raised: Several) -> None:
+def test_several_of_one_kind_told_apart_counted_and_found(raised: Words) -> None:
     brain = raised
     rng = np.random.default_rng(11)
     for _ in range(3):  # rooms never seen
@@ -89,7 +90,7 @@ def test_several_of_one_kind_told_apart_counted_and_found(raised: Several) -> No
     assert brain.ask("how many zorps are there") == [NOTHING]
 
 
-def test_number_words_are_learned_from_answers_alone(raised: Several) -> None:
+def test_number_words_are_learned_from_answers_alone(raised: Words) -> None:
     lexicon = raised.lexicon
     for n, word in enumerate(NUMBERS[:3]):
         assert lexicon.say(("number", n)) == word
@@ -101,28 +102,30 @@ def test_number_words_are_learned_from_answers_alone(raised: Several) -> None:
         heard = lexicon.hear(word)
         assert max(heard[lexicon.groups[g]].max() for g in ("kind", "colour", "place")) < 0.02
     # the question's words carry the read: how many asks a count, is there asks a truth
-    raised.named(raised._words("how many cup are there"))
-    assert READS[raised.last["read"]] == "number"
-    raised.named(raised._words("is there a red ball"))
-    assert READS[raised.last["read"]] == "truth" and raised.last["about"] == {
+    reads = raised.hear(raised._words("how many cup are there")).reads
+    assert max(reads, key=lambda g: reads[g]) == "number"
+    reads = raised.hear(raised._words("is there a red ball")).reads
+    assert max(reads, key=lambda g: reads[g]) == "truth"
+    part = raised.parts[0]
+    assert part.name_words(raised, raised._words("is there a red ball")) == {
         "kind": 0, "colour": 0}
 
 
-def test_with_the_lexicon_at_zero_it_says_nothing(raised: Several) -> None:
+def test_with_the_lexicon_at_zero_it_says_nothing(raised: Words) -> None:
     arrays = raised.lexicon.arrays()
     arrays["efficacy"] = np.zeros_like(arrays["efficacy"])
-    mute = Several(raised.map, body=raised.body,
-                   lexicon=Lexicon.from_arrays(raised.lexicon.settings, arrays))
+    mute = Words(raised.map, parts=[Several()], body=raised.body,
+                 lexicon=Lexicon.from_arrays(raised.lexicon.settings, arrays))
     assert mute.ask("how many ball are there") == [""]
     assert mute.ask("where is the red ball") == [""]
 
 
-def test_a_lexicon_without_counts_is_refused() -> None:
+def test_the_part_adds_its_concepts_and_reads() -> None:
     held = Map((-1.0, 1.0, -1.0, 1.0), (8, 8), units=2, values={"colour": 2})
-    with pytest.raises(ValueError, match="counts"):
-        Several(held, lexicon=Lexicon({"kind": 2, "colour": 2, "place": 4, "read": 3,
-                                       "none": 1}))
+    brain = Words(held, parts=[Several(numbers=4)])
+    assert brain.answers == ["kind", "colour", "place", "number", "truth"]
+    sizes = {g: s.stop - s.start for g, s in brain.lexicon.groups.items()}
+    assert sizes["number"] == 4 and sizes["truth"] == 2 and sizes["read"] == 5
+    assert Several(numbers=4).together(9)["number"].tolist() == [0, 0, 0, 1]
     with pytest.raises(ValueError, match="counts 2 or more"):
-        Several(held, numbers=1)
-    with pytest.raises(ValueError, match="values"):
-        Several(Map((-1.0, 1.0, -1.0, 1.0), (8, 8), units=2))
+        Several(numbers=1)
