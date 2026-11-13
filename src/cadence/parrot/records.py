@@ -30,7 +30,7 @@ class HeardRecords:
                  store: Any = None):
         from ..longterm import LongTermMemory
 
-        self.store = store if store is not None else LongTermMemory(
+        self.store: Any = store if store is not None else LongTermMemory(
             width=int(width), value_width=int(value_width), capacity=int(capacity))
         self.takes_surprise = "surprise" in inspect.signature(self.store.write).parameters
 
