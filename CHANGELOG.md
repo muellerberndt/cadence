@@ -73,6 +73,15 @@ tracking what is where.
   question's read. `Words.practice` takes no lesson of its own where a part's `takes` holds. The
   chamber's rung is `benchmarks/words/several.py`
   ([protocol](benchmarks/words/PROTOCOL_SEVERAL.md)).
+  nothing.
+- **Time in words (`cadence.words.episodes.Times`).** A `Words` brain with two more sources.
+  Its records hold the places things left, written as it lives into a `LongTermMemory` keyed by
+  the thing and a drifting context (`Records`, `Clock`). Its forecast is the learned physics'
+  `Map.forecast(moments)`; a map with no physics forecasts itself. The lexicon gains one concept
+  a source, joined to every word by synapses from zero. "Was", "is" and "will" are nonce words:
+  which source a question asks for is learned from answered questions, and the settled source
+  activities are gains on what each source found. `moment(...)` runs the map's moment and then
+  the records'; `enter()` begins a room; `Records.barred` bars every recall.
 
 ## 0.99.0 - 2026-11-13
 

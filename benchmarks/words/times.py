@@ -51,6 +51,7 @@ APART = 0.8  # a carried thing goes at least this far from where it was (metres)
 HELD = 0.15  # the map holds a thing where it holds its kind within this distance of its place
 TIMES = ("was", "is", "will")  # the forms of the questions about time, in the sources' order
 EDGE = math.radians(10.0)  # a rolled thing's places lie this far inside their places' edges
+SEEN = 6  # the parrot sees a rolled thing for this many moments at the end of the watch
 
 
 def edge(heading: float, point: np.ndarray) -> float:
@@ -145,7 +146,8 @@ def roll_path(rng: np.random.Generator, at: dict[int, np.ndarray], kind: int, mo
     stays .15 m inside the plane, .4 m from the parrot and .35 m from every other thing; with
     ``distinct`` the places around the parrot, as it faces when it has turned, where the thing
     began, where it is then and where it is ``ahead`` moments later are three, each ``EDGE`` or
-    more from the edges of its place. None where no roll is found."""
+    more from the edges of its place, and the parrot sees the thing for the last ``SEEN``
+    moments of the watch. None where no roll is found."""
     start = at[kind]
     for _ in range(4000):
         speed, a = rng.uniform(0.03, 0.06), rng.uniform(-math.pi, math.pi)
@@ -163,7 +165,8 @@ def roll_path(rng: np.random.Generator, at: dict[int, np.ndarray], kind: int, mo
             continue
         three = (start, path[m + turned], path[m + turned + ahead])
         if distinct and (len({world.place_of(final, p) for p in three}) < 3
-                         or min(edge(final, p) for p in three) < EDGE):
+                         or min(edge(final, p) for p in three) < EDGE
+                         or not world.in_view(h, path[max(m - SEEN + 1, 1): m + 1]).all()):
             continue
         return v, m, float(h), final
     return None
