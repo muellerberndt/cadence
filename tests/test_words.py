@@ -163,3 +163,19 @@ def test_pistachios_teach_what_a_question_asks_for() -> None:
                        atol=0.02)
     withheld, _ = raised(False)
     assert max(withheld.hear(["where", "is", "dako"]).reads.values()) < withheld.floor
+
+
+def test_a_heard_form_with_no_letters() -> None:
+    """The sound of a word takes a word neuron of its own beside the written form's, which the
+    motor never says; one concept holds both."""
+    lexicon, kinds, _ = _named(3, namings=120)
+    unit = lexicon.enter("~7", written=False)
+    assert not lexicon.written[unit] and not lexicon.letters[unit].any()
+    for _ in range(3):
+        lexicon.name(["~7"], {("kind", 2): 0.5})
+    assert int(np.argmax(lexicon.hear(["~7"]))) == lexicon.index("kind", 2)
+    assert lexicon.say(("kind", 2)) == kinds[2]  # the motor says the written form
+    again = Lexicon.from_arrays(lexicon.settings, lexicon.arrays())
+    assert not again.written[unit] and again.say(("kind", 2)) == kinds[2]
+    with pytest.raises(ValueError, match="outside the letters"):
+        lexicon.enter("zuzo", written=False)  # a form of letters is a written form
