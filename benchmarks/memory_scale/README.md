@@ -876,13 +876,37 @@ them while they wrote.
 
 ### Ten million records
 
-Not read before the release. The declared cells (codes of 128 on founders 3100 and 3101, the
-hashed form on 3100) were queued after the timing; the first, filling at 19:39 UTC, was ended with
-the queue's session and runs again after the timing. One development cell (founder 0, codes of
-128, `expansion=32768, winners=256, candidates=4096`, half the declared winners and candidates)
-read exact 1.000, noisy .985 and partial .985 against the scan's 1.000, a read in 8.8 ms against
-the scan's 500 ms; a full table drops 12.6% of its entries there, since pairs of units whose
-weights point alike recur in many records.
+Read on 13 November 2026 on the declared plans and founders (`ten-million.json`: codes of 128
+on founders 3100 and 3101; `ten-million-hashed.json`: the hashed form on 3100), from the released
+library at `352587ac`, whose `LongTermMemory` reads as the declared `042cced6` (the commits
+between them change how long-term records save and `longterm_rest`, not the store), one thread
+a cell on a box shared with other cells. Receipts: `results/fourth-ten-million.jsonl.gz`.
+C1 asked that 10,000,000 records be read and reported; with its reading at 1,000,000 (12 of 12),
+C1 passes.
+
+| Form | Records | Arm | exact | noisy | partial | similar, noisy | bytes a record | records scored | entries read | multiply-accumulates | fixed weights |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `code-128` | 10,000,000 | `pairs` | 1.000 | .998 to .999 | .998 to .999 | .995 to .998 | 1,777 | 8,192 | 2,093,056 | 5,242,880 | 4,194,304 |
+| `code-128` | 10,000,000 | `scan` | 1.000 | 1.000 | 1.000 | .998 to 1.000 | 772 | 10,000,000 | 0 | 1,280,000,000 | 0 |
+| `hashed-280` | 10,000,000 | `pairs` | 1.000 | .999 | .958 |  | 2,387 | 8,192 | 2,093,056 | 11,468,800 | 9,175,040 |
+| `hashed-280` | 10,000,000 | `scan` | 1.000 | 1.000 | .963 |  | 1,380 | 10,000,000 | 0 | 2,800,000,000 | 0 |
+
+| Form | Records | Arm | family, 2, 4, 8 heads | summed, 2, 4, 8 | each by a head, 2, 4, 8 |
+| --- | --- | --- | --- | --- | --- |
+| `code-128` | 10,000,000 | `pairs` | 1.00; 1.00; 1.00 | 1.00; .19 to .22; .00 | 1.00; 1.00; 1.00 |
+| `code-128` | 10,000,000 | `scan` | 1.00; 1.00; 1.00 | 1.00; .39 to .46; .00 | 1.00; 1.00; 1.00 |
+
+- **The address holds at ten million.** With the declared `expansion=32768, winners=512,
+  candidates=8192` the address of pairs finds every cue kind within .005 of the scan; the hashed
+  form's partial cue is the key's limit for both (.958 against .963: half of about twenty
+  active units).
+- **Cost.** A read scores 8,192 records in place of 10,000,000: 18 to 59 ms a read here against
+  505 to 1,054 ms for the scan (a shared box). The table, sized to the records, drops 12.8%
+  (codes) and 9.9% (hashed) of its 1.2 billion entries at this size (pairs of units whose
+  weights point alike recur in many records, and a cell holds 16), and filling 10,000,000
+  records takes 2,509 to 4,205 s on one thread.
+- **Several records** read as at 1,000,000: a head per record and k heads over a family 1.00;
+  codes summed into one cue fail past two for the scan too (the first declaration's term).
 
 ## The fifth declaration: a brain with its own records at 100,000
 

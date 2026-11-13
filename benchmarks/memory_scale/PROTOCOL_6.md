@@ -135,9 +135,33 @@ declaration's cells share the box; every time here is reported, never gated.
 
 ## Expectations, stated before the runs
 
-EXPECTATIONS
+**The located term, and its repair.** Development founders 5 and 0 read the fifth declaration's
+chamber at 100,000 facts with `longterm_apart` as it stood before this declaration: found .925
+and .995 (unrevised), where the same brains without it read .943 and .990. A store probe located
+why: with `sure`, the read of a fact whose key another fact holds ended at the first record found
+under the most pairs, which could be the other fact's (two facts with one key, sharing a source's
+5 units of 8 by chance in 23% of the pairs that differ in one coordinate, as a noun's singular
+and plural do). With the repair above (`same=8`, an early end only at a record of the source's
+signature) the same two founders read found, used and current 1.000 on unrevised and revised
+facts, stale .000, every one of the 100,000 facts a record of its own and every one of the 10,000
+revisions a revision, on founder 5 whose facts share their key with another fact in 10.4% of
+cases.
+
+MILLION2
+
+**C6c, C6d and C6e** are expected to hold, found at .99 to 1.00 on every founder, with used within
+.01 of found.
+
+**C7a** is expected to hold. One development life (founder 0; the window taught 2,415 steps in
+30 minutes, 2,419,000 parameters) read the window at .9925 (unrevised) and 1.000 (revised) with
+1,000 facts in it, .63 and .75 with 10,000 and .26 and .20 with 100,000; the window was taught on
+windows of at most 256 facts. The index read 1.000 and 1.000, .9825 and .9975, .985 and .94,
+fetching the fact on every question. The better control at 1,000 facts is the window and from
+10,000 on the index; the brain reads at or above both.
 
 ## Cost, stated before the runs
 
-At 9.3 ms a told moment (development, a loaded box) a million facts of four moments and their
-revisions take about 11 to 12 hours a founder.
+At about 8 ms a told moment on two threads (development at the lexicon of 512 and 1,024, a loaded
+box) a million facts of four moments and their revisions take about 10 hours a founder. The three
+sizes take about an hour a founder on one thread, the window and the index about an hour and a
+half a founder on two.

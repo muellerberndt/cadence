@@ -191,13 +191,15 @@ Read on the declared founders; tables in the
 | C4a | subject by 2, 4, 8 heads at 1,000,000 | .95 each | 1.000; 1.000; .994 to 1.000, 12 of 12: **passes** |
 | C4b | four parts, a head each, at 1,000,000 | .90 | 1.000, 12 of 12: **passes** |
 | C5 | chains at 100,000, two and three hops, exact and noisy | .95; .90 | 1.000 and .998 to 1.000, 12 of 12: **passes** |
-| C1, reported | 10,000,000 records | none | not read before the release |
+| C1, reported | 10,000,000 records: pairs; the scan (codes, 3100 and 3101; hashed, 3100) | none | codes: exact 1.000, noisy .998 to .999, partial .998 to .999; scan 1.000. Hashed: 1.000, .999, .958; scan 1.000, 1.000, .963 (read 13 November 2026) |
 
 **The runs.** At 19:39 UTC the queue's waiter was stopped by hand, and its session ended the cells
 it held: the shared-key cells (writing, no read made) and the code-128 ten million (filling). The
 shared-key cells ran again from 19:40 UTC on the same plans and code; the timing ran once no other
-cell of this or the fifth declaration ran (21:57 UTC); the ten million cells run after it. The
-code-128 ten million's two founders run apart, for the box's memory; each cell is the declared one.
+cell of this or the fifth declaration ran (21:57 UTC); the ten million cells were queued after
+it and ended with the box before they were read. They ran on 13 November 2026, each the declared
+cell (plan, founder, settings), from the released library at `352587ac`, whose store reads as
+`042cced6` (the commits between them change long-term records' saving and `longterm_rest`).
 
 **What binds**, in the order it binds: the key (a partial hashed cue keeps about ten units, and
 the scan itself finds .982 to .992; 64 coordinates bind for every arm), then the address (it loses

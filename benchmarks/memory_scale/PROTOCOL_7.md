@@ -78,7 +78,8 @@ Each step is a process of its own.
 | S1h | found at 10,000,000, `hashed-280`: exact; noisy; noisy and partial against the scan | .99; .95; no more than .02 under the scan; on 10 of 12 |
 | S2 | ms per read on one core with the read's pages in memory (`again`, mean of the three cue kinds), at N over N / 10: 1,000,000 over 100,000 and 10,000,000 over 1,000,000 on each timing founder; 100,000,000 (3212) over 10,000,000 (each timing founder) | under 2 at each tenfold, on every timing founder |
 | S3 | under the 8 GB limit, 10,000,000 (timing founders) and 100,000,000 (3212), `code-128`, first pass: found against the same store's read without the limit; ms per read of an exact cue; ms per read of a noisy and of a partial cue | within .01; under 25 ms; under 500 ms; on every cell |
-| S4 | 10,000 records written one by one, every cell of the found and timing runs and 3212, with and without the limit: cells a write takes; the pause of a write; new records found from their keys; earlier records found | at most 20; 99 of 100 under 100 ms and none over 1,000 ms; .99; .99; on every cell |
+| S4a | 10,000 records written one by one, every cell of every run, with and without the limit: cells a write takes; new records found from their keys; earlier records found | at most 20; .99; .99; on every cell |
+| S4b | the same on the cells read alone (timing founders and 3212), with and without the limit: the pause of a write | 99 of 100 under 100 ms and none over 1,000 ms, on every cell |
 | S5 | bytes a record on the disk, `code-128`, at 1,000,000, 10,000,000 and 100,000,000 | within 5 % of their mean |
 
 Reported beside the gates, without a bar: 100,000 records (the fixed projection of 33.5 MB
