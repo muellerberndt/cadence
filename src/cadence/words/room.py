@@ -160,7 +160,8 @@ class Words:
     read), ``sense(brain, seen, lit)`` (called at each moment ``look`` passes to the map, before
     the map takes it), ``find(brain, heard, things)`` (gives the things found, from those found
     before it: a list of ``(place, concepts)``), ``practice(brain, words, answer, heard)``
-    (its lessons from a question answered)."""
+    (its lessons from a question answered), ``takes(brain, words, answer, heard)`` (True where
+    the part takes a question's lessons: ``practice`` then takes none of its own)."""
 
     def __init__(self, map: Any, *, senses: Any = None, parts: Any = (),
                  lexicon: Lexicon | None = None, body: Body | None = None,
@@ -359,7 +360,10 @@ class Words:
         told = self.lexicon.hear(said)
         named = max(self.answers, key=lambda g: float(told[groups[g]].max()))
         asking = self.asking(words)
-        if told[groups[named]].max() > self.floor and asking:
+        if any(hasattr(part, "takes") and part.takes(self, words, said, heard)
+               for part in self.parts):
+            pass  # a part takes this question's lessons, in its practice below
+        elif told[groups[named]].max() > self.floor and asking:
             self.lexicon.name(asking, {("read", self.answers.index(named)): 1.0},
                               groups=("read",))
         elif not found and len(said) == 1:
