@@ -67,6 +67,7 @@ from ._configuration import (
     teaching_point,
 )
 from .arousal import Arousal, ArousalConfig
+from .surprise import Focus, Orienting, Surprise
 from .blocks import Layout
 from .blocks import layout as make_layout
 from .brain import Apical, Backend, BrainState, Equilibrium, _host_copy, _resident
@@ -743,7 +744,7 @@ _CONSTRUCTION = frozenset({
     *_EPISODIC_SETTINGS, "recall", *(f"recall_{name}" for name in Recall.CONSTRUCTION),
     *(f"recall_{name}" for name in Recall.CONSTRUCTION_OPTIONS), "code",
     "learned_code", *(f"learned_code_{name}" for name in LearnedCode.GENES),
-    "attention", "apical", "maturity", "tied", "trained",
+    "attention", "apical", "maturity", "tied", "trained", "surprise",
 })
 
 
@@ -2493,6 +2494,7 @@ class Brain:
         image: Sequence[int] | None = None,
         ports: int = 0,
         tied: Mapping[tuple[str, str], Sequence[int]] | None = None,
+        surprise: bool | Mapping[str, Any] = False,
         **genes: Any,
     ) -> None:
         populations = connectome.populations
@@ -2962,6 +2964,15 @@ class Brain:
         # a map of things this brain holds (``cadence.space.map.Map``, opt-in): a graph of its
         # own inside the brain object, saved and loaded with it
         self.space: Any = None
+        # surprise and the one focus it draws (``cadence.surprise``, #337; off unless given):
+        # how far each moment moves every neuron from the state the stream carried into it,
+        # against the neuron's learned usual move. It reads two states and changes nothing else.
+        self.surprise: Surprise | None = None
+        self.orienting: Orienting | None = None
+        self._places: np.ndarray | None = None  # the sensory neurons' places, for the focus
+        self.focus: Focus | None = None
+        if surprise is not None and surprise is not False:
+            self._surprise_genes(surprise)
 
     @property
     def brain(self) -> NeuralGraph:
@@ -3979,6 +3990,8 @@ class Brain:
             genes.update({f"learned_code_{name}": value for name, value in learned.genes().items()})
         if self.attention:
             genes["attention"] = True
+        if self.surprise is not None and self.orienting is not None:
+            genes["surprise"] = {**self.surprise.settings(), **self.orienting.settings()}
         populations = self.connectome.populations
         result = {
             "layout": {
@@ -5804,6 +5817,7 @@ class Brain:
         current = agent.state
         if len(x) != 1 or (current is not None and _batch_of(current) != 1):
             raise ValueError("live follows one continuing stream; reset before changing streams")
+        before = self._activity() if self.surprise is not None else None
         lived = self._lived
         if lived is not None and current is not lived[4]:
             lived = None  # another operation acted since; the brain's own pending action governs
@@ -5976,6 +5990,8 @@ class Brain:
             }
         )
         arousal.lived(sweeps, learning_sweeps)
+        if self.surprise is not None:
+            self._surprised(before)
         return action
 
     @_operation
@@ -6019,6 +6035,7 @@ class Brain:
             raise RuntimeError(
                 "wait needs an issued action awaiting its outcome; start with live(observations)"
             )
+        before = self._activity() if self.surprise is not None else None
         with self._code_attempt():
             self._prepare(x)
             drive = self._moment_drive(x)
@@ -6047,6 +6064,66 @@ class Brain:
         if self._episodic is not None:
             self._episodic.sense(code)  # what was sensed enters the temporal context
         self._awaiting = (current, state)
+        if self.surprise is not None:
+            self._surprised(before)
+
+    @property
+    def places(self) -> np.ndarray | None:
+        """With ``surprise``: the place of each sensory neuron ``(sensory neurons, d)`` in the
+        frame of the focus (a map's plane), set by the caller as its body moves; None, the
+        default, leaves the senses out of the focus."""
+        return self._places
+
+    @places.setter
+    def places(self, value: Any) -> None:
+        if value is None:
+            self._places = None
+            return
+        places = np.asarray(value, dtype=np.float64)
+        if places.ndim != 2 or len(places) != len(self.sensory_index) or not (
+            np.isfinite(places).all()
+        ):
+            raise ValueError(
+                f"places holds one finite place a sensory neuron, {len(self.sensory_index)} rows"
+            )
+        self._places = places.copy()
+
+    def _surprise_genes(self, surprise: Any) -> None:
+        """Build the brain's surprise and its orienting from ``surprise``: True, or the genes of
+        ``Surprise`` and ``Orienting`` by name."""
+        genes = {} if surprise is True else dict(surprise)
+        unknown = set(genes) - set(Surprise.GENES) - set(Orienting.GENES)
+        if unknown:
+            raise ValueError(f"unknown surprise gene: {sorted(unknown)[0]}")
+        self.surprise = Surprise(
+            self.connectome.n, **{k: v for k, v in genes.items() if k in Surprise.GENES}
+        )
+        self.orienting = Orienting(**{k: v for k, v in genes.items() if k in Orienting.GENES})
+
+    def _surprised(self, before: BrainState | None) -> None:
+        """How far this moment moved each neuron from the state the stream carried into it,
+        against its usual move (``surprise``); then the focus it draws (``focus``) among the
+        sensory neurons that have ``places`` and the cells of a map with surprise (``space``).
+        A stream that begins from rest has nothing carried in to be measured against: its
+        moment reads no surprise and teaches the usual nothing."""
+        held = self.surprise
+        assert held is not None and self.orienting is not None
+        after = self._activity()
+        rows = 1 if after is None else _batch_of(after)
+        if before is None or after is None or _batch_of(before) != rows:
+            held.last = np.zeros((rows, held.size))
+        else:
+            now = np.asarray(_on_host(after.activation), dtype=np.float64).reshape(rows, -1)
+            then = np.asarray(_on_host(before.activation), dtype=np.float64).reshape(rows, -1)
+            held.observe(now - then)
+        sources: dict[str, Any] = {}
+        if self._places is not None:
+            sources["senses"] = (held.last[0][self.sensory_index], self._places)
+        space = self.space
+        if space is not None and getattr(space, "surprise", None) is not None:
+            sources["map"] = (space.surprise.last[0], space.centers)
+        if sources:
+            self.focus = self.orienting.attend(sources)
 
     def _owned(self, decision_id: Any) -> None:
         """Refuse an outcome reported for an action other than the one awaiting it."""
@@ -6268,6 +6345,7 @@ class Brain:
         current = self.basal_ganglia.state
         if current is not None and _batch_of(current) != len(x):
             raise ValueError("action batch must match the live streams; reset for new streams")
+        before = self._activity() if self.surprise is not None else None
         if temperature is not None:
             temperature = self.basal_ganglia._temperature(temperature)
         compiled = (
@@ -6283,6 +6361,8 @@ class Brain:
             if action is None:
                 action = self._choose(x, drive, free, greedy=greedy, temperature=temperature)
         self._acted = (x.copy(), self.basal_ganglia.state)
+        if self.surprise is not None:
+            self._surprised(before)
         return action
 
     def _greedy_choice(
@@ -6904,6 +6984,10 @@ class Brain:
             record, arrays = self.space.parts()
             metadata["space"] = record
             data.update({f"space/{name}": value for name, value in arrays.items()})
+        if self.surprise is not None and self.orienting is not None:
+            # what each neuron is used to moving, and the genes of the focus (#337)
+            metadata["surprise"] = {**self.surprise.to_dict(), **self.orienting.settings()}
+            data["surprise/usual"] = self.surprise.usual.copy()
         data["brain"] = np.array(canonical_json(metadata))
         return _write(data, path, compressed=compressed)
 
@@ -7462,6 +7546,17 @@ class Brain:
                 result.space = Map.from_parts(meta["space"], {
                     name[len("space/"):]: data[name] for name in data
                     if name.startswith("space/")})
+            if "surprise" in meta:  # what each neuron is used to moving (#337)
+                told = meta["surprise"]
+                if not isinstance(told, dict) or "surprise/usual" not in data:
+                    raise ValueError("a saved surprise holds its genes and its usual moves")
+                result.surprise = Surprise.from_dict(told, data["surprise/usual"])
+                if result.surprise.size != result.connectome.n:
+                    raise ValueError("a saved surprise holds one usual move a neuron")
+                try:
+                    result.orienting = Orienting(**{name: told[name] for name in Orienting.GENES})
+                except KeyError as error:
+                    raise ValueError(f"saved surprise misses {error}") from None
         return result
 
 

@@ -99,13 +99,14 @@ class Map:
     ``what_is_at`` ask by settling, ``things`` reads the inventory off the map and ``reset``
     empties it. ``arrays`` is the carried state, ``save`` and ``load`` write and read it.
 
-    With ``surprise`` (True, or the genes of ``cadence.surprise.Surprise`` and ``Orienting`` by
-    name) every moment measures how far it moved each thing from where the map carried it into
-    the moment (its carried activity, or with physics that has learned its ``forecast(1)``), in
-    units of ``step``, a thing that appears or is gone moving 1 (``moves``): ``surprise`` holds
-    each cell's surprise against the cell's learned usual move, and ``focus`` the one place it
-    draws (``orienting``, a ``cadence.surprise.Orienting``), sights and sounds in one
-    competition. The map's activity is the same with and without it."""
+    With ``surprise`` (True, or the genes of ``cadence.surprise.Surprise`` by name) every moment
+    measures how far it moved each thing from where the map carried it into the moment (its
+    carried activity, or with physics that has learned its ``forecast(1)``), in units of
+    ``step``, a thing that appears or is gone moving 1 (``moves``), and ``surprise`` holds each
+    cell's surprise against the cell's learned usual move: seen, heard and felt things on one
+    sheet. A brain that holds the map (``Brain.space``) draws its focus from it; on its own,
+    ``cadence.surprise.Orienting().attend(held.surprise.last[0], held.centers)``. The map's
+    activity is the same with and without it."""
 
     def __init__(self, plane: tuple[float, float, float, float],
                  cells: tuple[int, int] = (32, 26), *, units: int = 16, kinds: int | None = None,
@@ -182,25 +183,14 @@ class Map:
         self._plain = Graph(self.connectome, self._model,
                             efficacy=np.full(self.connectome.synapses, PASS), bias=bias,
                             backend=backend)
-        # surprise and the one focus it draws (off unless given): the genes of ``Surprise``
-        # and ``Orienting`` by name
+        # surprise with a place (off unless given): the genes of ``Surprise`` by name
         self.surprise: Any = None
-        self.orienting: Any = None
-        self.focus: Any = None
         self._forecasting = False
         if surprise is not None and surprise is not False:
-            from ..surprise import Orienting, Surprise
+            from ..surprise import Surprise
 
-            genes = {} if surprise is True else dict(surprise)
-            unknown = set(genes) - set(Surprise.GENES) - set(Orienting.GENES)
-            if unknown:
-                raise ValueError(f"unknown surprise gene: {sorted(unknown)[0]}")
-            self.surprise = Surprise(count, **{k: v for k, v in genes.items()
-                                               if k in Surprise.GENES})
-            self.orienting = Orienting(**{k: v for k, v in genes.items()
-                                          if k in Orienting.GENES})
-            self.settings["surprise"] = {**self.surprise.settings(),
-                                         **self.orienting.settings()}
+            self.surprise = Surprise(count, **({} if surprise is True else dict(surprise)))
+            self.settings["surprise"] = self.surprise.settings()
         self._floor = 1e-3 * self.level  # activity under this is no thing
         self.trace = bool(trace)
         self.trajectory: dict[str, Any] = {}  # the latest settle by sweep, with ``trace``
@@ -210,11 +200,8 @@ class Map:
     # -- the carried state
 
     def reset(self) -> None:
-        """Empty the carried activity: the map then holds no thing (and, with surprise, no
-        place is attended; what each cell is used to stays)."""
-        if getattr(self, "orienting", None) is not None:
-            self.orienting.reset()
-            self.focus = None
+        """Empty the carried activity: the map then holds no thing (with surprise, what each
+        cell is used to stays: it is learned)."""
         self.potential = np.zeros((self.count, self.units))  # the sheet's carried potentials
         self.clock = np.zeros(self.count)  # the moments since a sense wrote each cell
         self.lost = np.zeros(self.units)  # the code units of things known with no place
@@ -777,10 +764,9 @@ class Map:
 
     def _surprised(self, expected: np.ndarray) -> None:
         """Each thing's move from the sheet carried in (``moves``), on its cells, into
-        ``surprise``; the focus it draws into ``focus``."""
-        assert self.surprise is not None and self.orienting is not None
-        found = self.surprise.observe(self.moves(expected))
-        self.focus = self.orienting.attend(found, self.centers, sense="map")
+        ``surprise``."""
+        assert self.surprise is not None
+        self.surprise.observe(self.moves(expected))
 
 
 class Sense:
