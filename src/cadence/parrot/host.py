@@ -23,6 +23,7 @@ import numpy as np
 
 from .brain import GENES, Parrot
 from .eyes import HEIGHT, WIDTH, render
+from .whole import WholeParrot
 from .world import NAMES, Body, Scene, Thing
 
 AREAS = {"retina_l": "retina", "retina_r": "retina", "disparity": "wulst", "parallax": "wulst",
@@ -54,6 +55,9 @@ class Host:
         self.probe: dict[str, Any] = (json.loads(found.read_text()) if found is not None
                                       and found.exists() else {})
         self.learn = bool(config.get("learn", False))
+        # the whole brain (``config["whole"]``): the association, the ear, the voice and the
+        # dopamine join the first brain, and a pistachio (``meta["reward"]``) pays
+        self.whole = WholeParrot(self.parrot) if config.get("whole") else None
         self.scene = Scene([])
         self.cover: str | None = None
         self.silenced: set[str] = set()
@@ -172,7 +176,16 @@ class Host:
         else:
             images = render(self.scene, self.parrot.body.eyes(), cover=cover).images
         rendered = time.perf_counter()
-        out = self.parrot.moment(images, learn=bool(meta.get("learn", self.learn)))
+        learn = bool(meta.get("learn", self.learn))
+        reward = meta.get("reward")
+        if self.whole is not None:
+            audio = arrays.get("audio")
+            heard = None if audio is None or audio.size != 1600 else np.asarray(audio, np.float64)
+            whole = self.whole.moment(images, samples=heard, learn=learn,
+                                      reward=None if reward is None else float(reward))
+            out = whole["first"]
+        else:
+            out = self.parrot.moment(images, learn=learn)
         lived = time.perf_counter()
         sightings = out["sightings"]
         looked = self._looked_at(sightings)
@@ -229,6 +242,10 @@ class Host:
                     "place": [float(v) for v in focus.place], "kind": int(focus.kind),
                     "why": focus.why, "activity": [float(v) for v in focus.activity]},
                 "things": things, "silenced": sorted(self.silenced),
+                "reward": None if self.whole is None else self.whole.reward,
+                "vta": None if self.whole is None else self.whole.dopamine,
+                "paid": [] if self.whole is None else self.whole.paid,
+                "said": None if self.whole is None else self.whole.said,
                 "ms": {"render": 1000.0 * (rendered - began),
                        "brain": 1000.0 * (lived - rendered),
                        "host": 1000.0 * (time.perf_counter() - lived)},
