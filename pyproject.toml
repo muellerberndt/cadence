@@ -85,6 +85,7 @@ testpaths = [
     "benchmarks/dialogue",
     "benchmarks/letters",
     "benchmarks/tracking",
+    "benchmarks/parrot",
 ]
 
 [tool.ruff]

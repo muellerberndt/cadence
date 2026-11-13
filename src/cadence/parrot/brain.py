@@ -101,6 +101,9 @@ class Sighting:
     truth: int = -1
     figures: tuple[int, ...] = ()
     disparity: float = math.nan
+    # where the sighting is in its moment's images: (moment, ((eye, column, row), ...)), for a
+    # reach that reads the images themselves (a control)
+    query: tuple[int, tuple[tuple[int, float, float], ...]] = (0, ())
 
 
 def triangulate(o1: np.ndarray, u1: np.ndarray, o2: np.ndarray, u2: np.ndarray
@@ -137,7 +140,11 @@ class Parrot:
     """The parrot's brain and body. ``genes`` change the founder's (``GENES``)."""
 
     def __init__(self, genes: dict[str, Any] | None = None, *, seed: int = 0,
-                 backend: Any = "cpu"):
+                 control: Any = None, backend: Any = "cpu"):
+        # ``control``: an object that takes the distance neurons' place, reading the eyes'
+        # images (``see(moment, images)``, ``read(queries)``, ``teach(queries, distances)``):
+        # the matched controls of the chamber
+        self.control = control
         self.genes = dict(GENES)
         self.genes.update(genes or {})
         g = self.genes
@@ -281,6 +288,8 @@ class Parrot:
         truth, kept with the record only."""
         clock = time.perf_counter()
         eyes = self.body.eyes()
+        if self.control is not None:
+            self.control.see(self.moments, images)
         figures = self.vision.see(images, learn=learn, ids=ids)
         clock = self._time("vision", clock)
         sightings: list[Sighting] = []
@@ -326,11 +335,18 @@ class Parrot:
                                         None if fig.disparity is not None else self._parallax(x))
         for s in sightings:
             s.code = per_eye[s.figures[0]].code
+        for x in per_eye + sightings:
+            x.query = (self.moments, tuple((figures[k].eye, figures[k].col, figures[k].row)
+                                           for k in x.figures))
         # how far
         codes = np.array([s.code for s in sightings]).reshape(-1, self.distance.width_in)
-        activity = (self.distance.settle(codes) if len(codes)
-                    else np.zeros((0, self.distance.neurons)))
-        far, strength = self.distance.read(activity)
+        if self.control is not None:
+            activity = np.zeros((len(codes), self.distance.neurons))
+            far, strength = self.control.read([s.query for s in sightings])
+        else:
+            activity = (self.distance.settle(codes) if len(codes)
+                        else np.zeros((0, self.distance.neurons)))
+            far, strength = self.distance.read(activity)
         for s, d, q in zip(sightings, far, strength, strict=True):
             s.distance, s.strength = float(d), float(q)
         clock = self._time("distance", clock)
@@ -448,6 +464,7 @@ class Parrot:
         g = self.genes
         rows: list[np.ndarray] = []
         targets: list[float] = []
+        queries: list[Any] = []
         earlier = [s for moment in self.sightings for s in moment]
         views = str(g["agreement_views"])
         if views not in ("before-after", "binocular", "both"):
@@ -484,6 +501,7 @@ class Parrot:
                 continue
             rows += [s.code, e.code]
             targets += [ds, de]
+            queries += [s.query, e.query]
             used += 1
             if self.taught is not None:
                 for x, d in ((s, ds), (e, de)):
@@ -493,7 +511,10 @@ class Parrot:
                                             "disparity"]].any()),
                                         "angle": math.degrees(angle), "gap": gap})
         if rows:
-            self.distance.teach(np.array(rows), np.array(targets))
+            if self.control is not None:
+                self.control.teach(queries, np.array(targets))
+            else:
+                self.distance.teach(np.array(rows), np.array(targets))
             self.lessons += len(rows)
         return len(rows)
 

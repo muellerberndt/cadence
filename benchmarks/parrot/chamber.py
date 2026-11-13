@@ -409,13 +409,22 @@ def found(info: np.ndarray, parrot: Parrot, share: float = 0.5) -> np.ndarray:
 
 def founder(seed: int, genes: dict[str, Any] | None = None, *, life: dict[str, Any] | None = None,
             tests: dict[str, Any] | None = None, silence: bool = True,
-            table: bool = True) -> dict[str, Any]:
-    """One founder's life and readings."""
+            table: bool = True, control: str | None = None) -> dict[str, Any]:
+    """One founder's life and readings; ``control`` ("cnn", "vit", or with "10" ten times the
+    size) puts a matched control in the distance neurons' place (E5)."""
     life = {**LIFE, **(life or {})}
     tests = {**TESTS, **(tests or {})}
     start = time.perf_counter()
     rng = np.random.default_rng(np.random.SeedSequence([int(seed), 332, 1]))
-    parrot = Parrot(genes, seed=seed)
+    image_reach = None
+    if control is not None:
+        from benchmarks.parrot.controls import ImageReach
+
+        size = Parrot(genes, seed=seed).distance.parameters()
+        times = 10 if control.endswith("10") else 1
+        image_reach = ImageReach(control.removesuffix("10"), times * size, seed=seed)
+        silence = False  # a control has no distance neurons to find
+    parrot = Parrot(genes, seed=seed, control=image_reach)
     curve = live(parrot, rng, life["scenes"], life["moments"], tuple(life["things"]))
     test_rng = np.random.default_rng(np.random.SeedSequence([int(seed), 332, 2]))
     reading = test(parrot, test_rng, **tests)
@@ -427,8 +436,12 @@ def founder(seed: int, genes: dict[str, Any] | None = None, *, life: dict[str, A
     last = [e for c in curve[-quarter:] for e in c.pop("errors", [])]
     reading["E3_first_quarter"] = float(np.median(first)) if first else math.nan
     reading["E3_last_quarter"] = float(np.median(last)) if last else math.nan
+    learned = (parrot.parameters() if image_reach is None else
+               {"control": image_reach.parameters(), "kinds": parrot.kinds.parameters()})
     out: dict[str, Any] = {"seed": int(seed), "curve": curve, "tests": reading,
-                           "parameters": parrot.parameters(), "lessons": parrot.lessons,
+                           "parameters": learned, "lessons": parrot.lessons,
+                           "control": control, "control_macs": None if image_reach is None
+                           else image_reach.macs(),
                            "kinds": parrot.kinds.used, "genes": parrot.genes}
     panel = probe_panel(parrot, np.random.default_rng(np.random.SeedSequence([int(seed), 332,
                                                                                5])))
@@ -475,12 +488,14 @@ def main() -> None:
     parser.add_argument("--moments", type=int, default=LIFE["moments"])
     parser.add_argument("--tests", type=int, default=TESTS["scenes"])
     parser.add_argument("--no-silence", action="store_true")
+    parser.add_argument("--control", choices=["cnn", "vit", "cnn10", "vit10"], default=None)
     args = parser.parse_args()
     genes = json.loads(args.genes)
     args.out.mkdir(parents=True, exist_ok=True)
     for seed in args.founders:
         result = founder(seed, genes, life={"scenes": args.scenes, "moments": args.moments},
-                         tests={"scenes": args.tests}, silence=not args.no_silence)
+                         tests={"scenes": args.tests}, silence=not args.no_silence,
+                         control=args.control)
         (args.out / f"founder-{seed}.json").write_text(json.dumps(result, default=float))
         t = result["tests"]
         print(f"founder {seed}: E1 {t['E1_seen']:.3f} behind {t['E1_behind']:.3f} "
