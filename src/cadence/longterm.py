@@ -78,6 +78,7 @@ from typing import Any, ClassVar
 
 import numpy as np
 
+from .record_heads import RecordHeads
 from .resident import _on_host
 from .stream import PatternSeparator, _left, _share
 from .stream import columns as _columns
@@ -1019,6 +1020,8 @@ class LongTermRecords:
         winners: int | None = None,
         candidates: int | None = None,
         fade: bool = True,
+        attention: float | None = None,
+        motor: float = 0.0,
     ) -> None:
         if turn is None and (
             message is None or message.boundary is None or not message.boundary_holds
@@ -1039,6 +1042,9 @@ class LongTermRecords:
         if (best or rest) and distinct is None:
             raise ValueError("longterm_best and longterm_rest read records by what tells them "
                              "apart: they need longterm_distinct")
+        if attention is not None and distinct is None:
+            raise ValueError("longterm_attention teaches each head where to look among records "
+                             "read by what tells them apart: it needs longterm_distinct")
         self.distinct = None if distinct is None else float(distinct)
         self.best, self.rest = bool(best), bool(rest)
         self.message = message
@@ -1094,6 +1100,22 @@ class LongTermRecords:
         self._postings: list[dict[int, list[int]]] = []
         self._wsets: list[set[int]] = []
         self._cues: list[np.ndarray] = []
+        # with ``attention``: the heads' learned addresses (``RecordHeads``); each stream's
+        # window and question as entries in the order heard; each slot's value as an entry; and
+        # the accumulates of the latest read
+        self.motor = float(motor)  # the scale of each region's projection to the motor region
+        self.attention = None if attention is None else float(attention)
+        self.attended: RecordHeads | None = None
+        self._wlists: list[list[int]] = []
+        self._asked: list[np.ndarray] = []
+        self._said: list[dict[int, int]] = []
+        self.work: float | None = None
+        # the questions heard (turns whose value moment was silent) and how many of them held
+        # each entry: what an entry no record holds weighs by; ``clear`` keeps them
+        self.asked_in: dict[int, int] = {}
+        self.questions = 0
+        if attention is not None:
+            self.attended = RecordHeads(self, connectome, attention)
 
     @staticmethod
     def ports(heads: int) -> tuple[str, ...]:
@@ -1176,6 +1198,12 @@ class LongTermRecords:
         if self.distinct is not None and len(self._wsets) != batch:
             self._wsets = [set() for _ in range(batch)]
             self._cues = [np.zeros(0, dtype=np.int64) for _ in range(batch)]
+        if self.attention is not None:
+            while len(self._said) < len(self.stores):
+                self._said.append({})
+            if len(self._wlists) != batch:
+                self._wlists = [[] for _ in range(batch)]
+                self._asked = [np.zeros(0, dtype=np.int64) for _ in range(batch)]
         if len(self.since) != batch:
             self.since = np.full(batch, -1, dtype=np.int64)
             self.read_slots = np.full((batch, self.heads), -1, dtype=np.int64)
@@ -1279,6 +1307,9 @@ class LongTermRecords:
         for columns in self.columns:
             out[:, columns] = 0.0
         self.read_slots[:] = -1
+        if self.attended is not None:
+            self.attended.last = {}  # a lesson reads the read of its own moment
+            self.work = 0.0
         keys = self._keys(batch)
         if keys is None:
             return out
@@ -1294,14 +1325,10 @@ class LongTermRecords:
         if self.distinct is not None:
             for row in rows:
                 store, cue = self.stores[int(row)], self._cues[int(row)]
-                slots = [self._read_distinct(int(row), cue)]
-                # each head chains from the record before; with ``rest`` at least two reads
-                for _ in range(1, max(self.heads, 2 if self.rest else 1)):
-                    slots.append(self._rest(int(row), slots, cue) if self.rest
-                                 else self._chain(int(row), slots, cue))
-                if self.rest:  # the chain from its end: the record that answers on head 0's
-                    chain = [slot for slot in slots if slot >= 0][::-1]
-                    slots = (chain + [-1] * len(slots))[: self.heads]
+                if self.attended is not None:  # each head where its lessons taught it to look
+                    slots = self.attended.read(int(row))
+                else:
+                    slots = self._turn_slots(int(row), cue)
                 for head, (slot, columns) in enumerate(zip(slots, self.columns, strict=True)):
                     if slot >= 0:
                         out[row, columns] = self.amplitude * store.values[slot]
@@ -1341,6 +1368,31 @@ class LongTermRecords:
                     out[row, columns] = self.amplitude * store.values[slot]
                     self.read_slots[row, head] = slot
         return out
+
+    def _turn_slots(self, row: int, cue: np.ndarray) -> list[int]:
+        """Each head's record at a turn of stream ``row`` read by what tells its records apart:
+        the first by the cue, each further head chained from the record before."""
+        slots = [self._read_distinct(row, cue)]
+        # each head chains from the record before; with ``rest`` at least two reads
+        for _ in range(1, max(self.heads, 2 if self.rest else 1)):
+            slots.append(self._rest(row, slots, cue) if self.rest
+                         else self._chain(row, slots, cue))
+        if self.rest:  # the chain from its end: the record that answers on head 0's
+            chain = [slot for slot in slots if slot >= 0][::-1]
+            slots = (chain + [-1] * len(slots))[: self.heads]
+        return slots
+
+    def said(self, row: int, slot: int) -> int:
+        """The entry of the value record ``slot`` of stream ``row`` holds (-1: no entry)."""
+        held = self._said[row] if row < len(self._said) else {}
+        found = held.get(slot)
+        if found is None:
+            code = self.message.code(np.asarray(self.stores[row].values[slot],
+                                                dtype=np.float64)[None])[0]
+            found = self._entries.get(np.asarray(code, dtype=np.uint8).tobytes(), -1)
+            if row < len(self._said):
+                held[slot] = found
+        return int(found)
 
     # -- the write, after the settle
 
@@ -1486,6 +1538,10 @@ class LongTermRecords:
             self.heard += codes.sum(axis=0)
             self.moments += batch
             for row in np.flatnonzero(value):
+                if self.attention is not None and not x[row].any() and len(self._asked[row]):
+                    self.questions += 1  # a question: its entries are counted once each
+                    for e in set(self._asked[row].tolist()):
+                        self.asked_in[e] = self.asked_in.get(e, 0) + 1
                 if not (x[row].any() and self.key[row].any()):
                     continue
                 if self.distinct is None:
@@ -1499,6 +1555,8 @@ class LongTermRecords:
                 if self.batched:
                     self._index[row, :, slot] = whole.astype(np.uint8)
                 self._hold(int(row), int(slot), np.union1d(self._cues[row], [said]))
+                if self.attention is not None:
+                    self._said[row][int(slot)] = said
                 self.stamps[row, slot] = store.writes
                 self.counts["writes"] += 1
         grow = ~value & ~turned
@@ -1506,7 +1564,10 @@ class LongTermRecords:
         if self.distinct is not None:
             for row in np.flatnonzero(grow):
                 if codes[row].any():
-                    self._wsets[row].add(self.entry(codes[row]))
+                    heard = self.entry(codes[row])
+                    self._wsets[row].add(heard)
+                    if self.attention is not None:
+                        self._wlists[row].append(heard)
         for row in np.flatnonzero(turned):
             self.key[row] = (self.content(self.window[row]) if self.distinct is None
                              else self.window[row].copy())
@@ -1514,6 +1575,9 @@ class LongTermRecords:
             if self.distinct is not None:
                 self._cues[row] = np.array(sorted(self._wsets[row]), dtype=np.int64)
                 self._wsets[row] = set()
+            if self.attention is not None:
+                self._asked[row] = np.array(self._wlists[row], dtype=np.int64)
+                self._wlists[row] = []
         self.since = np.where(turned, 0, -1).astype(np.int64)
         if self._private:
             return
@@ -1603,6 +1667,9 @@ class LongTermRecords:
                 self.key = np.zeros((batch, self.width))
                 self._wsets = [set() for _ in range(batch)]
                 self._cues = [np.zeros(0, dtype=np.int64) for _ in range(batch)]
+                if self.attention is not None:
+                    self._wlists = [[] for _ in range(batch)]
+                    self._asked = [np.zeros(0, dtype=np.int64) for _ in range(batch)]
         else:
             self.since[rows] = -1
             self.read_slots[rows] = -1
@@ -1613,6 +1680,9 @@ class LongTermRecords:
                 for row in np.arange(batch)[rows].tolist():
                     self._wsets[row] = set()
                     self._cues[row] = np.zeros(0, dtype=np.int64)
+                    if len(self._wlists) == batch:
+                        self._wlists[row] = []
+                        self._asked[row] = np.zeros(0, dtype=np.int64)
         self._cache = {}
 
     def keep(self, rows: np.ndarray) -> None:
@@ -1630,6 +1700,13 @@ class LongTermRecords:
         if len(self._wsets) >= len(index):
             self._wsets = [self._wsets[int(i)] for i in index]
             self._cues = [self._cues[int(i)] for i in index]
+        if self.attention is not None:
+            self._said = [self._said[i] for i in kept if i < len(self._said)]
+            if len(self._wlists) >= len(index):
+                self._wlists = [self._wlists[int(i)] for i in index]
+                self._asked = [self._asked[int(i)] for i in index]
+            if self.attended is not None:
+                self.attended.last = {}
         self._bank()
 
     def clear(self) -> None:
@@ -1637,6 +1714,7 @@ class LongTermRecords:
         self.stores = []
         self.stamps = np.zeros((0, self.capacity))
         self._members, self._postings = [], []
+        self._said = []
         self.counts = dict.fromkeys(self.counts, 0)
         self._bank()
 
@@ -1648,6 +1726,9 @@ class LongTermRecords:
         out.window, out.key, out.heard = self.window.copy(), self.key.copy(), self.heard.copy()
         out._wsets = [set(held) for held in self._wsets]
         out._cues = [held.copy() for held in self._cues]
+        out._wlists = [list(held) for held in self._wlists]
+        out._asked = [held.copy() for held in self._asked]
+        out.asked_in = dict(self.asked_in)
         out._entries, out._codes = dict(self._entries), list(self._codes)
         out.counts = dict(self.counts)
         out._cache = {}
@@ -1679,6 +1760,10 @@ class LongTermRecords:
             out["best"] = True
         if self.rest:
             out["rest"] = True
+        if self.attention is not None:
+            out["attention"] = self.attention
+        if self.motor:
+            out["motor"] = self.motor
         out.update(self.address())
         return out
 
@@ -1703,6 +1788,19 @@ class LongTermRecords:
                        held=np.array(entries_held, dtype=np.int64).reshape(-1, 3),
                        window_entries=np.array(window, dtype=np.int64).reshape(-1, 2),
                        cue_entries=np.array(cue, dtype=np.int64).reshape(-1, 2))
+        if self.attended is not None:
+            # the windows and questions in the order heard, as (stream, entry) rows in order,
+            # and the heads' maps
+            out.update(
+                window_order=np.array([(row, e) for row, held in enumerate(self._wlists)
+                                       for e in held], dtype=np.int64).reshape(-1, 2),
+                asked_order=np.array([(row, e) for row, held in enumerate(self._asked)
+                                      for e in held.tolist()], dtype=np.int64).reshape(-1, 2),
+                asked_counts=np.array(sorted(self.asked_in.items()),
+                                      dtype=np.int64).reshape(-1, 2),
+                questions=np.array(self.questions),
+                **self.attended.arrays(),
+            )
         for s, store in enumerate(self.stores):
             kept = store.arrays()
             by_rows, whole = self._saved(store)
@@ -1816,6 +1914,31 @@ class LongTermRecords:
                 self._wsets[row].add(e)
             for row, e in cue.tolist():
                 self._cues[row] = np.union1d(self._cues[row], [e]).astype(np.int64)
+        self._said = [{} for _ in self.stores]
+        self._wlists = [[] for _ in since]
+        self._asked = [np.zeros(0, dtype=np.int64) for _ in since]
+        if self.attended is not None:
+            for name in ("window_order", "asked_order", "asked_counts", "questions"):
+                if name not in arrays:
+                    raise ValueError("missing saved long-term records: the questions' order")
+            counted = np.asarray(arrays["asked_counts"])
+            if counted.ndim != 2 or counted.shape[1] != 2 or (len(counted) and (
+                    counted.min() < 0 or counted[:, 0].max() >= self.entries)):
+                raise ValueError("invalid saved long-term records: the questions' counts")
+            self.asked_in = {int(e): int(n) for e, n in counted.tolist()}
+            self.questions = int(np.asarray(arrays["questions"]))
+            ordered = [np.asarray(arrays[name]) for name in ("window_order", "asked_order")]
+            if any(a.ndim != 2 or a.shape[1] != 2 or (len(a) and (
+                    a.min() < 0 or a[:, 0].max() >= len(since) or a[:, 1].max() >= self.entries))
+                    for a in ordered):
+                raise ValueError("invalid saved long-term records: the questions' order")
+            for row, e in ordered[0].tolist():
+                self._wlists[row].append(e)
+            asked: list[list[int]] = [[] for _ in since]
+            for row, e in ordered[1].tolist():
+                asked[row].append(e)
+            self._asked = [np.array(held, dtype=np.int64) for held in asked]
+            self.attended.take(arrays)
         if counts is not None:
             self.counts = {name: int(counts.get(name, 0)) for name in self.counts}
         self._bank()

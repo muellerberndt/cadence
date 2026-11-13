@@ -728,6 +728,7 @@ _LONGTERM_FOUNDERS: dict[str, Any] = {
     "heads": 1, "amplitude": 3.0, "match": 0.75, "revise": 0.999, "turn": None, "rare": 0.03,
     "distinct": None, "best": False, "rest": False,
     "pairs": 0, "expansion": None, "winners": None, "candidates": None, "fade": True,
+    "attention": None, "motor": 0.0,
 }
 # The settings a brain is composed with and keeps for its life: ``retune`` refuses each of them
 # as a construction setting, and ``grow`` names those it does not add as construction choices.
@@ -795,6 +796,14 @@ def _longterm_genes(longterm: Any, genes: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(out["fade"], (bool, np.bool_)):
         raise ValueError("longterm_fade must be boolean")
     out["fade"] = bool(out["fade"])
+    # the scale of a plastic projection from each head's region to the motor region (#325)
+    out["motor"] = real("longterm_motor", out["motor"], low=0)
+    if out["attention"] is not None:
+        # the rate of the heads' lesson (``RecordHeads``, #325)
+        out["attention"] = real("longterm_attention", out["attention"], low=0)
+        if out["distinct"] is None:
+            raise ValueError("longterm_attention teaches each head where to look among records "
+                             "read by what tells them apart: it needs longterm_distinct")
     return out
 
 
@@ -2317,6 +2326,13 @@ def _layout(
             projections.append(
                 Projection(name, "association", scale=_RECALL_SCALE, reciprocal=False)
             )
+        if longterm["motor"]:
+            # after every head's region: the brain with the pathway is the brain without it
+            # plus one plastic projection from each head's region to the motor region
+            for name in LongTermRecords.ports(longterm["heads"]):
+                projections.append(
+                    Projection(name, "motor", scale=longterm["motor"], reciprocal=False)
+                )
     shared = _tied_map(tied)
     for (pre, post), blocks in shared.items():
         # one set of synapses for every block of a projection of this layout
@@ -2820,7 +2836,8 @@ class Brain:
                 best=kept_records["best"], rest=kept_records["rest"],
                 pairs=kept_records["pairs"], expansion=kept_records["expansion"],
                 winners=kept_records["winners"], candidates=kept_records["candidates"],
-                fade=kept_records["fade"],
+                fade=kept_records["fade"], attention=kept_records["attention"],
+                motor=kept_records["motor"],
             )
         # The index memory of the stream's moments. Populations named ``recall`` and ``next``
         # without ``recall=True`` are ordinary ones: an instrument may name and drive its own.
@@ -3957,6 +3974,10 @@ class Brain:
                 genes["longterm_best"] = True
             if kept.rest:
                 genes["longterm_rest"] = True
+            if kept.attention is not None:
+                genes["longterm_attention"] = kept.attention
+            if kept.motor:
+                genes["longterm_motor"] = kept.motor
             genes.update({f"longterm_{name}": value for name, value in kept.address().items()})
         maturity = self.basal_ganglia.maturity
         if maturity is not None:
@@ -5452,6 +5473,9 @@ class Brain:
         if self.message is not None and self.message.reads:
             # the read's lesson: the message's blocks scored against the lesson's movement
             teaching.update(self.message.learn(self.learner.brain, lesson))
+        if self.longterm is not None and self.longterm.attended is not None:
+            # the heads' lesson: each head's choice of record scored against the movement
+            teaching.update(self.longterm.attended.learn(self.learner.brain, lesson))
         # a row of several motor slots agrees only where every slot does, so beside the rows
         # the report counts the slots: zero where the lesson does not judge its rows
         teaching["agreed_slots"] = matched
@@ -6747,6 +6771,10 @@ class Brain:
             + (
                 0 if self.message is None
                 else sum(int(np.asarray(a).size) for maps in self.message.maps for a in maps)
+            )
+            + (
+                0 if self.longterm is None or self.longterm.attended is None
+                else self.longterm.attended.parameters
             )
         )
 
