@@ -704,7 +704,8 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     full inventory and its panels), ``module``, ``depth``, ``settings`` over ``make_brain``'s,
     ``echo`` (lessons at the heard moments, on unless false), ``quiet`` (an echo leaves the
     recall read's address as it is; ``"barred"``: and a said word of a sentence whose meaning
-    the bar empties, ``speak``), ``panel_batches``,
+    the bar empties, ``speak``), ``every_path`` (every row of a path's lessons taught, under
+    ``learning_surprise``), ``panel_batches``,
     ``emulated`` (the instrument's own store in place of the library's), ``held_probes``
     (batches per shape), ``checkpoints`` (batch counts at which the lean
     panels are read, appended to the file ``progress`` names), ``save`` (a folder the taught
@@ -740,15 +741,25 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
         "module": module, "depth": depth, "emulated": emulated, "train": train, "full": full,
         "design": design.name,
         "settings": spec.get("settings", {}),
-        "echo": echo, "quiet": quiet, "parameters": int(brain.parameters()),
+        "echo": echo, "quiet": quiet, "every_path": bool(spec.get("every_path", False)),
+        "parameters": int(brain.parameters()),
         "cadence": cd.__version__,
         "curve": [],
     }
     work = gr.new_work()
     checks = set(int(c) for c in spec.get("checkpoints", ()))
+    every_path = bool(spec.get("every_path", False))
+    surprise = bool(brain.learner.config.surprise)
     for b in range(1, batches + 1):
-        speak(brain, lesson_batch(train, rng, split), store, design, teach=True, work=work,
-              echo=echo, quiet=quiet)
+        lessons = lesson_batch(train, rng, split)
+        # with ``every_path`` a path's every row is taught, the words it says right too: the
+        # read's address learns at each of its moments, also where the word needs no read
+        whole = every_path and surprise and lessons[0].family == "path"
+        if whole:
+            brain.retune(learning_surprise=False)
+        speak(brain, lessons, store, design, teach=True, work=work, echo=echo, quiet=quiet)
+        if whole:
+            brain.retune(learning_surprise=True)
         if b in checks:
             lean = panels(brain, store, design, {k: v[:2] for k, v in tests.items()},
                           LEAN + (LEAN_MORE if train == "all" else ()))
