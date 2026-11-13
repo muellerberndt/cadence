@@ -71,3 +71,38 @@ def test_the_controls_read_the_same_script() -> None:
     width = controls.matched_width("transformer", times.PARAMETERS, len(tok))
     net = controls.Control("transformer", width, len(tok), 0, 0.003)
     assert abs(controls.count(net.net) - times.PARAMETERS) < 0.1 * times.PARAMETERS
+
+
+ROLLS = {"naming_rooms": 2, "practice_rooms": 1, "test_rooms": 1, "watch_rooms": 3,
+         "roll_rooms": 2, "roll_tests": 3, "physics": True}
+
+
+def test_a_rolled_thing_is_in_three_places() -> None:
+    events = times.script(9, **ROLLS)
+    rolled = [e for e in events if e[0] == "ask" and e[3].get("rolled")]
+    assert {e[1] for e in rolled} == {"W8_past", "W8_present", "W9_future"}
+    heading = 0.0
+    for e in events:
+        heading = e[1] if e[0] == "watch" else heading
+        if e[0] == "ask" and e[3].get("rolled"):
+            it = e[3]
+            assert len({world.place_of(heading, it[p]) for p in ("was", "now", "will")}) == 3
+            assert min(times.edge(heading, it[p]) for p in ("was", "now", "will")) >= times.EDGE
+    assert sum(e[0] == "watch" for e in events) == 3 + 2 + 3
+    assert not any(e[0] in ("roll", "watch") for e in times.script(9, **SHORT))
+
+
+def test_the_controls_see_a_roll_as_a_track() -> None:
+    pytest.importorskip("torch")
+    import controls
+
+    items = times.sequences(9, **ROLLS)
+    tok = times.tokens(9)
+    tracks = [pairs for kind, pairs, _ in items if kind == "train"
+              and tok.names[pairs[0][0][0]] == "TRACK"]
+    assert tracks and all(len(p) == 5 and len(t) == 4 for (p, t), in tracks)
+    longest = max(len(p) + len(t) for kind, pairs, _ in items if kind == "train"
+                  for p, t in pairs)
+    assert longest <= controls.MAX_LENGTH
+    asked = [x for x in items if x[0] == "ask" and x[1] == "W9_future"]
+    assert all(tok("TRACK") in prompt for _, _, (prompt, _) in asked)

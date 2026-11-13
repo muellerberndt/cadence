@@ -211,6 +211,7 @@ def script(seed: int, **given: Any) -> list[tuple[Any, ...]]:
 
     for _ in range(settings["watch_rooms"]):  # things roll while the parrot watches
         r = world.room(rng, trained, int(rng.integers(4, 7)))
+        r.extra["watched"] = True
         events.append(("room", r))
         at = {t.kind: t.place.copy() for t in r.things}
         first = r.things[int(rng.integers(len(r.things)))].place
@@ -419,8 +420,8 @@ def life(seed: int, *, record: Any = None, brain: Any = None, **given: Any) -> d
                     == world.place_of(brain.body.heading, extra["will"]))
             asked = "records" if q.form == "was" else "map"
             other = "map" if q.form == "was" else "records"
-            apart = (len(concepts[asked]) == 1 and len(concepts[other]) == 1
-                     and concepts[asked] != concepts[other])
+            apart = (q.form in ("was", "is") and len(concepts[asked]) == 1
+                     and len(concepts[other]) == 1 and concepts[asked] != concepts[other])
             if apart:  # W10: the sources tell the times apart; does the brain?
                 group, value = concepts[asked][0]
                 told = said == [{"kind": lex.kind, "colour": lex.colour,
@@ -481,13 +482,26 @@ def readings_of(seed: int, settings: dict[str, Any], readings: dict[str, list[bo
 # -- the matched controls: an LSTM and a transformer on the same script as tokens
 
 
+SECTORS, RINGS = 16, (0.8, 1.3)  # a place as the controls see it: a sector and a ring
+
+
+def cell(heading: float, point: np.ndarray) -> str:
+    """A place as a control's token: its direction from the parrot facing ``heading`` in one of
+    16 sectors (four to each place around the parrot) and its distance in one of three rings."""
+    a = (math.atan2(point[1], point[0]) - heading + math.pi / 4) % (2 * math.pi)
+    ring = int(np.searchsorted(RINGS, float(np.linalg.norm(point))))
+    return f"cell{int(a // (2 * math.pi / SECTORS))}_{ring}"
+
+
 def tokens(seed: int) -> Any:
-    """The controls' vocabulary of protocol 1 with the marker of a carry and the time words."""
+    """The controls' vocabulary of protocol 1 with the markers of a carry and of a track, the
+    places as sectors and rings, and the time words."""
     import controls
 
     tok = controls.Tokens(world.lexicon(seed))
     said = time_words(seed)
-    for name in ("MOVE", said["was"], said["will"]):
+    cells = [f"cell{a}_{r}" for a in range(SECTORS) for r in range(len(RINGS) + 1)]
+    for name in ("MOVE", "TRACK", said["was"], said["will"], *cells):
         tok.index[name] = len(tok.names)
         tok.names.append(name)
     return tok
@@ -499,7 +513,10 @@ def sequences(seed: int, **given: Any) -> list[tuple[str, Any, Any]]:
     (prompt, question))`` for a test question. A question about a room whose things were
     carried is prompted with the room as first seen, ``MOVE`` and the room as seen after the
     carries (each thing's kind, colour and place around the parrot); a naming with the room as
-    the parrot faces."""
+    the parrot faces. A watch is a track for each thing that rolls: ``TRACK``, its kind and its
+    place (``cell``) at five moments evenly over the watch, as the parrot faces. A watched room
+    gives each track as an item (its first two places, then the three after); a question about
+    a rolled room is prompted with the room as the parrot faces after the watch and the track."""
     import controls
 
     tok = tokens(seed)
@@ -522,6 +539,25 @@ def sequences(seed: int, **given: Any) -> list[tuple[str, Any, Any]]:
             seen = controls.room_tokens(tok, r)
             if seen != scene[-len(seen):]:
                 scene = scene + [tok("MOVE")] + seen
+        elif kind == "roll":
+            assert r is not None
+            roll(r, event[1], event[2])
+        elif kind == "watch":
+            assert r is not None
+            heading, moments = event[1], int(event[2])
+            rolling = r.extra.get("rolling", {})
+            starts = {t.kind: t.place.copy() for t in r.things if t.kind in rolling}
+            for t in r.things:
+                if t.kind in rolling:
+                    t.place = t.place + moments * rolling[t.kind]
+            r.heading = heading
+            tracks = [[tok("TRACK"), tok(f"kind{k}")] + [
+                tok(cell(heading, start + round(i * moments / 4) * rolling[k]))
+                for i in range(5)] for k, start in starts.items()]
+            if r.extra.get("watched"):  # a watched room: each track is a lesson
+                out += [("train", [(track[:4] + [tok("SAY")], track[4:] + [tok("END")])], None)
+                        for track in tracks]
+            scene = controls.room_tokens(tok, r) + [x for track in tracks for x in track]
         elif kind == "name":
             assert r is not None
             place, word = event[1], event[2]
