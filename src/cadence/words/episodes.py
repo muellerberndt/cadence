@@ -85,10 +85,12 @@ class Clock:
 class Records:
     """The places things left, keyed by the thing and the time: a ``LongTermMemory`` of
     ``capacity`` slots whose key is a thing's code (``width`` units: the map's code of its kind
-    and its values) at length ``thing`` beside the clock's context at unit length, and whose
-    value is the place the thing left and its code. The read is the memory's: the cosine of the
-    cue with every key, the first choice whole. A record is the thing asked about where its code
-    holds every unit of the cue's code (``sure`` of it).
+    and its values, each unit at ``thing``) beside the clock's context at unit length, and whose
+    value is the place the thing left and its code. The read is the memory's: the dot product of
+    the cue with every key, the first choice whole, so a record scores ``thing ** 2`` for each
+    unit of the cue's code it holds (a unit it holds beyond them costs nothing) and the cosine
+    of its moment's context with the context now. A record is the thing asked about where its
+    code holds every unit of the cue's code (``sure`` of it).
 
     ``barred`` bars every read: a recall then finds nothing."""
 
@@ -101,18 +103,16 @@ class Records:
         self.width, self.thing, self.sure = int(width), float(thing), float(sure)
         self.clock = clock if clock is not None else Clock(seed=seed)
         self.store = LongTermMemory(self.width + self.clock.units, 2 + self.width,
-                                    int(capacity), temperature=0.0, cosine=True, revise=0.0,
-                                    seed=int(seed))
+                                    int(capacity), temperature=0.0, revise=0.0, seed=int(seed))
         self.barred = False
         self.work = {"writes": 0, "reads": 0, "macs": 0}
 
     def key(self, code: np.ndarray) -> np.ndarray:
         """A thing's code and the context now, as a key and as a cue."""
         code = np.asarray(code, dtype=np.float64).reshape(self.width)
-        length = float(np.linalg.norm(code))
-        if not length > 0.0:
+        if not code.any():
             raise ValueError("a thing's code holds a unit")
-        return np.concatenate([self.thing * code / length, self.clock.now])
+        return np.concatenate([self.thing * code, self.clock.now])
 
     def write(self, code: np.ndarray, place: Any) -> None:
         """A record: the thing of ``code`` left ``place`` at this moment."""
