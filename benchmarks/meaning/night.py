@@ -361,6 +361,8 @@ class Parrot:
             from cadence.longterm import LongTermMemory
 
             assoc = len(self.brain.connectome.populations["association"])
+            if str(self.genome.get("records_key", "association")) == "input":
+                assoc = self.eyes.slot_width + self.ear  # the glimpse and the word heard
             self.records = LongTermMemory(width=assoc, value_width=self.forms.width,
                                           capacity=2048, cosine=True, revise=0.995,
                                           seed=self.seed)
@@ -614,8 +616,12 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
         else:
             action = np.asarray(brain.act(x, greedy=True)).reshape(n, -1)
         if assoc_idx is not None:
-            assoc_at[t] = np.asarray(brain.basal_ganglia.state.activation[:, assoc_idx],
-                                     dtype=np.float64).copy()
+            if str(g.get("records_key", "association")) == "input":
+                # keys that do not drift: what is seen in focus and the word heard this moment
+                assoc_at[t] = np.concatenate([x[:, : p.eyes.slot_width], x[:, -p.ear:]], axis=1)
+            else:
+                assoc_at[t] = np.asarray(brain.basal_ganglia.state.activation[:, assoc_idx],
+                                         dtype=np.float64).copy()
         p.work["moments"] += 1
         p.work["stream_moments"] += n
         p.work["act_sweeps"] += n * float((brain.last_settlement or {}).get("steps", 0))
@@ -801,7 +807,10 @@ def load_records(p: Parrot, path: str | Path) -> bool:
     if p.records is None or not Path(path).exists():
         return False
     with np.load(path) as f:
-        p.records.restore({k: f[k] for k in f.files})
+        try:
+            p.records.restore({k: f[k] for k in f.files})
+        except ValueError:  # records of another key (another width): the store starts empty
+            return False
     return True
 
 
