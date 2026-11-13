@@ -357,9 +357,67 @@ def detail(out_dir: Path, arm: str, newborn: str | None = None) -> str:
 ti_props = ("round", "red", "food", "left", "near")
 
 
+def sweep(out_dir: Path) -> str:
+    """The development sweep per arm (mean over its founders): each stage's last read and its
+    blocks (to mastery, or the cap), the largest efficacy at the stage's end, G3, and where in
+    the depth the colour and the shape are held (the decoded share under the colour and the shape
+    question in the lowest and the association region) with the question's switch."""
+    arms: dict[str, list[dict[str, Any]]] = {}
+    for p in sorted(out_dir.glob("*.json")):
+        name = p.stem.rsplit("_", 1)[0]
+        if name not in ARMS:
+            continue
+        try:
+            rec = json.loads(p.read_text())
+        except json.JSONDecodeError:
+            continue
+        if "readings" in rec:
+            arms.setdefault(name, []).append(rec)
+    stages = [s for s, _ in tp.STAGES]
+    head = ["arm", "n"] + [f"{s} (blocks)" for s in stages] + ["G3", "max eff", "params",
+                                                                 "MACs"]
+    lines = ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
+    for name, recs in arms.items():
+        cells = [name, str(len(recs))]
+        for st in stages:
+            reads, blocks = [], []
+            for r in recs:
+                e = next((x for x in r["stages"] if x["stage"] == st), None)
+                if e is None:
+                    continue
+                if e["curve"]:
+                    reads.append(e["curve"][-1]["read"])
+                blocks.append(e.get("blocks", 0))
+            cells.append(f"{_mean(reads):.2f} ({_mean(blocks):.0f})")
+        sm = [summary(r) for r in recs]
+        cells.append(f"{_mean([s.get('G3', float('nan')) for s in sm]):.2f}")
+        cells.append(f"{_mean([s.get('max_eff', float('nan')) for s in sm]):.2f}")
+        cells.append(f"{_mean([float(r['parameters']) for r in recs]):.3g}")
+        cells.append(f"{_mean([float(r['macs']) for r in recs]):.3g}")
+        lines.append("| " + " | ".join(cells) + " |")
+    lines.append("")
+    head = ["arm", "region", "colour decoded: colour q / shape q", "shape decoded: colour q / "
+            "shape q", "switch colour", "switch shape"]
+    lines += ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
+    for name, recs in arms.items():
+        regs = recs[0]["readings"].get("G4", {}).get("regions", {})
+        for reg in regs:
+            def q(qn: str, key: str, reg: str = reg,
+                  recs: list[dict[str, Any]] = recs) -> float:
+                return _mean([r["readings"]["G4"]["regions"][reg][qn][key] for r in recs])
+
+            def sw(key: str, reg: str = reg, recs: list[dict[str, Any]] = recs) -> float:
+                return _mean([r["readings"]["G4"]["regions"][reg]["switch"][key] for r in recs])
+            lines.append(f"| {name} | {reg} | {q('colour', 'colour_decoded'):.2f} / "
+                         f"{q('shape', 'colour_decoded'):.2f} | {q('colour', 'shape_decoded'):.2f}"
+                         f" / {q('shape', 'shape_decoded'):.2f} | {sw('colour'):+.3f} | "
+                         f"{sw('shape'):+.3f} |")
+    return "\n".join(lines)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("what", choices=["life", "control", "read", "detail", "pointed"])
+    ap.add_argument("what", choices=["life", "control", "read", "detail", "pointed", "sweep"])
     ap.add_argument("args", nargs="*")
     ap.add_argument("--no-pistachio", action="store_true")
     ap.add_argument("--brain-record")
@@ -371,6 +429,8 @@ def main() -> None:
     elif a.what == "control":
         seed, kind, out = int(a.args[0]), a.args[1], Path(a.args[2])
         control(seed, kind, out, Path(a.brain_record) if a.brain_record else None, a.arm)
+    elif a.what == "sweep":
+        print(sweep(Path(a.args[0])))
     elif a.what == "pointed":
         pointed(int(a.args[0]), a.args[1], Path(a.args[2]))
     elif a.what == "detail":
