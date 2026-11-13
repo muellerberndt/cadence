@@ -30,9 +30,10 @@ words for time are nonce words like every other.
 **An answer.** Each source finds the things the question names and reads each one (its place,
 its colour or its kind) as ``Words`` does on the map. The settled ``when`` activities are gains
 on what the sources found: a thing's drive on the concepts is each source's concept at its gain
-(the activity over the lexicon's ``level``), and the lexicon's motor says the most active word
+(its activity over the most active source's), and the lexicon's motor says the most active word
 of that drive. A drive too weak to raise a word over its threshold says nothing; where no thing
-is said, the brain says the word for the read that finds nothing. With the records barred
+is said, the brain says the word for the read that finds nothing. A question whose words settle
+on no source above the floor asks the map alone, as ``Words`` does. With the records barred
 (``Records.barred``), a question about the past finds nothing at the records' gain, and the
 brain says it does not know.
 """

@@ -249,7 +249,9 @@ def life(seed: int, *, record: Any = None, brain: Any = None, **given: Any) -> d
             apart = (len(concepts[asked]) == 1 and len(concepts[other]) == 1
                      and concepts[asked] != concepts[other])
             if apart:  # W10: the sources tell the times apart; does the brain?
-                told = said == [lex.place[concepts[asked][0][1]]]
+                group, value = concepts[asked][0]
+                told = said == [{"kind": lex.kind, "colour": lex.colour,
+                                 "place": lex.place}[group][value]]
                 readings.setdefault(f"W10_{q.form}", []).append(told)
             if gate == "W8_present":
                 readings.setdefault("W8_map_rate", []).append(held_at(brain, q.kind,
@@ -266,6 +268,7 @@ def life(seed: int, *, record: Any = None, brain: Any = None, **given: Any) -> d
                     barred_said in ([lex.none], [""]))
             if record is not None:
                 record.append({"gate": gate, "question": q.text, "answer": q.answer,
+                               "read": brain.last.get("read"),
                                "said": said, "right": ok, "barred": barred_said,
                                "sources": {s: [list(c) for c in v] for s, v in concepts.items()},
                                "gains": [round(float(g), 3) for g in brain.last["gains"]],
