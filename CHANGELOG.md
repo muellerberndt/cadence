@@ -65,6 +65,15 @@
 - **`cadence.space.physics.Physics`**: the learned part, shareable by several maps, kept in a
   map's file.
 - No default changes: with physics unset the map is as on 0.99.0.
+- **Time in words (`cadence.words.episodes.Episodes`)**, a part of `Words` (`Words(map,
+  parts=[Episodes(map)])`) with two more sources. Its records hold the places things left,
+  written as the brain lives into a `LongTermMemory` keyed by the thing and a drifting context
+  (`Records`, `Clock`). Its forecast is the learned physics' `Map.forecast(moments)`; a map with
+  no physics forecasts itself. The part adds one concept a source to the lexicon, joined to every
+  word by synapses from zero. "Was", "is" and "will" are nonce words: which source a question
+  asks for is learned from answered questions, and the settled source activities compete for the
+  sources' gains as the reads do. `Records.barred` bars every recall. The chamber's rung is
+  `benchmarks/words/times.py` ([protocols](benchmarks/words/PROTOCOL_TIME.md)).
 
 ## 0.99.0 - 2026-11-13
 
