@@ -32,16 +32,19 @@
 - **Pistachios (`Words.ask(explore=True)`, `Words.reward(amount)`)**: a right answer earns a
   reward, and the question's words of asking (those that name no concept) are taught the read the
   answer took, at the reward's surprise. A word that names a concept keeps no read.
-- **`cadence.words.several.Several`** (#328): several things of one kind told apart by their
-  colours ("where is the red ball?"), answers that name several things, "how many red things are
-  there?" and "is there a ball?". Each word of a question names its most active concept of a
-  thing, and the map settles on one of them and keeps the places whose settle gives the others.
-  Two reads of the things found together: their count, from a born number sense (one neuron a
-  count of the places a settle finds), and whether there is one. The number words and yes and no
-  are learned from the teacher's answers alone: the question's words are taught each read whose
-  concepts the motor would say as the answer, and an answer no naming has shown is named with
-  the count and the truth found, at the gain of the question's read. The chamber's rung is
-  `benchmarks/words/several.py` ([protocol](benchmarks/words/PROTOCOL_SEVERAL.md)).
+- **`cadence.words.several.Several`** (#328), a part of `Words` (`Words(map,
+  parts=[Several()])`): several things of one kind told apart by their colours ("where is the red
+  ball?"), answers that name several things, "how many red things are there?" and "is there a
+  ball?". Each word of a question names its most active concept of a thing, and the part keeps
+  the things found that the senses give every named concept. Two more reads of the things found
+  together: their count, from a born number sense (one neuron a count of the things found), and
+  whether there is one. The number words and yes and no are learned from the teacher's answers
+  alone: the part takes the lessons of answers of several words and of one word no naming has
+  shown, teaching the words of asking each read whose concepts the motor would say as the
+  answer, and naming such an answer with the count and the truth found, at the gain of the
+  question's read. `Words.practice` takes no lesson of its own where a part's `takes` holds. The
+  chamber's rung is `benchmarks/words/several.py`
+  ([protocol](benchmarks/words/PROTOCOL_SEVERAL.md)).
 
 ## 0.99.0 - 2026-11-13
 
