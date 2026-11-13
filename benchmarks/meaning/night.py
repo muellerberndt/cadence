@@ -4,6 +4,12 @@
 they ask about it: joint attention) is reported again in a place of its own before the scene:
 what the eyes see where the parrot looks, the tectum's winner gated in (born attention).
 
+**The scan.** A question about the scene as a whole (what is red, what objects are round, what
+can you eat, what is made of wood, what is left of the apple) is answered while the focus visits
+each thing in turn (born serial search, inhibition of return): one moment a thing, its features
+in the glimpse; the parrot says a thing's name while it is in view, so a question with several
+answers is answered word by word.
+
 **The world.** Things of eight kinds (an apple, a banana, a ball, a block, a cup, a key, a book, a
 bottle), each in a colour, of a material (fruit, wood, metal, glass, cloth, plastic), around the
 parrot. The eyes report a thing's hue, lightness, shape, size, surface (gloss, roughness,
@@ -131,11 +137,13 @@ class Room:
     things: list[Thing]
     heading: float = 0.0
 
-    def seen(self, rng: np.random.Generator) -> list[Seen]:
-        out = [Seen(hue=t.hue, saturation=t.saturation, lightness=t.lightness, shape=t.shape,
+    def seen_of(self, t: Thing) -> Seen:
+        return Seen(hue=t.hue, saturation=t.saturation, lightness=t.lightness, shape=t.shape,
                     width=t.width, direction=bearing(self.heading, t.place),
-                    distance=float(np.linalg.norm(t.place)), salient=t.focus,
-                    surface=t.surface) for t in self.things]
+                    distance=float(np.linalg.norm(t.place)), salient=t.focus, surface=t.surface)
+
+    def seen(self, rng: np.random.Generator) -> list[Seen]:
+        out = [self.seen_of(t) for t in self.things]
         return [out[int(i)] for i in rng.permutation(len(out))]
 
 
@@ -217,6 +225,7 @@ class Question:
     form: str
     focus: Thing | None = None
     several: bool = False
+    scan: bool = False  # the parrot's turn looks over the things one at a time
 
 
 def ask(form: str, r: Room, rng: np.random.Generator) -> Question | None:
@@ -232,11 +241,12 @@ def ask(form: str, r: Room, rng: np.random.Generator) -> Question | None:
         return Question(["what", "colour", "has", "the", x.kind], [x.colour], form, focus=x)
     if form == "by_colour":
         same = [t for t in things if t.colour == x.colour]
-        return Question(["what", "is", x.colour], [x.kind], form) if len(same) == 1 else None
+        return Question(["what", "is", x.colour], [x.kind], form, scan=True) \
+            if len(same) == 1 else None
     if form == "round":
         kinds = sorted(t.kind for t in things if t.kind in ROUND)
-        return Question(["what", "objects", "are", "round"], kinds, form, several=True) \
-            if kinds else None
+        return Question(["what", "objects", "are", "round"], kinds, form, several=True,
+                        scan=True) if kinds else None
     if form == "where":
         x.focus = True
         words = [direction_of(r.heading, x.place)]
@@ -248,25 +258,25 @@ def ask(form: str, r: Room, rng: np.random.Generator) -> Question | None:
             left_of(r, t, x) if form == "left_of" else left_of(r, x, t))]
         side = "left" if form == "left_of" else "right"
         x.focus = len(found) == 1
-        return Question(["what", "is", side, "of", "the", x.kind], [found[0].kind], form) \
-            if len(found) == 1 else None
+        return Question(["what", "is", side, "of", "the", x.kind], [found[0].kind], form,
+                        focus=x, scan=True) if len(found) == 1 else None
     if form == "next_to":
         found = [t for t in things if next_to(t, x)]
         x.focus = len(found) == 1
-        return Question(["what", "is", "next", "to", "the", x.kind], [found[0].kind], form) \
-            if len(found) == 1 else None
+        return Question(["what", "is", "next", "to", "the", x.kind], [found[0].kind], form,
+                        focus=x, scan=True) if len(found) == 1 else None
     if form == "opposite":
         found = [t for t in things if t is not x and opposite(r, t, x)]
         x.focus = len(found) == 1
-        return Question(["what", "is", "opposite", "the", x.kind], [found[0].kind], form) \
-            if len(found) == 1 else None
+        return Question(["what", "is", "opposite", "the", x.kind], [found[0].kind], form,
+                        focus=x, scan=True) if len(found) == 1 else None
     if form == "material":
         same = [t for t in things if t.material == x.material]
-        return Question(["what", "is", "made", "of", x.material], [x.kind], form) \
+        return Question(["what", "is", "made", "of", x.material], [x.kind], form, scan=True) \
             if len(same) == 1 else None
     if form == "eat":
         kinds = sorted(t.kind for t in things if t.material in EDIBLE)
-        return Question(["what", "can", "you", "eat"], kinds, form, several=True) \
+        return Question(["what", "can", "you", "eat"], kinds, form, several=True, scan=True) \
             if kinds else None
     if form == "can_eat":
         x.focus = True
@@ -289,8 +299,17 @@ class Exchange:
     extra: dict[str, Any] = field(default_factory=dict)
 
     @property
+    def scan(self) -> list[Thing]:
+        """The things the focus visits in turn during the parrot's turn (a scanning question)."""
+        return list(self.extra.get("scan", []))
+
+    @property
+    def turn_length(self) -> int:
+        return len(self.scan) if self.scan else TURN
+
+    @property
     def length(self) -> int:
-        return self.turn + TURN + TAIL
+        return self.turn + self.turn_length + TAIL
 
 
 class Parrot:
@@ -332,17 +351,20 @@ class Parrot:
                 code = code + self.forms(PRAISE)
             seen = ex.room.seen(rng)
             focus = next((x for x in seen if x.salient), None)
+            if ex.scan and 0 <= t - ex.turn < len(ex.scan):  # the focus visits each thing
+                focus = ex.room.seen_of(ex.scan[t - ex.turn])
             rows.append(np.concatenate([self.eyes.slot(focus), self.eyes.scene(seen), code]))
         return np.asarray(rows)
 
 
-def reply_of(said: list[str | None]) -> list[str]:
+def reply_of(said: list[str | None], *, scan: bool = False) -> list[str]:
     """The words said in the turn, in order, a word said on consecutive moments once, up to the
-    first silence after a word."""
+    first silence after a word (in a scan, every word said while the focus looked over the
+    things)."""
     out: list[str] = []
     for w in said:
         if w is None:
-            if out:
+            if out and not scan:
                 break
             continue
         if not out or out[-1] != w:
@@ -448,12 +470,17 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
                 entries = {}
                 for i, k, unit in echoes:
                     if unit != p.silence and turn_t[i]:
-                        mt = turn_t[i][min(k, len(turn_t[i]) - 1)]
+                        place = min(k, len(turn_t[i]) - 1)
+                        kinds = [x.kind for x in exs[i].scan]
+                        q = exs[i].question
+                        if kinds and q is not None and q.answer[k] in kinds:
+                            place = min(kinds.index(q.answer[k]), len(turn_t[i]) - 1)
+                        mt = turn_t[i][place]
                         entries.setdefault(mt, []).append(
                             (i, unit, 0, float(g["correction_lesson"])))
                 p.work["corrected"] = p.work.get("corrected", 0) + teach_at(entries)
                 echoes = []
-            if any(ex.turn <= t < ex.turn + TURN for ex in exs):
+            if any(ex.turn <= t < ex.turn + ex.turn_length for ex in exs):
                 snaps[t] = (copy.deepcopy(brain), x.copy())
             action = np.asarray(brain.act(x)).reshape(n, -1)
         else:
@@ -465,7 +492,7 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
         own = []
         for i, ex in enumerate(exs):
             hearing = t < ex.turn and ex.heard[t] is not None  # the trainer has more to say
-            in_turn = ex.turn <= t < ex.turn + TURN
+            in_turn = ex.turn <= t < ex.turn + ex.turn_length
             w = p.said(voiced[i])
             if hearing and int(g["reply_suppression"]):
                 w = None  # the voice is held while the parrot hears a trainer
@@ -486,9 +513,9 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
                     moment_x[i].append(x[i])
                     moment_unit[i].append(int(voiced[i]))
                     moment_t[i].append(t)
-            if t == ex.turn + TURN - 1 and not judged[i] and not ex.bite:
+            if t == ex.turn + ex.turn_length - 1 and not judged[i] and not ex.bite:
                 judged[i] = True
-                replies[i] = reply_of(said[i])
+                replies[i] = reply_of(said[i], scan=bool(ex.scan))
                 assert ex.question is not None
                 oks[i] = right(ex.question, replies[i])
                 pay = oks[i] if pistachio == "earned" else (
@@ -508,6 +535,21 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
     return {"replies": replies, "right": oks, "bitten": bitten}
 
 
+def make_exchange(r: Room, q: Question, mode: str, rng: np.random.Generator) -> Exchange:
+    """The exchange of question ``q`` in room ``r``: the trainers' words (and in ``model`` mode
+    the second trainer's answer), then the parrot's turn."""
+    heard: list[str | None] = list(q.words)
+    if mode == "model":
+        heard += list(q.answer)
+    extra: dict[str, Any] = {"dagger": mode == "dagger"}
+    if q.scan:  # born serial search: the focus visits each thing once, in a drawn order
+        looked = [t for t in r.things if t is not q.focus]
+        extra["scan"] = [looked[int(j)] for j in rng.permutation(len(looked))]
+        # the turn begins after the last heard word, as the focus starts to move
+        return Exchange(r, heard + [None], len(heard), q, extra=extra)
+    return Exchange(r, heard, len(heard) - 1, q, extra=extra)
+
+
 def exchange(p: Parrot, rng: np.random.Generator, form: str, mode: str,
              held: set[tuple[str, str]], *, test: bool = False) -> Exchange:
     """One exchange: ``mode`` ``model`` (a second trainer says the answer first) or ``turn``."""
@@ -522,10 +564,7 @@ def exchange(p: Parrot, rng: np.random.Generator, form: str, mode: str,
         q = ask(form, r, rng)
         if q is None:
             continue
-        heard: list[str | None] = list(q.words)
-        if mode == "model":
-            heard += list(q.answer)
-        return Exchange(r, heard, len(heard) - 1, q, extra={"dagger": mode == "dagger"})
+        return make_exchange(r, q, mode, rng)
     raise RuntimeError(f"no room for {form}")
 
 

@@ -260,13 +260,17 @@ def exam_owner(p: nt.Parrot, rng: np.random.Generator) -> list[dict[str, Any]]:
     """The owner's five, each asked on every stream of a block, read greedily."""
     out = []
     for words, answer, focus in OWNER:
-        r = owner_room()
-        for t in r.things:  # the apple clicked (or attended to) while the question is asked
-            t.focus = t.kind == focus
-        several = words[1] == "objects"
-        q = nt.Question(list(words), list(answer), "owner", several=several)
-        exs = [nt.Exchange(copy.deepcopy(r), list(words), len(words) - 1, q)
-               for _ in range(p.streams)]
+        exs = []
+        for _ in range(p.streams):
+            r = owner_room()
+            for t in r.things:  # the apple clicked (or attended to) while the question is asked
+                t.focus = t.kind == focus
+            ref = next((t for t in r.things if t.focus), None)
+            several = words[1] == "objects"
+            scan = words[1] == "objects" or words[2] == "left"  # questions over the scene
+            q = nt.Question(list(words), list(answer), "owner", focus=ref, several=several,
+                            scan=scan)
+            exs.append(nt.make_exchange(r, q, "turn", rng))
         got = nt.live(p, exs, rng, learn=False)
         out.append({"question": " ".join(words), "answer": answer,
                     "said": got["replies"][0], "right": float(np.mean(got["right"]))})
