@@ -175,3 +175,26 @@ def test_save_load_and_the_page_host(tmp_path):
     assert host.silence("distance", True)["silenced"] == ["distance"]
     reply = host.step({}, {})
     assert reply["readout"]["distance"] is None
+
+
+def test_whole_brain_exports(tmp_path):
+    import json
+
+    from cadence.parrot.whole import WholeParrot
+
+    whole = WholeParrot(seed=0, association=16, words=8)
+    scene = Scene([Thing("a", "apple", 0.03, 0.33, stand=0.12)])
+    for k in range(3):
+        whole.moment(render(scene, whole.parrot.body.eyes()).images,
+                     record="sees an apple" if k == 2 else None)
+    whole.moment(render(scene, whole.parrot.body.eyes()).images, reward=1.0,
+                 record="gets a pistachio")
+    whole.export(tmp_path)
+    index = json.loads((tmp_path / "brain.json").read_text())
+    n = index["neurons"]
+    assert (tmp_path / "neurons.bin").stat().st_size == n * 14
+    first = index["moments"][0]
+    assert (tmp_path / first["trace"]).stat().st_size == (first["sweeps"] + 1) * n * 2
+    assert index["moments"][1]["reward"] == 1.0
+    assert {"retina", "wulst", "map", "ncl", "vta"} <= {r["id"] for r in index["regions"]}
+    assert sum(t["synapses"] for t in index["tracts"]) == index["synapses"]
