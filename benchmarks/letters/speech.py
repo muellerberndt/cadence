@@ -587,10 +587,10 @@ def life_batched(cache: Path, protocol: dict[str, Any], seed: int, out: Path,
     the symbol on the forced alignment, the first batches on an even split; ``"soft"`` teaches
     each step the soft path through the frozen copy's beliefs (``cadence.speech.align``'s
     ``soft_path``: the share of the transcript's paths that say each symbol at the step), from
-    the first batch on, through the newborn's beliefs there, as ``lesson(targets=...)`` and a
-    greedy act, the fields taking their one step of the moment at the act."""
+    the first batch on, through the newborn's beliefs there, each moment a ``soft_step``: the
+    lesson of the distribution and a greedy act."""
     import cadence as cd
-    from cadence.speech.align import soft_path
+    from cadence.speech.align import soft_path, soft_step
 
     train, held = load(cache, "train"), load(cache, "held")
     size = int(protocol["batch"])
@@ -669,13 +669,8 @@ def life_batched(cache: Path, protocol: dict[str, Any], seed: int, out: Path,
         ticked = time.monotonic()
         brain.reset()
         for t in range(len(x)):
-            if soft:  # one step of the fields a moment, at the act, as in step
-                if brain.fields is not None:
-                    brain.fields.learning = False
-                brain.lesson(x[t], targets=targets[t])
-                if brain.fields is not None:
-                    brain.fields.learning = True
-                brain.act(x[t], greedy=True)
+            if soft:  # the lesson's pull, then a greedy act; the fields step once, at the act
+                soft_step(brain, x[t], targets[t])
             else:
                 brain.step(x[t], teacher=labels[t])
         clock["training"] += time.monotonic() - ticked

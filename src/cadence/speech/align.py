@@ -12,6 +12,7 @@ transcript's paths that say each symbol at that step, every path weighed by the 
 along it (the occupation shares of CTC's forward and backward sums). Taught as a lesson's
 ``targets``, the pull on the motor neurons at every step is the descent direction of CTC's loss
 on the brain's beliefs, computed, as the path is, outside the brain from its beliefs alone.
+``soft_step`` is one moment of that lesson: the pull, then a greedy act.
 
 ``Alignments`` holds the paths of utterances to come, one per hearing: an utterance heard in two
 passes takes a path in each, and using one never removes the other. ``log_beliefs`` reads a
@@ -125,6 +126,25 @@ def soft_path(log_beliefs: Any, transcript: Any, *, blank: int = BLANK) -> np.nd
     out = np.zeros_like(scores)
     np.add.at(out, (np.arange(frames)[:, None], labels[None, :]), shares)
     return np.asarray(out / out.sum(axis=1, keepdims=True))
+
+
+def soft_step(brain: Any, rows: Any, targets: Any) -> dict[str, float]:
+    """One moment of a soft lesson, in place of ``brain.step(rows, teacher=labels)``: the lesson
+    pulls each stream toward its row of ``targets`` (``Brain.lesson(targets=...)``), then the
+    brain answers the moment greedily, which carries its streams on. Learned fields take their
+    one step of the moment at the act, as in ``step``, and are held during the lesson. Returns
+    the lesson's report."""
+    fields = getattr(brain, "fields", None)
+    moving = fields is not None and bool(fields.learning)
+    if moving:
+        fields.learning = False
+    try:
+        report: dict[str, float] = brain.lesson(rows, targets=targets)
+    finally:
+        if moving:
+            fields.learning = True
+    brain.act(rows, greedy=True)
+    return report
 
 
 def log_beliefs(brain: Any, utterances: Sequence[Any]) -> list[np.ndarray]:

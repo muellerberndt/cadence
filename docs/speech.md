@@ -130,6 +130,41 @@ beliefs on the next batches' utterances (`log_beliefs(copy, rows)`) and aligns e
 through them (`Alignments.realign(key, beliefs, text)`). A key names one hearing of an
 utterance, so an utterance heard in two passes holds a path for each.
 
+### The soft lesson: every path of the transcript
+
+The forced path gives each step one letter, the best guess of where the letter lies. While the
+brain's beliefs are weak, many paths are nearly as good as the best one, and the lesson teaches
+one of them as if it were sure. `align.soft_path` gives each step a distribution in its place:
+the share of all the transcript's paths that say each symbol at that step, each path weighed by
+the brain's beliefs along it. Where the beliefs leave a letter's timing open, its share spreads
+over the steps it may take; where they are sure, the row is the forced path's letter. Taught as
+a lesson's `targets`, the pull on the motor neurons is the direction that makes the transcript
+more likely under the brain's beliefs (the descent of CTC's loss). The teacher computes it
+outside the brain, from the beliefs alone, as it computes the path.
+
+```python
+from cadence.speech.align import soft_path, soft_step
+
+soft = Alignments()
+for k, (beliefs_k, text) in enumerate(zip(log_beliefs(ears, utterances), texts)):
+    soft.realign(k, beliefs_k, text, soft=True)     # (steps, 29): a distribution per step
+assert np.allclose(soft_path(log_beliefs(ears, utterances)[1], texts[1]).sum(axis=1), 1.0)
+targets = soft.targets([0, 1], len(x), alphabet.size)   # (steps, utterances, 29)
+assert targets[-1, 1, 0] == 1.0                     # blank past the shorter utterance's end
+ears.reset()
+for t in range(len(x)):
+    soft_step(ears, x[t], targets[t])               # the lesson's pull, then a greedy act
+```
+
+`soft_step(brain, rows, targets)` is one moment of the soft lesson, in place of
+`brain.step(rows, teacher=labels)`: `brain.lesson(rows, targets=targets)`, then
+`brain.act(rows, greedy=True)`, the learned fields taking their one step of the moment at the
+act. Read the beliefs from a frozen copy before every batch, the first batch included: a
+newborn's beliefs say nothing, and their soft path spreads each letter over the steps it can
+take, so no even split is needed. Distributions read from a copy several batches old teach
+less (in the chamber, a brain taught from copies eight batches old says only blank after half
+a pass, where one taught from a copy of the same batch reads .32 characters).
+
 ## Reading text, with and without a word list
 
 The brain's beliefs at each step are the softmax of its motor neurons. Reading the most believed

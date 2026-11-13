@@ -140,3 +140,32 @@ def test_soft_paths_are_taught_as_targets_side_by_side():
         report = brain.lesson(rows[t], targets=targets[t])
         brain.act(rows[t], greedy=True)
     assert report["accepted_presentations"] >= 1
+
+
+def test_a_soft_step_is_the_lesson_and_a_greedy_act_with_one_step_of_the_fields():
+    from cadence.speech.align import soft_step
+
+    def born():
+        return cd.Brain.compose((8, 8), 4, seed=0, backend="cpu", learned_fields=4)
+
+    rng = np.random.default_rng(1)
+    rows = rng.normal(size=(5, 2, 64))
+    targets = rng.dirichlet(np.ones(4), size=(5, 2))
+    stepped, by_hand = born(), born()
+    for t in range(5):
+        report = soft_step(stepped, rows[t], targets[t])
+        by_hand.fields.learning = False
+        by_hand.lesson(rows[t], targets=targets[t])
+        by_hand.fields.learning = True
+        by_hand.act(rows[t], greedy=True)
+    assert report["accepted_presentations"] >= 1
+    assert stepped.fields.work["updates"] == 5 and stepped.fields.learning  # one a moment
+    np.testing.assert_array_equal(stepped.fields.dictionary, by_hand.fields.dictionary)
+    np.testing.assert_array_equal(np.asarray(stepped.brain.efficacy),
+                                  np.asarray(by_hand.brain.efficacy))
+    held = born()
+    held.fields.learning = False  # fields held by the caller stay held
+    soft_step(held, rows[0], targets[0])
+    assert held.fields.work["updates"] == 0 and not held.fields.learning
+    plain = cd.Brain.compose(6, 4, seed=0, backend="cpu", recall=False)  # a brain without fields
+    soft_step(plain, rows[0][:, :6], targets[0])
