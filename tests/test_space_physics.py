@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from cadence.space.map import Map
-from cadence.space.physics import CORE, COUNT, EST, FIELDS, VEL, Physics
+from cadence.space.physics import CORE, COUNT, EST, FIELDS, HIDDEN, IDENT, VEL, Physics
 
 PLANE = (-1.0, 1.0, -0.2, 1.4)
 INSIDE = (np.array([-0.98, -0.18]), np.array([0.98, 1.38]))
@@ -167,3 +167,152 @@ def test_physics_settings_are_checked():
     assert "motion" not in Map(PLANE).arrays()
     rec = np.zeros(FIELDS)
     assert rec[CORE + 7] == 0
+
+
+# -- several things, other senses and the map's own rules (the review of #335)
+
+
+def run(held: Map, steps: int, things: dict, lit, *, hidden_after=None, senses=None):
+    """Things on lines ``(start, velocity)`` by kind (a list for two of a kind), reported by the
+    camera where ``lit`` sees them and until ``hidden_after`` moments (by index)."""
+    rng = np.random.default_rng(7)
+    flat = [(kind, i, line) for kind, lines in things.items()
+            for i, line in enumerate(lines if isinstance(lines, list) else [lines])]
+    truth = {}
+    for t in range(steps):
+        reports = {"seen": [], "heard": [], "felt": []}
+        for kind, i, (start, velocity) in flat:
+            at = np.asarray(start) + t * np.asarray(velocity)
+            truth[(kind, i)] = at
+            sense = (senses or {}).get((kind, i), "seen")
+            limit = (hidden_after or {}).get((kind, i))
+            shown = limit is None or t < limit
+            if sense != "seen" and shown:
+                reports[sense].append((kind, at))
+            elif shown and (lit is None or bool(lit(at[None])[0])):
+                reports["seen"].append((kind, at + rng.normal(0.0, 0.01, 2)))
+        held.moment(lit=lit, **reports)
+    return truth
+
+
+def test_two_things_first_seen_in_one_moment_are_two_things():
+    held = Map(PLANE, physics=taught())
+    truth = run(held, 75, {0: ((-0.8, 0.3), (0.012, 0.0)), 1: ((-0.8, 0.9), (0.012, 0.004))},
+                left_half)
+    idents = {int(i) for i in np.unique(held.motion[:, :, IDENT]) if i > 0}
+    assert len(idents) == 2
+    entries = {e["kind"]: e for e in held.things()}
+    for kind in (0, 1):
+        assert entries[kind]["state"] == "moving"
+        assert np.linalg.norm(entries[kind]["place"] - truth[(kind, 0)]) < 0.08
+    assert abs(entries[1]["velocity"][1] - 0.004) < 0.002 and abs(entries[0]["velocity"][1]) < 0.002
+
+
+def test_a_report_of_one_thing_leaves_another_carried_thing_of_its_kind():
+    """A hand moves out of view while a second hand of the same kind is still reported."""
+    held = Map(PLANE, physics=taught())
+    lines = {0: [((-0.8, 0.3), (0.012, 0.0)), ((0.5, 1.2), (0.0, 0.0))]}
+    truth = run(held, 60, lines, None, hidden_after={(0, 0): 30})
+    places = held.where_is(0)
+    assert len(places) >= 2  # the hand at rest in view, and the one carried on
+    assert min(np.linalg.norm(p - truth[(0, 0)]) for p in places) < 0.08
+    assert min(np.linalg.norm(p - truth[(0, 1)]) for p in places) < 0.02
+
+
+def test_a_thing_seen_at_rest_is_the_maps_to_hold():
+    """At rest, then no longer reported: with physics the map answers as it does without."""
+    for seed in range(12):
+        rng = np.random.default_rng(seed)
+        plain, held = Map(PLANE), Map(PLANE, physics=taught())
+        for t in range(48):
+            seen = [(0, np.array([-0.05, 0.6]) + rng.normal(0.0, 0.01, 2))] if t < 40 else []
+            for m in (plain, held):
+                m.moment(seen=seen, lit=left_half)
+        assert np.array_equal(plain.potential, held.potential)
+        assert [e["state"] for e in plain.things()] == [e["state"] for e in held.things()]
+
+
+def test_a_place_another_sense_names_takes_no_part_in_the_line():
+    """Seen and felt at once (the arm's own hand): the line and its lessons are the camera's."""
+    alone, both = Physics(prior=0.0), Physics(prior=0.0)
+    a, b = Map(PLANE, physics=alone), Map(PLANE, physics=both)
+    rng = np.random.default_rng(2)
+    for t in range(100):
+        at = np.array([-0.6 + 0.012 * t, 0.6])
+        seen = [(0, at + rng.normal(0.0, 0.01, 2))]
+        a.moment(seen=seen, lit=everywhere)
+        b.moment(seen=seen, felt=[(0, at + rng.normal(0.0, 0.04, 2))], lit=everywhere)
+    assert both.lessons == alone.lessons > 0
+    assert np.array_equal(both.stats, alone.stats)
+
+
+def test_a_thing_that_has_come_to_rest_is_no_longer_moving():
+    held = Map(PLANE, physics=taught(rest=0.02))
+    run(held, 30, {0: ((-0.8, 0.6), (0.015, 0.0))}, None)
+    states = []
+    for _ in range(600):
+        held.moment()
+        states.append(held.things()[0]["state"])
+    (entry,) = held.things()
+    # moving while half of it or more moves, then in doubt at rest, with no velocity
+    assert states[0] == "moving" and entry["state"] == "near" and "velocity" not in entry
+    assert states.index("near") < 100 and "moving" not in states[states.index("near"):]
+    # under a thousandth of it still moved: all of it is at rest, and the map's to hold
+    assert not (held.motion[:, :, HIDDEN] > 0).any()
+
+
+def test_keep_and_clear_are_honoured_for_a_thing_the_physics_carries():
+    lines = {0: ((-0.8, 0.3), (0.012, 0.0))}
+    kept = Map(PLANE, empty="keep", physics=taught())
+    run(kept, 30, lines, everywhere)
+    for _ in range(5):
+        kept.moment(lit=everywhere)  # no report, the whole plane in sight
+    (entry,) = kept.things()
+    assert entry["place"] is not None  # sight takes nothing away
+    cleared = Map(PLANE, empty="clear", physics=taught())
+    run(cleared, 30, lines, everywhere)
+    cleared.moment(lit=everywhere)
+    assert [e["state"] for e in cleared.things()] == ["not known where"]
+    # vanished in plain sight a step from a shadow: the map's near rule decides, as without physics
+    beside = {0: ((-0.1, 0.2), (0.0, 0.012))}
+    near, plain = Map(PLANE, physics=taught()), Map(PLANE)
+    for m in (near, plain):
+        run(m, 30, beside, left_half)
+        m.moment(lit=left_half)
+    assert [e["state"] for e in plain.things()] == ["near"]
+    assert [e["state"] for e in near.things()] == ["near"]
+    assert np.allclose(near.things()[0]["place"], plain.things()[0]["place"])
+
+
+def test_a_frozen_physics_stays_frozen_in_its_file(tmp_path):
+    held = Map(PLANE, physics=taught())
+    held.physics.learning = False
+    again = Map.load(held.save(tmp_path / "frozen.npz"))
+    assert again.physics.learning is False
+    held.physics.learning = True
+    assert Map.load(held.save(tmp_path / "learning.npz")).physics.learning is True
+
+
+def test_a_carried_thing_leaves_other_kinds_as_they_are():
+    """A thing of another kind at rest out of view, under a carried thing's path."""
+    held, plain = Map(PLANE, physics=taught()), Map(PLANE)
+    for m in (held, plain):
+        m.moment(seen=[(1, (0.33, 0.3))], lit=everywhere)
+    lines = {0: ((-0.6, 0.3), (0.012, 0.0))}
+    for m in (held, plain):
+        run(m, 110, lines, left_half)
+    one = {e["kind"]: e for e in held.things()}[1]
+    other = {e["kind"]: e for e in plain.things()}[1]
+    assert one["state"] == other["state"] == "held"
+    assert np.allclose(one["place"], other["place"]) and one["since"] == other["since"]
+
+
+def test_a_carried_thing_that_comes_back_elsewhere_is_one_thing():
+    """Hidden while moving, then seen far from every part of it: no part of it is left behind."""
+    held = Map(PLANE, physics=taught())
+    run(held, 60, {0: ((-0.8, 0.3), (0.012, 0.0))}, None, hidden_after={(0, 0): 30})
+    assert held.things()[0]["state"] == "moving"
+    held.moment(seen=[(0, (0.6, 1.2))])
+    (entry,) = held.things()
+    assert entry["state"] == "seen" and np.allclose(entry["place"], [0.6, 1.2], atol=0.001)
+    assert len(held.where_is(0)) == 1

@@ -222,7 +222,8 @@ class Map:
         map file and a brain that holds a map keep."""
         record: dict[str, Any] = {"format": FORMAT, **self.settings}
         arrays = {"codes": self.codes, **self.arrays()}
-        if self.physics is not None:  # what it learned: the lessons' statistics and estimate
+        if self.physics is not None:  # its settings as they are now, and what it learned
+            record["physics"] = self.physics.settings()
             arrays.update({f"physics/{k}": v for k, v in self.physics.arrays().items()})
         return record, arrays
 
@@ -332,17 +333,7 @@ class Map:
     def weights(self, point: np.ndarray) -> np.ndarray:
         """A place as weights on the four cells around it, ``(cells,)`` summing to one, whose
         mean is the place. A place beyond the outer cells' middles is read at them."""
-        nx, ny = self.cells
-        at = np.clip((np.asarray(point, dtype=np.float64).reshape(2) - self._low) / self.size
-                     - 0.5, 0.0, [nx - 1.0, ny - 1.0])
-        ix, iy = min(int(at[0]), nx - 2), min(int(at[1]), ny - 2)
-        ax, ay = at[0] - ix, at[1] - iy
-        out = np.zeros(self.count)
-        out[ix * ny + iy] = (1 - ax) * (1 - ay)
-        out[(ix + 1) * ny + iy] = ax * (1 - ay)
-        out[ix * ny + iy + 1] = (1 - ax) * ay
-        out[(ix + 1) * ny + iy + 1] = ax * ay
-        return out
+        return self._spread(np.asarray(point, dtype=np.float64).reshape(1, 2), np.ones(1))
 
     def _pieces(self, active: np.ndarray) -> list[np.ndarray]:
         """The connected pieces of ``active`` cells (cells that touch, corners too), each as
@@ -508,8 +499,13 @@ class Map:
         lost = self.lost.copy()
         claimed = np.zeros((self.count, self.units), dtype=bool)
         physics = self.physics
-        lines: list[tuple[np.ndarray, np.ndarray]] = []  # with physics: each report's record
-        for kind, place, _ in reports:
+        # with physics: each report's record, and the highest identity given so far
+        lines: list[tuple[np.ndarray, np.ndarray, str]] = []
+        if physics is not None:
+            from .physics import IDENT
+
+            self._identity = float(self.motion[:, :, IDENT].max())
+        for kind, place, sense in reports:
             units = np.flatnonzero(self.codes[kind])
             apart = np.linalg.norm(self.centers - place, axis=1)
             pieces = self._pieces(np.asarray(self._of_kind(kind, activity) > self._floor))
@@ -518,9 +514,20 @@ class Map:
                 within = [p for p in pieces if apart[p].min() <= self.stride]
                 near = [min(within, key=lambda p: float(apart[p].min()))] if within else []
             # a thing of the kind is sensed: the doubt about where one of it went is over
-            near += [p for p in pieces if self.doubt[p].mean() > 0.5]
+            doubtful = [p for p in pieces if self.doubt[p].mean() > 0.5]
+            if physics is not None:
+                # a thing the physics carries is its own thing: the report takes all of it
+                # where it claims a piece of it, or where it claims nothing (a thing of the kind
+                # come back where none was expected); another carried thing of the kind stays
+                theirs = self._carried(int(units[0]))
+                mine = np.unique(np.concatenate([theirs[p] for p in near]) if near else theirs)
+                mine = mine[mine > 0]
+                doubtful = [p for p in doubtful
+                            if not theirs[p].any() or np.isin(theirs[p], mine).any()]
+                claimed[np.ix_(np.flatnonzero(np.isin(theirs, mine)), units)] = True
+            near += doubtful
             if physics is not None:  # the thing's motion record, carried on by this report
-                lines.append((units, self._line(units, near, place)))
+                lines.append((units, self._line(units, near, place, sense), sense))
             for piece in near:  # its cells, and around them those its kind alone holds
                 around = self._around(piece)
                 alone = around[(activity[around][:, units] > 0).any(axis=1)
@@ -533,17 +540,17 @@ class Map:
             fresh |= cells
             lost[units] = 0.0  # a thing of the kind with no place is found
         carried &= ~claimed
-        held_by_physics = np.zeros(self.count, dtype=bool)
+        held_by_physics = np.zeros((self.count, self.units), dtype=bool)
         pending: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
         if physics is not None and physics.taught:  # things out of view that move
-            held_by_physics = self._predict(claimed, sight, lit, write, clock, doubt, lost,
-                                            pending)
+            held_by_physics = self._predict(activity, claimed, sight, lit, write, clock, doubt,
+                                            lost, pending)
         # a thing whose held place the camera sees, with no report that claims it, is not there
         empty = np.zeros(self.count, dtype=bool)
         for kind in self._present(activity):
             units = np.flatnonzero(self.codes[kind])
             own = self._of_kind(kind, activity) * ~claimed[:, units].any(axis=1)
-            own = own * ~held_by_physics
+            own = own * ~held_by_physics[:, units].any(axis=1)
             for piece in self._pieces(np.asarray(own > self._floor)):
                 at = (own[piece] @ self.centers[piece]) / own[piece].sum()
                 # a place a sense wrote the moment before is a report, as far off as the
@@ -645,16 +652,18 @@ class Map:
         points, shares = self._points(mean, var)
         return self._spread(points, mass * shares)
 
-    def _dark(self, lit: Any, sight: np.ndarray, points: np.ndarray) -> np.ndarray:
-        """Whether the camera does not see each of ``points``: by ``lit`` where it is a function
-        of places, by the flag of the cell that holds a place where it flags cells."""
+    def _sees(self, lit: Any, sight: np.ndarray, points: np.ndarray) -> np.ndarray:
+        """Whether the camera sees each of ``points``: by ``lit`` where it is a function of
+        places, by the flag of the cell that holds a place where it flags cells; nothing where
+        nothing says."""
         if callable(lit):
-            return ~np.asarray(lit(points), dtype=bool).reshape(len(points))
+            return np.asarray(lit(points), dtype=bool).reshape(len(points))
         if lit is None:
-            return np.ones(len(points), dtype=bool)
+            return np.zeros(len(points), dtype=bool)
         nx, ny = self.cells
-        i = np.clip(np.floor((points - self._low) / self.size).astype(np.intp), 0, [nx - 1, ny - 1])
-        return ~np.asarray(sight[i[:, 0] * ny + i[:, 1]])
+        i = np.clip(np.floor((points - self._low) / self.size).astype(np.intp), 0,
+                    [nx - 1, ny - 1])
+        return np.asarray(sight[i[:, 0] * ny + i[:, 1]])
 
     def _trim(self, mass: float, mean: np.ndarray, var: float, dark: np.ndarray
               ) -> tuple[float, np.ndarray, float, bool]:
@@ -674,36 +683,58 @@ class Map:
         spread = float(((points - middle) ** 2).sum(axis=1) @ kept) / 2.0
         return mass * share, middle, min(var, spread), True
 
-    def _line(self, units: np.ndarray, near: list[np.ndarray], place: np.ndarray
+    def _carried(self, unit: int) -> np.ndarray:
+        """The identity of the thing the physics carries out of view at each cell, on one
+        unit; 0 where it carries none: ``(cells,)``."""
+        from .physics import HIDDEN, IDENT
+
+        records = self.motion[:, unit]
+        return np.asarray(np.where(records[:, HIDDEN] > 0, records[:, IDENT], 0.0))
+
+    def _line(self, units: np.ndarray, near: list[np.ndarray], place: np.ndarray, sense: str
               ) -> np.ndarray:
         """The motion record a report carries on: the record of the thing its claimed pieces
-        hold (at the cell that holds most of it), or none for a new thing."""
-        from .physics import IDENT
+        hold (the one whose line runs through the most reports), or a new one with an identity
+        of its own. The camera's report continues the line (``Physics.see``); a place another
+        sense names carries the thing's identity on and no line."""
+        from .physics import COUNT, FIELDS, IDENT
 
         record = None
         if near:
             cells = np.unique(np.concatenate(near))
             held = cells[self.motion[cells, units[0], IDENT] > 0]
             if len(held):
-                record = self.motion[held[int(np.argmax(self.potential[held, units[0]]))],
-                                     units[0]]
-        ident = float(self.motion[:, :, IDENT].max()) + 1.0 if record is None else 0.0
+                records = self.motion[held, units[0]]
+                record = records[int(np.lexsort((self.potential[held, units[0]],
+                                                 records[:, COUNT]))[-1])]
+        ident = 0.0
+        if record is None:  # a thing first sensed: the next identity
+            self._identity += 1.0
+            ident = self._identity
+        if sense != "seen":
+            named = np.zeros(FIELDS)
+            named[IDENT] = ident if record is None else record[IDENT]
+            return named
         return np.asarray(self.physics.see(record, place, ident, self._inside()))
 
-    def _predict(self, claimed: np.ndarray, sight: np.ndarray, lit: Any, write: np.ndarray,
-                 clock: np.ndarray, doubt: np.ndarray, lost: np.ndarray,
+    def _predict(self, activity: np.ndarray, claimed: np.ndarray, sight: np.ndarray, lit: Any,
+                 write: np.ndarray, clock: np.ndarray, doubt: np.ndarray, lost: np.ndarray,
                  pending: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]
                  ) -> np.ndarray:
         """Things out of view that move, one moment on, as the physics predicts and sight
-        allows (``cadence.space.physics``). A thing seen the moment before and not now goes out
-        of view: the share of it that moves becomes the core, the rest stays where it was. The
-        thing's whole pattern over the units moves with it. Gives the cells the physics holds;
-        the drive goes into ``write``, the clock, doubt and lost into their arrays, and each
-        thing's record into ``pending``."""
+        allows (``cadence.space.physics``). A thing the camera reported the moment before and
+        no sense reports now goes out of view: where its line more likely says it moves, the
+        share that moves becomes the core and the rest stays where it was; where it more likely
+        rests, the map holds it by its own rules. The thing's whole pattern over its units
+        moves with it. Sight takes away what it sees unless ``empty`` is ``"keep"``. A part
+        under a thousandth of the thing comes to rest, and a thing all at rest is the map's to
+        hold. Gives the cells and units the physics holds, flags ``(cells, units)``; the drive
+        goes into ``write``, the clock, doubt and lost into their arrays, and each thing's
+        record into ``pending``."""
         from .physics import CORE, COUNT, ERROR, EST, HIDDEN, IDENT, TAIL, VEL
 
         ph = self.physics
-        held = np.zeros(self.count, dtype=bool)
+        held = np.zeros((self.count, self.units), dtype=bool)
         idents = self.motion[:, :, IDENT]
         alive = self.potential > 0
         lo, hi = self._inside()
@@ -713,22 +744,22 @@ class Map:
             cells = np.flatnonzero(mine.any(axis=1))
             if claimed[np.ix_(cells, units)].any():
                 continue  # a report took it this moment
-            field_units = np.where(mine[np.ix_(np.arange(self.count), units)],
-                                   self.potential[:, units], 0.0)
+            records = self.motion[cells, units[0]]  # the one whose line runs through the most
+            rec = records[int(np.lexsort((self.potential[cells, units[0]],
+                                          records[:, COUNT]))[-1])].copy()
+            k = int(rec[HIDDEN])
+            if k < 0:
+                continue  # at rest out of view: the map holds it
+            field_units = np.where(mine[:, units], self.potential[:, units], 0.0)
             field = field_units.sum(axis=1)
             whole = float(field.sum())
-            if not whole > 0:
-                continue
             profile = field_units.sum(axis=0) / whole
-            rec = self.motion[cells[int(np.argmax(field[cells]))], units[0]].copy()
             cm, tm = rec[CORE + 7], rec[TAIL + 3]
-            k = int(rec[HIDDEN])
-            if cm + tm <= 0:  # not moving out of view
-                if k > 0 or not (self.clock[cells] < 0.5).any():
-                    continue  # at rest out of view: the map holds it
-                share = ph.moving(rec[VEL], int(rec[COUNT]), float(rec[ERROR][2]))
-                if share < 1e-3:  # seen at rest: the map holds it
-                    rec[HIDDEN] = 1.0
+            if k == 0:  # it goes out of view now
+                share = ph.moving(rec[VEL], int(rec[COUNT]), float(rec[ERROR][2])) if (
+                    self.clock[cells] < 0.5).any() else 0.0
+                if share < 0.5:  # its line more likely says it rests: the map holds it
+                    rec[HIDDEN] = -1.0
                     pending.append((cells, cells, units, rec))
                     continue
                 px, pxv, pv = rec[ERROR]  # the line's own error as it went out of view
@@ -767,48 +798,62 @@ class Map:
                     trail = trail + self._bump(cx, was, cm)
                     cm = 0.0
                 cx = ahead
-            # sight: the trail's cells it sees, and the share of each bump it sees
-            trail = trail * ~sight
             var = px + 2 * k * pxv + k * k * pv
-            core_at = self._points(cx, var)[0] if cm > 0 else np.zeros((0, 2))
-            tail_at = self._points(tx, tvar)[0] if tm > 0 else np.zeros((0, 2))
-            dark = self._dark(lit, sight, np.concatenate([core_at, tail_at]))  # one look
-            cm, cx, var2, cut = self._trim(cm, cx, var, dark[:len(core_at)])
-            if cut and var2 < var:  # what sight left is narrower: the line's place is surer
-                px = max(var2 - 2 * k * pxv - k * k * pv, 0.0)
-            tm, tx, tvar, _ = self._trim(tm, tx, tvar, dark[len(core_at):])
+            if self.empty != "keep":  # sight: the trail's cells it sees, the share of each bump
+                trail = trail * ~sight
+                core_at = self._points(cx, var)[0] if cm > 0 else np.zeros((0, 2))
+                tail_at = self._points(tx, tvar)[0] if tm > 0 else np.zeros((0, 2))
+                dark = ~self._sees(lit, sight, np.concatenate([core_at, tail_at]))  # one look
+                cm, cx, var2, cut = self._trim(cm, cx, var, dark[:len(core_at)])
+                if cut and var2 < var:  # what sight left is narrower: the line's place is surer
+                    px = max(var2 - 2 * k * pxv - k * k * pv, 0.0)
+                tm, tx, tvar, _ = self._trim(tm, tx, tvar, dark[len(core_at):])
             left = float(trail.sum()) + cm + tm
-            held[cells] = True
+            if not left > 1e-12 and k == 1:
+                # reported the moment before, and sight finds no part of it now: the map's own
+                # rule for a place seen empty decides (``empty``)
+                rec[CORE:TAIL + 4] = 0.0
+                rec[HIDDEN] = -1.0
+                pending.append((cells, cells, units, rec))
+                continue
+            held[np.ix_(cells, units)] = True
+            others = (np.delete(activity, units, axis=1) > self._floor).any(axis=1)
             if not left > 1e-12:  # sight took all of it: known by its kind, with no place
                 lost[units] = 1.0
                 write[np.ix_(cells, units)] -= field_units[cells]
-                doubt[cells] = 0.0
+                doubt[cells[~others[cells]]] = 0.0
                 pending.append((cells, np.zeros(0, dtype=np.intp), units, rec))
                 continue
             scale = whole / left  # the parts keep their sum
             trail, cm, tm = trail * scale, cm * scale, tm * scale
+            if cm < 1e-3 * whole:  # a part under a thousandth of the thing: it has come to rest
+                trail, cm = trail + self._bump(cx, px + 2 * k * pxv + k * k * pv, cm), 0.0
+            if tm < 1e-3 * whole:
+                trail, tm = trail + self._bump(tx, tvar, tm), 0.0
             new = trail + self._bump(cx, px + 2 * k * pxv + k * k * pv, cm) + self._bump(
                 tx, tvar, tm)
             now = np.flatnonzero(new > self._floor * whole)
             new = np.where(np.isin(np.arange(self.count), now), new, 0.0)
             write[:, units] += new[:, None] * profile[None] - field_units
+            # the doubt and the clock of its cells, where no other thing holds them
             gone = np.setdiff1d(cells, now)
-            doubt[gone] = 0.0
-            doubt[now] = 1.0
-            clock[now] = float(k - 1)  # the clock's bias counts this moment
-            held[now] = True
-            rec[HIDDEN] = float(k)
+            doubt[gone[~others[gone]]] = 0.0
+            doubt[now[~others[now]]] = 1.0
+            clock[now[~others[now]]] = float(k - 1)  # the clock's bias counts this moment
+            held[np.ix_(now, units)] = True
+            rec[HIDDEN] = float(k) if cm + tm > 0 else -1.0  # all at rest: the map holds it
             rec[CORE:CORE + 8] = [*cx, *cv, px, pxv, pv, cm]
             rec[TAIL:TAIL + 4] = [*tx, tvar, tm]
             pending.append((cells, now, units, rec))
         return held
 
     def _carry_records(self, claimed: np.ndarray, reports: list[Any],
-                       lines: list[tuple[np.ndarray, np.ndarray]],
+                       lines: list[tuple[np.ndarray, np.ndarray, str]],
                        pending: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]
                        ) -> None:
-        """The motion records follow their things: a report's record at its cells, a thing out
-        of view's record at the cells it holds now; a record lives only where its thing does."""
+        """The motion records follow their things: a report's record at its cells (the
+        camera's over another sense's where both name a thing), a thing out of view's record at
+        the cells it holds now; a record lives only where its thing does."""
         from .physics import IDENT
 
         held = self.motion[:, :, IDENT] > 0  # the records there are
@@ -816,14 +861,10 @@ class Map:
         for old, now, units, rec in pending:
             self.motion[np.ix_(old, units)] = 0.0
             self.motion[np.ix_(now, units)] = rec
-        extra = np.arange(self.units, self.potential.shape[1])  # units beyond the kinds' codes
-        for (_, place, _), (units, rec) in zip(reports, lines, strict=True):
-            cells = np.flatnonzero(self.weights(place) > 0)
-            # the record goes with every unit the report's thing holds there, so all of its
-            # pattern moves with it
-            units = np.concatenate([units, extra[(self.potential[np.ix_(cells, extra)] > 0).any(
-                axis=0)]]) if len(extra) else units
-            self.motion[np.ix_(cells, units)] = rec
+        for seen in (False, True):
+            for (_, place, _), (units, rec, sense) in zip(reports, lines, strict=True):
+                if (sense == "seen") == seen:
+                    self.motion[np.ix_(np.flatnonzero(self.weights(place) > 0), units)] = rec
         self.motion[(self.motion[:, :, IDENT] > 0) & (self.potential <= 0)] = 0.0
 
     def _looks(self, lit: Any, sight: np.ndarray) -> Any:
@@ -840,13 +881,7 @@ class Map:
         def seen(at: np.ndarray, within: float = 0.0) -> np.ndarray:
             points = np.asarray(at, dtype=np.float64)[None] + (
                 within * around if within else np.zeros((1, 2)))
-            if callable(lit):
-                return np.asarray(lit(points), dtype=bool).reshape(len(points))
-            if lit is None:
-                return np.zeros(len(points), dtype=bool)
-            i = np.clip(np.floor((points - self._low) / self.size).astype(np.intp), 0,
-                        [nx - 1, ny - 1])
-            return np.asarray(sight[i[:, 0] * ny + i[:, 1]])
+            return self._sees(lit, sight, points)
 
         return seen
 
@@ -904,8 +939,8 @@ class Map:
         ``"held"`` at its last known place, ``"near"`` on the cells out of sight around where it
         was seen to be missing. A thing in doubt that lies in several pieces, sensed last at one
         moment, is one entry with every piece. A kind known with no place is listed with
-        ``place`` None and ``"not known where"``. With physics, a thing out of view that the
-        physics carries on is ``"moving"`` and its entry holds ``velocity``, metres a moment."""
+        ``place`` None and ``"not known where"``. With physics, a thing out of view of which half
+        or more moves is ``"moving"`` and its entry holds ``velocity``, metres a moment."""
         activity = self._activity()
         out: list[dict[str, Any]] = []
         for kind in range(len(self.codes)):
@@ -922,7 +957,7 @@ class Map:
                 for group in ([pieces] if doubt else [[p] for p in pieces]):
                     held = np.concatenate(group)
                     state = "near" if doubt else "held"
-                    velocity = self._velocity(kind, held)
+                    velocity = self._moving(kind, held)
                     if velocity is not None:
                         state = "moving"
                     if since == 0:
@@ -939,19 +974,24 @@ class Map:
                             "pieces": [], "since": None, "state": "not known where"})
         return out
 
-    def _velocity(self, kind: int, cells: np.ndarray) -> np.ndarray | None:
-        """With physics: the velocity of a thing out of view that the physics carries on (its
-        core's), metres a moment; None for any other thing."""
+    def _moving(self, kind: int, cells: np.ndarray) -> np.ndarray | None:
+        """With physics: the velocity of a thing out of view of which half or more moves (the
+        mean over its core and its tail, metres a moment); None for any other thing."""
         if self.physics is None:
             return None
         from .physics import CORE, TAIL
 
-        unit = int(np.flatnonzero(self.codes[int(kind)])[0])
-        records = self.motion[cells, unit]
-        moving = records[:, CORE + 7] + records[:, TAIL + 3] > 0
-        if not moving.any():
+        units = np.flatnonzero(self.codes[int(kind)])
+        carried = np.flatnonzero(self._carried(int(units[0]))[cells] > 0)
+        if not len(carried):
             return None
-        return np.array(records[int(np.flatnonzero(moving)[0]), CORE + 2:CORE + 4])
+        record = self.motion[cells[carried[0]], units[0]]
+        core, tail = float(record[CORE + 7]), float(record[TAIL + 3])
+        whole = float(np.maximum(self.potential[np.ix_(cells, units)], 0.0).sum())
+        if core + tail < 0.5 * whole:
+            return None
+        return np.array(record[CORE + 2:CORE + 4] * (core + self.physics.ahead * tail)
+                        / (core + tail))
 
     def forecast(self, moments: int = 1) -> Map:
         """With physics: the map ``moments`` moments on as its physics predicts, with nothing

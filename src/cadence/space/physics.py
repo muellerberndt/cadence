@@ -42,7 +42,9 @@ from typing import Any
 
 import numpy as np
 
-# a thing's motion record: what the brain knows of how it moves, carried at its cells
+# a thing's motion record: what the brain knows of how it moves, carried at its cells.
+# HIDDEN is 0 while the thing is in view, the moments out of view while the physics carries it,
+# and -1 where the map holds it out of view (it was seen at rest, or it has come to rest)
 EST, VEL, PREV = slice(0, 2), slice(2, 4), slice(4, 6)
 COUNT, LOUD, SURPRISE, FIT, IDENT, HIDDEN = 6, 7, 8, 9, 10, 11
 ERROR = slice(12, 15)  # the line's own error, an axis: place, place with velocity, velocity
@@ -142,15 +144,17 @@ class Physics:
 
     def see(self, record: np.ndarray | None, place: np.ndarray, ident: float,
             inside: tuple[np.ndarray, np.ndarray]) -> np.ndarray:
-        """A report of a thing at ``place``: its motion record carried on, or a new one (a thing
-        first seen, or seen again after it was out of view: its run begins anew). The line takes
-        the surprise; its lessons are taken (``watch``); every ``every`` reports of a line that
-        fits a lesson is launched. Gives the record to write at the report's cells."""
+        """The camera's report of a thing at ``place``: its motion record carried on, or a new
+        one (a thing first seen, or seen again after it was out of view: its run begins anew).
+        The line takes the surprise; its lessons are taken (``watch``); every ``every`` reports
+        of a line that fits a lesson is launched. Gives the record to write at the report's
+        cells. The line is what the brain sees of motion: a place another sense names (a sound, a
+        joint reading) takes no part in it."""
         r = np.asarray(place, dtype=np.float64).reshape(2)
         rec = np.zeros(FIELDS) if record is None else np.array(record, dtype=np.float64)
         if record is None or rec[IDENT] <= 0:
             rec[IDENT] = ident
-        if record is None or rec[HIDDEN] > 0 or rec[COUNT] < 1:  # a run begins
+        if record is None or rec[HIDDEN] != 0 or rec[COUNT] < 1:  # a run begins
             keep = rec[IDENT]
             rec[:] = 0.0
             rec[IDENT], rec[COUNT], rec[EST], rec[PREV], rec[FIT] = keep, 1.0, r, r, 1.0
@@ -276,7 +280,7 @@ class Physics:
     def settings(self) -> dict[str, Any]:
         return {"noise": self.noise, "line": self.line, "surprise": self.surprise,
                 "settled": self.settled, "every": self.every, "horizon": self.horizon,
-                "reports": self.reports, "prior": self.prior}
+                "reports": self.reports, "prior": self.prior, "learning": self.learning}
 
     def arrays(self) -> dict[str, np.ndarray]:
         """What a file keeps of the physics: its lessons' statistics and its estimate."""
