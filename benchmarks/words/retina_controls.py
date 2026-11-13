@@ -2,10 +2,12 @@
 trained by gradient on the same images and episodes as the brain (cadence#330, R5).
 
 **What a control is given.** What the parrot's eyes see, image for image: the images the brain
-saw at each moment of a room (``retina.render``, the same receptor noise in the same order),
+saw at each moment of a room (``retina.render``, the same receptor noise in the same order,
+the head's looks at things it did not recognise included, read from the brain's life),
 each receptor's red, green, blue and nearness (one over its distance), and at each moment where
 the head faced, as the cosine and sine of its turn from where it faces at the episode's end. An
-episode's context is the room's look-around (nine moments) and the moment of the latest turn.
+episode's context is the room's look-around (its nine moments and the looks) and the moment of
+the latest turn.
 Then, as tokens:
 
 - a naming: ``NAME``, where the teacher points (the cosine and sine of the thing's direction
@@ -42,13 +44,29 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
-import controls  # noqa: E402
 import retina  # noqa: E402
 import world  # noqa: E402
 
+
+def _words_controls() -> Any:
+    """The words chamber's controls under a name of their own: several chambers hold a
+    ``controls.py`` (#306)."""
+    import importlib.util
+
+    if "words_controls" not in sys.modules:
+        spec = importlib.util.spec_from_file_location("words_controls", HERE / "controls.py")
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["words_controls"] = module
+        spec.loader.exec_module(module)
+    return sys.modules["words_controls"]
+
+
+controls = _words_controls()
+
 MARKERS = ("PAD", "IMAGE", "POINT", "NAME", "ASK", "SAY", "END")
 PATCH = 16
-MOMENTS = 10  # an episode's moments: the look-around and the latest turn
+MOMENTS = 16  # an episode's moments at most: the look-around, the looks and the latest turn
 
 
 class Tokens:
@@ -68,8 +86,10 @@ class Tokens:
         return self.index[name]
 
 
-def episodes(seed: int, **given: Any) -> tuple[np.ndarray, list[tuple[str, Any, Any]]]:
-    """The founder's images and items. ``images`` is ``(moments, eyes, receptors, 4)``; an
+def episodes(seed: int, looks: Any = None, **given: Any
+             ) -> tuple[np.ndarray, list[tuple[str, Any, Any]]]:
+    """The founder's images and items; ``looks`` holds each room's look headings from the
+    brain's life (none unless given). ``images`` is ``(moments, eyes, receptors, 4)``; an
     item is ``("train", (context, prompt, target))`` for a naming or a practice question,
     ``("new", ...)`` for a new word's naming, or ``("ask", gate, ((context, prompt), q))``. A
     context is ``(image numbers, headings)``, its moments' headings relative to the latest; a
@@ -98,12 +118,15 @@ def episodes(seed: int, **given: Any) -> tuple[np.ndarray, list[tuple[str, Any, 
         moments = around + ([latest] if latest is not None else [around[-1]])
         return [m for m, _ in moments], [h - r.heading for _, h in moments]
 
+    rooms = 0
     for event in retina.script(seed, **given):
         kind = event[0]
         if kind == "room":
             r = event[1]
-            around = [moment(r, r.heading + (i % 8) * math.pi / 4 if i < 8 else r.heading)
-                      for i in range(9)]
+            around = [moment(r, r.heading + i * math.pi / 4) for i in range(8)]
+            around += [moment(r, float(h)) for h in (looks[rooms] if looks else [])]
+            around.append(moment(r, r.heading))
+            rooms += 1
             latest = None
         elif kind == "turn":
             assert r is not None
@@ -296,16 +319,17 @@ class Control:
         return out
 
 
-def run(seed: int, model: str, mode: str, parameters: int, **given: Any) -> dict[str, Any]:
-    """One control's life on the founder's images and episodes; the readings by gate, its
-    parameters and work."""
+def run(seed: int, model: str, mode: str, parameters: int, looks: Any = None,
+        **given: Any) -> dict[str, Any]:
+    """One control's life on the founder's images and episodes (with the brain's ``looks``);
+    the readings by gate, its parameters and work."""
     import torch
     import words
 
     torch.set_num_threads(1)
     lex = world.lexicon(seed)
     tok = Tokens(lex)
-    images, items = episodes(seed, **given)
+    images, items = episodes(seed, looks, **given)
     width = matched_width(model, parameters, len(tok), images.shape[2])
     control = Control(model, width, len(tok), images, seed, controls.RATES[mode])
     began = time.monotonic()

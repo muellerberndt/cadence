@@ -33,6 +33,25 @@
   reward, and the question's words of asking (those that name no concept) are taught the read the
   answer took, at the reward's surprise. A word that names a concept keeps no read.
 
+### Eyes: the room seen through a parrot's two retinas (#330)
+
+`cadence.words.retina` is imported by name. The guide is [docs/retina.md](docs/retina.md); the
+chamber is `benchmarks/words/retina.py`.
+
+- **`Eye`, `parrot_eyes`**: receptors across an eye's field, sharp at its middle and coarse at
+  its edges, each pooling the rays of its patch. A parrot's two eyes look out to its sides: 20
+  degrees seen by both in front of the beak, 60 behind the head by neither.
+- **`Retina`**: finds the things in the eyes' images (runs of receptors between jumps in
+  distance, edges read inside the receptors that mix a thing and what lies behind it), places
+  them on the plane from each eye's ray and the head's pose, codes their form (width and bend)
+  and tint (hue and lightness), and gives the map's reports and the places the eyes see
+  (`see(images, at, heading, held=map)`). `look_at` turns the head to bring a place to an eye's
+  fovea.
+- **`Categories`**: kinds and colours learned from what is seen, by settling. A category's
+  reciprocal synapses hold the mean of what it was seen as (a lesson closes 1/n of its error);
+  a sort of thing no category matches takes a new one, imprinted at its first sight; what the
+  map holds at a place is expected there.
+
 ## 0.99.0 - 2026-11-13
 
 A map of what is where, held in the brain's own carried activity (`cadence.space.map.Map`,

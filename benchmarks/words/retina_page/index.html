@@ -1,0 +1,28 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Retina timing</title></head>
+<body><pre id="log">starting</pre><pre id="result"></pre>
+<script type="module">
+const log = (m) => { document.getElementById('log').textContent += '\n' + m; };
+const manifest = await (await fetch('manifest.json')).json();
+const cdn = `https://cdn.jsdelivr.net/pyodide/v${manifest.pyodide}/full/`;
+const { loadPyodide } = await import(cdn + 'pyodide.mjs');
+const t0 = performance.now();
+const py = await loadPyodide({ indexURL: cdn });
+await py.loadPackage('numpy');
+log(`pyodide + numpy ${(performance.now() - t0).toFixed(0)} ms`);
+py.unpackArchive(new Uint8Array(await (await fetch(manifest.wheel)).arrayBuffer()), 'wheel');
+py.FS.mkdirTree('/home/pyodide/chamber');
+for (const name of manifest.chamber) {
+  py.FS.writeFile(`/home/pyodide/chamber/${name}`, new Uint8Array(await (await fetch(`chamber/${name}`)).arrayBuffer()));
+}
+py.FS.writeFile('/home/pyodide/bench.py', new Uint8Array(await (await fetch('bench.py')).arrayBuffer()));
+log('loaded; running');
+const out = py.runPython(`
+import sys
+sys.path[:0] = ['/home/pyodide/chamber', '/home/pyodide']
+import bench
+bench.run()
+`);
+document.getElementById('result').textContent = out;
+document.title = 'done';
+</script></body></html>

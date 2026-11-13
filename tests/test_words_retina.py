@@ -108,7 +108,7 @@ def test_the_retina_reports_what_it_recognised() -> None:
     red_disc = _image(retina.eyes[0], 0.0, [(1.2, 0.1, 0.1, (0.9, 0.1, 0.1))])
     reports, lit = retina.see(red_disc[None], np.zeros(2), 0.0)
     assert len(reports) == 1 and reports[0][0] == 0 and reports[0][2] == {"colour": 0}
-    blue_small = _image(retina.eyes[0], 0.0, [(0.9, -0.05, 0.05, (0.1, 0.2, 0.9))])
+    blue_small = _image(retina.eyes[0], 0.0, [(0.7, -0.03, 0.05, (0.1, 0.2, 0.9))])
     reports, _ = retina.see(blue_small[None], np.zeros(2), 0.0)
     assert len(reports) == 1 and reports[0][0] == 1 and reports[0][2] == {"colour": 1}
     # the same red disc elsewhere is the first kind and colour again

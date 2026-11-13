@@ -19,9 +19,10 @@ row: a receptor a ray from the eye, reporting the colour and the distance of wha
   distance between its edges and its place their middle, or, for a thing that bulges toward the
   eye, the point behind its front by its width times its bend over four (a disc's middle). A
   thing both eyes see is one thing.
-- **Looking** (the head's turn): a thing found but not recognised (seen too coarsely, or
-  cut by a field's edge) is noted in ``unknown``; ``look_at`` gives the head's heading that
-  brings a place to the middle of an eye, where the fovea sees it sharply.
+- **Looking** (the head's turn): the places of the latest moment's things found and not
+  recognised (seen too coarsely, or cut by a field's edge) are ``unknown``; ``look_at`` gives
+  the head's heading that brings a place to the middle of an eye, where the fovea sees it
+  sharply.
 - **What a thing is and its colour** (learned, ``Categories``): a whole thing's form (its width
   and how it bends: the curvature of the surface its receptors see, times its width, positive
   where it bulges toward the eye; a unit tuned to both at once) and its tint (hue and
@@ -48,6 +49,8 @@ import numpy as np
 SIZE = (0.06, 0.45)  # the widths a form's code tiles, in metres (a log scale)
 BEND = (-2.5, 3.0)  # the bends a form's code tiles: curvature times width
 LIGHT = 0.6  # a colour's lightness code, as a share of its hue code's length
+EXPECT = 0.1  # an expected category is taken within this much activity of the most active
+MIXED = 0.15  # a thing's end receptor this far toward what lies behind it is a mix of the two
 
 
 class Eye:
@@ -82,8 +85,8 @@ class Eye:
         """Where the eye is on the plane, for a head at ``at`` facing ``heading``."""
         c, s = math.cos(heading), math.sin(heading)
         f, left = self.offset
-        return np.asarray(at, dtype=np.float64).reshape(2) + np.array(
-            [f * c - left * s, f * s + left * c])
+        return np.asarray(np.asarray(at, dtype=np.float64).reshape(2) + np.array(
+            [f * c - left * s, f * s + left * c]))
 
     def facing(self, heading: float) -> float:
         """The direction of the eye's axis on the plane, for a head facing ``heading``."""
@@ -198,18 +201,24 @@ class Categories:
         self._count(len(given))
         return np.asarray(np.asarray(state.activation)[:, self.category], dtype=np.float64)
 
-    def see(self, code: Any, *, learn: bool = True, enter: bool | None = None) -> int | None:
+    def see(self, code: Any, *, learn: bool = True, enter: bool | None = None,
+            expect: int | None = None) -> int | None:
         """The category of a code: the most active of those that entered where it settles
-        above ``vigilance``. Below it, with ``enter`` (``learn`` unless given) a new category
-        enters for the code; without it the code is no category the layer knows (None). With
-        ``learn`` the category takes the code as a lesson."""
+        above ``vigilance``, or ``expect`` (a category the brain expects to see) where that one
+        settles above it and within ``EXPECT`` of the most active. Below it, with ``enter``
+        (``learn`` unless given) a new category enters for the code; without it the code is no
+        category the layer knows (None). With ``learn`` the category takes the code as a
+        lesson."""
         code = np.asarray(code, dtype=np.float64).reshape(self.features)
         enter = learn if enter is None else bool(enter)
         best: int | None = None
         if self.used:
             active = self.settle(code)[0, : self.used]
             best = int(np.argmax(active))
-            if active[best] < self.vigilance:
+            if expect is not None and 0 <= int(expect) < self.used and (
+                    active[int(expect)] >= max(self.vigilance, active[best] - EXPECT)):
+                best = int(expect)
+            elif active[best] < self.vigilance:
                 best = None
         if best is None:
             if not enter or self.used == self.capacity:
@@ -297,9 +306,9 @@ class Retina:
     4)``: each receptor's red, green, blue (0 to 1) and distance in metres."""
 
     def __init__(self, eyes: Any = None, *, kinds: int = 24, colours: int = 8,
-                 edge: float = 0.06, least: int = 12, fuse: float = 0.12, near: float = 0.15,
-                 vigilance: tuple[float, float] = (0.4, 0.4), rate: float = 0.05,
-                 size_units: int = 12, bend_units: int = 14, hue_units: int = 12,
+                 edge: float = 0.06, least: int = 16, fuse: float = 0.12, near: float = 0.15,
+                 vigilance: tuple[float, float] = (0.4, 0.4), rate: float = 0.02,
+                 size_units: int = 14, bend_units: int = 14, hue_units: int = 12,
                  light_units: int = 8, backend: Any = "cpu"):
         self.eyes = tuple(eyes) if eyes is not None else parrot_eyes()
         self.edge, self.least = float(edge), int(least)
@@ -319,7 +328,7 @@ class Retina:
                          "size_units": self.size_units, "bend_units": self.bend_units,
                          "hue_units": self.hue_units, "light_units": self.light_units}
         self.last: list[Figure] = []
-        self.unknown: list[np.ndarray] = []  # where things were found that were not recognised
+        self.unknown: list[np.ndarray] = []  # the latest moment's things found, not recognised
         self.work = {"moments": 0, "figures": 0}
 
     # -- the codes of what a thing looks like
@@ -371,29 +380,44 @@ class Retina:
         out: list[Figure] = []
         for i, j in enumerate(kept):
             a, b = runs[j]
-            sides = []
+            sides: list[bool | None] = []
+            behind: list[float] = []  # the distance just past each end, where it lies behind
             for step, end, nb in ((-1, a, kept[i - 1] if i > 0 else None),
                                   (1, b, kept[i + 1] if i + 1 < len(kept) else None)):
                 if nb is None:
                     sides.append(None)  # the field's edge
+                    behind.append(math.nan)
                     continue
                 other = runs[nb][1] if step < 0 else runs[nb][0]
                 sides.append(bool(depth[end] < depth[other]))
+                behind.append(float(depth[other]))
             if not any(s is True for s in sides):
                 continue  # what lies behind: no thing
             whole = all(s is True for s in sides)
-            # where each edge falls: inside a mix receptor, by its distance
+            # where each edge falls: inside a mix receptor, by how far its distance lies from
+            # the thing's toward what lies behind. A mix is a receptor alone between edges, or
+            # the thing's own end receptor where its distance lies more than ``MIXED`` of the
+            # way to what lies behind
             angles = []
-            for step, end in ((-1, a), (1, b)):
+            for side, (step, end) in enumerate(((-1, a), (1, b))):
                 boundary = eye.edges[a] if step < 0 else eye.edges[b + 1]
+                far = behind[side]
                 m = end + step
                 nb_run = j + step
                 if 0 <= nb_run < len(runs) and mix[nb_run] and 0 <= m < count:
-                    far_run = runs[nb_run + step] if 0 <= nb_run + step < len(runs) else None
-                    far = depth[far_run[1] if step < 0 else far_run[0]] if far_run else depth[m]
                     span = far - depth[end]
                     f = float(np.clip((far - depth[m]) / span, 0.0, 1.0)) if span > 0 else 0.0
                     boundary = boundary + step * f * eye.widths[m]
+                elif sides[side] and b - a >= 3:
+                    inner = end - step
+                    span = far - depth[inner]
+                    share = (depth[end] - depth[inner]) / span if span > 0 else 0.0
+                    if share > MIXED:  # the end receptor mixes the thing and what lies behind
+                        boundary = boundary - step * min(share, 1.0) * eye.widths[end]
+                        if step < 0:
+                            a += 1
+                        else:
+                            b -= 1
                 angles.append(boundary)
             rays = facing + np.array(angles)
             ends = origin[None, :] + np.array([depth[a], depth[b]])[:, None] * np.stack(
@@ -458,13 +482,24 @@ class Retina:
                 kept.append(figure)
         return kept
 
-    def recognise(self, figures: list[Figure], *, learn: bool = True) -> list[Figure]:
+    def recognise(self, figures: list[Figure], *, learn: bool = True, held: Any = None
+                  ) -> list[Figure]:
         """The kind and colour of each thing seen whole and well: the categories settle on its
-        form and tint (and take it as a lesson with ``learn``)."""
+        form and tint (and take it as a lesson with ``learn``). With ``held`` (a map whose
+        kinds and colours are these categories) a thing where the map holds one, within
+        ``fuse``, is expected to be what the map holds there: its kind and colour where the
+        thing settles them above vigilance, so one thing seen again stays one thing."""
+        known = [] if held is None else [e for e in held.things() if e["place"] is not None]
         for figure in figures:
             if figure.form is not None and figure.tint is not None:
-                figure.kind = self.kinds.see(figure.form, learn=learn)
-                figure.colour = self.colours.see(figure.tint, learn=learn)
+                near = [e for e in known
+                        if np.linalg.norm(e["place"] - figure.place) <= self.fuse]
+                there = min(near, key=lambda e: float(np.linalg.norm(
+                    e["place"] - figure.place))) if near else None
+                colour = None if there is None else (there.get("values") or {}).get("colour")
+                figure.kind = self.kinds.see(figure.form, learn=learn,
+                                             expect=None if there is None else there["kind"])
+                figure.colour = self.colours.see(figure.tint, learn=learn, expect=colour)
         return figures
 
     def lit(self, images: Any, at: Any, heading: float) -> Any:
@@ -488,13 +523,14 @@ class Retina:
 
         return seen
 
-    def see(self, images: Any, at: Any, heading: float, *, learn: bool = True
-            ) -> tuple[list[tuple[int, np.ndarray, dict[str, int]]], Any]:
+    def see(self, images: Any, at: Any, heading: float, *, learn: bool = True,
+            held: Any = None) -> tuple[list[tuple[int, np.ndarray, dict[str, int]]], Any]:
         """One moment of sight: the reports of the things recognised, ``(kind, place,
-        {"colour": colour})``, and the places the eyes see."""
-        figures = self.recognise(self.find(images, at, heading), learn=learn)
+        {"colour": colour})``, and the places the eyes see. ``held``: the map the reports go
+        to, whose things the retina expects to see again (``recognise``)."""
+        figures = self.recognise(self.find(images, at, heading), learn=learn, held=held)
         self.last = figures
-        self.unknown += [f.place.copy() for f in figures if f.kind is None]
+        self.unknown = [f.place.copy() for f in figures if f.kind is None]
         self.work["moments"] += 1
         self.work["figures"] += len(figures)
         reports = [(int(f.kind), f.place.copy(), {"colour": int(f.colour)}) for f in figures
@@ -518,4 +554,5 @@ class Retina:
         return self.kinds.parameters() + self.colours.parameters()
 
 
-__all__ = ["BEND", "LIGHT", "SIZE", "Categories", "Eye", "Figure", "Retina", "parrot_eyes"]
+__all__ = ["BEND", "EXPECT", "LIGHT", "MIXED", "SIZE", "Categories", "Eye", "Figure", "Retina",
+           "parrot_eyes"]

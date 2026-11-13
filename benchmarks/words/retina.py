@@ -8,12 +8,12 @@ pose. Nothing tells the brain what or where a thing is.
 
 **What a thing looks like.** The room is seen across, so a thing is its outline on the floor:
 a ``disc``, an ``oval`` (its short axis, 0.3 of its width, toward the parrot), a ``board`` (a
-thin flat face toward the parrot) or a ``dish`` (a half ring open toward the parrot), in one of
-three sizes. Each of the twelve kinds is one outline in one size (``LOOKS``); the four new
-kinds are outlines and sizes the trained kinds have, in combinations none of them has. A thing
-faces the room's middle (where the parrot sits) turned by a few degrees (``TURN``), and is
-drawn in its colour, lit from the parrot's side: a surface is brighter the more squarely its ray
-meets it. The walls are a warm grey.
+thin flat face toward the parrot) or a ``dish`` (half a shallow ring, 0.15 of its width deep,
+open toward the parrot), in one of three sizes. Each of the twelve kinds is one outline in one
+size (``LOOKS``); the four new kinds are outlines and sizes the trained kinds have, in
+combinations none of them has. A thing faces the room's middle (where the parrot sits) turned
+by a few degrees (``TURN``), and is drawn in its colour, lit from the parrot's side: a surface
+is brighter the more squarely its ray meets it. The walls are a warm grey.
 
 **The rooms.** The life is the words chamber's script (``words.script``), with the rooms drawn
 so that from the parrot's perch no thing hides any part of another (``clear``): a parrot that
@@ -57,17 +57,19 @@ SIZES = (0.12, 0.19, 0.30)  # metres across
 LOOKS = ((0, 0), (1, 1), (2, 2), (3, 0), (0, 1), (1, 2), (2, 0), (3, 1),
          (0, 2), (1, 0), (2, 1), (3, 2))
 TURN = math.radians(15.0)  # a thing in a room is turned this far at most from facing the parrot
-HELD_OUT = {"near": (0.45, 0.6), "far": (1.8, 1.9), "turn": (math.radians(20.0),
-                                                           math.radians(30.0))}
+# R3's views: distances no room holds (nearer than any, and a band every room leaves out) and
+# turns farther than any room's
+HELD_OUT = {"near": (0.45, 0.6), "band": (1.25, 1.35), "turn": (math.radians(20.0),
+                                                              math.radians(30.0))}
 RGB = np.array([(0.85, 0.12, 0.10), (0.12, 0.25, 0.85), (0.10, 0.62, 0.18),
                 (0.92, 0.82, 0.12), (0.93, 0.93, 0.93), (0.10, 0.10, 0.10)])
 WALL = np.array((0.55, 0.52, 0.48))
-NOISE = {"depth": 0.002, "colour": 0.01}  # receptor noise: a share of the distance, and absolute
+NOISE = {"depth": 0.001, "colour": 0.01}  # receptor noise: a share of the distance, and absolute
 GAP = math.radians(1.5)  # the least angle between two things' outlines seen from the perch
 FIELD = math.radians(150.0)  # either eye sees this far either side of the beak, together
 FOUND = 0.15  # a figure is a thing's where its place lies this near the thing's
 MARGIN = 0.10  # R2: the map from the eyes holds a place this near the map from the camera's
-LOOK = math.radians(6.0)  # R3: a thing looked at lies this near an eye's middle
+LOOK = math.radians(3.0)  # R3: a thing looked at lies this near an eye's middle
 LOOKS_AT = 6  # after looking around, the head turns to look at this many unknown things at most
 
 
@@ -102,11 +104,11 @@ def outline(kind: int, place: np.ndarray, turn: float) -> np.ndarray:
         local = np.stack([0.3 * size * np.cos(a), half * np.sin(a)], axis=1)
     elif shape == "board":
         local = np.array([[0.015, -half], [0.015, half], [-0.015, half], [-0.015, -half]])
-    else:  # a dish: half a ring, open toward the parrot
-        t = 0.025
+    else:  # a dish: half a shallow ring, open toward the parrot
+        t = 0.015
         a = np.linspace(math.pi / 2, 3 * math.pi / 2, 19)
-        outer = np.stack([(0.25 * size + t) * np.cos(a), half * np.sin(a)], axis=1)
-        inner = np.stack([0.25 * size * np.cos(a[::-1]), (half - t) * np.sin(a[::-1])], axis=1)
+        outer = np.stack([(0.15 * size + t) * np.cos(a), half * np.sin(a)], axis=1)
+        inner = np.stack([0.15 * size * np.cos(a[::-1]), (half - t) * np.sin(a[::-1])], axis=1)
         local = np.concatenate([outer, inner])
     return np.asarray(place[None, :] + local[:, :1] * u[None, :] + local[:, 1:] * v[None, :])
 
@@ -224,17 +226,23 @@ def wholly_in_view(eyes: Any, at: Any, heading: float, shape: np.ndarray) -> boo
 # -- the script, its rooms clear from the perch
 
 
+def _held_out(place: np.ndarray) -> bool:
+    """Whether a place lies in the band of distances every room leaves out (R3's)."""
+    low, high = HELD_OUT["band"]
+    return bool(low <= float(np.linalg.norm(place)) <= high)
+
+
 @contextlib.contextmanager
 def _clear_rooms(seed: int) -> Iterator[None]:
     """While the words chamber draws a script: every room is drawn again until it is clear
-    from the perch (``clear``), and a question's thing is in view where it lies in either
-    eye's field."""
+    from the perch (``clear``) and holds no thing in the band of distances R3 holds out, and a
+    question's thing is in view where it lies in either eye's field."""
     room, free, view = world.room, words._free_place, world.VIEW
 
     def clear_room(rng: np.random.Generator, *args: Any, **kwargs: Any) -> world.Room:
         for _ in range(1000):
             r = room(rng, *args, **kwargs)
-            if clear(seed, r):
+            if clear(seed, r) and not any(_held_out(t.place) for t in r.things):
                 return r
         raise RuntimeError("no clear room in 1000 draws")
 
@@ -244,7 +252,7 @@ def _clear_rooms(seed: int) -> Iterator[None]:
             trial = world.Room(r.things + [world.Thing(0, 0, p)], heading=r.heading)
             # the thing to come may be of any look: the widest (a large disc) is checked
             trial.things[-1] = world.Thing(8, 0, p)
-            if clear(seed, trial):
+            if clear(seed, trial) and not _held_out(p):
                 return p
         raise RuntimeError("no clear place in 1000 draws")
 
@@ -302,6 +310,7 @@ class Sight:
         self.colours = np.zeros((world.COLOURS, eyes_brain.retina.colours.capacity), dtype=int)
         self.counting = False
         self.looks = 0  # the head's turns to look at a thing not recognised
+        self.looked: list[list[float]] = []  # each room's look headings, in order
 
     def moment(self, r: world.Room, heading: float, *, camera: bool = True) -> None:
         if camera:
@@ -314,7 +323,7 @@ class Sight:
         shapes = outlines(self.seed, r)
         images = render(self.seed, r, retina.eyes, brain.body.at, heading, rng=self.rng,
                         shapes=shapes)
-        reports, lit = retina.see(images, brain.body.at, heading)
+        reports, lit = retina.see(images, brain.body.at, heading, held=brain.map)
         brain.look(seen=reports, lit=lit)
         if self.counting:
             self.count(r, heading, shapes, retina.last)
@@ -344,12 +353,14 @@ class Sight:
         self.eyes.map.reset()
         self.camera.map.reset()
         retina = self.eyes.retina
-        retina.unknown = []
+        unknown: list[np.ndarray] = []
         for i in range(8):
             self.moment(r, r.heading + i * math.pi / 4)
+            unknown += retina.unknown
         heading = r.heading + 7 * math.pi / 4
         looked: list[np.ndarray] = []
-        for place in list(retina.unknown):
+        turns: list[float] = []
+        for place in unknown:
             held = [e["place"] for e in self.eyes.map.things() if e["place"] is not None]
             if any(np.linalg.norm(place - q) <= retina.fuse for q in looked + held):
                 continue
@@ -358,7 +369,9 @@ class Sight:
             looked.append(place)
             heading = retina.look_at(place, self.eyes.body.at, heading)
             self.moment(r, heading, camera=False)
+            turns.append(float(heading))
         self.looks += len(looked)
+        self.looked.append(turns)
         self.moment(r, r.heading)
 
     def turn(self, r: world.Room, heading: float) -> None:
@@ -418,11 +431,13 @@ def held_rate(brain: Any, r: world.Room) -> list[bool]:
 
 def held_out_views(seed: int, brain: Any, count: int = 96
                    ) -> tuple[dict[str, list[bool]], list[dict[str, Any]]]:
-    """R3: ``count`` views of one trained thing at a distance and a turn no room holds (near,
-    far; turned 20 to 30 degrees), in a drawn colour, the parrot looking at it: the head turned
-    so the thing lies within ``LOOK`` of an eye's middle. The retina finds it and settles on its
-    kind and colour (no lesson), and the lexicon says the word for each. Gives the readings
-    and a record of each view."""
+    """R3: ``count`` views of one trained thing at a distance no room holds (nearer than any,
+    or in the band every room leaves out: ``HELD_OUT``) and turned farther than any room turns
+    a thing, in a drawn colour, the parrot looking at it: the head turned so the thing lies
+    within ``LOOK`` of an eye's middle. The map is emptied, the parrot sees the view for one
+    moment (its categories take no lesson) and is asked what is at the thing's place around it
+    (its kind's word) and what colour the thing is (its colour's word, asked by its kind's
+    word). Gives the readings and a record of each view."""
     rng = np.random.default_rng(np.random.SeedSequence([int(seed), 330, 3]))
     lex = world.lexicon(seed)
     retina = brain.retina
@@ -432,37 +447,43 @@ def held_out_views(seed: int, brain: Any, count: int = 96
     for i in range(count):
         kind = int(rng.integers(world.TRAINED))
         colour = int(rng.integers(world.COLOURS))
-        low, high = HELD_OUT["near"] if i % 2 == 0 else HELD_OUT["far"]
+        low, high = HELD_OUT["near"] if i % 2 == 0 else HELD_OUT["band"]
         radius, angle = rng.uniform(low, high), rng.uniform(-math.pi, math.pi)
         place = np.array([radius * math.cos(angle), radius * math.sin(angle)])
         turn = turn_of(seed, place, held_out=True)
         eye = int(rng.integers(len(retina.eyes)))
-        off = rng.uniform(-LOOK, LOOK)
-        heading = angle - retina.eyes[eye].axis - off
+        heading = angle - retina.eyes[eye].axis - rng.uniform(-LOOK, LOOK)
         r = world.Room([world.Thing(kind, colour, place)], heading=heading,
                        extra={"turns": {0: turn}})
+        brain.map.reset()
+        brain.body.heading = heading
         images = render(seed, r, retina.eyes, brain.body.at, heading, rng=rng)
-        figures = retina.recognise(retina.find(images, brain.body.at, heading), learn=False)
-        near = [f for f in figures if np.linalg.norm(f.place - place) <= FOUND
+        reports, lit = retina.see(images, brain.body.at, heading, learn=False)
+        brain.look(seen=reports, lit=lit)
+        near = [f for f in retina.last if np.linalg.norm(f.place - place) <= FOUND
                 and f.kind is not None and f.colour is not None]
         out["R3_found"].append(bool(near))
-        said_kind = brain.lexicon.say(("kind", near[0].kind)) if near else None
-        said_colour = brain.lexicon.say(("colour", near[0].colour)) if near else None
-        out["R3_kind"].append(said_kind == lex.kind[kind])
-        out["R3_colour"].append(said_colour == lex.colour[colour])
+        what = world.by_place(lex, r, world.place_of(heading, place))
+        which = world.colour_of(lex, r, kind)
+        out["R3_kind"].append(world.right(what, brain.ask(what.text)))
+        out["R3_colour"].append(world.right(which, brain.ask(which.text)))
         out["R3_both"].append(out["R3_kind"][-1] and out["R3_colour"][-1])
         views.append({"kind": kind, "colour": colour, "radius": float(radius),
-                       "turn": float(turn), "found": bool(near),
-                       "category": near[0].kind if near else None,
-                       "width": near[0].width if near else None,
-                       "bend": near[0].bend if near else None,
-                       "kind_right": out["R3_kind"][-1], "colour_right": out["R3_colour"][-1]})
+                      "turn": float(turn), "found": bool(near),
+                      "category": near[0].kind if near else None,
+                      "width": near[0].width if near else None,
+                      "bend": near[0].bend if near else None,
+                      "kind_right": out["R3_kind"][-1], "colour_right": out["R3_colour"][-1]})
     return out, views
 
 
 def life(seed: int, *, record: Any = None, views: int = 96, **given: Any) -> dict[str, Any]:
     """One founder's life for both arms on the same script; the readings by gate, each arm's
-    under its name."""
+    under its name. ``practice`` is the words chamber's (``"told"``, ``"reward"``: a pistachio
+    for a right answer, ``"withheld"``)."""
+    practice = str(given.pop("practice", "told"))
+    if practice not in words.PRACTICE:
+        raise ValueError(f"practice is one of {words.PRACTICE}")
     settings = {**words.DEFAULTS, **{k: v for k, v in given.items() if k in words.DEFAULTS}}
     brain_settings = {k: v for k, v in given.items() if k not in words.DEFAULTS}
     began = time.time()
@@ -472,6 +493,8 @@ def life(seed: int, *, record: Any = None, views: int = 96, **given: Any) -> dic
     sight = Sight(seed, eyes, camera)
     arms = {"eyes": eyes, "camera": camera}
     readings: dict[str, dict[str, list[bool]]] = {a: {} for a in arms}
+    rewarded: dict[str, list[bool]] = {a: [] for a in arms}
+    unheld: dict[str, dict[str, int]] = {a: {} for a in arms}  # namings of a place held empty
     held: dict[str, list[bool]] = {a: [] for a in arms}
     apart: dict[str, list[float]] = {}
     ablated: dict[str, Any] = {}
@@ -479,12 +502,12 @@ def life(seed: int, *, record: Any = None, views: int = 96, **given: Any) -> dic
     held_for: world.Room | None = None
     seconds = {"script": time.time() - began}
     # the rooms whose things are asked about: their moments are R1's
-    tested, now = set(), None
+    tested, room_of = set(), None
     for event in events:
         if event[0] == "room":
-            now = event[1]
+            room_of = event[1]
         elif event[0] == "ask":
-            tested.add(id(now))
+            tested.add(id(room_of))
     began = time.time()
     for event in events:
         kind = event[0]
@@ -496,12 +519,19 @@ def life(seed: int, *, record: Any = None, views: int = 96, **given: Any) -> dic
             assert r is not None
             sight.turn(r, event[1])
         elif kind == "name":
-            for brain in arms.values():
-                brain.name(event[2], event[1])
+            for name, brain in arms.items():
+                if math.isnan(brain.name(event[2], event[1])):  # the map holds nothing there
+                    unheld[name][event[3]] = unheld[name].get(event[3], 0) + 1
         elif kind == "practice":
             q = event[1]
-            for brain in arms.values():
-                brain.practice(q.text, q.answer if len(q.answer) > 1 else q.answer[0])
+            for name, brain in arms.items():
+                if practice == "told":
+                    brain.practice(q.text, q.answer if len(q.answer) > 1 else q.answer[0])
+                else:  # the answer is never told: a right one earns a pistachio
+                    right = world.right(q, brain.ask(q.text, explore=True))
+                    rewarded[name].append(right)
+                    if practice == "reward":
+                        brain.reward(1.0 if right else 0.0)
         else:
             gate, q = event[1], event[2]
             assert r is not None
@@ -524,23 +554,32 @@ def life(seed: int, *, record: Any = None, views: int = 96, **given: Any) -> dic
                         world.right(q, ablated[name].ask(q.text)))
                 if gate.startswith("W1") and q.about == "out_of_view":
                     readings[name].setdefault("W4_out_of_view", []).append(ok)
+                if gate == "W5_by_place" and q.about == "several":  # a place that holds things
+                    readings[name].setdefault("W5_by_place_held", []).append(ok)
                 if record is not None:
                     record.append({"arm": name, "gate": gate, "question": q.text,
                                    "answer": q.answer, "said": said, "right": ok})
     seconds["life"] = time.time() - began
     began = time.time()
-    r3, seen = held_out_views(seed, eyes, views)
+    r3, looked = held_out_views(seed, eyes, views)
     seconds["R3"] = time.time() - began
-    out: dict[str, Any] = {"seed": int(seed), "seconds": seconds}
+    out: dict[str, Any] = {"seed": int(seed), "seconds": seconds, "practice": practice}
     for name, brain in arms.items():
         got = words.readings_of(seed, settings, readings[name], held[name], brain, {})
         out[name] = {k: v for k, v in got.items() if k not in words.DEFAULTS and k != "seed"}
+        if rewarded[name]:
+            out[name]["pistachios"] = int(sum(rewarded[name]))
+        out[name]["namings_unheld"] = unheld[name]
     retina = eyes.retina
     out["eyes"]["parameters_retina"] = retina.parameters()
     out["eyes"]["parameters"] = int(out["eyes"]["parameters"]) + retina.parameters()
     out["eyes"]["macs"] = int(out["eyes"]["macs"]) + int(
         retina.kinds.work["macs"] + retina.colours.work["macs"])
     out["eyes"]["categories"] = {"kinds": retina.kinds.used, "colours": retina.colours.used}
+    english = world.lexicon(seed).english()
+    out["eyes"]["said_for"] = {  # the word the brain says for each category, in English
+        group: [english.get(eyes.lexicon.say((group, c)) or "", "") for c in range(layer.used)]
+        for group, layer in (("kind", retina.kinds), ("colour", retina.colours))}
     c = sight.counts
     out["R1"] = {"found": c["found"] / max(c["in_view"], 1),
                  "recognised": c["recognised"] / max(c["in_view"], 1),
@@ -559,8 +598,9 @@ def life(seed: int, *, record: Any = None, views: int = 96, **given: Any) -> dic
         out["R2"][f"{key}_n"] = len(v)
     out["R3"] = {k: float(np.mean(v)) for k, v in r3.items()}
     out["R3"]["n"] = len(r3["R3_kind"])
-    out["R3"]["views"] = seen
+    out["R3"]["views"] = looked
     out["eyes"]["looks"] = sight.looks
+    out["eyes"]["look_headings"] = sight.looked  # each room's looks: the controls see them too
     return out
 
 
