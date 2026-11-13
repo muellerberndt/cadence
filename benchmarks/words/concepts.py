@@ -481,6 +481,8 @@ def life(seed: int, *, brain: str = "learned", record: Any = None, keep: Any = N
                 readings.setdefault("W6_ablated", []).append(world.right(q, ablated.ask(q.text)))
             if gate.startswith("W1") and q.about == "out_of_view":
                 readings.setdefault("W4_out_of_view", []).append(ok)
+            if gate.startswith("W1") and q.about == "in_view":
+                readings.setdefault("W4_in_view", []).append(ok)
             if record is not None:
                 record.append({"gate": gate, "question": q.text, "answer": q.answer,
                                "said": said, "right": ok,
@@ -627,7 +629,8 @@ GATES = {
     "W5": [("W5_by_colour", 0.90), ("W5_by_place", 0.90)],
 }
 READINGS = ["C1_colour", "C1_kind", "C1_place", "C2_hue", "C2_shape", "C2_room", "W1",
-            "W1_named_only", "W2", "W3", "W4_out_of_view", "W4_map_rate", "W4_never_seen",
+            "W1_named_only", "W2", "W3", "W4_in_view", "W4_out_of_view", "W4_map_rate",
+            "W4_never_seen",
             "W4_never_taught", "W5_by_colour", "W5_by_place", "W6_ablated"]
 
 
@@ -731,8 +734,16 @@ def read(out: Path) -> dict[str, Any]:
         print(f"C3: {'holds' if verdicts['C3'] else 'fails'}")
         gaps = [abs(life["W4_out_of_view"] - life["W4_map_rate"]) for life in brain]
         verdicts["W4_out_of_view"] = max(gaps) <= 0.02
-        print(f"W4 out of view: {'holds' if verdicts['W4_out_of_view'] else 'fails'} (largest "
-              f"gap from the map's own rate {max(gaps):.3f})")
+        print(f"W4 out of view (protocol C1): {'holds' if verdicts['W4_out_of_view'] else 'fails'}"
+              f" (largest gap from the map's own rate {max(gaps):.3f})")
+        if all("W4_in_view" in life for life in brain):
+            # amendment 1: out of view against the founder's own in-view share
+            below = np.array([life["W4_in_view"] - life["W4_out_of_view"] for life in brain])
+            reach = int((below <= 0.02).sum())
+            verdicts["W4_amended"] = bool(below.mean() <= 0.02 and reach >= min(10, len(below)))
+            print(f"W4 out of view against in view (amendment 1): "
+                  f"{'holds' if verdicts['W4_amended'] else 'fails'} (in view less out of view: "
+                  f"mean {below.mean():+.3f}, {reach} of {len(below)} at .02 or less)")
         ablated = [life["W6_ablated"] for life in brain]
         verdicts["W6"] = max(ablated) <= 0.05
         print(f"W6 ablation: the lexicon's synapses at zero answer W1 at {max(ablated):.3f} at "

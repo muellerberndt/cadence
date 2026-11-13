@@ -153,3 +153,21 @@ is a thing within a few degrees of a boundary.
 
 One AWS c7i.4xlarge spot box (Name=cadence-0100-words-concepts), one process a life, one BLAS
 thread a process, results synced to s3://cadence-0100-words-concepts-20261113.
+
+## Amendment 1: W4 out of view against the founder's own in-view share
+
+Declared on 2026-11-13 after protocol C1 was read, before any life of its confirmation run.
+
+- **Why.** Protocol C1 read W4 out of view against the map's own rate (1.000). The out-of-view
+  share was then within .01 of W1's share on every founder. The misses are the learned concepts'
+  boundary misses, which fall on things in view and out of view alike, and none of them is the
+  map's carry. With learned concepts that are not exact, the map's carry reads as the difference
+  between the two.
+- **The reading.** W4_in_view is the share right of W1's questions about things in view; it sits
+  beside W4_out_of_view.
+- **The gate.** The in-view share less the out-of-view share is .02 or less on the mean over the
+  twelve founders, and on at least ten of twelve founders. The difference of two shares of about
+  100 and 200 questions has a sampling spread of about .02 on one founder, so the gate reads as
+  every other gate does.
+- **The confirmation run.** Fresh founders 32650100 to 32650111 (no life in any lane), every arm,
+  reading and gate of protocol C1 unchanged, W4 out of view read both ways.
