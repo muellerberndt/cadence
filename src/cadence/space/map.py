@@ -817,7 +817,7 @@ class Map:
                 pending.append((cells, cells, units, rec))
                 continue
             held[np.ix_(cells, units)] = True
-            others = (np.delete(activity, units, axis=1) > self._floor).any(axis=1)
+            others = np.asarray((np.delete(activity, units, axis=1) > self._floor).any(axis=1))
             if not left > 1e-12:  # sight took all of it: known by its kind, with no place
                 lost[units] = 1.0
                 write[np.ix_(cells, units)] -= field_units[cells]
