@@ -1,8 +1,14 @@
 """The sense of distance, learned: how far a thing is, from what one moment's two images show.
 
 A layer of distance neurons, each preferring one distance (log-spaced over ``span``), settles
-with the cues of a figure: the disparity units' answer (``cadence.parrot.vision``), the figure's
-size in the field (degrees, log scale) and its elevation, each a layer of tuned input neurons.
+with the cues of a figure, each a layer of tuned input neurons: the disparity units' answer
+(``cadence.parrot.vision``) for a thing both eyes see, and the figure's size in the field
+(degrees, log scale) and its elevation. Size and elevation have two layers each: one for a
+thing one eye sees and one for a thing both eyes see, so that what one eye alone tells and what
+two eyes tell are learned apart. For a thing one eye sees, the parallax units compare where that
+eye saw it a few moments before, from where the eye was then (the head's own movement moved
+it): each unit is tuned to a shift of the thing in the eye and to how far the eye moved across
+the line of sight (WIRING.md 3.4, the Wulst's two-view units).
 Each wired pair of an input neuron and a distance neuron is a reciprocal pair of synapses that
 starts at zero, so a newborn brain has no sense of distance at all. Lessons are the library's
 free and nudged phases with a quadratic nudge (as ``cadence.space.map.Sense``): the target is a
@@ -23,7 +29,8 @@ from typing import Any
 
 import numpy as np
 
-FAMILIES = ("disparity", "size", "elevation")
+FAMILIES = ("disparity", "parallax", "size_one", "elevation_one", "size_both", "elevation_both")
+WIRED = ("disparity", "parallax", "size_one", "elevation_one")  # the hand-set wiring
 
 
 def tuned(values: np.ndarray, preferred: np.ndarray, width: float) -> np.ndarray:
@@ -38,22 +45,26 @@ class Distance:
     """Distance neurons learned from a figure's cues.
 
     ``disparity`` is the count of disparity units (the vision's channels); ``sizes`` and
-    ``heights`` the tuned inputs of the figure's size and elevation; ``units`` the distance
-    neurons over ``span`` metres (the distance on the table's plane). ``wiring`` gives the
-    wired ``(input, distance neuron)`` pairs; by default every input neuron of the families in
-    ``families`` is wired to every distance neuron. ``rate`` is the share of a lesson's error
-    one lesson closes."""
+    ``heights`` the tuned inputs of the figure's size and elevation (each for one eye and for
+    both, ``FAMILIES``); ``units`` the distance neurons over ``span`` metres (the distance on
+    the table's plane). ``wiring`` gives the wired ``(input, distance neuron)`` pairs; by
+    default every input neuron of the families in ``families`` is wired to every distance
+    neuron. ``rate`` is the share of a lesson's error one lesson closes."""
 
     def __init__(self, disparity: int, *, sizes: int = 8, heights: int = 8, units: int = 24,
-                 span: tuple[float, float] = (0.1, 1.6), width: float = 1.5,
-                 rate: float = 0.05, steps: int = 6, level: float = 0.5, floor: float = 0.02,
-                 families: tuple[str, ...] = FAMILIES, wiring: np.ndarray | None = None,
+                 shifts: int = 12, baselines: int = 6,
+                 span: tuple[float, float] = (0.12, 1.2), width: float = 1.5,
+                 rate: float = 0.3, steps: int = 6, level: float = 0.5, floor: float = 0.02,
+                 families: tuple[str, ...] = WIRED, wiring: np.ndarray | None = None,
                  backend: Any = "cpu"):
         from ..brain import Brain as Graph
         from ..connectome import Connectome
         from ..learning import learning_neuron_model
 
-        self.counts = {"disparity": int(disparity), "size": int(sizes), "elevation": int(heights)}
+        self.counts = {"disparity": int(disparity), "parallax": int(shifts) * int(baselines),
+                       "size_one": int(sizes),
+                       "elevation_one": int(heights), "size_both": int(sizes),
+                       "elevation_both": int(heights)}
         starts = np.cumsum([0] + [self.counts[f] for f in FAMILIES])
         self.inputs = {f: np.arange(int(starts[i]), int(starts[i + 1]))
                        for i, f in enumerate(FAMILIES)}
@@ -65,8 +76,10 @@ class Distance:
         self.width, self.rate, self.steps = float(width), float(rate), int(steps)
         self.level, self.floor = float(level), float(floor)
         self.families = tuple(families)
-        self.sizes = np.linspace(math.log(1.0), math.log(40.0), self.counts["size"])
-        self.heights = np.linspace(-50.0, 50.0, self.counts["elevation"])
+        self.sizes = np.linspace(math.log(1.0), math.log(40.0), int(sizes))
+        self.heights = np.linspace(-50.0, 50.0, int(heights))
+        self.shifts = np.linspace(0.0, 12.0, int(shifts))  # degrees
+        self.baselines = np.linspace(0.0, 0.05, int(baselines))  # metres
         self.output = self.width_in + np.arange(self.units)
         self.neurons = n = self.width_in + self.units
         if wiring is None:
@@ -97,15 +110,25 @@ class Distance:
         """Learned parameters: one efficacy a reciprocal pair."""
         return int(len(self.pairs))
 
-    def code(self, disparity: np.ndarray | None, size: float, elevation: float) -> np.ndarray:
+    def code(self, disparity: np.ndarray | None, size: float, elevation: float,
+             parallax: tuple[float, float] | None = None) -> np.ndarray:
         """A figure's cues as the input neurons' drive: the disparity units' answer (None for a
-        figure one eye sees), its size in degrees and its elevation in degrees."""
+        figure one eye sees), its size in degrees, its elevation in degrees and, for a figure
+        one eye sees, its parallax (the shift in degrees, the eye's movement across the line of
+        sight in metres) or None."""
         out = np.zeros(self.width_in)
+        seen = "one"
+        if disparity is None and parallax is not None:
+            shift = tuned(np.array([parallax[0]]), self.shifts, 1.0)[0]
+            moved = tuned(np.array([parallax[1]]), self.baselines, 1.0)[0]
+            out[self.inputs["parallax"]] = np.outer(shift, moved).reshape(-1)
         if disparity is not None:
             out[self.inputs["disparity"]] = np.asarray(disparity, dtype=np.float64)
-        out[self.inputs["size"]] = tuned(np.array([math.log(max(size, 0.5))]), self.sizes,
-                                         1.0)[0]
-        out[self.inputs["elevation"]] = tuned(np.array([elevation]), self.heights, 1.0)[0]
+            seen = "both"
+        out[self.inputs["size_" + seen]] = tuned(np.array([math.log(max(size, 0.5))]),
+                                                 self.sizes, 1.0)[0]
+        out[self.inputs["elevation_" + seen]] = tuned(np.array([elevation]), self.heights,
+                                                      1.0)[0]
         return out
 
     def target(self, distances: np.ndarray) -> np.ndarray:
@@ -195,4 +218,4 @@ class Distance:
         self.lessons = int(arrays["lessons"])
 
 
-__all__ = ["FAMILIES", "Distance", "tuned"]
+__all__ = ["FAMILIES", "WIRED", "Distance", "tuned"]

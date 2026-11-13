@@ -30,6 +30,7 @@ One moment of the brain, from the two eyes' images and the body's own joint read
 from __future__ import annotations
 
 import math
+import time
 from collections import deque
 from dataclasses import dataclass
 from typing import Any
@@ -37,29 +38,35 @@ from typing import Any
 import numpy as np
 
 from ..space.map import Map
-from .distance import Distance
+from .distance import FAMILIES, Distance
 from .eyes import directions
+from .focus import Choice, Focus
 from .kinds import Kinds, look
 from .vision import Figure, Vision
-from .world import EYE_AXIS, EYE_FIELD, NAMES, Body, Eyes
+from .world import EYE_AXIS, EYE_FIELD, HIGH, LOW, NAMES, Body, Eyes
 
 # the founder's genes: the hand-set wiring and settings each part is built with
 GENES: dict[str, Any] = {
     # early vision
     "channels": [-2.0, 16.0, 0.5],  # the disparity units' preferred disparities, degrees
-    "colour": 0.12, "match": 0.15, "min_thickness": 2.2,
+    "colour": 0.12, "match": 0.15, "min_thickness": 2.2, "disparity_form": "edges",
+    "disparity_tuning": 0.5,
     # the distance neurons and their cues
-    "sizes": 8, "heights": 8, "units": 24, "span": [0.1, 1.6], "width": 1.5, "rate": 0.05,
-    "floor": 0.02, "families": ["disparity", "size", "elevation"], "wiring": "full",
+    "sizes": 8, "heights": 8, "units": 24, "span": [0.12, 1.2], "width": 1.5, "rate": 0.3,
+    "floor": 0.02, "families": ["disparity", "parallax", "size_one", "elevation_one"],
+    "wiring": "full",
+    # the parallax units: one eye before and after the head moved
+    "parallax_delay": 2, "parallax_window": 8.0, "parallax_least": 0.003,
     # the teacher
     "window": 10, "parallax": 1.0, "gap": 0.012, "sources": ["turns"], "lessons": 8,
     # placing on the map
-    "keep_angle": 6.0, "keep": 0.15, "default": 0.4,
+    "keep_angle": 6.0, "keep": "one", "default": 0.4,
     "cells": [54, 37], "empty": "keep", "step": 0.10, "stride": 0.25, "reach": 0.15,
     # kinds
     "capacity": 12, "vigilance": 0.2,
     # where to look
-    "fixation": 5, "orient": 0.6, "scan": 150.0,
+    "appear": 1.0, "move": 0.8, "novel": 0.6, "hold": 1.2, "habituate": 6.0,
+    "return_time": 30.0, "inhibition": 2.0, "explore": 0.05, "fixation": 5,
 }
 PLANE = (-0.8, 0.8, -0.55, 0.55)  # the table, (x low, x high, z low, z high)
 
@@ -118,7 +125,8 @@ class Parrot:
         self.rng = np.random.default_rng(np.random.SeedSequence([self.seed, 332]))
         low, high, step = (float(v) for v in g["channels"])
         self.vision = Vision(channels=np.arange(low, high + 1e-9, step), colour=g["colour"],
-                             match=g["match"], min_thickness=g["min_thickness"])
+                             match=g["match"], min_thickness=g["min_thickness"],
+                             form=g["disparity_form"], tuning=g["disparity_tuning"])
         wiring = None
         probe = Distance(self.vision.units, sizes=g["sizes"], heights=g["heights"],
                          units=g["units"], families=tuple(g["families"]))
@@ -139,24 +147,30 @@ class Parrot:
         self.kinds = Kinds(g["capacity"], vigilance=g["vigilance"], backend=backend)
         self.map = Map(PLANE, tuple(g["cells"]), units=g["capacity"], empty=g["empty"],
                        step=g["step"], stride=g["stride"], reach=g["reach"], backend=backend)
+        self.focus = Focus(appear=g["appear"], move=g["move"], novel=g["novel"], hold=g["hold"],
+                           habituate=g["habituate"], return_time=g["return_time"],
+                           inhibition=g["inhibition"], backend=backend)
+        self.focused: Choice | None = None
+        self.cue: dict[int, float] | None = None  # a heard thing's kind and weight (later)
         self.body = Body()
         self.sightings: deque[list[Sighting]] = deque(maxlen=int(g["window"]))
         self.moments = 0
         self.lessons = 0
         self.record: list[dict[str, Any]] | None = None
+        self.taught: list[dict[str, Any]] | None = None  # the teacher's lessons, for a reader
         self.silenced = np.zeros(0, dtype=np.int64)
         self._next_look = 0
         self.last: dict[str, Any] = {}
+        self.seconds: dict[str, float] = {}  # time spent by part, over the moments lived
         self.regions = self._regions()
 
     # -- the brain's regions, for the brain view, the probes and silencing
 
     def _regions(self) -> dict[str, slice]:
         d = self.distance
-        sizes = [("disparity", d.counts["disparity"]), ("size", d.counts["size"]),
-                 ("elevation", d.counts["elevation"]), ("distance", d.units),
+        sizes = [(name, d.counts[name]) for name in FAMILIES] + [("distance", d.units),
                  ("look", self.kinds.features), ("kind", self.kinds.capacity),
-                 ("map", self.map.neurons)]
+                 ("focus", self.focus.slots), ("map", self.map.neurons)]
         out: dict[str, slice] = {}
         start = 0
         for name, many in sizes:
@@ -172,6 +186,11 @@ class Parrot:
         """Learned parameters by part (the map's graph has none)."""
         return {"distance": self.distance.parameters(), "kinds": self.kinds.parameters()}
 
+    @property
+    def settling(self) -> np.ndarray:
+        """The neurons ``silence`` can hold at rest: every region but the map's sheet."""
+        return np.arange(self.regions["disparity"].start, self.regions["focus"].stop)
+
     def silence(self, units: np.ndarray | list[int] | None) -> None:
         """Hold these neurons (indices into the brain's regions, ``regions``) at rest inside
         their settles; None or empty silences none."""
@@ -179,9 +198,10 @@ class Parrot:
         self.silenced = chosen
         self.distance.mask = np.ones(self.distance.neurons)
         self.kinds.mask = np.ones(self.kinds.neurons)
+        self.focus.mask = np.ones(self.focus.slots)
         r = self.regions
         for unit in chosen:
-            if r["disparity"].start <= unit < r["elevation"].stop:
+            if r["disparity"].start <= unit < r["elevation_both"].stop:
                 self.distance.mask[unit - r["disparity"].start] = 0.0
             elif r["distance"].start <= unit < r["distance"].stop:
                 self.distance.mask[self.distance.width_in + unit - r["distance"].start] = 0.0
@@ -189,8 +209,11 @@ class Parrot:
                 self.kinds.mask[self.kinds.capacity + unit - r["look"].start] = 0.0
             elif r["kind"].start <= unit < r["kind"].stop:
                 self.kinds.mask[unit - r["kind"].start] = 0.0
-            elif not r["map"].start <= unit < r["map"].stop:
-                raise ValueError(f"no neuron {int(unit)} in the brain")
+            elif r["focus"].start <= unit < r["focus"].stop:
+                self.focus.mask[unit - r["focus"].start] = 0.0
+            else:
+                raise ValueError(f"neuron {int(unit)} is not one the brain can silence (the "
+                                 "map's sheet is carried state)")
 
     # -- one moment
 
@@ -220,17 +243,17 @@ class Parrot:
         present pose. With ``learn`` the ground, the kinds and the sense of distance take their
         lessons; with ``act`` the head turns where the reflex looks. ``ids`` is the chamber's
         truth, kept with the record only."""
+        clock = time.perf_counter()
         eyes = self.body.eyes()
         figures = self.vision.see(images, learn=learn, ids=ids)
+        clock = self._time("vision", clock)
         sightings: list[Sighting] = []
         per_eye: list[Sighting] = []
         taken: set[int] = set()
         for i, fig in enumerate(figures):
-            size = math.sqrt(max(fig.area, 1e-9))
             o, u = self._ray(eyes, fig.eye, fig)
-            code = self.distance.code(fig.disparity, size, math.degrees(fig.elevation))
-            per_eye.append(Sighting(self.moments, fig.eye, o, u, None, code, truth=fig.truth,
-                                    figures=(i,)))
+            per_eye.append(Sighting(self.moments, fig.eye, o, u, None, np.zeros(0),
+                                    truth=fig.truth, figures=(i,)))
             if i in taken:
                 continue
             if fig.pair is not None and fig.eye == 0:
@@ -239,13 +262,15 @@ class Parrot:
                 head = directions(np.array(0.5 * (fig.azimuth + other.azimuth)),
                                   np.array(0.5 * (fig.elevation + other.elevation)))
                 both = Sighting(self.moments, 2, eyes.middle, np.asarray(eyes.rotation @ head),
-                                None, code, truth=fig.truth, figures=(i, fig.pair))
-                if fig.disparity is not None:
-                    both.disparity = float(self.vision.channels[int(fig.disparity.argmax())])
+                                None, np.zeros(0), truth=fig.truth, figures=(i, fig.pair))
+                if fig.disparity is not None and fig.disparity.sum() > 0:
+                    both.disparity = float((fig.disparity * self.vision.channels).sum()
+                                           / fig.disparity.sum())
                 sightings.append(both)
             else:
-                sightings.append(Sighting(self.moments, fig.eye, o, u, None, code,
+                sightings.append(Sighting(self.moments, fig.eye, o, u, None, np.zeros(0),
                                           truth=fig.truth, figures=(i,)))
+        clock = self._time("sightings", clock)
         # what each is
         looks = np.array([look(np.mean([figures[k].rgb for k in s.figures], axis=0))
                           for s in sightings]).reshape(-1, self.kinds.features)
@@ -255,6 +280,16 @@ class Parrot:
         for s in per_eye:
             owner = next(x for x in sightings if s.figures[0] in x.figures)
             s.kind = owner.kind
+        clock = self._time("kinds", clock)
+        # the cues of each eye's sighting: the disparity units for a thing both eyes see, the
+        # parallax units for a thing one eye sees after the head moved
+        for x in per_eye:
+            fig = figures[x.figures[0]]
+            x.code = self.distance.code(fig.disparity, math.sqrt(max(fig.area, 1e-9)),
+                                        math.degrees(fig.elevation),
+                                        None if fig.disparity is not None else self._parallax(x))
+        for s in sightings:
+            s.code = per_eye[s.figures[0]].code
         # how far
         codes = np.array([s.code for s in sightings]).reshape(-1, self.distance.width_in)
         activity = (self.distance.settle(codes) if len(codes)
@@ -262,6 +297,7 @@ class Parrot:
         far, strength = self.distance.read(activity)
         for s, d, q in zip(sightings, far, strength, strict=True):
             s.distance, s.strength = float(d), float(q)
+        clock = self._time("distance", clock)
         # where: the ray at the distance read, or the place the map holds on the ray
         reports = []
         held = [t for t in self.map.things() if t["place"] is not None]
@@ -275,7 +311,11 @@ class Parrot:
             u = u / norm
             o = flat(s.origin)
             reach = s.distance
-            if not (s.strength >= self.genes["keep"] and np.isfinite(reach)):
+            # a thing one eye sees, on the ray toward a thing of its kind the map holds, is kept
+            # where the map holds it; a thing both eyes see is placed at the distance read
+            weak = s.eye != 2 if self.genes["keep"] == "one" else not s.strength >= float(
+                self.genes["keep"])
+            if weak or not np.isfinite(reach):
                 best, best_angle = None, math.radians(self.genes["keep_angle"])
                 for t in held:
                     if t["kind"] != s.kind:
@@ -294,7 +334,9 @@ class Parrot:
             s.place = o + reach * u
             if PLANE[0] <= s.place[0] <= PLANE[1] and PLANE[2] <= s.place[1] <= PLANE[3]:
                 reports.append((int(s.kind), s.place))
+        clock = self._time("place", clock)
         self.map.moment(seen=reports, lit=self.lit(eyes))
+        clock = self._time("map", clock)
         # the teacher
         taught = 0
         if learn:
@@ -310,14 +352,59 @@ class Parrot:
                     "disparity": s.disparity, "cues": a[: self.distance.width_in].copy(),
                     "units": a[self.distance.output].copy(),
                     "look": ka[self.kinds.feature].copy(), "kinds": ka[self.kinds.category].copy(),
-                    "yaw": self.body.joint("head_yaw")})
+                    "yaw": self.body.joint("head_yaw"), "eyes": eyes.places.copy(),
+                    "rotation": eyes.rotation.copy()})
+        clock = self._time("teacher", clock)
         # where to look next
         if act:
-            self.body.move(self._look(figures))
+            self.body.move(self._look())
+        self._time("look", clock)
         self.moments += 1
         self.last = {"figures": figures, "sightings": sightings, "taught": taught,
                      "reports": reports}
         return self.last
+
+    def _parallax(self, s: Sighting) -> tuple[float, float] | None:
+        """The parallax units' cue for a thing one eye sees: where the same eye saw a thing of
+        its kind ``parallax_delay`` moments before (the nearest in direction, within
+        ``parallax_window`` degrees), the shift between the two rays (degrees, toward where the
+        eye moved from) and how far the eye moved across the line of sight (metres). None where
+        the eye did not move or saw no such thing."""
+        k = int(self.genes["parallax_delay"])
+        if s.kind is None or len(self.sightings) < k:
+            return None
+        best, angle = None, math.radians(float(self.genes["parallax_window"]))
+        for e in self.sightings[-k]:
+            if e.eye != s.eye or e.kind != s.kind:
+                continue
+            a = math.acos(min(1.0, float(s.direction @ e.direction)))
+            if a < angle:
+                best, angle = e, a
+        if best is None:
+            return None
+        moved = s.origin - best.origin
+        across = moved - float(moved @ s.direction) * s.direction
+        b = float(np.linalg.norm(across))
+        if b < float(self.genes["parallax_least"]):
+            return None
+        shift = float((best.direction - s.direction) @ (across / b))
+        return math.degrees(max(shift, 0.0)), b
+
+    def _time(self, part: str, since: float) -> float:
+        now = time.perf_counter()
+        self.seconds[part] = self.seconds.get(part, 0.0) + now - since
+        return now
+
+    def cost(self) -> dict[str, Any]:
+        """The cost of the moments lived: seconds a moment by part, and the multiply-accumulates
+        of the settles (the distance neurons, the kinds and the map's sheet)."""
+        moments = max(self.moments, 1)
+        macs = {"distance": self.distance.work["macs"], "kinds": self.kinds.work["macs"]}
+        # the map's settle: two sweeps over its synapses a moment
+        macs["map"] = 2 * int(self.map.connectome.synapses) * self.moments
+        return {"moments": self.moments,
+                "ms": {k: 1000.0 * v / moments for k, v in self.seconds.items()},
+                "macs": {k: v / moments for k, v in macs.items()}}
 
     def _teach(self, now: list[Sighting]) -> int:
         """Lessons from sightings of one thing at two places of the eyes that agree."""
@@ -332,7 +419,7 @@ class Parrot:
         for s in now:
             if s.kind is None or used >= g["lessons"]:
                 continue
-            best: tuple[float, Sighting, np.ndarray] | None = None
+            best: tuple[float, Sighting, np.ndarray, float] | None = None
             for e in earlier:
                 if e is s or e.kind != s.kind or (e.moment == s.moment and e.eye == s.eye):
                     continue
@@ -342,10 +429,10 @@ class Parrot:
                 if not (gap <= g["gap"] and angle >= least and a > 0.05 and b > 0.05):
                     continue
                 if best is None or gap < best[0]:
-                    best = (gap, e, p)
+                    best = (gap, e, p, angle)
             if best is None:
                 continue
-            _, e, p = best
+            gap, e, p, angle = best
             ds = float(np.linalg.norm(flat(p - s.origin)))
             de = float(np.linalg.norm(flat(p - e.origin)))
             if not (0.08 <= ds <= 1.5 and 0.08 <= de <= 1.5):
@@ -353,31 +440,38 @@ class Parrot:
             rows += [s.code, e.code]
             targets += [ds, de]
             used += 1
+            if self.taught is not None:
+                for x, d in ((s, ds), (e, de)):
+                    self.taught.append({"moment": self.moments, "truth": x.truth,
+                                        "origin": x.origin.copy(), "target": d, "eye": x.eye,
+                                        "binocular": bool(x.code[: self.distance.counts[
+                                            "disparity"]].any()),
+                                        "angle": math.degrees(angle), "gap": gap})
         if rows:
             self.distance.teach(np.array(rows), np.array(targets))
             self.lessons += len(rows)
         return len(rows)
 
-    def _look(self, figures: list[Figure]) -> np.ndarray:
-        """The head's targets: every ``fixation`` moments the head turns to bring a thing seen
-        to the side in front of the beak (``orient`` of the turns) or to a new direction."""
+    def _look(self) -> np.ndarray:
+        """The head's targets: the focus (one winner among the things on the map) turns the head
+        so that it lies in front of the beak, as far as the neck allows. With no focus, and at
+        ``explore`` of the moments, the head looks to a new direction, held ``fixation``
+        moments."""
         targets = np.full(len(NAMES), np.nan)
         targets[NAMES.index("head_pitch")] = targets[NAMES.index("head_roll")] = 0.0
+        k = NAMES.index("head_yaw")
+        g = self.genes
+        self.focused = self.focus.choose(self.map.things(), self.moments, self.cue)
         if self.moments < self._next_look:
             return targets
-        g = self.genes
-        yaw = self.body.joint("head_yaw")
-        side = [f for f in figures if abs(math.degrees(f.azimuth)) > 20.0]
-        if side and self.rng.random() < g["orient"]:
-            chosen = side[int(self.rng.integers(len(side)))]
-            goal = yaw + math.degrees(chosen.azimuth)
+        if self.focused is not None and self.rng.random() >= float(g["explore"]):
+            to = self.focused.place - flat(self.body.eyes().pivot)
+            goal = math.degrees(math.atan2(float(to[0]), float(to[1])))
         else:
-            goal = float(self.rng.uniform(-g["scan"], g["scan"]))
-        goal = float(np.clip(goal, -170.0, 170.0))
-        targets[NAMES.index("head_yaw")] = Body.scaled(
-            np.where(np.arange(len(NAMES)) == NAMES.index("head_yaw"), goal,
-                     self.body.angles))[NAMES.index("head_yaw")]
-        self._next_look = self.moments + int(g["fixation"]) + int(self.rng.integers(0, 3))
+            goal = float(self.rng.uniform(LOW[k], HIGH[k]))
+            self._next_look = self.moments + int(g["fixation"])
+        goal = float(np.clip(goal, LOW[k], HIGH[k]))
+        targets[k] = 2.0 * (goal - LOW[k]) / (HIGH[k] - LOW[k]) - 1.0
         return targets
 
     def reset(self) -> None:
@@ -385,6 +479,8 @@ class Parrot:
         self.map.reset()
         self.body.reset()
         self.sightings.clear()
+        self.focus.reset()
+        self.focused = None
         self._next_look = self.moments
 
 

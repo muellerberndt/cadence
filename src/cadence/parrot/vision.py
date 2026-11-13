@@ -59,6 +59,16 @@ def components(mask: np.ndarray) -> np.ndarray:
     return np.asarray(np.where(flat, lab, -1).reshape(h, w))
 
 
+def _cover(edge: np.ndarray, inner: np.ndarray, outer: np.ndarray) -> float:
+    """How much of an edge pixel a thing covers, from its colour between the thing's colour
+    (``inner``) and what lies behind it (``outer``), from 0 to 1."""
+    span = inner - outer
+    norm = float(span @ span)
+    if norm < 1e-6:
+        return 0.5
+    return float(np.clip((edge - outer) @ span / norm, 0.0, 1.0))
+
+
 def _blur(plane: np.ndarray) -> np.ndarray:
     """A plane blurred along its columns by (1/4, 1/2, 1/4)."""
     out = 0.5 * plane
@@ -179,16 +189,21 @@ class Vision:
     colour difference over which a unit's match falls off; ``min_area``, ``min_thickness`` and
     ``max_area`` (pixels) bound a figure; ``match`` is the least answer of the best disparity
     unit that pairs a figure with the other eye's. ``dark`` is the brightness under which a pixel
-    sees nothing (a covered eye)."""
+    sees nothing (a covered eye). ``form`` "energy" answers with the edge correlation at each
+    disparity; "edges" pairs the figures by it and then answers, as units tuned ``tuning``
+    degrees wide, at the disparity where the thing's edges fall in the two eyes."""
 
     def __init__(self, *, channels: Any = None, colour: float = 0.12, min_area: float = 4.0,
                  min_thickness: float = 2.2, max_area: float = 3000.0, dark: float = 0.02,
-                 match: float = 0.15,
+                 match: float = 0.15, form: str = "edges", tuning: float = 0.5,
                  share: float = 0.02, soft: float = 0.12, width: int = WIDTH,
                  height: int = HEIGHT):
         self.channels = (np.arange(-2.0, 16.01, 0.5) if channels is None
                          else np.asarray(channels, dtype=np.float64))
         self.colour, self.dark, self.match = float(colour), float(dark), float(match)
+        if form not in ("energy", "edges"):
+            raise ValueError("the disparity units' form is 'energy' or 'edges'")
+        self.form, self.tuning = form, float(tuning)
         self.min_area, self.min_thickness = float(min_area), float(min_thickness)
         self.max_area = float(max_area)
         self.width, self.height = int(width), int(height)
@@ -355,14 +370,56 @@ class Vision:
             under = values[values >= 0].astype(np.int64)
             if len(under):
                 j = int(np.bincount(under).argmax())
+                if self.form == "edges":
+                    found = self._edges(rgb, lab_l == k, lab_r == j, on_grid_l, on_grid_r)
+                    if found is None:
+                        continue
+                    strength = min(1.0, float(answer.max()))
+                    answer = strength * np.exp(-0.5 * ((self.channels - found) / self.tuning) ** 2)
+                    fig.disparity = answer
                 fig.pair = j
                 figs_r[j].pair = k
                 figs_r[j].disparity = answer
+
+    def _edges(self, rgb: np.ndarray, own_l: np.ndarray, own_r: np.ndarray, seen_l: np.ndarray,
+               seen_r: np.ndarray) -> float | None:
+        """The disparity of one thing from where its edges fall in each eye, row by row: the
+        median over every edge both eyes see whole. An edge falls inside its pixel by how much
+        of the pixel the thing covers, read from the pixel's colour between the colour just
+        inside the edge and the colour just outside it. None where no edge is seen by both."""
+        grids = []
+        for eye, own in ((0, own_l), (1, own_r)):
+            colour = np.stack([self._to_grid(eye, rgb[eye][..., c]) for c in range(3)], axis=-1)
+            grids.append((self._to_grid(eye, own.astype(np.float64)) > 0.5, colour))
+        seen = (seen_l, seen_r)
+        found: list[float] = []
+        for row in range(grids[0][0].shape[0]):
+            ends = []
+            for eye in (0, 1):
+                mask, colour = grids[eye][0][row], grids[eye][1][row]
+                inside = np.nonzero(mask)[0]
+                if len(inside) < 2:
+                    break
+                lo, hi = int(inside[0]), int(inside[-1])
+                low = high = math.nan
+                if lo > 0 and seen[eye][lo - 1] and mask[lo + 1]:
+                    low = lo + 0.5 - _cover(colour[lo], colour[lo + 1], colour[lo - 1])
+                if hi + 1 < len(mask) and seen[eye][hi + 1] and mask[hi - 1]:
+                    high = hi - 0.5 + _cover(colour[hi], colour[hi - 1], colour[hi + 1])
+                ends.append((low, high))
+            if len(ends) < 2:
+                continue
+            for side in (0, 1):
+                d = ends[1][side] - ends[0][side]
+                if np.isfinite(d):
+                    found.append(float(d))
+        return float(np.median(found)) if found else None
 
     def settings(self) -> dict[str, Any]:
         return {"channels": self.channels.tolist(), "colour": self.colour,
                 "min_area": self.min_area, "min_thickness": self.min_thickness,
                 "max_area": self.max_area, "dark": self.dark, "match": self.match,
+                "form": self.form, "tuning": self.tuning,
                 "share": self.ground.share, "soft": self.ground.soft}
 
 

@@ -27,9 +27,9 @@ MOMENT = 0.1  # seconds a moment: the brain takes ten moments a second
 
 # name, low, high, rest, rate a second (in the joint's own unit: degrees, or 0..1)
 JOINTS: tuple[tuple[str, float, float, float, float], ...] = (
-    ("head_yaw", -170.0, 170.0, 0.0, 360.0),
-    ("head_pitch", -50.0, 60.0, 0.0, 240.0),
-    ("head_roll", -45.0, 45.0, 0.0, 240.0),
+    ("head_yaw", -75.0, 75.0, 0.0, 360.0),
+    ("head_pitch", -25.0, 35.0, 0.0, 240.0),
+    ("head_roll", -20.0, 20.0, 0.0, 240.0),
     ("neck_pitch", -20.0, 35.0, 0.0, 120.0),
     ("beak_open", 0.0, 35.0, 0.0, 200.0),
     ("wing_l", 0.0, 1.0, 0.0, 3.0),
