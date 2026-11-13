@@ -238,8 +238,8 @@ class Control:
         for _ in range(most + 1):
             logits = self.net(torch.tensor([seq]))[0, -1]
             probs = torch.softmax(logits, dim=-1)
-            token = int(rng.choice(len(probs), p=probs.detach().numpy().astype(np.float64)
-                                   / float(probs.detach().sum())))
+            odds = probs.detach().numpy().astype(np.float64)
+            token = int(rng.choice(len(odds), p=odds / odds.sum()))
             logp.append(torch.log(probs[token] + 1e-12))
             self.work["macs"] += 3 * self.net.macs(len(seq))
             if token == tok("END"):

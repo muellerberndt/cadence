@@ -208,6 +208,7 @@ def life(seed: int, *, record: Any = None, brain: Any = None, **given: Any) -> d
     brain_settings = {k: v for k, v in given.items() if k not in DEFAULTS}
     events = script(seed, **settings)
     rewarded: list[bool] = []
+    meant: dict[str, int] = {}
     lex = world.lexicon(seed)
     english = lex.english()
     brain = make_brain(seed, **brain_settings) if brain is None else brain
@@ -224,6 +225,11 @@ def life(seed: int, *, record: Any = None, brain: Any = None, **given: Any) -> d
                "practice": "practice", "ask": "test"}[kind]
         if now is not None and now != phase:
             seconds[phase] = seconds.get(phase, 0.0) + time.time() - began
+            if now == "practice":  # W11: what each named word names as practice begins
+                meant = named_meanings(brain)
+            elif now == "test" and phase == "practice":
+                kept = named_meanings(brain)
+                readings["W11_kept"] = [kept.get(w) == c for w, c in meant.items()]
             phase, began = now, time.time()
         if kind == "room":
             r = event[1]
@@ -310,6 +316,20 @@ def _free_place(rng: np.random.Generator, r: world.Room) -> np.ndarray:
         if all(np.linalg.norm(p - t.place) >= 0.45 for t in r.things):
             return p
     raise RuntimeError("no free place in the room")
+
+
+def named_meanings(brain: Any) -> dict[str, int]:
+    """Each word the brain holds that names a concept of its senses, with the concept it names
+    most (W11: a word taught by naming is kept while practice teaches the questions)."""
+    groups = brain.lexicon.groups
+    among = np.concatenate([np.arange(groups[g].start, groups[g].stop)
+                            for g in brain.senses.groups])
+    out = {}
+    for word in brain.lexicon.forms:
+        heard = brain.lexicon.hear(word)[among]
+        if heard.max() > brain.floor:
+            out[word] = int(among[int(np.argmax(heard))])
+    return out
 
 
 def ablate(brain: Any) -> Any:
