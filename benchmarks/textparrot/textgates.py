@@ -175,6 +175,10 @@ def summary(rec: dict[str, Any]) -> dict[str, float]:
         out["new_obj"] = _mean(list(r["G4"]["new_objects"].values()))
         out["word_alone"] = r["G4"]["word_alone"]["moment_0"]["right"]
         out["same_thing"] = r["G4"]["word_alone"]["moment_0"]["same_thing"]
+    if "pairs" in out:
+        parts = [out["pairs"], out["held_rel"], out["held_depth"]] + (
+            [out["new_obj"]] if "new_obj" in out else [])
+        out["G3"] = _mean(parts)
     if "G5" in r:
         learned = r["G5"]["learned"]
         out["G5_trials"] = float(learned["trial"]) if learned else float("nan")
@@ -201,9 +205,8 @@ def table(out_dir: Path, names: list[str] | None = None) -> str:
             continue
         rows.setdefault(name, []).append(summary(rec))
     cols = ["exam", "colour", "relation", "where", "which_shape", "describe", "describe_rel",
-            "pairs", "held_rel", "held_depth", "probes", "new_obj", "word_alone", "same_thing",
-            "G5_trials",
-            "blocks", "max_eff", "parameters", "macs"]
+            "G3", "pairs", "held_rel", "held_depth", "probes", "new_obj", "word_alone",
+            "same_thing", "G5_trials", "blocks", "max_eff", "parameters", "macs"]
     lines = ["| arm | n | " + " | ".join(cols) + " |", "|" + "---|" * (len(cols) + 2)]
     for name, rs in rows.items():
         cells = []
@@ -216,9 +219,120 @@ def table(out_dir: Path, names: list[str] | None = None) -> str:
     return "\n".join(lines)
 
 
+def _records(out_dir: Path, name: str) -> list[dict[str, Any]]:
+    out = []
+    for p in sorted(out_dir.glob(f"{name}_*.json")):
+        if p.stem.rsplit("_", 1)[0] != name:
+            continue
+        try:
+            rec = json.loads(p.read_text())
+        except json.JSONDecodeError:
+            continue
+        if "readings" in rec:
+            out.append(rec)
+    return out
+
+
+def detail(out_dir: Path, arm: str, newborn: str | None = None) -> str:
+    """G4 and G5 in detail for ``arm`` (beside its newborn's records where named): probes,
+    a word alone, silencing, a changed scene, neighbours, the regions, the pistachios, and the
+    owner's exam of the first founder."""
+    recs = _records(out_dir, arm)
+    born = _records(out_dir, newborn) if newborn else []
+    lines = [f"{arm}: {len(recs)} founders" + (f", newborn {len(born)}" if born else "")]
+
+    def m(rs: list[dict[str, Any]], *path: str) -> float:
+        vals = []
+        for r in rs:
+            v: Any = r["readings"]
+            try:
+                for k in path:
+                    v = v[k]
+            except (KeyError, TypeError):
+                continue
+            vals.append(float(v))
+        return _mean(vals)
+
+    lines.append("| probe | " + " | ".join(ti_props) + " |")
+    lines.append("|---|" + "---|" * len(ti_props))
+    for label, rs in (("brain", recs), ("newborn", born)):
+        if rs:
+            lines.append(f"| {label} | " + " | ".join(f"{m(rs, 'G4', 'probes', p):.2f}"
+                                                     for p in ti_props) + " |")
+            lines.append(f"| {label}, new kinds | " + " | ".join(
+                f"{m(rs, 'G4', 'new_objects', p):.2f}" for p in ti_props) + " |")
+    lines.append("")
+    lines.append("| a word alone | round | food | red | mean | same thing |")
+    lines.append("|---|---|---|---|---|---|")
+    for label, rs in (("brain", recs), ("newborn", born)):
+        for mo in ("moment_0", "moment_1"):
+            if rs:
+                b = [m(rs, "G4", "word_alone", mo, "balanced", p) for p in ("round", "food", "red")]
+                lines.append(f"| {label}, {mo} | " + " | ".join(f"{x:.2f}" for x in b)
+                             + f" | {m(rs, 'G4', 'word_alone', mo, 'right'):.2f}"
+                             + f" | {m(rs, 'G4', 'word_alone', mo, 'same_thing'):.2f} |")
+    lines.append("")
+    lines.append("| silenced | form | before | after | spared before / after |")
+    lines.append("|---|---|---|---|---|")
+    for prop in ("round", "red", "food"):
+        if not recs or "silencing" not in recs[0]["readings"].get("G4", {}):
+            break
+        row = recs[0]["readings"]["G4"]["silencing"][prop]
+        spared = [k[:-7] for k in row if k.endswith("_before") and k != "before"]
+        sp = ", ".join(f"{s} {m(recs, 'G4', 'silencing', prop, s + '_before'):.2f} / "
+                       f"{m(recs, 'G4', 'silencing', prop, s + '_after'):.2f}" for s in spared)
+        lines.append(f"| {prop} | {row['form']} | {m(recs, 'G4', 'silencing', prop, 'before'):.2f}"
+                     f" | {m(recs, 'G4', 'silencing', prop, 'after'):.2f} | {sp} |")
+    lines.append("")
+    lines.append(f"changed scene: where {m(recs, 'G4', 'changed_scene', 'where'):.2f}, colour "
+                 f"{m(recs, 'G4', 'changed_scene', 'colour'):.2f}")
+    near = [(r["readings"]["G4"]["neighbours"]["lemon"][0],
+             r["readings"]["G4"]["neighbours"]["pen"][0]) for r in recs if "G4" in r["readings"]]
+    import textworld as tw
+
+    good = sum(tw.KINDS[a][0] == "round" or tw.KINDS[a][1] == "fruit" for a, _ in near)
+    good_pen = sum(tw.KINDS[b][0] == "long" for _, b in near)
+    lines.append(f"neighbours: lemon nearest a round or fruit kind on {good} of {len(near)}, "
+                 f"pen nearest a long kind on {good_pen} of {len(near)} ({near[:3]})")
+    lines.append("")
+    if recs and "regions" in recs[0]["readings"].get("G4", {}):
+        regs = list(recs[0]["readings"]["G4"]["regions"])
+        lines.append("| region | colour decoded (name / colour / shape question) | shape decoded "
+                     "(name / colour / shape) | kind decoded (name) | switch colour | "
+                     "switch shape |")
+        lines.append("|---|---|---|---|---|---|")
+        for reg in regs:
+            def q(qn: str, key: str, reg: str = reg) -> float:
+                return m(recs, "G4", "regions", reg, qn, key)
+            lines.append(
+                f"| {reg} | {q('name', 'colour_decoded'):.2f} / {q('colour', 'colour_decoded'):.2f}"
+                f" / {q('shape', 'colour_decoded'):.2f} | {q('name', 'shape_decoded'):.2f} / "
+                f"{q('colour', 'shape_decoded'):.2f} / {q('shape', 'shape_decoded'):.2f} | "
+                f"{q('name', 'kind_decoded'):.2f} | "
+                f"{m(recs, 'G4', 'regions', reg, 'switch', 'colour'):+.3f} | "
+                f"{m(recs, 'G4', 'regions', reg, 'switch', 'shape'):+.3f} |")
+    lines.append("")
+    g5 = [r["readings"].get("G5") for r in recs if r["readings"].get("G5")]
+    if g5:
+        learned = [g["learned"]["trial"] for g in g5 if g["learned"]]
+        lines.append(f"G5: learned on {len(learned)} of {len(g5)} founders (trials {learned}); "
+                     f"inherit round {_mean([g['inherit']['which_shape'] for g in g5]):.2f}, "
+                     f"food {_mean([g['inherit']['which_food'] for g in g5]):.2f}; "
+                     f"old names after {_mean([g['old_names_after'] for g in g5]):.2f}")
+    if recs:
+        lines.append("")
+        lines.append(f"owner's room, founder {recs[0]['seed']}:")
+        for x in recs[0]["readings"]["owner"]:
+            lines.append(f"- {x['question']} -> {x['said']} (teacher: {x['want']})")
+    return "\n".join(lines)
+
+
+ti_props = ("round", "red", "food", "left", "near")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("what", choices=["life", "control", "read"])
+    ap.add_argument("what", choices=["life", "control", "read", "detail"])
     ap.add_argument("args", nargs="*")
     ap.add_argument("--no-pistachio", action="store_true")
     ap.add_argument("--brain-record")
@@ -230,6 +344,8 @@ def main() -> None:
     elif a.what == "control":
         seed, kind, out = int(a.args[0]), a.args[1], Path(a.args[2])
         control(seed, kind, out, Path(a.brain_record) if a.brain_record else None, a.arm)
+    elif a.what == "detail":
+        print(detail(Path(a.args[0]), a.args[1], a.args[2] if len(a.args) > 2 else None))
     else:
         print(table(Path(a.args[0]), a.args[1:] or None))
 

@@ -174,11 +174,27 @@ class BrainPolicy:
             options["connectome"] = develop(anatomy(g, layout, memory), seed=int(seed))
         else:
             options["modules"] = modules
-        self.brain = Brain.compose(
-            layout.inputs, layout.voice + 2, slots=(layout.voice, 2),
-            seed=int(seed), backend=backend, recall=False, teaching=str(g["teaching"]),
-            history_decays=tuple(g["history_decays"]),
-            working_memory_amplitude=float(g["working_memory_amplitude"]), **options)
+        build = dict(slots=(layout.voice, 2), seed=int(seed), backend=backend, recall=False,
+                     history_decays=tuple(g["history_decays"]),
+                     working_memory_amplitude=float(g["working_memory_amplitude"]), **options)
+        self.brain = Brain.compose(layout.inputs, layout.voice + 2, teaching=str(g["teaching"]),
+                                   **build)
+        scale = float(g.get("eta_scale", 1.0))
+        if scale != 1.0:  # the teaching point's rates times ``eta_scale``
+            from dataclasses import replace
+
+            cfg = self.brain.learner.config
+            learning = replace(cfg, eta=cfg.eta * scale, eta_bias=cfg.eta_bias * scale)
+            for name in [k for k in build if k.startswith("learning_")]:
+                build.pop(name)
+            if "connectome" in build:
+                from cadence.genome import develop
+
+                memory = {k: v for k, v in options.items() if k.startswith("message")}
+                memory["history_decays"] = tuple(g["history_decays"])
+                build["connectome"] = develop(anatomy(g, layout, memory), seed=int(seed))
+            self.brain = Brain.compose(layout.inputs, layout.voice + 2, learning=learning,
+                                       **build)
         self.n = 0
         self.lessons = 0
         self.taught = 0

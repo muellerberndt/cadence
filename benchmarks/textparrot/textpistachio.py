@@ -10,8 +10,9 @@ its own motor activity (``temperature``):
 
 No label and no teacher's answer: a pistachio makes the exchange's acts lasting (the
 three-factor rule: each act's trace, the pistachio the third factor): the brain is taught its
-own acts of the rewarded exchange, moment by moment, as it lived them. An exchange without a
-pistachio teaches nothing. Every two trials a frozen copy answers "what is it ?" about 16 fresh
+own acts of the rewarded turn, moment by moment, as it lived them, every one of them (the
+lessons only where the answer differs are set aside for it). An exchange without a pistachio
+teaches nothing. Every two trials a frozen copy answers "what is it ?" about 16 fresh
 lemons (other places and glimpse noise), greedily; the reading is the trials (and pistachios)
 until it says "zabu" at .9. Then, without any further lesson: "what objects are round ?" and
 "what can you eat ?" in scenes with a lemon among trained things (does the new thing inherit
@@ -44,7 +45,7 @@ class Sampler:
 
     def __init__(self, policy: Any, rng: np.random.Generator, temperature: float):
         self.policy, self.rng, self.temperature = policy, rng, temperature
-        self.lived: list[tuple[np.ndarray, np.ndarray]] = []
+        self.lived: list[tuple[np.ndarray, np.ndarray, list[str]]] = []
         self.phases: list[str] = []  # set by the chamber each moment
         layout = policy.layout
         motor = np.asarray(list(policy.brain.connectome.populations["motor"]))
@@ -66,7 +67,7 @@ class Sampler:
             # while hearing); it is free in the parrot's turn
             if self.phases and self.phases[k] in ("answer", "closing"):
                 a[k, 0] = int(self.rng.choice(len(p[k]), p=p[k]))
-        self.lived.append((x.copy(), a.copy()))
+        self.lived.append((x.copy(), a.copy(), list(self.phases)))
         return a
 
 
@@ -75,12 +76,25 @@ def lemon_alone(rng: np.random.Generator) -> tw.Scene:
     return tw.Scene([tw.Thing(NEW_KIND, "yellow", place, tw.look(NEW_KIND, "yellow", place, rng))])
 
 
-def reward_lesson(policy: Any, lived: list[tuple[np.ndarray, np.ndarray]]) -> None:
-    """The pistachio's lesson: the exchange relived, each moment taught the act the parrot took."""
-    policy.begin(len(lived[0][0]))
-    for x, a in lived:
-        policy.brain.lesson(x, a)
-        policy.brain.act(x, greedy=True)
+def reward_lesson(policy: Any, lived: list[tuple[np.ndarray, np.ndarray, list[str]]]) -> None:
+    """The pistachio's lesson: the exchange relived, each moment of the parrot's turn taught the
+    act it took there. The pistachio gates the whole turn's plasticity (the third factor), so the
+    turn's acts are taught whether or not the brain would take them again unprompted: lessons
+    only where the answer differs are set aside for the pistachio's lesson."""
+    brain = policy.brain
+    surprise = bool(brain.learner.config.surprise)
+    if surprise:
+        brain.retune(learning_surprise=False)
+    try:
+        policy.begin(len(lived[0][0]))
+        for x, a, phases in lived:
+            w = np.array([p in ("answer", "closing") for p in phases], float)
+            if w.any():
+                brain.lesson(x, a, weights=None if w.all() else w)
+            brain.act(x, greedy=True)
+    finally:
+        if surprise:
+            brain.retune(learning_surprise=True)
 
 
 def read_name(policy: Any, rng: np.random.Generator, n: int = 16) -> float:
