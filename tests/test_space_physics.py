@@ -166,4 +166,4 @@ def test_physics_settings_are_checked():
     assert Map(PLANE).physics is None
     assert "motion" not in Map(PLANE).arrays()
     rec = np.zeros(FIELDS)
-    assert rec[CORE + 6] == 0
+    assert rec[CORE + 7] == 0

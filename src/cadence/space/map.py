@@ -720,7 +720,7 @@ class Map:
                 continue
             profile = field_units.sum(axis=0) / whole
             rec = self.motion[cells[int(np.argmax(field[cells]))], units[0]].copy()
-            cm, tm = rec[CORE + 6], rec[TAIL + 3]
+            cm, tm = rec[CORE + 7], rec[TAIL + 3]
             k = int(rec[HIDDEN])
             if cm + tm <= 0:  # not moving out of view
                 if k > 0 or not (self.clock[cells] < 0.5).any():
@@ -730,17 +730,18 @@ class Map:
                     rec[HIDDEN] = 1.0
                     pending.append((cells, cells, units, rec))
                     continue
-                px, pv = errors(min(int(rec[COUNT]), ph.line), ph.noise)
-                rec[CORE:CORE + 7] = [*rec[EST], *rec[VEL], px, pv, share * whole]
+                px, pxv, pv = errors(min(int(rec[COUNT]), ph.line), ph.noise)
+                rec[CORE:CORE + 8] = [*rec[EST], *rec[VEL], px, pxv, pv, share * whole]
                 trail = (1.0 - share) * field
                 cm = share * whole
             else:
-                trail = field - self._bump(rec[CORE:CORE + 2], rec[CORE + 4] + k * k * rec[
-                    CORE + 5], cm) - self._bump(rec[TAIL:TAIL + 2], rec[TAIL + 2], tm)
+                spread = rec[CORE + 4] + 2 * k * rec[CORE + 5] + k * k * rec[CORE + 6]
+                trail = field - self._bump(rec[CORE:CORE + 2], spread, cm) - self._bump(
+                    rec[TAIL:TAIL + 2], rec[TAIL + 2], tm)
                 trail = np.maximum(trail, 0.0)
             k += 1
             cx, cv = rec[CORE:CORE + 2].copy(), rec[CORE + 2:CORE + 4].copy()
-            px, pv = float(rec[CORE + 4]), float(rec[CORE + 5])
+            px, pxv, pv = float(rec[CORE + 4]), float(rec[CORE + 5]), float(rec[CORE + 6])
             tx, tvar = rec[TAIL:TAIL + 2].copy(), float(rec[TAIL + 2])
             speed = float(np.linalg.norm(cv))
             u = cv / speed if speed > 0 else np.zeros(2)
@@ -750,7 +751,7 @@ class Map:
                 tx = np.clip(tx + ph.ahead * speed * u, lo, hi)
                 tvar = (np.sqrt(tvar) + ph.aside * speed) ** 2
             if cm > 0:  # the core: a share comes to rest, a share leaves its line, it moves on
-                was = px + (k - 1) ** 2 * pv
+                was = px + 2 * (k - 1) * pxv + (k - 1) ** 2 * pv
                 trail = trail + self._bump(cx, was, ph.rest * cm)
                 leave = ph.leave * cm
                 if leave > 0:
@@ -767,10 +768,10 @@ class Map:
                 cx = ahead
             # sight: the trail's cells it sees, and the share of each bump it sees
             trail = trail * ~sight
-            var = px + k * k * pv
+            var = px + 2 * k * pxv + k * k * pv
             cm, cx, var2, cut = self._trim(cm, cx, var, lit, sight)
-            if cut and var2 < var:
-                px = max(var2 - k * k * pv, 0.0)
+            if cut and var2 < var:  # what sight left is narrower: the line's place is surer
+                px = max(var2 - 2 * k * pxv - k * k * pv, 0.0)
             tm, tx, tvar, _ = self._trim(tm, tx, tvar, lit, sight)
             left = float(trail.sum()) + cm + tm
             held[cells] = True
@@ -782,7 +783,8 @@ class Map:
                 continue
             scale = whole / left  # the parts keep their sum
             trail, cm, tm = trail * scale, cm * scale, tm * scale
-            new = trail + self._bump(cx, px + k * k * pv, cm) + self._bump(tx, tvar, tm)
+            new = trail + self._bump(cx, px + 2 * k * pxv + k * k * pv, cm) + self._bump(
+                tx, tvar, tm)
             now = np.flatnonzero(new > self._floor * whole)
             new = np.where(np.isin(np.arange(self.count), now), new, 0.0)
             write[:, units] += new[:, None] * profile[None] - field_units
@@ -792,7 +794,7 @@ class Map:
             clock[now] = float(k - 1)  # the clock's bias counts this moment
             held[now] = True
             rec[HIDDEN] = float(k)
-            rec[CORE:CORE + 7] = [*cx, *cv, px, pv, cm]
+            rec[CORE:CORE + 8] = [*cx, *cv, px, pxv, pv, cm]
             rec[TAIL:TAIL + 4] = [*tx, tvar, tm]
             pending.append((cells, now, units, rec))
         return held
@@ -934,7 +936,7 @@ class Map:
 
         unit = int(np.flatnonzero(self.codes[int(kind)])[0])
         records = self.motion[cells, unit]
-        moving = records[:, CORE + 6] + records[:, TAIL + 3] > 0
+        moving = records[:, CORE + 7] + records[:, TAIL + 3] > 0
         if not moving.any():
             return None
         return records[int(np.flatnonzero(moving)[0]), CORE + 2:CORE + 4].copy()

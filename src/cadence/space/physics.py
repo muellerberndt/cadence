@@ -47,8 +47,8 @@ EST, VEL, PREV = slice(0, 2), slice(2, 4), slice(4, 6)
 COUNT, LOUD, SURPRISE, FIT, IDENT, HIDDEN = 6, 7, 8, 9, 10, 11
 SLOTS = 4
 SLOT = 12  # each slot: x0, y0, vx0, vy0, n0, k
-CORE = SLOT + 6 * SLOTS  # x, y, vx, vy, px, pv, mass
-TAIL = CORE + 7  # x, y, variance, mass
+CORE = SLOT + 6 * SLOTS  # x, y, vx, vy, px, pxv, pv, mass
+TAIL = CORE + 8  # x, y, variance, mass
 FIELDS = TAIL + 4
 
 
@@ -57,14 +57,23 @@ def gains(n: int) -> tuple[float, float]:
     return 2.0 * (2 * n - 1) / (n * (n + 1)), 6.0 / (n * (n + 1))
 
 
-def errors(n: int, noise: float) -> tuple[float, float]:
+def errors(n: int, noise: float) -> tuple[float, float, float]:
     """The line's own error, an axis, after ``n`` reports of error ``noise``: of its place
-    (m^2) and of its velocity (m^2 a moment^2)."""
+    (m^2), of its place with its velocity (m^2 a moment) and of its velocity (m^2 a moment^2).
+    ``k`` moments on the line's place is off by ``place + 2 k with + k^2 velocity``."""
     s2 = noise * noise
     if n < 2:
-        return s2, 0.0
-    return s2 * 2.0 * (2 * n - 1) / (n * (n + 1)), (s2 * 12.0 / (n * (n * n - 1)) if n >= 3
-                                                     else s2)
+        return s2, 0.0, 0.0
+    if n == 2:
+        return s2, s2, 2.0 * s2
+    return (s2 * 2.0 * (2 * n - 1) / (n * (n + 1)), s2 * 6.0 / (n * (n + 1)),
+            s2 * 12.0 / (n * (n * n - 1)))
+
+
+def ahead_error(n: int, noise: float, k: Any) -> Any:
+    """The line's error ``k`` moments on, an axis (m^2)."""
+    px, pxv, pv = errors(n, noise)
+    return px + 2.0 * k * pxv + k * k * pv
 
 
 class Physics:
@@ -129,7 +138,7 @@ class Physics:
         reports) against a thing at rest, with velocities as large as the things watched."""
         if self.speed is None or n < 3:
             return 0.0
-        pv = errors(min(int(n), self.line), self.noise)[1]
+        pv = errors(min(int(n), self.line), self.noise)[2]
         v0 = self.speed ** 2 / 2.0  # an axis
         lbf = 0.5 * float(velocity @ velocity) / pv * (v0 / (v0 + pv)) - np.log1p(v0 / pv)
         return float(1.0 / (1.0 + np.exp(-np.clip(lbf, -50.0, 50.0))))
@@ -162,8 +171,7 @@ class Physics:
         count = int(rec[COUNT])
         n = min(count, self.line)
         s2 = self.noise ** 2
-        px, pv = errors(n, self.noise)
-        z2 = float(((r - est) ** 2).sum()) / (2.0 * (s2 + px + pv))
+        z2 = float(((r - est) ** 2).sum()) / (2.0 * (s2 + ahead_error(n, self.noise, 1)))
         rec[LOUD] = rec[LOUD] + 1.0 if z2 > self.surprise ** 2 else 0.0
         rec[SURPRISE] += (z2 - rec[SURPRISE]) / 4.0
         if z2 <= 1.0:
@@ -203,7 +211,7 @@ class Physics:
         r = np.asarray(place, dtype=np.float64).reshape(2)
         lo, hi = inside
         s2 = self.noise ** 2
-        pv = s2 * 12.0 / (n * (n * n - 1))
+        pv = s2 * 12.0 / (n * (n * n - 1))  # the line's velocity error, an axis
         speed = np.sqrt((v0 ** 2).sum(1))
         end = x0 + k[:, None] * v0
         ok = (n >= self.reports) & (speed >= 3.0 * np.sqrt(pv)) & (k >= 1) & (k <= self.horizon)
@@ -216,8 +224,9 @@ class Physics:
         e = r - x0 - k[:, None] * v0
         short = -(e * u).sum(1)
         side = e[:, 0] * -u[:, 1] + e[:, 1] * u[:, 0]
-        px = s2 * 2.0 * (2 * n - 1) / (n * (n + 1))
-        self._expect(k, short, side, speed, s2 + px + k * k * pv)
+        line = s2 + s2 * (2.0 * (2 * n - 1) / (n * (n + 1)) + 12.0 * k / (n * (n + 1))
+                          + 12.0 * k * k / (n * (n * n - 1)))  # the report's and the line's error
+        self._expect(k, short, side, speed, line)
         self.fit()
         return int(ok.sum())
 
@@ -277,4 +286,4 @@ class Physics:
 
 
 __all__ = ["CORE", "COUNT", "EST", "FIELDS", "HIDDEN", "IDENT", "SLOT", "SLOTS", "TAIL", "VEL",
-           "Physics", "errors", "gains"]
+           "Physics", "ahead_error", "errors", "gains"]
