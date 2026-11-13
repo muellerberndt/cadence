@@ -395,6 +395,21 @@ at its parameter count (online six passes, offline to the stopping rule or 12 ep
 GPU). G1 and G2 as in round 4, at pass 6 against each founder's offline CTC transformer at its
 epoch 6.
 
+The run stopped at pass 2 of 6 (batch 152 of 396) when its box was stopped; every life is saved
+at batch 144 or 152 and continues from there. The gates are not read. Ungated, at passes 1 and 2
+(twelve founders; the offline transformer's nine finished founders paired):
+
+| Term, brain minus the offline transformer at the same epoch | Pass 1 | Pass 2 |
+| --- | --- | --- |
+| The letter from the sound (brain .387, .415) | +.013 | +.006 |
+| Emission given the letter (brain .675, .737) | -.140 | -.114 |
+| Deleted per character (brain .461, .396) | +.096 | +.088 |
+| Characters (brain .320, .372) | -.045 | -.040 |
+
+The soft teacher brings the letter from the sound level with the offline transformer from the
+first pass (round 4: -.068 at pass 1). The losing term is emission: the brain prefers the right
+letter as often and says it .11 less often.
+
 ## What this does and does not establish
 
 The chamber measures composed brains on one synthetic world with supplied sound timing and one
