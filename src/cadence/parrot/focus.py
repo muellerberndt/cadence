@@ -98,6 +98,7 @@ class Focus:
         self.candidates: list[Candidate] = []
         self.current: Candidate | None = None
         self.mask = np.ones(n)  # neurons held at rest inside the settle
+        self.drive = np.zeros((1, n))
         self.work = {"settles": 0, "macs": 0}
 
     def reset(self) -> None:
@@ -174,6 +175,7 @@ class Focus:
         order = np.argsort(-drive)[: self.slots]
         given = np.zeros((1, self.slots))
         given[0, : len(order)] = drive[order]
+        self.drive = given * self.mask  # the latest settle's drive, for a reader
         state = self.graph.settle_batch(given * self.mask, steps=self.steps, tolerance=None,
                                         mask=self.mask)
         self.work["settles"] += 1

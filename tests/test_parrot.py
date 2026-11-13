@@ -234,3 +234,21 @@ def test_the_focus_picks_among_many_things_in_view_pointed_and_moving():
     moving[1]["place"] = [moving[1]["place"][0] + 0.06, moving[1]["place"][1]]
     drawn = focus.choose(moving, 13)
     assert drawn is not None and drawn.kind == 1 and drawn.why == "moved"
+
+
+def test_the_host_viz_block():
+    import json
+
+    from cadence.parrot.host import Host, scene_of
+
+    host = Host({"whole": "page", "learn": True})
+    host.handle({"command": "scene", "scene": scene_of([
+        Thing("a", "apple", 0.05, 0.33, stand=0.1), Thing("b", "cup", 0.35, 0.1, stand=0.05)])})
+    for _ in range(4):
+        reply = host.step({"viz": True}, {"audio": np.zeros(1600, np.float32)})
+    viz = reply["viz"]
+    json.dumps(viz, allow_nan=False)
+    assert viz["v"] == 1 and viz["settle"]["frames"] == 16
+    assert {"tectum", "ncl"} <= set(viz["settle"]["regions"])
+    assert all(len(v) == 16 for v in viz["settle"]["regions"].values())
+    assert host.step({}, {})["viz"] is None

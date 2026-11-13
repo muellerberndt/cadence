@@ -154,6 +154,88 @@ class Host:
         self.parrot.silence(units)
         return {"silenced": sorted(self.silenced)}
 
+    # -- the brain view's block
+
+    def _viz(self, out: dict[str, Any], looked: int | None, frames: int = 16) -> dict[str, Any]:
+        """The moment's settles as each region's residual at ``frames`` points, the focus with
+        its inhibition of return, the modulators and the map (VIZ_EVENTS.md)."""
+        p = self.parrot
+        regions: dict[str, list[list[float]]] = {}
+        sweeps = 0
+
+        def add(part: dict[str, list[float]]) -> None:
+            for k, v in part.items():
+                regions.setdefault(k, []).append(v)
+
+        if looked is not None:
+            d = p.distance
+            drive = np.zeros((1, d.neurons))
+            drive[0, : d.width_in] = out["sightings"][looked].code
+            rows = _settle_rows(d.graph, drive * d.mask, d.steps, d.mask)
+            sweeps = max(sweeps, len(rows) - 1)
+            r = p.regions
+            cue = {name: np.arange(r[name].start, r[name].stop) - r["disparity"].start
+                   for name in ("disparity", "parallax", "size_one", "elevation_one",
+                                "size_both", "elevation_both")}
+            add(_frames(rows, {"wulst": np.concatenate([cue["disparity"], cue["parallax"]]),
+                               "rotundus": np.concatenate([cue["size_one"], cue["size_both"]]),
+                               "tectum": np.concatenate([cue["elevation_one"],
+                                                         cue["elevation_both"]]),
+                               "arco": d.output}, frames))
+            k = p.kinds
+            look = np.asarray(out["looks"])[looked]
+            drive = np.zeros((1, k.neurons))
+            drive[0, k.feature] = k.drive * look
+            rows = _settle_rows(k.graph, drive * k.mask, k.steps, k.mask)
+            add(_frames(rows, {"rotundus": np.arange(k.neurons)}, frames))
+        f = p.focus
+        if f.drive.any():
+            rows = _settle_rows(f.graph, f.drive, f.steps, f.mask)
+            sweeps = max(sweeps, len(rows) - 1)
+            add(_frames(rows, {"tectum": np.arange(f.slots)}, frames))
+        if self.whole is not None:
+            brain = self.whole.association
+            graph = brain.learner.brain
+            drive = brain.stimulus(self.whole._observation())
+            state = graph.settle_batch(drive, steps=24, tolerance=None, trajectory=True)
+            rows = np.concatenate([np.zeros((1, brain.connectome.n)),
+                                   np.asarray(state.trajectory)[:, 0, :]])
+            sweeps = max(sweeps, len(rows) - 1)
+            pops = brain.connectome.populations
+            atlas = {"association": "ncl", "prefrontal": "trace", "history": "trace",
+                     "recall": "records", "next": "records", "recall_1": "heads",
+                     "next_1": "heads", "motor": "arco"}
+            index: dict[str, list[int]] = {}
+            for name, aid in atlas.items():
+                if name in pops:
+                    index.setdefault(aid, []).extend(int(v) for v in pops[name])
+            add(_frames(rows, {k: np.asarray(v) for k, v in index.items()}, frames))
+        settle = {"frames": frames, "sweeps": int(sweeps), "kind": "residual",
+                  "regions": {k: np.mean(v, axis=0).round(4).tolist() for k, v in regions.items()}}
+        focus = p.focused
+        returned = [[float(c.place[0]), float(c.place[1]),
+                     round(math.exp(-(p.moments - c.focused) / f.return_time), 3)]
+                    for c in f.candidates if 0 < p.moments - c.focused < 4 * f.return_time]
+        surprise: dict[str, Any] = {
+            "units": [], "regions": {"tectum": round(max((c.surprise for c in f.candidates),
+                                                         default=0.0), 3)},
+            "focus": None if focus is None else {
+                "place": [float(v) for v in focus.place], "why": focus.why,
+                "held": int(f.current.held) if f.current is not None else 0,
+                "returned": returned}}
+        dopamine = 0.0 if self.whole is None else float(np.clip(self.whole.dopamine, -1, 1))
+        modulators = {
+            "dopamine": {"level": dopamine, "why": "pistachio" if self.whole is not None and
+                         self.whole.reward > 0 else "prediction",
+                         "paid": [] if self.whole is None else self.whole.paid},
+            "acetylcholine": {"level": 1.0 if focus is not None else 0.0,
+                              "at": None if focus is None else [float(v) for v in focus.place],
+                              "targets": {"tectum": 1}}}
+        things = [{"place": [float(v) for v in t["place"]], "seen": t["state"] == "seen"}
+                  for t in p.map.things() if t["place"] is not None]
+        return {"v": 1, "settle": settle, "surprise": surprise, "modulators": modulators,
+                "map": {"things": things, "pose": {"heading": float(p.body.joint("head_yaw"))}}}
+
     # -- a moment
 
     def _looked_at(self, sightings: list[Any]) -> int | None:
@@ -247,6 +329,7 @@ class Host:
         if meta.get("show_eyes"):
             self.buffers["left"], self.buffers["right"] = images[0].ravel(), images[1].ravel()
             names += ["left", "right"]
+        viz = self._viz(out, looked) if meta.get("viz") else None
         things = [{"place": None if t["place"] is None else [float(v) for v in t["place"]],
                    "kind": t["kind"], "state": t["state"], "since": int(t["since"])}
                   for t in self.parrot.map.things()]
@@ -263,7 +346,23 @@ class Host:
                 "ms": {"render": 1000.0 * (rendered - began),
                        "brain": 1000.0 * (lived - rendered),
                        "host": 1000.0 * (time.perf_counter() - lived)},
-                "newborn": self.newborn}
+                "newborn": self.newborn, "viz": viz}
+
+
+def _frames(rows: np.ndarray, index: dict[str, np.ndarray], frames: int) -> dict[str, list[float]]:
+    """Each region's residual (mean distance of its neurons from the settled state) at ``frames``
+    points spread over a settle's trajectory ``(sweeps + 1, neurons)``."""
+    pick = np.linspace(0, len(rows) - 1, frames).round().astype(int)
+    final = rows[-1]
+    return {k: np.abs(rows[pick][:, i] - final[i]).mean(axis=1).round(4).tolist()
+            for k, i in index.items() if len(i)}
+
+
+def _settle_rows(graph: Any, drive: np.ndarray, steps: int, mask: np.ndarray | None = None
+                 ) -> np.ndarray:
+    state = graph.settle_batch(drive, steps=steps, tolerance=None, mask=mask, trajectory=True)
+    rows = np.asarray(state.trajectory)[:, 0, :]
+    return np.concatenate([np.zeros((1, rows.shape[1])), rows])
 
 
 def scene_of(things: list[Thing]) -> dict[str, Any]:

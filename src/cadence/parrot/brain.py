@@ -426,7 +426,7 @@ class Parrot:
         self.moments += 1
         self.last = {"figures": figures, "sightings": sightings, "taught": taught,
                      "vocalized": vocalized,
-                     "reach": activity, "kind_activity": kind_activity,
+                     "reach": activity, "kind_activity": kind_activity, "looks": looks,
                      "reports": reports}
         return self.last
 
