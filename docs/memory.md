@@ -2801,7 +2801,7 @@ cosine to the clean pattern .99 after 16 takes, the nearest take's .90).
 
 The associative store's place records have the same threshold: `SynapticMemory(fade_keep=depth)`
 keeps the records along a key coordinate whose [fade](#records-that-fade-with-disuse-opt-in) depth has reached
-it, so they stop fading. Repetition sums in its slow matrix already, and `salience` raises its
+it, so they stop fading. Repetition sums in its slow matrix, and `salience` raises its
 slow write rate.
 
 **Beside a brain.** The memory's read of a moment's key is held on input coordinates of its own,
