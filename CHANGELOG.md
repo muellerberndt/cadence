@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased
+
+### Learned physics on the map (#324)
+
+Spatial object tracking gains prediction. The guide is
+[docs/space.md](docs/space.md#learned-physics-on-the-map), which now opens as the page on
+tracking what is where.
+
+- **`Map(physics=True)`**: the map predicts where a moving thing it cannot see has gone, by how
+  it has seen things move. Four numbers are learned by watching (`rest`, `leave`, `ahead`,
+  `aside`: how often a moving thing comes to rest or leaves its line, and how far ahead and aside
+  a thing that left goes), from imagined lessons: every few moments of a thing in view the brain
+  imagines it out of view and compares the imagined line with where it is seen. A thing out of
+  view that moves is held as a core on its line, a trail where it may have come to rest and a
+  tail where it may have left its line; sight takes away what it sees of each. A fresh physics
+  answers as the map, and a thing seen at rest stays the map's to hold.
+- **Readings.** On twelve fresh founders, after 400 scenes watched, a person's hand out of view
+  reads 9.4 cm against the map's 22.9 (10.3 after 25), stops 10.6 against 21.1, straight movement
+  2.9 against the Kalman filter's 1.65; the area at .90 holds .87 (its gate is .90: hands that
+  turn out of view fall outside it). Two hands moving out of view: 9.1 ms a moment under Pyodide.
+- **`Map.forecast(moments)`**: the map that many moments on as its physics predicts, a copy;
+  the map is left as it is and nothing is learned from it. `things()` reads a thing out of view
+  as `"moving"`, with its `velocity`, while half of it or more moves.
+- **Several things and other senses.** Each thing has an identity of its own from its first
+  report; a report takes the carried thing it claims and leaves another of its kind. The motion
+  line is the camera's: a heard or felt place moves a thing on the map and takes no part in its
+  line. `empty="keep"` holds for a thing the physics carries.
+- **`cadence.space.physics.Physics`**: the learned part, shareable by several maps, kept in a
+  map's file with whether it is still learning.
+- No default changes: with physics unset the map is as on 0.99.0, to the bit.
+
 ## 0.99.0 - 2026-11-13
 
 A map of what is where, held in the brain's own carried activity (`cadence.space.map.Map`,
