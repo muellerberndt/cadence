@@ -71,3 +71,14 @@ def test_the_controls_read_the_same_script() -> None:
     control = controls.Control("lstm", width, len(tok), 0, 0.003)
     assert abs(controls.count(control.net) - 6656) < 300
     assert np.isfinite(control.update(pairs))
+
+
+def test_the_world_grows_by_configuration() -> None:
+    words_of = world.vocabulary(5, {"time": ["was", "will"], "number": ["one", "two"]}, salt=10)
+    drawn = [f for group in words_of.values() for f in group.values()]
+    assert len(set(drawn)) == 4 and not set(drawn) & set(world.lexicon(5).every())
+    assert words_of == world.vocabulary(5, {"time": ["was", "will"], "number": ["one", "two"]},
+                                        salt=10)
+    r = world.room(np.random.default_rng(0), list(range(world.TRAINED)), 4, groups={"size": 3})
+    assert all(set(t.values) == {"size"} and 0 <= t.values["size"] < 3 for t in r.things)
+    assert all(set(v) == {"colour", "size"} for _, _, v in world.seen(r, r.heading))
