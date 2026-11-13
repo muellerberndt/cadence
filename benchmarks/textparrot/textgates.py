@@ -39,7 +39,7 @@ ARMS["d4a25s"] = {"modules": [128] * 4, "apical": 0.25, "sleep_scale": 0.5}
 ARMS["d6a5s"] = {"modules": [128] * 6, "apical": 0.5, "sleep_scale": 0.5}
 ARMS["d6a5ears"] = {"modules": [128] * 6, "apical": 0.5, "ear_entry": "association",
                     "sleep_scale": 0.5}
-ARMS["d2a25sur"] = {"modules": [160, 128], "apical": 0.25, "learning_surprise": True}
+ARMS["d2a25all"] = {"modules": [160, 128], "apical": 0.25, "learning_surprise": False}
 
 EXAM = ("colour", "relation", "where", "which_shape", "which_colour", "which_size",
         "which_material", "which_food", "can_eat", "know_shape", "know_food")
@@ -116,7 +116,8 @@ def plan_of(record: dict[str, Any]) -> list[tuple[str, tuple[str, ...], int]]:
     return out
 
 
-def control(seed: int, kind: str, out_dir: Path, brain_record: Path | None) -> dict[str, Any]:
+def control(seed: int, kind: str, out_dir: Path, brain_record: Path | None,
+            arm: str = "d4a25") -> dict[str, Any]:
     import textcontrols as tcl
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -124,14 +125,14 @@ def control(seed: int, kind: str, out_dir: Path, brain_record: Path | None) -> d
     if brain_record is not None and brain_record.exists():
         rec = json.loads(brain_record.read_text())
         plan, parameters = plan_of(rec), int(rec["parameters"])
-    else:
+    else:  # the arm's parameter count, from its newborn brain; half the caps
         plan = [(s, f, CAPS[s] // 2) for s, f in tp.STAGES]
-        parameters = 160000
+        parameters = tp.BrainPolicy(layout, ARMS[arm], seed).parameters()
     exchanges = sum(b for _, _, b in plan) * 64
     t = time.time()
     if kind.startswith("newborn"):  # the arm's brain untaught: the probes' and codes' baseline
-        arm = kind.split(":", 1)[1] if ":" in kind else "d4a25"
-        policy: Any = tp.BrainPolicy(layout, ARMS[arm], seed)
+        policy: Any = tp.BrainPolicy(layout, ARMS[kind.split(":", 1)[1] if ":" in kind else arm],
+                                     seed)
     elif kind in ("lstm-online", "transformer-online"):
         policy = tcl.online(kind.split("-")[0], layout, parameters, seed, plan)
     elif kind in ("lstm-offline", "transformer-offline"):
@@ -221,13 +222,14 @@ def main() -> None:
     ap.add_argument("args", nargs="*")
     ap.add_argument("--no-pistachio", action="store_true")
     ap.add_argument("--brain-record")
+    ap.add_argument("--arm", default="d4a25")
     a = ap.parse_args()
     if a.what == "life":
         seed, arm, out = int(a.args[0]), a.args[1], Path(a.args[2])
         life(seed, arm, out, pistachio=not a.no_pistachio)
     elif a.what == "control":
         seed, kind, out = int(a.args[0]), a.args[1], Path(a.args[2])
-        control(seed, kind, out, Path(a.brain_record) if a.brain_record else None)
+        control(seed, kind, out, Path(a.brain_record) if a.brain_record else None, a.arm)
     else:
         print(table(Path(a.args[0]), a.args[1:] or None))
 

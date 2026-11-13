@@ -45,7 +45,9 @@ HAND_SET: dict[str, Any] = {
     "history_decays": (0.0, 0.6),
     "working_memory_amplitude": 0.3,
     "teaching": "deep",
-    "learning_surprise": False,  # every row taught (surprise-only lessons leave small margins)
+    # lessons only where the answer differs (the library's default): taught every row, the
+    # brain answers the majority (silence, "no") everywhere and learns no conjunction
+    "learning_surprise": True,
     "learning_scale_cap": 8.0,
     "sleep_scale": 1.0,  # between stages every efficacy times this (1.0: no sleep)
     # where the words read reach the brain: "module_0" (with the eyes, basal, as compose wires
