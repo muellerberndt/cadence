@@ -122,6 +122,7 @@ Then, in this order:
 | Wide inputs: images, codes | image `inputs`, `code=units`, `learned_code=units` | [Wide inputs](senses.md) |
 | A speech recogniser from recordings and transcripts, adapted to a speaker, on live audio | `cadence.speech` (opt-in) | [Speech](speech.md) |
 | A map of where things are while they are out of view, by kind and by place | `cadence.space` (opt-in) | [Space](space.md) |
+| A parrot that sees with two eyes, holds things on its map and learns how far they are | `cadence.parrot` (opt-in) | [The parrot's brain](parrot-brain.md) |
 | To read or change a living brain | `describe`, `retune`, `last_settlement` | [Tune and read a living brain](tune.md) |
 | A deep or wide brain | `modules=(64, 32, 32)`, `apical=0.25`, `teaching="deep"` | [Larger brains](tune.md#larger-brains) |
 | A GPU, another device or precision | `backend`, `device`, `precision` | [Backends](backends.md) |

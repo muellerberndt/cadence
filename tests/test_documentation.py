@@ -76,6 +76,7 @@ PAGES = [
     "docs/speech.md",
     "docs/space.md",
     "docs/words.md",
+    "docs/parrot-brain.md",
     "docs/tune.md",
     "docs/grow.md",
     "docs/modules.md",

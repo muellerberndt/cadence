@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+### The parrot's first brain (#332, the focus of #333)
+
+`cadence.parrot` is imported by name, and `import cadence` loads none of it. The guide is
+[docs/parrot-brain.md](docs/parrot-brain.md); the chamber is `benchmarks/parrot` (its declared
+protocol: [benchmarks/parrot/PROTOCOL.md](benchmarks/parrot/PROTOCOL.md)).
+
+- **The world and the body.** `Scene` and `Thing` (the page's scene format), `Body`: eleven
+  joints with a servo of ten moments a second and the head's kinematics (the neck turns 75
+  degrees either way).
+- **The eyes.** `render(scene, body.eyes())`: both eyes' images, 175 by 100 pixels at one degree
+  a pixel, by ray casting over stand-ins of the things' kinds (`kinds.json`); the same file
+  renders the eyes in the chamber and in the page's host.
+- **Early vision** (`cadence.parrot.vision`): the room's colours learned as ground, figures as
+  connected pieces, disparity units over the region both eyes see.
+- **Kinds** (`cadence.parrot.kinds`): categories learned by settling on a figure's look.
+- **The reach** (`cadence.parrot.distance`): distance neurons whose reciprocal synapses from the
+  cues (disparity, parallax, size and height in the field) start at zero and learn from two
+  sightings of one thing that agree, before and after the head turned. No distance is given.
+- **The focus** (`cadence.parrot.focus`): one winner among the things on the map, settled under
+  mutual inhibition, which turns the head.
+- **The brain** (`cadence.parrot.brain.Parrot`): a moment from the two images to the map of
+  things (`cadence.space.map.Map`), the teacher's lessons and the head's turn; `silence(units)`
+  holds neurons at rest inside their settles; `cost()` gives the time and multiply-accumulates
+  of a moment by part; `GENES` names every gene.
+- **Selection** (`benchmarks/parrot/evolve.py`): `cadence.evolve` over 25 named genes, scored
+  against the hand-set brain; random search at equal evaluations as its control.
+
 ### Words for things (#326)
 
 `cadence.words` is imported by name, and `import cadence` loads none of it. The guide is

@@ -1,0 +1,146 @@
+"""The parrot (#332): its body, eyes, early vision, reach, focus and brain."""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+import pytest
+
+from cadence.parrot import Body, Scene, Thing, render
+from cadence.parrot.brain import GENES, Parrot, triangulate
+from cadence.parrot.distance import Distance
+from cadence.parrot.focus import Focus
+from cadence.parrot.vision import Vision, components
+from cadence.parrot.world import HIGH, LOW, NAMES, stand_ins
+
+
+def test_body_servo_and_eyes():
+    body = Body()
+    eyes = body.eyes()
+    assert np.allclose(eyes.places[:, 1], 0.13 + 0.06 - 0.025 * 0.3 + 0.07 + 0.05)
+    assert np.isclose(np.linalg.norm(eyes.places[0] - eyes.places[1]), 0.036)
+    assert eyes.places[0, 0] > 0 > eyes.places[1, 0]  # the left eye at +x
+    k = NAMES.index("head_yaw")
+    targets = np.full(len(NAMES), np.nan)
+    targets[k] = 1.0  # as far left as the neck turns
+    for _ in range(5):
+        angles = body.move(targets)
+    assert angles[k] == HIGH[k] == 75.0
+    assert np.isclose(body.velocity[k], 0.0) or body.velocity[k] <= 360.0
+    turned = body.eyes()
+    assert turned.places[0, 2] < eyes.places[0, 2]  # the eyes moved with the turn
+    assert np.allclose(Body.unscaled(Body.scaled(body.angles)), body.angles)
+    assert LOW[k] == -75.0
+
+
+def test_render_both_eyes_and_cover():
+    scene = Scene([Thing("a", "apple", 0.0, 0.35, stand=0.15),
+                   Thing("b", "ball", 0.0, -0.4, stand=0.1)])
+    sight = render(scene, Body().eyes())
+    assert sight.images.shape == (2, 100, 175, 3) and sight.images.dtype == np.uint8
+    # the apple in front: seen by both eyes in the columns toward the beak; the ball behind:
+    # in the blind spot
+    assert sight.coverage[0, 0] > 20 and sight.coverage[1, 0] > 20
+    assert sight.coverage[:, 1].sum() == 0
+    assert (np.nonzero(sight.ids[0] == 0)[1] >= 150).all()
+    covered = render(scene, Body().eyes(), cover="left")
+    assert covered.images[0].max() == 0 and np.array_equal(covered.images[1], sight.images[1])
+
+
+def test_components_match_a_flood_fill():
+    rng = np.random.default_rng(0)
+    for _ in range(30):
+        mask = rng.random((9, 13)) < 0.5
+        labels = components(mask)
+        assert ((labels >= 0) == mask).all()
+        for (a, b), (c, d) in (((0, 0), (0, 1)), ((3, 4), (4, 4))):
+            if mask[a, b] and mask[c, d]:
+                assert labels[a, b] == labels[c, d]
+
+
+def test_disparity_of_a_thing_in_front():
+    table = stand_ins()
+    vision, body = Vision(), Body()
+    thing = Thing("a", "ball", 0.02, 0.32, stand=0.2)
+    scene = Scene([thing])
+    for _ in range(2):
+        figures = vision.see(render(scene, body.eyes()).images)
+    eyes = body.eyes()
+    centre = thing.center(table)
+    sides = [eyes.rotation.T @ (centre - eyes.places[e]) for e in (0, 1)]
+    true = math.degrees(math.atan2(sides[1][0], sides[1][2]) - math.atan2(sides[0][0],
+                                                                            sides[0][2]))
+    left = [f for f in figures if f.eye == 0 and f.disparity is not None]
+    assert len(left) == 1 and left[0].pair is not None
+    found = float((left[0].disparity * vision.channels).sum() / left[0].disparity.sum())
+    assert abs(found - true) < 0.4
+
+
+def test_reach_starts_silent_and_learns():
+    reach = Distance(5, units=12, sizes=4, heights=4, shifts=4, baselines=3)
+    rng = np.random.default_rng(1)
+    preferred = np.linspace(0.0, 4.0, 5)
+
+    def code(d: float) -> np.ndarray:
+        return reach.code(np.exp(-0.5 * (preferred - 1.0 / d) ** 2), 5.0, 0.0)
+
+    test = np.array([code(d) for d in (0.3, 0.5)])
+    far, _ = reach.read(reach.settle(test))
+    assert np.isnan(far).all()  # a newborn reach has no sense of distance
+    for _ in range(150):
+        ds = rng.uniform(0.25, 0.6, 6)
+        reach.teach(np.array([code(d) for d in ds]), ds)
+    far, _ = reach.read(reach.settle(test))
+    assert np.all(np.abs(np.log(far / np.array([0.3, 0.5]))) < 0.2)
+    assert reach.parameters() == len(reach.pairs)
+
+
+def test_triangulate_two_rays():
+    p = np.array([0.1, 0.2, 0.5])
+    o1, o2 = np.array([0.0, 0.2, 0.0]), np.array([0.03, 0.2, 0.0])
+    u1, u2 = (p - o1) / np.linalg.norm(p - o1), (p - o2) / np.linalg.norm(p - o2)
+    at, gap, s, t, angle = triangulate(o1, u1, o2, u2)
+    assert np.allclose(at, p) and gap < 1e-9 and angle > 0
+    assert np.isclose(s, np.linalg.norm(p - o1)) and np.isclose(t, np.linalg.norm(p - o2))
+
+
+def test_focus_holds_then_moves():
+    focus = Focus(slots=4)
+    things = [{"kind": 0, "place": [0.2, 0.3]}, {"kind": 1, "place": [-0.3, 0.1]}]
+    first = focus.choose(things, 0)
+    assert first is not None and first.why in ("appeared", "new to the eyes")
+    held = [focus.choose(things, m) for m in range(1, 4)]
+    assert all(c is not None and c.kind == first.kind for c in held)
+    later = [focus.choose(things, m) for m in range(4, 30)]
+    assert any(c is not None and c.kind != first.kind for c in later)  # habituation
+    moved = [{"kind": 0, "place": [0.2, 0.3]}, {"kind": 1, "place": [-0.3, 0.17]}]
+    choice = focus.choose(moved, 31)
+    assert choice is not None and choice.kind == 1
+
+
+def test_parrot_lives_a_few_moments_and_silences():
+    scene = Scene([Thing("a", "apple", 0.05, 0.35, stand=0.1),
+                   Thing("b", "cup", 0.35, 0.05, stand=0.05)])
+    parrot = Parrot({"unknown_gene": 3}, seed=0)
+    assert parrot.genes["unknown_gene"] == 3  # carried unchanged
+    for _ in range(8):
+        parrot.moment(render(scene, parrot.body.eyes()).images)
+    assert parrot.moments == 8 and parrot.map.things()
+    cost = parrot.cost()
+    assert cost["moments"] == 8 and cost["macs"]["map"] > 0
+    reach = parrot.regions["distance"]
+    parrot.silence(np.arange(reach.start, reach.stop))
+    out = parrot.moment(render(scene, parrot.body.eyes()).images, learn=False)
+    assert all(np.isnan(s.distance) for s in out["sightings"])
+    with pytest.raises(ValueError):
+        parrot.silence([parrot.regions["map"].start])
+    parrot.silence(None)
+
+
+def test_random_wiring_has_as_many_synapses():
+    hand = Parrot(seed=1)
+    loose = Parrot({"wiring": "random"}, seed=1)
+    assert loose.distance.parameters() == hand.distance.parameters()
+    assert not np.array_equal(loose.distance.pairs, hand.distance.pairs)
+    assert set(GENES) <= set(hand.genes)

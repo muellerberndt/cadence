@@ -8,7 +8,7 @@ thing one eye sees and one for a thing both eyes see, so that what one eye alone
 two eyes tell are learned apart. For a thing one eye sees, the parallax units compare where that
 eye saw it a few moments before, from where the eye was then (the head's own movement moved
 it): each unit is tuned to a shift of the thing in the eye and to how far the eye moved across
-the line of sight (WIRING.md 3.4, the Wulst's two-view units).
+the line of sight (the Wulst's two-view units, docs/parrot-brain.md).
 Each wired pair of an input neuron and a distance neuron is a reciprocal pair of synapses that
 starts at zero, so a newborn brain has no sense of distance at all. Lessons are the library's
 free and nudged phases with a quadratic nudge (as ``cadence.space.map.Sense``): the target is a
