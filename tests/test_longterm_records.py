@@ -855,3 +855,27 @@ def test_the_settings_of_records_at_any_size_are_checked_and_off_by_default(tmp_
                          longterm=16, longterm_turn=TURN, longterm_apart=True)
     with pytest.raises(ValueError, match="needs long-term records"):
         cd.Brain.compose(INPUTS, 4, seed=0, backend="cpu", longterm_path=tmp_path)
+    with pytest.raises(ValueError, match="longterm_turn"):  # turns' entries live in memory
+        cd.Brain.compose(INPUTS, 4, modules=(32,), seed=0, backend="cpu", message=70,
+                         longterm=16, longterm_turn=TURN, longterm_path=tmp_path / "turns")
+    sure = brain(longterm=600, **PAIRS, longterm_sure=0.999)  # a read that ends early alone
+    assert sure.longterm.wide
+    tell(sure, 1, 2, 3)
+    assert _format(sure.save(tmp_path / "sure.npz")) == "cadence-brain/5"
+
+
+def test_streams_a_batch_drops_take_their_files_with_them(tmp_path):
+    folder = tmp_path / "records"
+    kept = brain(longterm=600, **PAIRS, longterm_grow=True, longterm_path=folder)
+    kept.reset()
+    for on in ((0, 1, 2), (6, 7, 8), (TURN, TURN, TURN), (10, 11, 12)):
+        x = np.zeros((3, INPUTS))
+        x[[0, 1, 2], list(on)] = 1.0
+        kept.act(x, greedy=True)  # three streams, a fact each
+    records = kept.longterm
+    assert [s.count for s in records.stores] == [1, 1, 1]
+    records.keep(np.array([0, 2]))  # stream 1 ends, and its files with it
+    assert [s.count for s in records.stores] == [1, 1]
+    assert not (folder / "stream-1").exists() and records._folders == ["stream-0", "stream-2"]
+    records._streams(3)  # a new stream begins empty
+    assert [s.count for s in records.stores] == [1, 1, 0]

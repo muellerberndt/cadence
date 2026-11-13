@@ -21,8 +21,8 @@ guide is [docs/memory.md](docs/memory.md#records-at-any-size-opt-in).
   disk the rows a read needs are fetched by many threads at once.
 - **`LongTermMemory(sure=cosine)`: a read that ends at its record.** A read of one head first
   reads the pairs of the cue's `pairs` most driven units (120 cells in place of 32,640) and ends
-  where a record found there holds a key at that cosine to the cue; any other cue is read in
-  full, so the first choice is the whole read's. A read or a write that carries a source
+  where a record found there holds a key at that cosine to the cue (a store that reads by
+  cosine); any other cue is read in full. A read or a write that carries a source
   (`apart`) ends there only at a record that holds the source's signature.
 - **`LongTermMemory(same=units)`**: the units of a source's signature (of 8) that two writes
   share where they are one fact's; 5 unless set, as before.
@@ -33,9 +33,9 @@ guide is [docs/memory.md](docs/memory.md#records-at-any-size-opt-in).
   whose held messages are one key keep two records: the stream gives the store the moments
   heard before the turn as the fact's source, and its stores compare the whole signature
   (`same=8`): heard moments are told exactly.
-- **A checkpoint format of its own.** A brain whose records grow, lie in files or are told
-  apart saves as `cadence-brain/5`, which 0.99.0 and earlier refuse by name. Every other brain
-  keeps its format.
+- **A checkpoint format of its own.** A brain whose records grow, lie in files, end a read early
+  or are told apart saves as `cadence-brain/5`, which 0.99.0 and earlier refuse by name. Every
+  other brain keeps its format.
 - A write under the address of pairs computes its key's address once where it computed it
   twice; the slots and values are the same.
 

@@ -1777,9 +1777,11 @@ whose heard moments it shares. The heard moments are told exactly, so the stores
 source's whole signature (`same=8`). It is built for records keyed by a held message from a turn,
 without `longterm_turn`.
 
-A brain whose records grow, lie in files or are told apart saves in checkpoint format
-`cadence-brain/5`, which 0.99.0 and earlier refuse by name ("unsupported Brain checkpoint
-format"). Every other brain keeps the format it had.
+A brain whose records grow, lie in files, end a read early or are told apart saves in checkpoint
+format `cadence-brain/5`, which 0.99.0 and earlier refuse by name ("unsupported Brain checkpoint
+format"). Every other brain keeps the format it had. One live brain or store reads and writes a
+directory of records at a time; `longterm_path` is built for records keyed by a held message
+from a turn, without `longterm_turn`.
 
 The streams' records are read, written and faded as one bank. Each stream's keys are kept as an
 index of the slots that hold each unit, and a read sums the index rows of the cue's units over
@@ -2778,8 +2780,9 @@ memory. Three settings lift both limits. Each is off unless you set it.
 - **`sure=cosine`: a read that ends at its record.** A cue that is a key the memory holds needs
   few of its pairs. With `sure=0.999` a read of one head first reads the pairs of the cue's
   `pairs` most driven units, 120 cells in place of 32,640. Where a record found there holds a key
-  at that cosine to the cue, the read ends with it. A cue that no record holds so closely (a
-  noisy or partial one) is read in full, so the first choice is the one the whole read makes.
+  at that cosine to the cue, the read ends with it: the whole read would choose it too, unless
+  a second record of nearly the same key lies closer still. A cue that no record holds so
+  closely (a noisy or partial one) is read in full. `sure` needs `cosine=True`.
 
 ```python
 store = cd.LongTermMemory(width=32, value_width=8, capacity=100_000, pairs=8, expansion=512,
@@ -2800,7 +2803,7 @@ again.close()
 - **Many records at once.** `fill(keys, values, file=False)` writes records without filing them
   under their pairs, so a store larger than memory is filled part by part. One `file()` then
   files them all, the table's cells in order, a part of the table at a time. The next `write`
-  files what a fill left.
+  or read files what a fill left.
 - **The address's units are set once.** A record's place depends on `expansion`, so it stays
   what the store was made with. For a store meant to reach 100,000,000 records the declared
   reading uses `expansion=65536`; a read then costs the same at 100,000 records as at

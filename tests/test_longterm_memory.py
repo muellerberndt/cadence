@@ -674,6 +674,10 @@ def test_fills_that_leave_their_records_unfiled_share_one_pass_over_the_table():
     written.write(keys[2999], values[2999])  # a write files what the fills left
     assert written.read(keys[10], credit=False).first() == 10
     assert written.read(keys[2999], credit=False).first() == 2999
+    _, _, _, read = growing()
+    read.fill(keys, values, file=False)
+    assert read.read(keys[2500], credit=False).first() == 2500  # and so does a read
+    np.testing.assert_array_equal(table(read), table(whole))
 
 
 def test_a_saved_memory_with_a_growing_table_continues_and_a_copy_is_its_own():
@@ -824,7 +828,7 @@ def test_the_growing_table_and_the_store_on_disk_are_checked_and_off_by_default(
     for settings in ({"grow": True}, {"grow": 1, "pairs": 8, "direct": 0},
                      {"sure": 0.9}, {"sure": 2.0, "pairs": 8, "direct": 0},
                      {"sure": True, "pairs": 8, "direct": 0}, {"same": 0}, {"same": 9},
-                     {"same": True}):
+                     {"same": True}, {"sure": 0.99, "pairs": 8, "direct": 0, "cosine": False}):
         with pytest.raises(ValueError):
             LongTermMemory(8, 8, 3000, **settings)
     with pytest.raises(ValueError, match="address of pairs"):

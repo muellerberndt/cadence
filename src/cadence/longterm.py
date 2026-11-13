@@ -87,9 +87,11 @@ store in memory does.
 pairs. With ``sure`` a read of one head at temperature 0 first reads the pairs of the cue's
 ``pairs`` most driven units, then of four times as many, and ends where a record found under
 the most pairs holds a key at cosine ``sure`` or above to the cue: that record is the read's
-first choice, as the whole read would choose it. A cue no record holds so closely is read in
-full. A read or a write that carries a ``source`` ends there only where that record's signature
-agrees with the source's, so a fact whose key another fact holds is read in full.
+first choice. It is the whole read's choice unless another record lies closer still to the cue,
+which at ``sure`` near 1 asks for a second record of nearly the same key (a read by cosine:
+``sure`` needs ``cosine=True``). A cue no record holds so closely is read in full. A read or a
+write that carries a ``source`` ends there only where that record's signature agrees with the
+source's, so a fact whose key another fact holds is read in full.
 """
 
 from __future__ import annotations
@@ -389,6 +391,8 @@ class LongTermMemory:
         self.sure = float(self.sure)
         if self.sure and not (self.coarse and self.pairs):
             raise ValueError("sure ends a read of the address of pairs: it needs pairs=units")
+        if self.sure and not self.cosine:
+            raise ValueError("sure ends a read at a record by its cosine: it needs cosine=True")
         if isinstance(self.same, bool) or not isinstance(self.same, (int, np.integer)) \
                 or not 1 <= self.same <= self.SIGN:
             raise ValueError(f"same is the units of a signature two sources share: 1 to "
@@ -662,6 +666,8 @@ class LongTermMemory:
         a source's ``sign`` it ends only at a record that holds the signature."""
         if not self.coarse or self.count <= self.candidates:
             return np.arange(self.count), self.keys[: self.count]
+        if self._unfiled < self.count:  # records a fill left unfiled join the table first
+            self.file()
         if first and self.sure and units is None:
             sure = self._sure(key, sign)
             if sure is not None:
@@ -1264,7 +1270,7 @@ class LongTermMemory:
         holds two records. The memory must have the empty slots. With ``file=False`` (a table
         that grows) the records are written and not yet filed under their pairs, so several
         fills share one pass over the table: ``file()`` files them, and so does the next
-        write."""
+        write or read."""
         keys, values = np.asarray(keys), np.asarray(values)
         many = len(keys)
         if keys.ndim != 2 or keys.shape[1] != self.width or values.shape != (
@@ -1629,6 +1635,9 @@ class LongTermRecords:
         if self.apart and (turn is not None or distinct is not None):
             raise ValueError("longterm_apart tells apart the records keyed by a held message "
                              "from a turn: it is not built for longterm_turn")
+        if self.path is not None and (turn is not None or distinct is not None):
+            raise ValueError("longterm_path keeps the records keyed by a held message from a "
+                             "turn in files: it is not built for longterm_turn")
         self._folders: list[str] = []  # each stream's folder under ``path``
         self.width, self.value_width = int(message.units), int(message.inputs)
         populations = connectome.populations
@@ -2275,8 +2284,15 @@ class LongTermRecords:
         self._cache = {}
 
     def keep(self, rows: np.ndarray) -> None:
-        """Keep the streams of ``rows``, their records with them."""
+        """Keep the streams of ``rows``, their records with them; the other streams' records
+        end, and with ``path`` their files with them."""
         index = np.arange(len(self.since))[rows]
+        kept_rows = {int(i) for i in index}
+        for i, store in enumerate(self.stores):
+            if i not in kept_rows:
+                store.close()
+                if self.path is not None and i < len(self._folders):
+                    shutil.rmtree(Path(self.path) / self._folders[i], ignore_errors=True)
         self.stores = [self.stores[int(i)] for i in index if int(i) < len(self.stores)]
         self._folders = [self._folders[int(i)] for i in index if int(i) < len(self._folders)]
         self.since, self.read_slots = self.since[index], self.read_slots[index]
@@ -2359,8 +2375,8 @@ class LongTermRecords:
     @property
     def wide(self) -> bool:
         """Whether the records' saved form is one that 0.99.0 and earlier do not read: a table
-        that grows, files of their own, or facts told apart."""
-        return bool(self.grow or self.path is not None or self.apart)
+        that grows, files of their own, a read that ends at its record, or facts told apart."""
+        return bool(self.grow or self.path is not None or self.sure or self.apart)
 
     def arrays(self) -> dict[str, np.ndarray]:
         """What a checkpoint keeps (``Brain.save``): the streams' turns and every stream's

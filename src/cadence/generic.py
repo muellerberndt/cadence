@@ -128,8 +128,9 @@ FADE_FORMAT = "cadence-brain/3"
 # own, which 0.96.0 and earlier refuse, whatever else the brain holds: its file carries a maturity
 # and a fading store as the files named for them do. Every other brain keeps its name.
 LONGTERM_FORMAT = "cadence-brain/4"
-# A brain whose long-term records grow their table, lie in files of their own or are told apart
-# by what was heard (``longterm_grow``, ``longterm_path``, ``longterm_apart``, #310) saves under
+# A brain whose long-term records grow their table, lie in files of their own, end a read at its
+# record or are told apart by what was heard (``longterm_grow``, ``longterm_path``,
+# ``longterm_sure``, ``longterm_apart``, #310) saves under
 # a format name of its own, which 0.99.0 and earlier refuse by name; a brain with records
 # without them keeps LONGTERM_FORMAT.
 RECORDS_FORMAT = "cadence-brain/5"
@@ -818,6 +819,9 @@ def _longterm_genes(longterm: Any, genes: Mapping[str, Any]) -> dict[str, Any]:
     if out["apart"] and (out["turn"] is not None or out["distinct"] is not None):
         raise ValueError("longterm_apart tells apart the records keyed by a held message from "
                          "a turn: it is not built for longterm_turn")
+    if out["path"] is not None and (out["turn"] is not None or out["distinct"] is not None):
+        raise ValueError("longterm_path keeps the records keyed by a held message from a turn "
+                         "in files: it is not built for longterm_turn")
     return out
 
 
@@ -6994,15 +6998,17 @@ class Brain:
                     f"long-term records belong to checkpoint format {LONGTERM_FORMAT}"
                 )
             if with_records:
-                # records that grow, lie in files or are told apart are named by their format
+                # records that grow, lie in files, end a read early or are told apart are named
+                # by their format
                 assert isinstance(saved_memories, dict)
                 told = saved_memories["longterm"]
                 wide = isinstance(told, dict) and bool(
-                    told.get("grow") or told.get("path") is not None or told.get("apart"))
+                    told.get("grow") or told.get("path") is not None or told.get("sure")
+                    or told.get("apart"))
                 if (saved["format"] == RECORDS_FORMAT) != wide:
                     raise ValueError(
-                        f"records that grow, lie in files or are told apart belong to "
-                        f"checkpoint format {RECORDS_FORMAT}"
+                        f"records that grow, lie in files, end a read early or are told apart "
+                        f"belong to checkpoint format {RECORDS_FORMAT}"
                     )
             fading = _saved_fade(saved)
             if not with_records and (saved["format"] == FADE_FORMAT) != fading:
