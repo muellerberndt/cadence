@@ -146,9 +146,10 @@ outside the brain, from the beliefs alone, as it computes the path.
 from cadence.speech.align import soft_path, soft_step
 
 soft = Alignments()
-for k, (beliefs_k, text) in enumerate(zip(log_beliefs(ears, utterances), texts)):
+own = log_beliefs(ears, utterances, hold=True)      # the brain's own beliefs, its fields held
+for k, (beliefs_k, text) in enumerate(zip(own, texts)):
     soft.realign(k, beliefs_k, text, soft=True)     # (steps, 29): a distribution per step
-assert np.allclose(soft_path(log_beliefs(ears, utterances)[1], texts[1]).sum(axis=1), 1.0)
+assert np.allclose(soft_path(own[1], texts[1]).sum(axis=1), 1.0)
 targets = soft.targets([0, 1], len(x), alphabet.size)   # (steps, utterances, 29)
 assert targets[-1, 1, 0] == 1.0                     # blank past the shorter utterance's end
 ears.reset()
@@ -159,11 +160,20 @@ for t in range(len(x)):
 `soft_step(brain, rows, targets)` is one moment of the soft lesson, in place of
 `brain.step(rows, teacher=labels)`: `brain.lesson(rows, targets=targets)`, then
 `brain.act(rows, greedy=True)`, the learned fields taking their one step of the moment at the
-act. Read the beliefs from a frozen copy before every batch, the first batch included: a
-newborn's beliefs say nothing, and their soft path spreads each letter over the steps it can
-take, so no even split is needed. Distributions read from a copy several batches old teach
-less (in the chamber, a brain taught from copies eight batches old says only blank after half
-a pass, where one taught from a copy of the same batch reads .32 characters).
+act.
+
+Read the beliefs before every batch, the first batch included. A newborn's beliefs say nothing,
+and their soft path spreads each letter over the steps it can take, so no even split is needed.
+`log_beliefs(brain, rows, hold=True)` reads them from the brain itself between two batches: its
+learned fields take no step while it answers and its streams are at rest again afterwards, so
+every parameter is what it was and no copy is loaded. Distributions read several batches
+earlier teach less: in the chamber, a brain taught from beliefs read eight batches earlier says
+only blank after half a pass, where brains taught from beliefs read before each batch read .27
+to .33 characters there.
+
+`soft_path(..., sharpness=k)` raises every path's weight to the power `k`. At 1 a path counts
+by its probability; above 1 the better paths count for more, and at a large value the rows are
+the forced path's letters.
 
 ## Reading text, with and without a word list
 

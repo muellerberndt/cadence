@@ -36,7 +36,7 @@ def test_the_recipe_trains_reads_adapts_and_streams(tmp_path, capsys):
 def test_the_recipe_trains_with_the_soft_teacher(tmp_path):
     report = recipe.main(["--synthetic", "--utterances", "8", "--held", "4", "--adapt", "0",
                           "--passes", "1", "--batch", "4", "--align-every", "1", "--fields", "4",
-                          "--width", "16", "--teacher", "soft"])
+                          "--width", "16", "--teacher", "soft", "--rates", "0.5"])
     assert [r["pass"] for r in report["passes"]] == [1]
     assert report["passes"][0]["characters"] <= 1.0 and "adapt" not in report
 

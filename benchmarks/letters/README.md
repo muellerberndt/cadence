@@ -300,6 +300,55 @@ way continues from there (ten did once).
   the reference word is among the five list words nearest the said word for 5.8% of words. A word
   prior acts on letters before words form, not on a choice among near words.
 
+## Round 5: the teacher and the lesson's rate
+
+### Step 0: which link of the chain holds the letters
+
+Round 4 located the letter from the sound and left open where in the brain's chain it is lost.
+[`ceiling.py`](ceiling.py) trains gradient learners on single links of that chain and reads them
+as every learner of the chamber is read: the window the fields read, the pooled code of a saved
+brain's fields held still, the steps before beside the step, the brain's settled activity. Each
+is a control, never part of a brain's answer path. Development readings, ungated: round 4's
+brains at pass 6 (founders 304500 to 304502), trained as the offline controls train (shuffled
+epochs, one Adam step per utterance at rate 0.001), read after each of twelve epochs on the 274
+held-out utterances. Three founders where no count is given.
+
+| What the learner hears | Learner | Lesson | Parameters | Characters after epoch 1 / 2 / 6 / 12 | Highest |
+| --- | --- | --- | --- | --- | --- |
+| The brain's pools (576) | linear | CTC | 16,733 | .377 / .390 / .399 / .400 | .406 |
+| The brain's pools | one hidden layer of 256 | CTC | 155,165 | .406 / .432 / .455 / .452 | .459 |
+| The brain's pools | one hidden layer of 256 | the brain's teacher: the forced path from an even split | 155,165 | .201 / .274 / .331 / .362 | .363 |
+| The pools and the pools of the step before | one hidden layer of 256 | CTC | 302,621 | .411 / .435 / .454 / .448 | .457 |
+| The pools and the pools of the step before | one hidden layer of 256 | the brain's teacher | 302,621 | .199 / .273 / .368 / .394 | .394 |
+| The brain's pools | LSTM of 396 (one founder) | CTC | 1,554,329 | .434 / .465 / .487 / .477 | .487 |
+| The window (960) | linear | CTC | 27,869 | .298 / .303 / .291 / .297 | .309 |
+| The window | one hidden layer of 256 | CTC | 253,469 | .364 / .404 / .420 / .432 | .432 |
+| The window | one hidden layer of 256 | the brain's teacher | 253,469 | .170 / .222 / .287 / .342 | .342 |
+| The window | LSTM of 396 (two founders) | CTC | 2,162,585 | .422 / .462 / .486 / .473 | .491 |
+| The brain's motor neurons (29) | linear (two founders) | CTC | 870 | .304 / .327 / .394 / .394 | .397 |
+| The brain's association (256) | linear (one founder) | CTC | 7,453 | .348 / .380 / .385 / .387 | .392 |
+| The brain itself, round 4 (passes 1 / 2 / 6) | | the forced path | 1,285,724 | .306 / .343 / .384 | |
+
+- **The teacher is the first term.** On the same pools and the same hidden layer, the forced
+  path from an even split reads .20 under CTC after one epoch, .12 under after six and .09
+  under after twelve. Round 4's brain (.306, .343, .384) lies along the curve of a gradient
+  learner taught as the brain is taught.
+- **The pools hold the letters.** An LSTM reads the pools as it reads the window (.49), and a
+  learner without memory reads more from the pools than from the window (.459 against .432;
+  a linear readout .406 against .309).
+- **Round 4's brain reads what a linear readout of its pools reads:** .397 from its motor
+  neurons and .392 from its association, against .406 from the pools.
+- **More of the past beside the step adds nothing for a learner without memory:** .457 with the
+  step before, .450 with the four steps before (two founders) and .446 to .452 with the heard
+  history at decays 0 to .99 (one founder), against .459; .419 through a window of 480 ms and
+  .392 through 960 ms (two founders), against .432 through the 240 ms. An LSTM's memory adds
+  .03.
+- **A copy of the learner's own answers,** read beside the pools as a brain's efference copy
+  holds its commands, lifts the hidden layer of 256 from .459 to .473, and to .476 where blank
+  issues no command and the copy holds the letters said (one founder).
+- A soft path whose sharpness rises over the epochs, and one that weighs blank down, read at
+  or under CTC's (.453 to .461, and .37 after two epochs against .43; one founder).
+
 ## What this does and does not establish
 
 The chamber measures composed brains on one synthetic world with supplied sound timing and one

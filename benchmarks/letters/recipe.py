@@ -14,7 +14,8 @@ corrections and runs it on a stream:
    (``speech.align``), the first batches on an even split. With ``--teacher soft`` each step
    is taught the soft path through the copy's beliefs instead (``soft_path``, one
    ``soft_step`` a moment), the first batches through the newborn's beliefs; read the copy
-   before every batch (``--align-every 1``);
+   before every batch (``--align-every 1``). ``--rates`` gives each pass its share of the
+   composed lesson rates (``Brain.retune``), the last held for the passes after;
 4. **read:** held-out utterances, the letter decoder (``collapse``) and, with a word list, the
    beam over the list (``WordBeam``): characters and words;
 5. **adapt:** half of a new speaker's utterances as corrections heard beside three training
@@ -245,7 +246,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     rng = np.random.default_rng(args.seed)
     lengths = np.array([len(u["rows"]) for u in train])
     trained = 0.0
+    born = brain.learner.config  # the lesson's rates as composed: what ``--rates`` multiplies
+    born_bias = born.eta_bias if born.eta_bias is not None else born.eta / 10
     for p in range(args.passes):
+        if args.rates:  # the pass's share of the composed rates, the optimizer's history kept
+            factor = args.rates[min(p, len(args.rates) - 1)]
+            brain.retune(learning=dataclasses.replace(
+                brain.learner.config, eta=born.eta * factor, eta_bias=born_bias * factor))
         order = rng.permutation(len(train))
         order = order[np.argsort(lengths[order], kind="stable")]
         groups = [order[k : k + args.batch] for k in range(0, len(order), args.batch)]
@@ -302,7 +309,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
         before = {"speaker": reading_of(readings), "others": reading_of(held)}
         # corrections at a tenth of the life's lesson rates (``--correction-rate``), as read
-        config = brain.learner.config
+        config = brain.learner.config  # the life's last rates
         bias = config.eta_bias if config.eta_bias is not None else config.eta / 10
         brain.retune(learning=dataclasses.replace(config, eta=config.eta * args.correction_rate,
                                                   eta_bias=bias * args.correction_rate))
@@ -385,6 +392,8 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     parser.add_argument("--align-every", type=int, default=8, help="batches between alignments")
     parser.add_argument("--teacher", choices=("path", "soft"), default="path",
                         help="the lesson: the forced path's symbols, or the soft path's shares")
+    parser.add_argument("--rates", type=float, nargs="*", default=[],
+                        help="each pass's share of the composed lesson rates, the last held")
     parser.add_argument("--fields", type=int, default=64, help="learned_fields")
     parser.add_argument("--width", type=int, default=256, help="the association's neurons")
     parser.add_argument("--correction-rate", type=float, default=0.1,
