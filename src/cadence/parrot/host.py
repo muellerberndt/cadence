@@ -48,8 +48,11 @@ class Host:
         config = dict(config or {})
         folder = Path(str(config.get("files", ""))) if config.get("files") else None
         brain = folder / "brain.npz" if folder is not None else None
+        # ``config["genes"]``: genes over the founder's for a newborn brain (the page's
+        # ``{"map_cells": 32}``: a coarser map, half the map's cost)
         self.parrot = (Parrot.load(brain) if brain is not None and brain.exists()
-                       else Parrot(dict(GENES), seed=int(config.get("seed", 0))))
+                       else Parrot({**GENES, **dict(config.get("genes") or {})},
+                                   seed=int(config.get("seed", 0))))
         self.newborn = not (brain is not None and brain.exists())
         found = folder / "groups.json" if folder is not None else None
         self.probe: dict[str, Any] = (json.loads(found.read_text()) if found is not None
