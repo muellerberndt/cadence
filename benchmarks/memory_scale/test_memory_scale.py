@@ -1087,3 +1087,18 @@ def test_the_sixth_declaration_s_plans_parse_on_their_founders():
     assert (sizes["nouns"], sizes["verbs"]) == (window["nouns"], window["verbs"]) == (256, 256)
     assert sizes["questions"] == window["questions"] and window["target"] == 2_403_231
     assert not set(range(3220, 3252)) & set(range(3100, 3152))  # fresh founders
+
+
+def test_the_brain_chamber_reads_each_size_on_records_of_its_own_on_disk(tmp_path):
+    br = _load("brain_records")
+    store = {"pairs": 4, "expansion": 64, "winners": 8, "candidates": 8, "fade": False,
+             "grow": True, "sure": 0.999, "apart": True, "path": str(tmp_path)}
+    rows = br.run_cell({"founder": 0, "arm": "records", "n": [30, 40], "rounds": 4,
+                        "questions": 6, "capacity": 4000, "nouns": 64, "verbs": 48,
+                        "streams": 1, "store": store})
+    assert [r["records"] for r in rows] == [[30], [40]]  # a size's records are emptied first
+    assert (tmp_path / "founder-0" / "stream-0" / "store.json").exists()
+    for row in rows:
+        assert row["unrevised"]["found"] >= 0.8 and row["revised"]["stale"] == 0.0
+        assert row["bytes_per_record"] > 0 and row["disk_bytes_per_record"] > 0
+        assert row["ask_ms"] > 0 and row["shared_keys"] >= 0.0

@@ -793,8 +793,12 @@ def test_records_on_disk_stay_in_their_files_and_a_checkpoint_names_them(tmp_pat
     other = brain(longterm=700, **settings, longterm_path=folder)
     with pytest.raises(ValueError, match="other settings"):
         ask(other, 0, 0)
-    over.longterm.clear()  # the records and their files
-    assert not (folder / "stream-0").exists() and over.longterm.stores == []
+    unopened = brain(longterm=600, **settings, longterm_path=folder)
+    unopened.longterm.clear()  # the records and their files, of streams it never opened too
+    assert not (folder / "stream-0").exists() and unopened.longterm.stores == []
+    tell(unopened, 1, 1, 3)
+    assert unopened.longterm.stores[0].count == 1  # a new store in the emptied directory
+    unopened.longterm.clear()
     with pytest.raises(ValueError, match="the files of stream 0"):
         cd.Brain.load(path)
 

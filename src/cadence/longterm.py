@@ -2254,11 +2254,13 @@ class LongTermRecords:
         self._bank()
 
     def clear(self) -> None:
-        """Empty every stream's records; with ``path``, their files with them."""
-        for store, folder in zip(self.stores, self._folders, strict=False):
+        """Empty every stream's records; with ``path``, every stream's files under the
+        directory with them, those of streams this brain has not opened too."""
+        for store in self.stores:
             store.close()
-            assert self.path is not None
-            shutil.rmtree(Path(self.path) / folder, ignore_errors=True)
+        if self.path is not None:
+            for folder in Path(self.path).glob("stream-*"):
+                shutil.rmtree(folder, ignore_errors=True)
         self._folders = []
         self.stores = []
         self.stamps = np.zeros((0, self.capacity))

@@ -1,0 +1,30 @@
+{
+ "founders": [
+  3213,
+  3214,
+  3215
+ ],
+ "n": [
+  100000,
+  1000000,
+  10000000
+ ],
+ "forms": [
+  {
+   "form": "code",
+   "width": 128
+  }
+ ],
+ "trials": 1000,
+ "timed": 300,
+ "writes": 10000,
+ "capacity": 134217727,
+ "grown": 0.1,
+ "settings": {
+  "pairs": 16,
+  "expansion": 65536,
+  "winners": 256,
+  "candidates": 4096,
+  "sure": 0.999
+ }
+}
