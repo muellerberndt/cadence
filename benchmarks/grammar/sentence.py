@@ -415,7 +415,8 @@ def _act(brain: Any, x: np.ndarray, work: dict[str, float]) -> tuple[np.ndarray,
 def speak(brain: Any, rows: list[gr.Row], store: Store | None, design: Design, *,
           teach: bool = False, bar: bool = True, forced: bool = False,
           work: dict[str, float] | None = None, cap: int = 4, watch: Any = None,
-          echo: bool = True, listen: bool = False, quiet: bool = False) -> list[list[int]]:
+          echo: bool = True, listen: bool = False, quiet: bool | str = False
+          ) -> list[list[int]]:
     """One batch on fresh streams. Every heard moment is acted on and the store follows the
     role; from ``GO`` each moment hears the previous word and the brain says the next. With
     ``teach`` a lesson comes before every act (at a heard moment the echo, where
@@ -426,7 +427,9 @@ def speak(brain: Any, rows: list[gr.Row], store: Store | None, design: Design, *
     (``when`` is ``"heard"`` or ``"said"``; ``labels`` None where no lesson names the moment),
     and ``watch("held", -1, None, None, None)`` once the last heard moment is acted on; with
     ``listen`` the batch ends there. With ``quiet`` an echo leaves the recall read's address as
-    it is (``_lesson``)."""
+    it is (``_lesson``); with ``quiet="barred"`` so does a said word of a sentence whose meaning
+    the bar empties from the slots (every family but a path, whose facts stay): the read has
+    nothing of that sentence to find."""
     work = work if work is not None else gr.new_work()
     n = len(rows)
     if len({len(r.pre) for r in rows}) != 1:
@@ -460,7 +463,7 @@ def speak(brain: Any, rows: list[gr.Row], store: Store | None, design: Design, *
         labels = None if any(v is None for v in named) else np.array(named, dtype=np.int64)
         taught = teach and echo and labels is not None
         if taught and labels is not None:
-            taught = _lesson(brain, x, labels, work, said=False, quiet=quiet)
+            taught = _lesson(brain, x, labels, work, said=False, quiet=bool(quiet))
         given = labels is not None and (teach or forced)
         if given and not taught and labels is not None:
             give(labels)
@@ -488,7 +491,9 @@ def speak(brain: Any, rows: list[gr.Row], store: Store | None, design: Design, *
         if bar and j == rows[0].force:
             mn.bar_meaning(brain, rows)
         labels = np.array([said_label(r, j, design) for r in rows], dtype=np.int64)
-        if not (teach and _lesson(brain, x, labels, work, said=True)) and (teach or forced):
+        hushed = quiet == "barred" and bar and rows[0].family != "path"
+        if not (teach and _lesson(brain, x, labels, work, said=True, quiet=hushed)) and (
+                teach or forced):
             give(labels)
         words, roles = _act(brain, x, work)
         follow(labels if teach or forced else None, roles, x)
@@ -698,7 +703,8 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     (``meaning.sayback_batch``) or with ``"train": "all"`` of the full mix (``full_batch``, the
     full inventory and its panels), ``module``, ``depth``, ``settings`` over ``make_brain``'s,
     ``echo`` (lessons at the heard moments, on unless false), ``quiet`` (an echo leaves the
-    recall read's address as it is), ``panel_batches``,
+    recall read's address as it is; ``"barred"``: and a said word of a sentence whose meaning
+    the bar empties, ``speak``), ``panel_batches``,
     ``emulated`` (the instrument's own store in place of the library's), ``held_probes``
     (batches per shape), ``checkpoints`` (batch counts at which the lean
     panels are read, appended to the file ``progress`` names), ``save`` (a folder the taught
@@ -710,7 +716,9 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     batches = int(spec.get("batches", mn.BATCHES))
     module = int(spec.get("module", 256))
     echo = bool(spec.get("echo", True))
-    quiet = bool(spec.get("quiet", False))
+    quiet = spec.get("quiet", False)  # True: the echoes; "barred": and the barred sentences
+    if quiet not in (True, False, "barred"):
+        raise ValueError(f"unknown quiet: {quiet!r}")
     started = time.monotonic()
     depth = int(spec.get("depth", DEPTH))
     emulated = bool(spec.get("emulated", False))
