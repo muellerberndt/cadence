@@ -492,10 +492,16 @@ def by_kind(brain: Any, store: Store | None, design: Design,
     ones (``roles``): where a sentence is lost."""
     groups: dict[str, list[int]] = {}
     roles: dict[str, list[int]] = {}
+    own: dict[str, int] = {}  # the roles the brain names where no lesson names one
     for rows in batches:
         def watch(when: str, index: int, words: Any, named: Any, labels: Any,
                   rows: list[gr.Row] = rows) -> None:
-            if labels is None or when == "held":
+            if when == "held":
+                return
+            if labels is None:
+                for i, r in enumerate(rows):
+                    name = design.roles[int(named[i])][0]
+                    own[f"{r.family}_{name}"] = own.get(f"{r.family}_{name}", 0) + 1
                 return
             for i, r in enumerate(rows):
                 name = design.roles[int(labels[i, 2])][0]
@@ -515,14 +521,15 @@ def by_kind(brain: Any, store: Store | None, design: Design,
 
         speak(brain, rows, store, design, forced=True, watch=watch)
     return {"words": {k: round(v[0] / v[1], 4) for k, v in sorted(groups.items())},
-            "roles": {k: round(v[0] / v[1], 4) for k, v in sorted(roles.items())}}
+            "roles": {k: round(v[0] / v[1], 4) for k, v in sorted(roles.items())},
+            **({"own": dict(sorted(own.items()))} if own else {})}
 
 
 def held_states(brain: Any, store: Store | None, design: Design,
                 batches: list[list[gr.Row]]) -> list[tuple[gr.Row, dict[str, Any]]]:
     """Each sentence's state after its last heard moment, the roles the brain's own: the
-    settled association (``settled``), every block of the store (``message``) and the two
-    together (``joint``)."""
+    settled association (``settled``) and every block of the store read with it
+    (``joint``)."""
     items: list[tuple[gr.Row, dict[str, Any]]] = []
     for rows in batches:
         held: dict[str, np.ndarray] = {}
@@ -530,15 +537,15 @@ def held_states(brain: Any, store: Store | None, design: Design,
         def watch(when: str, index: int, words: Any, named: Any, labels: Any,
                   held: dict[str, np.ndarray] = held, rows: list[gr.Row] = rows) -> None:
             if when == "held":
-                held["settled"] = settled(brain, len(rows)).astype(np.float32)
-                held["message"] = np.asarray(
-                    brain.message.state if store is None else store.state(), dtype=np.float32)
+                held["settled"] = settled(brain, len(rows))
+                held["message"] = np.array(
+                    brain.message.state if store is None else store.state(), dtype=float)
 
         speak(brain, rows, store, design, watch=watch, listen=True)
         for i, row in enumerate(rows):
-            spot = {"settled": held["settled"][i], "message": held["message"][i]}
-            spot["joint"] = np.concatenate([spot["message"], spot["settled"]])
-            items.append((row, {"heard": spot}))
+            items.append((row, {"heard": {
+                "settled": held["settled"][i],
+                "joint": np.concatenate([held["message"][i], held["settled"][i]])}}))
     return items
 
 
@@ -548,7 +555,7 @@ def probes(brain: Any, store: Store | None, design: Design, founder: int,
     combinations and scored on held-out ones (``meaning.transfer_probes``)."""
     return mn.transfer_probes(founder, held_states(brain, store, design, both["trained"]),
                               held_states(brain, store, design, both["held"]),
-                              ("settled", "message", "joint"))
+                              ("settled", "joint"))
 
 
 # ------------------------------------------------------------------- the lessons' mixes
@@ -702,7 +709,7 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
                                      for b in tests[name]])
         cross = cross_batches(founder, int(spec.get("held_probes", 4)))
         states = {name: held_states(brain, store, design, cross[name]) for name in cross}
-        places = ("settled", "message", "joint")
+        places = ("settled", "joint")
         # fitted on one wording's trained combinations, scored on the other's held-out ones
         row["probes_cross"] = {
             "g1_to_g2": mn.transfer_probes(founder, states["g1"], states["g2_held"], places),
@@ -883,8 +890,8 @@ def read(rows: list[dict[str, Any]], controls: list[dict[str, Any]], of: int = 1
                        ("kinds_long", "longer clauses")):
         lines += ["", f"{title}, the previous words and roles given: mean"]
         for tag, lives in arms.items():
-            for part in ("words", "roles"):
-                found = [r[key][part] for r in lives if key in r]
+            for part in ("words", "roles", "own"):
+                found = [r[key][part] for r in lives if key in r and part in r[key]]
                 if found:
                     names = sorted({k for d in found for k in d})
                     lines.append(f"  {tag} {part}: " + ", ".join(
