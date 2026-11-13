@@ -583,7 +583,7 @@ def life(seed: int, *, record: Any = None, views: int = 96, **given: Any) -> dic
     c = sight.counts
     out["R1"] = {"found": c["found"] / max(c["in_view"], 1),
                  "recognised": c["recognised"] / max(c["in_view"], 1),
-                 "spurious": c["spurious"] / max(c["figures"], 1), **c}
+                 "spurious": c["spurious"] / max(c["figures"], 1), "counts": dict(c)}
     # each category's share of views of its most frequent kind (colour): how pure it is
     for name, table in (("kinds", sight.kinds), ("colours", sight.colours)):
         seen = table.sum(axis=0)

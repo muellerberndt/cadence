@@ -62,7 +62,8 @@ def test_rooms_are_clear_from_the_perch_and_hold_out_a_band() -> None:
 def test_a_short_life() -> None:
     record: list[dict] = []
     out = retina.life(3, record=record, views=6, **SHORT)
-    assert out["R1"]["found"] >= 0.95 and out["R1"]["spurious"] <= 0.05
+    assert 0.95 <= out["R1"]["found"] <= 1.0 and out["R1"]["spurious"] <= 0.05
+    assert out["R1"]["counts"]["in_view"] >= out["R1"]["counts"]["found"] > 0
     assert out["R2"]["in_view"] >= 0.9
     assert out["camera"]["W1"] >= 0.9 and out["eyes"]["W4_never_taught"] == 1.0
     assert out["eyes"]["W6_ablated"] == 0.0 and out["eyes"]["parameters"] > 256 * 26
