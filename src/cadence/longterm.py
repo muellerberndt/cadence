@@ -427,8 +427,10 @@ class LongTermMemory:
                     (sign / np.linalg.norm(sign, axis=0)).astype(self.dtype))
             self._sign: np.ndarray = self._fixed("sign", None if not self._fresh else sign)
             self.signs: np.ndarray = self._new("signs", (n, self.SIGN), np.int16)
-            if self._dir is None:
-                self.signs.fill(-1)  # on disk a slot's row is written with its record
+            if self._dir is None and not self.grow:
+                # under a bound (a table that grows, a store on disk) a slot's row is written
+                # with its record
+                self.signs.fill(-1)
         if self.coarse:
             weights = None
             if self._fresh:
