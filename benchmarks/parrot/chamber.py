@@ -164,6 +164,24 @@ def gap_to(parrot: Parrot, thing: Thing) -> float:
     return min((float(np.linalg.norm(p - here)) for p in places), default=math.inf)
 
 
+def one_by_bearing(parrot: Parrot, scene: Scene, window: float = 10.0) -> list[bool]:
+    """For each thing: held as exactly one thing in its direction, whatever the distance. Each
+    held place goes to the thing whose bearing from the perch is nearest its own; a thing passes
+    where exactly one place goes to it, within ``window`` degrees of its bearing."""
+    bearings = np.array([math.atan2(t.x, t.z) for t in scene.things])
+    count = np.zeros(len(scene.things), dtype=int)
+    close = np.zeros(len(scene.things), dtype=bool)
+    for t in parrot.map.things():
+        if t["place"] is None or not len(bearings):
+            continue
+        b = math.atan2(float(t["place"][0]), float(t["place"][1]))
+        apart = np.abs((bearings - b + math.pi) % (2.0 * math.pi) - math.pi)
+        k = int(np.argmin(apart))
+        count[k] += 1
+        close[k] |= bool(apart[k] <= math.radians(window))
+    return [bool(c == 1 and n) for c, n in zip(count, close, strict=True)]
+
+
 def bearing_error(parrot: Parrot, scene: Scene) -> list[float]:
     """For each thing: the angle (degrees, from the perch) to the nearest held place."""
     places = [np.asarray(t["place"]) for t in parrot.map.things() if t["place"] is not None]
@@ -227,6 +245,7 @@ def test(parrot: Parrot, rng: np.random.Generator, *, scenes: int, moments: int,
     """The test readings on fresh scenes (no lessons); ``front_panel`` False leaves out the
     panel of things in front with an eye covered (the fitness never reads it)."""
     seen, kept, same, bearing = [], [], [], []
+    same_bearing: list[bool] = []
     both_err, one_err, records = [], [], []
     details: list[dict[str, Any]] = []
     after_gaps: list[float] = []
@@ -285,6 +304,8 @@ def test(parrot: Parrot, rng: np.random.Generator, *, scenes: int, moments: int,
             step(parrot, scene, learn=False)
         alone_held = one_each(parrot, scene, margin, alone)
         same += [alone_held[k] for k in tested]
+        by_bearing = one_by_bearing(parrot, scene)
+        same_bearing += [by_bearing[k] for k in tested]
         # E3: in front, both eyes and one eye covered
         if not front_panel:
             continue
@@ -312,6 +333,7 @@ def test(parrot: Parrot, rng: np.random.Generator, *, scenes: int, moments: int,
             else math.nan,"E1_seen": float(np.mean(seen)), "E1_behind": float(np.mean(kept)) if kept
             else math.nan, "E1_behind_count": len(kept), "E2_one": float(np.mean(same)) if same
             else math.nan, "E2_count": len(same), "bearing": float(np.median(bearing)),
+            "E2_bearing": float(np.mean(same_bearing)) if same_bearing else math.nan,
             "E3_both": float(np.median(both_err)) if both_err else math.nan,
             "E3_one": float(np.median(one_err)) if one_err else math.nan,
             "E3_both_count": len(both_err), "E3_one_count": len(one_err),

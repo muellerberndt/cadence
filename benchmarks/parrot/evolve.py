@@ -19,6 +19,12 @@ Each term is divided by the hand-set genome's value on the reference worlds (``-
 so the hand-set scores about -3.7. The covered-eye deficit (E3) never enters the fitness.
 
 ``python -m benchmarks.parrot.evolve --reference runs/ga/reference.json --out runs/ga``
+
+``--rescore`` (protocol 2) selects by its own loop: every generation scores its kept parents again
+beside their offspring, each genome on ``worlds`` worlds the generation shares, one process a
+genome and world; the parents are the ``keep`` best of the generation's scores. The final parents
+are scored once more on fresh worlds, and the selected genome is the best of them by its mean
+over every generation it was scored in.
 """
 
 from __future__ import annotations
@@ -130,6 +136,62 @@ def draw(space: dict[str, tuple[Any, ...]], rng: np.random.Generator) -> dict[st
     return child
 
 
+def _score_one(job: tuple[dict[str, Any], int, int]) -> float:
+    """One genome on one world (a module-level function for a pool)."""
+    genome, world, seed = job
+    return score(terms(genome, world, seed), REFERENCE)
+
+
+def key_of(genome: dict[str, Any]) -> str:
+    return json.dumps({k: genome[k] for k in sorted(SPACE)}, sort_keys=True, default=str)
+
+
+def rescored(pool: Any, step: Any, *, seed: int, generations: int, population: int, keep: int,
+             worlds: int, report: Any) -> dict[str, Any]:
+    """Selection with the kept parents scored again each generation (see the module note)."""
+    rng = np.random.default_rng(seed)
+    parents: list[dict[str, Any]] = [dict(GENES)]
+    scores: dict[str, list[float]] = {}
+    out: dict[str, Any] = {"generations": []}
+    for g in range(generations):
+        members = list(parents)
+        while len(members) < population:
+            members.append(step(parents[int(rng.integers(len(parents)))], rng))
+        base = seed + 1000 * g
+        jobs = [(m, base + w, base + 100 * k + w) for k, m in enumerate(members)
+                for w in range(worlds)]
+        flat = pool.map(_score_one, jobs)
+        each = [float(np.mean(flat[k * worlds:(k + 1) * worlds])) for k in range(len(members))]
+        for m, value in zip(members, each, strict=True):
+            scores.setdefault(key_of(m), []).append(value)
+        order = np.argsort(each)[::-1]
+        parents = [members[int(k)] for k in order[:keep]]
+        means = [float(np.mean(scores[key_of(p)])) for p in parents]
+        out["generations"].append({
+            "generation": g, "best_fitness": float(each[int(order[0])]),
+            "mean_fitness": float(np.mean(each)), "parents_mean_over_scorings": means,
+            "parents_scorings": [len(scores[key_of(p)]) for p in parents],
+            "best": {k: members[int(order[0])][k] for k in SPACE}})
+        best = int(np.argmax(means))
+        out["best"], out["best_fitness"] = parents[best], means[best]
+        out["best_scorings"] = len(scores[key_of(parents[best])])
+        report(out)
+    # the final parents scored once more on fresh worlds, so no genome is chosen on one score
+    base = seed + 1000 * generations
+    jobs = [(m, base + w, base + 100 * k + w) for k, m in enumerate(parents) for w in range(worlds)]
+    flat = pool.map(_score_one, jobs)
+    for k, m in enumerate(parents):
+        scores[key_of(m)].append(float(np.mean(flat[k * worlds:(k + 1) * worlds])))
+    means = [float(np.mean(scores[key_of(p)])) for p in parents]
+    best = int(np.argmax(means))
+    out["confirmation"] = {"parents_mean_over_scorings": means,
+                           "parents_scorings": [len(scores[key_of(p)]) for p in parents]}
+    out["best"], out["best_fitness"] = parents[best], means[best]
+    out["best_scorings"] = len(scores[key_of(parents[best])])
+    report(out)
+    return out
+
+
 def _reference_world(world: int) -> dict[str, float]:
     return terms(dict(GENES), world, world)
 
@@ -147,6 +209,8 @@ def main() -> None:
     parser.add_argument("--references", type=int, default=6)
     parser.add_argument("--random", action="store_true",
                         help="random search at equal evaluations in place of selection")
+    parser.add_argument("--rescore", action="store_true",
+                        help="score the kept parents again each generation (protocol 2)")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     os.environ["PARROT_WORLDS"] = str(args.worlds)
@@ -181,6 +245,24 @@ def main() -> None:
         return draw(SPACE, rng)
 
     step = fresh if args.random else mutate
+    if args.rescore:
+        def write(out: dict[str, Any]) -> None:
+            (args.out / "lineage.json").write_text(json.dumps({
+                **out, "seconds": time.perf_counter() - start,
+                "space": {k: list(v) for k, v in SPACE.items()}, "reference": REFERENCE,
+                "random": args.random, "rescore": True, "worlds": args.worlds}, default=str))
+            g = out["generations"][-1]
+            print(f"generation {g['generation']}: best {g['best_fitness']:.3f} mean "
+                  f"{g['mean_fitness']:.3f} kept {np.round(g['parents_mean_over_scorings'], 3)} "
+                  f"({time.perf_counter() - start:.0f}s)", flush=True)
+
+        with Pool(args.processes, initializer=_set_reference,
+                  initargs=(dict(REFERENCE),)) as pool:
+            result = rescored(pool, step, seed=args.seed, generations=args.generations,
+                              population=args.population, keep=args.keep, worlds=args.worlds,
+                              report=write)
+        print("best", json.dumps({k: result["best"][k] for k in SPACE}, default=str))
+        return
     with Pool(args.processes, initializer=_set_reference, initargs=(dict(REFERENCE),)) as pool:
         lineage = evolve(fitness, dict(GENES), generations=args.generations,
                          population=args.population, keep=args.keep, seed=args.seed,

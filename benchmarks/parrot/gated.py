@@ -23,21 +23,29 @@ from benchmarks.parrot.chamber import founder
 HERE = Path(__file__).resolve().parent
 FOUNDERS = list(range(33200000, 33200012))
 ARMS = ("selected", "hand-set", "random-wiring", "random-search", "cnn", "vit", "cnn10", "vit10")
+# protocol 2: fresh founders, the re-scored selection's genomes, E2 by direction, no 10x arms
+PROTOCOL = {1: {"founders": FOUNDERS, "arms": ARMS, "selected": "selected.json",
+                "random": "random_search.json", "e2": "E2_one"},
+            2: {"founders": list(range(33200100, 33200112)), "arms": ARMS[:6],
+                "selected": "selected_2.json", "random": "random_search_2.json",
+                "e2": "E2_bearing"}}
+CHOSEN = dict(PROTOCOL[1])
 WEIGHTS = {"m1": 1.0, "m2": 1.0, "m3": 0.5, "m4": 1.0}
 
 
 def genes_of(arm: str) -> dict[str, Any]:
     if arm == "selected":
-        return dict(json.loads((HERE / "selected.json").read_text())["genes"])
+        return dict(json.loads((HERE / CHOSEN["selected"]).read_text())["genes"])
     if arm == "random-search":
-        return dict(json.loads((HERE / "random_search.json").read_text())["genes"])
+        return dict(json.loads((HERE / CHOSEN["random"]).read_text())["genes"])
     if arm == "random-wiring":
         return {"wiring": "random"}
     return {}
 
 
-def _live(job: tuple[str, int, str]) -> str:
-    arm, seed, out = job
+def _live(job: tuple[str, int, str, int]) -> str:
+    arm, seed, out, protocol = job
+    CHOSEN.update(PROTOCOL[protocol])
     target = Path(out) / arm / f"founder-{seed}.json"
     if target.exists():
         return str(target)
@@ -99,8 +107,9 @@ def read(out: Path) -> dict[str, Any]:
             "learned": int(sum(params.values())),
             "macs": float(np.mean([sum(r["work"]["macs"].values()) + (r.get("control_macs") or 0)
                                    for r in rs])),
-            **{k: float(np.nanmean([x[k] for x in t])) for k in (
-                "E1_seen", "E1_behind", "E2_one", "E3_both", "E3_one", "E3_looked",
+            **{k: float(np.nanmean([x.get(k, math.nan) for x in t])) for k in (
+                "E1_seen", "E1_behind", "E2_one", "E2_bearing", "E3_both", "E3_one",
+                "E3_looked",
                 "E3_first_quarter", "E3_last_quarter", "bearing")},
             "fitness": float(np.mean([fitness(arms[arm][s], hand[s]) for s in seeds
                                       if s in arms[arm]]))})
@@ -109,7 +118,8 @@ def read(out: Path) -> dict[str, Any]:
         T = [sel[s]["tests"] for s in seeds]
         gates["E1 seen"] = gate([t["E1_seen"] for t in T], 0.85)
         gates["E1 behind"] = gate([t["E1_behind"] for t in T], 0.95)
-        gates["E2"] = gate([t["E2_one"] for t in T], 0.85)
+        e2 = CHOSEN["e2"]
+        gates["E2"] = gate([t[e2] for t in T], 0.85)
         gates["E3 learned, error"] = gate([t["E3_both"] for t in T], 0.08, above=False)
         gates["E3 learned, last quarter below first"] = gate(
             [t["E3_first_quarter"] - t["E3_last_quarter"] for t in T], 1e-12)
@@ -128,8 +138,8 @@ def read(out: Path) -> dict[str, Any]:
             i, x, o = r["intact_small"], r["silenced"], r["silenced_others"]
             silenced_x.append(x["E3_both"] / max(i["E3_both"], 1e-9))
             bearing_ok.append(x["bearing"] - i["bearing"])
-            e2_ok.append(abs(x["E2_one"] - i["E2_one"]) if np.isfinite(x["E2_one"]) and
-                         np.isfinite(i["E2_one"]) else math.nan)
+            e2_ok.append(abs(x[e2] - i[e2]) if np.isfinite(x[e2]) and np.isfinite(i[e2])
+                         else math.nan)
             others.append(o["E3_both"] - (1.25 * i["E3_both"] + 0.01))
         if found:
             gates["E7 found"] = gate(found, 0.8)
@@ -162,13 +172,14 @@ def read(out: Path) -> dict[str, Any]:
 
 
 def markdown(reading: dict[str, Any]) -> str:
-    lines = ["| Arm | Learned parameters | MACs a moment | E1 seen | E1 behind | E2 | E3 both "
-             "| E3 one eye | E3 first / last quarter | Fitness |",
-             "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
+    lines = ["| Arm | Learned parameters | MACs a moment | E1 seen | E1 behind | E2 | E2 by "
+             "direction | E3 both | E3 one eye | E3 first / last quarter | Fitness |",
+             "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
     for row in reading["table"]:
         lines.append(
             f"| {row['arm']} ({row['founders']}) | {row['learned']:,} | {row['macs']:.3g} | "
             f"{row['E1_seen']:.3f} | {row['E1_behind']:.3f} | {row['E2_one']:.3f} | "
+            f"{row['E2_bearing']:.3f} | "
             f"{row['E3_both']:.3f} | {row['E3_one']:.3f} | {row['E3_first_quarter']:.3f} / "
             f"{row['E3_last_quarter']:.3f} | {row['fitness']:.2f} |")
     lines += ["", "| Gate | Reading | Passes |", "| --- | --- | --- |"]
@@ -185,13 +196,17 @@ def markdown(reading: dict[str, Any]) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--arms", nargs="+", default=list(ARMS))
-    parser.add_argument("--founders", type=int, nargs="+", default=FOUNDERS)
+    parser.add_argument("--protocol", type=int, choices=[1, 2], default=1)
+    parser.add_argument("--arms", nargs="+", default=None)
+    parser.add_argument("--founders", type=int, nargs="+", default=None)
     parser.add_argument("--processes", type=int, default=60)
     parser.add_argument("--read", action="store_true")
     args = parser.parse_args()
+    CHOSEN.update(PROTOCOL[args.protocol])
+    arms = args.arms or list(CHOSEN["arms"])
+    founders = args.founders or list(CHOSEN["founders"])
     if not args.read:
-        jobs = [(arm, seed, str(args.out)) for arm in args.arms for seed in args.founders]
+        jobs = [(arm, seed, str(args.out), args.protocol) for arm in arms for seed in founders]
         with Pool(args.processes, maxtasksperchild=1) as pool:
             for done in pool.imap_unordered(_live, jobs):
                 print("done", done, flush=True)
