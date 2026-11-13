@@ -179,16 +179,34 @@ def make(seed: int, **settings: Any) -> Any:
     from cadence.words.hearing import Hearing
 
     ear = {k[4:]: v for k, v in settings.items() if k.startswith("ear_")}
+    voice = {k[6:]: v for k, v in settings.items() if k.startswith("voice_")}
     told = {k: v for k, v in settings.items() if k in ("things", "say_at")}
-    return Hearing(words.make_brain(seed), **told, **ear)
+    return Hearing(words.make_brain(seed), voice={"seed": int(seed), **voice}, **told, **ear)
 
 
-def life(seed: int, sounds: dict[int, np.ndarray], *, record: Any = None,
+def _focus(brain: Any, group: str, value: int) -> np.ndarray:
+    """A concept in focus, as a vector over the brain's concepts."""
+    out = np.zeros(brain.lexicon.concepts)
+    out[brain.lexicon.index(group, value)] = 1.0
+    return out
+
+
+def life(seed: int, sounds: dict[int, np.ndarray], *, record: Any = None, said: Any = None,
          **given: Any) -> dict[str, Any]:
-    """One founder's life with ears; the readings by gate."""
+    """One founder's life with ears and a voice; the readings by gate. ``record`` (a list)
+    takes every test question with what was said; ``said`` (a list) takes what the voice said:
+    ``(measure, frames, word meant, word answered in writing)``, the measure ``V1`` (a word
+    heard alone said back), ``V2`` (an answer to a question asked aloud by a training voice),
+    ``V4_early`` or ``V4_late`` (a word's first and last practice attempts)."""
     settings = {k: v for k, v in given.items() if k in DEFAULTS or k in words.DEFAULTS}
     events = script(seed, **settings)
-    hearing = make(seed, **{k: v for k, v in given.items() if k not in settings})
+    control = given.get("control")  # (model, mode, parameters): a control in the ear's place
+    if control:
+        import controls
+
+        hearing = controls.make(seed, str(control[0]), str(control[1]), int(control[2]))
+    else:
+        hearing = make(seed, **{k: v for k, v in given.items() if k not in settings})
     brain = hearing.brain
     lex = world.lexicon(seed)
     readings: dict[str, list[bool]] = {}
@@ -218,6 +236,13 @@ def life(seed: int, sounds: dict[int, np.ndarray], *, record: Any = None,
             assert r is not None
             words.turn(brain, r, event[1])
         elif kind == "name":
+            focus = brain.attend(event[1])
+            if focus is not None and hearing.ear.records:  # the drive to call, at the focus
+                hearing.voice.moment()
+                if hearing.voice.bored:
+                    record, _ = hearing.ear.choose(focus)
+                    if record >= 0:
+                        hearing.voice.attempt(record)
             if event[4] == "ear":
                 hearing.name(sounds[i], event[1])
                 for key in hearing.last["records"]:
@@ -233,15 +258,29 @@ def life(seed: int, sounds: dict[int, np.ndarray], *, record: Any = None,
             else:
                 brain.practice(q.text, answer)
         elif kind == "read":
+            if "V3_silent" not in readings:  # before any reading aloud: the voice of each H3 kind
+                for k in WRITING_ONLY:  # never heard: nothing to say
+                    empty = not len(hearing.say(_focus(brain, "kind", k)))
+                    readings.setdefault("V3_silent", []).append(empty)
+                for k in EAR_ONLY:  # heard: said
+                    spoke = bool(len(hearing.say(_focus(brain, "kind", k))))
+                    readings.setdefault("V3_heard_said", []).append(spoke)
             hearing.read(event[1], sounds[i])
         elif kind == "ask":
+            if "V4_first" not in readings:
+                practise(hearing, readings, said, attempts=int(given.get("attempts", 16)))
             gate, q = event[1], event[2]
-            said = hearing.ask(sounds[i]) if event[3] == "ear" else brain.ask(q.text)
-            ok = world.right(q, said)
+            answered = hearing.ask(sounds[i]) if event[3] == "ear" else brain.ask(q.text)
+            ok = world.right(q, answered)
             readings.setdefault(gate, []).append(ok)
+            if said is not None and gate.startswith("H1:") and ok and q.answer != [lex.none]:
+                for vector, word in zip(hearing.last.get("answers", []), answered,
+                                        strict=False):
+                    said.append(("V2", hearing.say(vector), word, word))
             if record is not None:
                 record.append({"gate": gate, "question": q.text, "form": q.form,
-                               "about": q.about, "answer": q.answer, "said": said, "right": ok,
+                               "about": q.about, "answer": q.answer, "said": answered,
+                               "right": ok,
                                "heard": list(hearing.last.get("records", []))
                                if event[3] == "ear" else None})
         elif kind == "probe":
@@ -253,12 +292,91 @@ def life(seed: int, sounds: dict[int, np.ndarray], *, record: Any = None,
             cosine = float(by_eye @ by_ear / max(np.linalg.norm(by_eye) * np.linalg.norm(
                 by_ear), 1e-12))
             overlap.append((cosine, int(np.argmax(by_eye)) == int(np.argmax(by_ear))))
+            if said is not None:  # V1: the word heard alone, said back
+                said.append(("V1", hearing.say(hearing.last["concepts"]), event[1], ""))
     seconds[phase] = seconds.get(phase, 0.0) + time.time() - began
-    del lex
     out = readings_of(seed, settings, readings, overlap, hearing, seconds)
     total = sum(sum(v.values()) for v in heard_as.values())
     out["ear_purity"] = sum(max(v.values()) for v in heard_as.values()) / max(total, 1)
     out["ear_named_units"] = len(heard_as)
+    if said is not None:
+        own = own_ear(hearing, said, most=int(given.get("own_most", 150)))
+        for measure in ("V1", "V2", "V4_early", "V4_late"):
+            told = [x for x in said if x[0] == measure]
+            out[f"{measure}_said"] = float(np.mean([len(x[1]) > 0 for x in told])) if told \
+                else float("nan")
+            out[f"{measure}_n"] = len(told)
+            heard = own.get(measure, [])
+            out[f"{measure}_own_ear"] = float(np.mean(heard)) if heard else float("nan")
+            out[f"{measure}_own_ear_n"] = len(heard)
+    return out
+
+
+def practise(hearing: Any, readings: dict[str, list[Any]], said: Any, *,
+             attempts: int = 16) -> None:
+    """The voice's practice before the test: for every kind, colour and place, the word the
+    parrot would say for it (``Ear.choose``) is attempted ``attempts`` times. Reads each
+    attempt's match (``V4_curve``: the mean match at each attempt), the first and last
+    attempts' matches (``V4_first``, ``V4_last``), and gives the first and last attempts'
+    frames to ``said`` as ``V4_early`` and ``V4_late`` for the instrument."""
+    brain = hearing.brain
+    curve: list[list[float]] = []
+    done: set[int] = set()
+    for group in brain.senses.groups:
+        size = brain.lexicon.groups[group].stop - brain.lexicon.groups[group].start
+        for value in range(size):
+            record, match = hearing.ear.choose(_focus(brain, group, value))
+            if record < 0 or match < hearing.say_at or record in done:
+                continue
+            done.add(record)
+            meant = _word_of(brain, group, value)
+            row = []
+            for k in range(attempts):
+                frames, m = hearing.voice.attempt(record)
+                row.append(m)
+                if said is not None and meant and k in (0, attempts - 1):
+                    said.append(("V4_early" if k == 0 else "V4_late", frames, meant, meant))
+            curve.append(row)
+    if curve:
+        mean = np.mean(np.array(curve), axis=0)
+        readings["V4_first"] = [float(mean[0])]
+        readings["V4_last"] = [float(mean[-1])]
+        readings["V4_curve"] = [float(m) for m in mean]
+        readings["V4_rose"] = [r[-1] > r[0] for r in curve]
+    else:
+        readings["V4_first"] = []
+
+
+def _word_of(brain: Any, group: str, value: int) -> str:
+    """The written word the lexicon says for a concept (the measure's name for it), or ''."""
+    word = brain.lexicon.say(_focus(brain, group, value))
+    return word or ""
+
+
+def own_ear(hearing: Any, said: list[Any], *, most: int = 150) -> dict[str, list[bool]]:
+    """The parrot's own ear on what its voice said: each said word turned into sound
+    (``hearing/voice.py``) and heard (nothing learned); right where the concepts it brings back
+    name the concept of the word meant (its written form's, over the senses' groups). At most
+    ``most`` words a measure."""
+    from cadence.words.hearing import sound
+
+    brain = hearing.brain
+    lexicon = brain.lexicon
+    sensed = np.zeros(lexicon.concepts, dtype=bool)
+    for g in brain.senses.groups:
+        sensed[lexicon.groups[g]] = True
+    out: dict[str, list[bool]] = {}
+    for measure, frames, meant, _ in said:
+        kept = out.setdefault(measure, [])
+        if len(kept) >= most or lexicon.unit(meant) is None:
+            continue
+        if len(frames) < 2:
+            kept.append(False)
+            continue
+        concepts, _ = hearing.heard(sound(frames), learn=False)
+        want = np.where(sensed, lexicon.hear(meant), -np.inf)
+        got = np.where(sensed, concepts, -np.inf)
+        kept.append(int(np.argmax(got)) == int(np.argmax(want)))
     return out
 
 
@@ -267,6 +385,9 @@ def readings_of(seed: int, settings: dict[str, Any], readings: dict[str, list[bo
                 seconds: dict[str, float]) -> dict[str, Any]:
     out: dict[str, Any] = {"seed": int(seed), **settings}
     for gate, oks in sorted(readings.items()):
+        if gate == "V4_curve":
+            out[gate] = list(oks)
+            continue
         out[gate] = float(np.mean(oks)) if oks else float("nan")
         out[f"{gate}_n"] = len(oks)
 
@@ -302,7 +423,15 @@ if __name__ == "__main__":
                     **told))
     else:
         found: list[Any] = []
-        result = life(seed, load(sys.argv[3]), record=found, **told)
+        voiced: list[Any] = []
+        result = life(seed, load(sys.argv[3]), record=found, said=voiced, **told)
         print(json.dumps(result, indent=1, default=float))
         if len(sys.argv) > 5:
             Path(sys.argv[5]).write_text(json.dumps(found, default=str))
+            frames = [np.asarray(x[1], dtype=np.float32) for x in voiced]
+            np.savez(str(Path(sys.argv[5]).with_suffix(".voice.npz")),
+                     frames=np.concatenate(frames) if frames else np.zeros((0, 40)),
+                     lengths=np.array([len(f) for f in frames], dtype=np.int64),
+                     measure=np.array([x[0] for x in voiced]),
+                     meant=np.array([x[2] for x in voiced]),
+                     written=np.array([x[3] for x in voiced]))
