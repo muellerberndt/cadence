@@ -55,8 +55,8 @@ import meaning as mn  # noqa: E402
 
 # ----------------------------------------------------------------------------- the store
 
-GROUPS = ("agent", "verb", "patient", "distractor", "sequence", "stack", "start")
-AGENT, VERB, PATIENT, DISTRACTOR, SEQUENCE, STACK, START = range(len(GROUPS))
+GROUPS = ("agent", "verb", "patient", "distractor", "sequence", "stack", "start", "task")
+AGENT, VERB, PATIENT, DISTRACTOR, SEQUENCE, STACK, START, TASK = range(len(GROUPS))
 STACKS = (STACK,)  # groups whose head is their last block
 # the role slot's choices: a name and the operations it names, each ``(operation, group)``
 OPS: tuple[tuple[str, tuple[tuple[str, int], ...]], ...] = (
@@ -71,17 +71,30 @@ OPS: tuple[tuple[str, tuple[tuple[str, int], ...]], ...] = (
     ("said_bracket", (("shift", SEQUENCE),)),
     ("said_close", (("pop", STACK),)),
     ("start", (("set", START),)),
+    # the full inventory: what is asked of the sentence (the second grammar, a question)
+    ("verb_dialect", (("set", VERB), ("set", TASK))),
+    ("dialect", (("set", TASK),)),
+    ("question", (("set", TASK),)),
 )
 OP = {name: i for i, (name, _) in enumerate(OPS)}
-SLOTS = (*mn.PART_SLOTS, len(OPS))  # a word's stem, its form, and the moment's role
+BASE = (7, 11)  # the base inventory's groups and roles: the sentences of the say-back mix
+SILENCE = mn.PART_SLOTS[0]  # the full inventory's stem for a moment that names no word
 DEPTH = 8  # blocks a group holds
+
+
+def inventory(full: bool) -> tuple[int, tuple[int, int, int]]:
+    """The store's groups and the motor's slots (a word's stem, its form, the moment's role):
+    the base inventory, or the full one with the task group, its roles and the silent stem."""
+    if full:
+        return len(GROUPS), (mn.PART_SLOTS[0] + 1, mn.PART_SLOTS[1], len(OPS))
+    return BASE[0], (*mn.PART_SLOTS, BASE[1])
 
 
 class Store:
     """Groups of blocks of settled activity, per stream: ``apply`` runs the operations each
     stream's role names, ``heads`` is what the groups show, ``state`` every block."""
 
-    def __init__(self, units: int, depth: int = DEPTH, groups: int = len(GROUPS),
+    def __init__(self, units: int, depth: int = DEPTH, groups: int = BASE[0],
                  stacks: tuple[int, ...] = STACKS) -> None:
         self.units, self.depth, self.groups = int(units), int(depth), int(groups)
         self.stacks = tuple(stacks)
@@ -133,22 +146,23 @@ class Store:
 
 
 def make_brain(founder: int, settings: dict[str, Any] | None = None, module: int = 256,
-               depth: int | None = DEPTH) -> Any:
+               depth: int | None = DEPTH, full: bool = False) -> Any:
     """The chamber's brain with the role slot and the store: every row taught, the previous
     observation heard (``history_decays=(0.0,)``), the recall memory of the default
     composition. ``depth`` blocks a group is the library's store (``message_settled`` with
     ``message_operations``); None composes the region alone, for the instrument's own
-    ``Store`` to write its heads onto (``install``)."""
+    ``Store`` to write its heads onto (``install``). ``full`` is the full inventory."""
     import cadence as cd
 
+    groups, slots = inventory(full)
     settings = {"learning_surprise": False, "history_decays": [0.0], "message_amplitude": 3.0,
                 **(settings or {})}
-    store = ({"message_phases": len(GROUPS)} if depth is None else
+    store = ({"message_phases": groups} if depth is None else
              {"message_phases": int(depth), "message_settled": True,
-              "message_operations": [list(steps) for _, steps in OPS],
+              "message_operations": [list(steps) for _, steps in OPS[:slots[2]]],
               "message_stacks": list(STACKS)})
     return cd.Brain.compose(
-        gr.INPUTS, sum(SLOTS), modules=(module,), seed=int(founder), slots=SLOTS,
+        gr.INPUTS, sum(slots), modules=(module,), seed=int(founder), slots=slots,
         **{"backend": "cpu", "recall": True, "message": module, **store, **settings})
 
 
@@ -179,6 +193,44 @@ def _word_role(row: gr.Row, j: int) -> str | None:
     return "distractor" if kind.startswith("mod") else kind
 
 
+def _heard_clause(row: gr.Row) -> gr.Row:
+    """The clause whose words a row hears: its own, the other wording's (``wording``) or the
+    clause a question is asked of (``question``)."""
+    if "question" in row.meta:
+        return gr.twin(row, dialect=False)
+    if "heard_dialect" in row.meta:
+        return gr.twin(row, dialect=bool(row.meta["heard_dialect"]))
+    return row
+
+
+# a question is one concept moment after the sentence: a role's flag alone, or both verbs
+QUESTIONS = {"agent": ("AGENT",), "patient": ("PATIENT",), "verb": ("SEE", "CHASE")}
+
+
+def wording(row: gr.Row, heard: bool, said: bool) -> gr.Row:
+    """One meaning in two wordings: the clause heard as the words of one grammar (``heard``
+    true for the second) and said in the other or the same (``said``). A ``DIALECT`` moment
+    before ``GO`` asks for the second grammar; without it the first is said."""
+    target = gr.twin(row, dialect=said)
+    pre = [gr.heard(w) for w in gr.twin(row, dialect=heard).target]
+    if said:
+        pre.append(gr.concept("DIALECT"))
+    return gr.Row("clause", pre, target.target, {**target.meta, "heard_dialect": heard})
+
+
+def question(row: gr.Row, ask: str, words: bool) -> gr.Row:
+    """A question about a clause: the clause heard (as its words, or as concept moments), one
+    question moment (``QUESTIONS``), and at ``GO`` the answer said as one word and ``end``:
+    the agent, the patient, or the verb in the agent's number."""
+    clause = gr.twin(row, dialect=False)
+    m = clause.meta
+    pre = [gr.heard(w) for w in clause.target] if words else list(clause.pre)
+    answer = {"agent": gr.noun(*m["agent"]), "patient": gr.noun(*m["patient"]),
+              "verb": gr.verb(m["verb"], m["agent"][1])}[ask]
+    return gr.Row("clause", [*pre, gr.concept(*QUESTIONS[ask])], [answer, gr.END],
+                  {**m, "question": ask, "heard_words": words})
+
+
 def heard_label(row: gr.Row, t: int) -> tuple[int, int, int] | None:
     """What a lesson at a row's ``t``-th heard moment names (an echo): the word's stem and form
     and the moment's role. A clause's moment names its word (a verb concept its stem alone: the
@@ -193,13 +245,18 @@ def heard_label(row: gr.Row, t: int) -> tuple[int, int, int] | None:
             return None
         return (*mn.word_parts(row.meta["chain"][0]), OP["start"])
     words = np.flatnonzero(x[:gr.ACTIONS])
-    if len(words) == 1:  # a heard word: its role by its place in the sentence
-        role = _word_role(row, t)
+    if len(words) == 1:  # a heard word: its role by its place in the sentence it is heard in
+        role = _word_role(_heard_clause(row), t)
         return (*mn.word_parts(int(words[0])), OP[role or "none"])
     on = {name for name, i in gr.C.items() if x[i]}
     noun = [i for i, name in enumerate(gr.CONCEPTS[:gr.NOUNS]) if name in on]
+    if on == {"DIALECT"}:  # the second grammar asked for: no word, the task
+        return (SILENCE, mn.NO_FORM, OP["dialect"])
+    if "question" in row.meta and t == len(row.pre) - 1:
+        return (SILENCE, mn.NO_FORM, OP["question"])
     if on & {"SEE", "CHASE"}:
-        return (gr.NOUNS + (0 if "SEE" in on else 1), mn.NO_FORM, OP["verb"])
+        return (gr.NOUNS + (0 if "SEE" in on else 1), mn.NO_FORM,
+                OP["verb_dialect" if "DIALECT" in on else "verb"])
     for flag, role in (("AGENT", "agent"), ("PATIENT", "patient"), ("MOD", "distractor")):
         if noun and flag in on:
             return (*mn.word_parts(gr.noun(noun[0], "PLURAL" in on)), OP[role])
@@ -213,7 +270,9 @@ def said_label(row: gr.Row, j: int) -> tuple[int, int, int]:
     if j >= len(row.target):
         return (*mn.word_parts(gr.END), OP["none"])
     role = "none"
-    if row.family == "clause":
+    if "question" in row.meta:
+        pass  # an answer takes nothing from the store
+    elif row.family == "clause":
         if _word_role(row, j) == "distractor":
             role = "said_distractor"
     elif row.family == "dyck":
@@ -225,7 +284,8 @@ def said_label(row: gr.Row, j: int) -> tuple[int, int, int]:
 
 
 def _lesson(brain: Any, x: np.ndarray, labels: np.ndarray, work: dict[str, float],
-            said: bool) -> None:
+            said: bool) -> bool:
+    """One lesson; whether it was given (a refused one names no role for the store)."""
     try:
         report = brain.lesson(x, labels)
         work["lessons"] += 1
@@ -236,14 +296,17 @@ def _lesson(brain: Any, x: np.ndarray, labels: np.ndarray, work: dict[str, float
             work["free_budget_exhausted"] += report.get("free_budget_exhausted", 0.0)
     except RuntimeError:
         work["refused"] += 1
+        return False
+    return True
 
 
 def _act(brain: Any, x: np.ndarray, work: dict[str, float]) -> tuple[np.ndarray, np.ndarray]:
     """One greedy act: the word each stream says and the role it names."""
     try:
-        raw = np.asarray(brain.act(x, greedy=True)).reshape(len(x), len(SLOTS))
+        raw = np.asarray(brain.act(x, greedy=True)).reshape(len(x), 3)
         work["act_sweeps"] += float((brain.last_settlement or {}).get("steps", 0))
-        words = np.array([mn.parts_word(a, b) for a, b in raw[:, :2]], dtype=np.int64)
+        words = np.array([-1 if a == SILENCE else mn.parts_word(a, b) for a, b in raw[:, :2]],
+                         dtype=np.int64)
         roles = np.array(raw[:, 2], dtype=np.int64)
     except RuntimeError:
         work["exhausted"] += 1
@@ -294,7 +357,7 @@ def speak(brain: Any, rows: list[gr.Row], store: Store | None, *, teach: bool = 
         labels = None if any(v is None for v in named) else np.array(named, dtype=np.int64)
         taught = teach and echo and labels is not None
         if taught and labels is not None:
-            _lesson(brain, x, labels, work, said=False)
+            taught = _lesson(brain, x, labels, work, said=False)
         given = labels is not None and (teach or forced)
         if given and not taught and labels is not None:
             give(labels)
@@ -322,9 +385,7 @@ def speak(brain: Any, rows: list[gr.Row], store: Store | None, *, teach: bool = 
         if bar and j == rows[0].force:
             mn.bar_meaning(brain, rows)
         labels = np.array([said_label(r, j) for r in rows], dtype=np.int64)
-        if teach:
-            _lesson(brain, x, labels, work, said=True)
-        elif forced:
+        if not (teach and _lesson(brain, x, labels, work, said=True)) and (teach or forced):
             give(labels)
         words, roles = _act(brain, x, work)
         follow(labels if teach or forced else None, roles, teach)
@@ -376,8 +437,11 @@ def by_kind(brain: Any, store: Store | None, batches: list[list[gr.Row]]) -> dic
                 g[1] += 1
                 if when == "said" and index < len(r.target):
                     word = r.target[index]
-                    kind = (f"{r.family}_{gr.WORDS[word]}" if word in (gr.NEAR, gr.END)
-                            else gr._kind(r, index))
+                    if "question" in r.meta:
+                        kind = "question_" + ("end" if word == gr.END else r.meta["question"])
+                    else:
+                        kind = (f"{r.family}_{gr.WORDS[word]}" if word in (gr.NEAR, gr.END)
+                                else gr._kind(r, index))
                     g = groups.setdefault(kind, [0, 0])
                     g[0] += int(words[i] == word)
                     g[1] += 1
@@ -420,6 +484,85 @@ def probes(brain: Any, store: Store | None, founder: int, both: dict[str, list[l
                               ("settled", "message", "joint"))
 
 
+# ------------------------------------------------------------------- the lessons' mixes
+
+WORDINGS = {"para_12": (False, True), "para_21": (True, False), "para_22": (True, True)}
+ASKED = ("ask_concepts", "ask_words")
+SAME = tuple(WORDINGS) + ("g2",)  # the panels of one meaning in two wordings
+MORE = tuple(name + tail for name in SAME + ASKED for tail in ("", "_held"))
+
+
+def full_batch(rng: np.random.Generator, split: gr.Split) -> list[gr.Row]:
+    """A lesson batch of the full mix, combinations that training shows: the first grammar's
+    mix (four tenths), clauses heard as words and said back (two tenths), the second grammar
+    from concepts (one tenth), one wording said from the other (``WORDINGS``, three
+    twentieths) and questions (three twentieths)."""
+    kind = rng.random()
+    if kind < 0.4:
+        return gr.train_batch(rng, split, "g1")
+    L = int(rng.choice(gr.TRAIN_L))
+    if kind < 0.6:
+        return [mn.sayback(gr.trained_clause(rng, split, L, False)) for _ in range(gr.BATCH)]
+    if kind < 0.7:
+        return [gr.trained_clause(rng, split, L, True) for _ in range(gr.BATCH)]
+    if kind < 0.85:
+        heard, said = list(WORDINGS.values())[int(rng.integers(len(WORDINGS)))]
+        return [wording(gr.trained_clause(rng, split, L, False), heard, said)
+                for _ in range(gr.BATCH)]
+    ask = list(QUESTIONS)[int(rng.integers(len(QUESTIONS)))]
+    words = bool(rng.integers(2))
+    return [question(gr.trained_clause(rng, split, L, False), ask, words)
+            for _ in range(gr.BATCH)]
+
+
+def lesson_batch(train: str, rng: np.random.Generator, split: gr.Split) -> list[gr.Row]:
+    """A life's lesson batch: the say-back mix (``meaning.sayback_batch``) or the full mix."""
+    return full_batch(rng, split) if train == "all" else mn.sayback_batch(rng, split)
+
+
+def more_panels(founder: int, batches: int = 4) -> dict[str, list[list[gr.Row]]]:
+    """The full mix's panels at trained lengths, each of combinations that training shows and,
+    as ``_held``, of held-out ones: one wording said from the other (``para_12`` the second
+    grammar from the first's words, ``para_21`` the first from the second's, ``para_22`` the
+    second said back), the second grammar from concepts (``g2``), and questions about a clause
+    heard as concepts and as words (``ask_concepts``, ``ask_words``), the three questions in
+    turn."""
+    split = gr.Split.of(founder)
+    rng = np.random.default_rng(np.random.SeedSequence([int(founder), gr.SEEDS["test"], 3080]))
+
+    def clause(L: int, held: bool, dialect: bool = False) -> gr.Row:
+        while True:
+            row = gr.clause(rng, L, dialect=dialect)
+            m = row.meta
+            if split.held(tuple(m["agent"]), tuple(m["patient"]), m["verb"]) == held:
+                return row
+
+    shape = [gr.TRAIN_L[i % len(gr.TRAIN_L)] for i in range(batches)]
+    out: dict[str, list[list[gr.Row]]] = {}
+    for held, tail in ((False, ""), (True, "_held")):
+        for name, (heard, said) in WORDINGS.items():
+            out[name + tail] = [[wording(clause(L, held), heard, said) for _ in range(gr.BATCH)]
+                                for L in shape]
+        out["g2" + tail] = [[clause(L, held, True) for _ in range(gr.BATCH)] for L in shape]
+        asks = list(QUESTIONS)
+        for name, words in (("ask_concepts", False), ("ask_words", True)):
+            out[name + tail] = [[question(clause(L, held), asks[i % len(asks)], words)
+                                 for _ in range(gr.BATCH)] for i, L in enumerate(shape)]
+    return out
+
+
+def cross_batches(founder: int, per_shape: int) -> dict[str, list[list[gr.Row]]]:
+    """Clauses heard as the words of each grammar, for the probes across wordings: trained
+    combinations and held-out ones in the first grammar's words (``g1``, ``g1_held``) and in
+    the second's (``g2``, ``g2_held``)."""
+    both = mn.split_batches(founder, per_shape)
+    out = {}
+    for heard, name in ((False, "g1"), (True, "g2")):
+        out[name] = [[wording(r, heard, False) for r in rows] for rows in both["trained"]]
+        out[name + "_held"] = [[wording(r, heard, False) for r in rows] for rows in both["held"]]
+    return out
+
+
 # -------------------------------------------------------------------------------- a life
 
 LEAN = ("clause", "clause_long", "dyck", "path", "back", "back_long")  # a checkpoint's panels
@@ -427,7 +570,8 @@ LEAN = ("clause", "clause_long", "dyck", "path", "back", "back_long")  # a check
 
 def life(spec: dict[str, Any]) -> dict[str, Any]:
     """One life (``"kind": "store"``): ``founder``, ``batches`` of the say-back mix
-    (``meaning.sayback_batch``), ``module``, ``depth``, ``settings`` over ``make_brain``'s,
+    (``meaning.sayback_batch``) or with ``"train": "all"`` of the full mix (``full_batch``, the
+    full inventory and its panels), ``module``, ``depth``, ``settings`` over ``make_brain``'s,
     ``echo`` (lessons at the heard moments, on unless false), ``panel_batches``,
     ``emulated`` (the instrument's own store in place of the library's), ``held_probes``
     (batches per shape), ``checkpoints`` (batch counts at which the lean
@@ -442,15 +586,19 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     started = time.monotonic()
     depth = int(spec.get("depth", DEPTH))
     emulated = bool(spec.get("emulated", False))
-    brain = make_brain(founder, spec.get("settings"), module, None if emulated else depth)
-    store = Store(module, depth) if emulated else None
+    train = str(spec.get("train", "sayback"))
+    full = bool(spec.get("full", train == "all"))
+    brain = make_brain(founder, spec.get("settings"), module, None if emulated else depth, full)
+    store = Store(module, depth, inventory(full)[0]) if emulated else None
     split = gr.Split.of(founder)
     count = int(spec.get("panel_batches", 4))
     tests = {**gr.panels(founder, count), **mn.sayback_panels(founder, count)}
+    if train == "all":
+        tests.update(more_panels(founder, count))
     rng = np.random.default_rng(np.random.SeedSequence([founder, gr.SEEDS["train"]]))
     row: dict[str, Any] = {
         "kind": "store", "tag": spec.get("tag"), "founder": founder, "batches": batches,
-        "module": module, "depth": depth, "emulated": emulated,
+        "module": module, "depth": depth, "emulated": emulated, "train": train, "full": full,
         "settings": spec.get("settings", {}),
         "echo": echo, "parameters": int(brain.parameters()), "cadence": cd.__version__,
         "curve": [],
@@ -458,7 +606,7 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     work = gr.new_work()
     checks = set(int(c) for c in spec.get("checkpoints", ()))
     for b in range(1, batches + 1):
-        speak(brain, mn.sayback_batch(rng, split), store, teach=True, work=work, echo=echo)
+        speak(brain, lesson_batch(train, rng, split), store, teach=True, work=work, echo=echo)
         if b in checks:
             lean = panels(brain, store, {k: v[:2] for k, v in tests.items()}, LEAN)
             row["curve"].append({"batches": b, "seconds": round(time.monotonic() - started, 1),
@@ -473,6 +621,18 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     row["gains"] = dict(brain.carried_gains) if brain.hearing is not None else {}
     row["panels"] = panels(brain, store, tests, mn.SAID)
     row["sayback"] = panels(brain, store, tests, mn.BACK)
+    if train == "all":
+        row["more"] = panels(brain, store, tests, MORE)
+        row["kinds_more"] = by_kind(brain, store, [b for name in MORE if name.endswith("_held")
+                                                   for b in tests[name]])
+        cross = cross_batches(founder, int(spec.get("held_probes", 4)))
+        states = {name: held_states(brain, store, cross[name]) for name in cross}
+        places = ("settled", "message", "joint")
+        # fitted on one wording's trained combinations, scored on the other's held-out ones
+        row["probes_cross"] = {
+            "g1_to_g2": mn.transfer_probes(founder, states["g1"], states["g2_held"], places),
+            "g2_to_g1": mn.transfer_probes(founder, states["g2"], states["g1_held"], places)}
+        del states
     both = mn.split_batches(founder, int(spec.get("held_probes", 4)))
     words = {k: [[mn.sayback(r) for r in rows] for rows in both[k]] for k in both}
     row["kinds"] = by_kind(brain, store, [b for name in ("clause", "dyck", "path")
@@ -487,9 +647,77 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
+def control_life(spec: dict[str, Any]) -> dict[str, Any]:
+    """One control of the full mix (``"kind": "store_control"``): the chamber's LSTM or
+    transformer at ``width``, taught the same lesson batches (``train``) online (one pass) or
+    offline (to the controls' stopping rule), its panels said and its hidden state probed as
+    the brain's is, the probes across wordings included. Its row reads as one of
+    ``meaning.sentence_control``."""
+    import torch
+
+    torch.set_num_threads(1)
+    ct = mn._controls()
+    model, mode, founder = str(spec["model"]), str(spec["mode"]), int(spec["founder"])
+    train = str(spec.get("train", "all"))
+    count = int(spec.get("batches", mn.BATCHES))
+    learner = ct.Learner(model, int(spec["width"]), founder, ct.RATES[mode])
+    split = gr.Split.of(founder)
+    rng = np.random.default_rng(np.random.SeedSequence([founder, gr.SEEDS["train"]]))
+    lessons = [lesson_batch(train, rng, split) for _ in range(count)]
+    started = time.monotonic()
+    epochs = 1
+    if mode == "online":
+        for batch in lessons:
+            learner.update(batch)
+    else:
+        order = np.random.default_rng(np.random.SeedSequence([founder, 99, 0]))
+        best, stale, epochs = float("inf"), 0, 0
+        while epochs < ct.EPOCHS and stale < ct.PATIENCE:
+            mean = float(np.mean([learner.update(lessons[int(i)])
+                                  for i in order.permutation(count)]))
+            epochs += 1
+            stale = 0 if mean < best - 1e-4 else stale + 1
+            best = min(best, mean)
+    learner.net.eval()
+    batches = int(spec.get("panel_batches", 4))
+    tests = {**gr.panels(founder, batches), **mn.sayback_panels(founder, batches)}
+    names = mn.SAID + mn.BACK
+    if train == "all":
+        tests.update(more_panels(founder, batches))
+        names += MORE
+    row: dict[str, Any] = {
+        "kind": "sentence_control", "model": model, "mode": mode, "founder": founder,
+        "train": train, "width": int(spec["width"]), "parameters": ct.count(learner.net),
+        "brain_parameters": int(spec.get("parameters", 0)), "epochs": epochs,
+        "macs": float(learner.work["macs"]),
+        "panels": {name: gr.read_speaker(learner.speak, None, tests[name],
+                                         twins=name in gr.TWINS) for name in names},
+    }
+    for panel in row["panels"].values():
+        panel.pop("examples", None)
+    per_shape = int(spec.get("held_probes", 4))
+    both = mn.split_batches(founder, per_shape)
+    places = ("carried", "settled") if model == "lstm" else ("settled",)
+    states = mn.control_states(model, learner.net, both)
+    row["probes_held"] = mn.transfer_probes(founder, states["trained"], states["held"], places)
+    words = {k: [[mn.sayback(r) for r in rows] for rows in both[k]] for k in both}
+    states = mn.control_states(model, learner.net, words)
+    row["probes_back"] = mn.transfer_probes(founder, states["trained"], states["held"], places)
+    if train == "all":
+        states = mn.control_states(model, learner.net, cross_batches(founder, per_shape))
+        row["probes_cross"] = {
+            "g1_to_g2": mn.transfer_probes(founder, states["g1"], states["g2_held"], places),
+            "g2_to_g1": mn.transfer_probes(founder, states["g2"], states["g1_held"], places)}
+    row["seconds"] = round(time.monotonic() - started, 1)
+    return row
+
+
 def run_life(spec: dict[str, Any]) -> dict[str, Any]:
-    """A plan's life: a store life, or one of ``meaning.py``'s (the controls)."""
-    return life(spec) if spec.get("kind") == "store" else mn.run_life(spec)
+    """A plan's life: a store life, a control of the full mix, or one of ``meaning.py``'s
+    (the say-back mix's controls)."""
+    kind = spec.get("kind")
+    return (life if kind == "store" else control_life if kind == "store_control"
+            else mn.run_life)(spec)
 
 
 # ------------------------------------------------------------------------------- reading
@@ -511,6 +739,7 @@ def read(rows: list[dict[str, Any]], controls: list[dict[str, Any]], of: int = 1
                     names = sorted({k for d in found for k in d})
                     lines.append(f"  {tag} {part}: " + ", ".join(
                         f"{k} {np.mean([d[k] for d in found if k in d]):.2f}" for k in names))
+    lines += more_verdict(rows, controls, of)
     lines += ["", "curves (batches: lean panels), mean"]
     for tag, lives in arms.items():
         points = sorted({p["batches"] for r in lives for p in r.get("curve", ())})
@@ -522,6 +751,77 @@ def read(rows: list[dict[str, Any]], controls: list[dict[str, Any]], of: int = 1
     for tag, lives in arms.items():
         lines.append(f"  {tag}: {np.mean([r['seconds'] for r in lives]):.0f} "
                      f"(lessons {np.mean([r['work']['seconds'] for r in lives]):.0f})")
+    return lines
+
+
+def more_verdict(rows: list[dict[str, Any]], controls: list[dict[str, Any]],
+                 of: int = 10) -> list[str]:
+    """The full mix's gates, for the lives that hold its panels. H3: one wording said from
+    the other (``para_12`` and ``para_21``, trained and held-out combinations) at .90 on ``of``
+    lives, and the least clause component's probe across wordings (fitted on one wording's
+    trained combinations, scored on the other's held-out ones, the store read with the
+    association) at .95 on ``of``. H4: the questions (heard as concepts and as words, trained
+    and held-out) at .90 on ``of``. Then every panel beside the matched controls offline."""
+    arms = {tag: lives for tag, lives in mn._by_tag(rows).items()
+            if any("more" in r for r in lives)}
+    if not arms:
+        return []
+    lines = ["", "the full mix's panels, mean", "",
+             "| Learner | Parameters | Lives | " + " | ".join(MORE) + " | across (1 to 2) | "
+             "across (2 to 1) |",
+             "| --- | --- | --- | " + " | ".join("---" for _ in MORE) + " | --- | --- |"]
+
+    def across(lives: list[dict[str, Any]], way: str, place: str) -> list[float | None]:
+        return [mn._least(r["probes_cross"][way], "heard", place) for r in lives
+                if r.get("probes_cross")]
+
+    groups: dict[tuple[int, str, str], list[dict[str, Any]]] = {}
+    for c in controls:
+        if "more" in c or any(name in c.get("panels", {}) for name in MORE):
+            groups.setdefault((int(c["brain_parameters"]), c["model"], c["mode"]), []).append(c)
+    for tag, lives in arms.items():
+        lines.append(f"| `{tag}` | {lives[0]['parameters']} | {len(lives)} | " + " | ".join(
+            mn._short([mn._score(r["more"][n], n) for r in lives]) for n in MORE)
+            + f" | {mn._short(across(lives, 'g1_to_g2', 'joint'))}"
+            + f" | {mn._short(across(lives, 'g2_to_g1', 'joint'))} |")
+    for (_size, model, mode), lives in sorted(groups.items()):
+        lines.append(f"| {model}, {mode} | {lives[0]['parameters']} | {len(lives)} | " + " | ".join(
+            mn._short([mn._score(c["panels"][n], n) for c in lives]) for n in MORE)
+            + f" | {mn._short(across(lives, 'g1_to_g2', 'settled'))}"
+            + f" | {mn._short(across(lives, 'g2_to_g1', 'settled'))} |")
+    lines.append("")
+    for tag, lives in arms.items():
+        counts = {n: sum((mn._score(r["more"][n], n) or 0.0) >= 0.9 for r in lives)
+                  for n in MORE}
+        probes = {way: sum(v is not None and v >= 0.95 for v in across(lives, way, "joint"))
+                  for way in ("g1_to_g2", "g2_to_g1")}
+        h3 = all(counts[n] >= of for n in ("para_12", "para_12_held", "para_21", "para_21_held")
+                 ) and all(c >= of for c in probes.values())
+        h4 = all(counts[n + tail] >= of for n in ASKED for tail in ("", "_held"))
+        lines.append(
+            f"  {tag}: H3 said " + ", ".join(
+                f"{n} {counts[n]}" for n in ("para_12", "para_12_held", "para_21",
+                                              "para_21_held"))
+            + "; held across wordings " + ", ".join(f"{w} {c}" for w, c in probes.items())
+            + f" of {len(lives)} -> " + ("holds" if h3 else "fails")
+            + "; H4 " + ", ".join(f"{n + t} {counts[n + t]}" for n in ASKED
+                                  for t in ("", "_held"))
+            + f" of {len(lives)} -> " + ("holds" if h4 else "fails"))
+        size = int(lives[0]["parameters"])
+        for model in ("lstm", "transformer"):
+            theirs = {c["founder"]: c for (s, m, mode), found in groups.items() for c in found
+                      if m == model and mode == "offline" and abs(s - size) <= 0.02 * size}
+            paired_lives = [r for r in lives if r["founder"] in theirs]
+            if not paired_lives:
+                continue
+            cells = []
+            for n in MORE:
+                mine = [mn._score(r["more"][n], n) or 0.0 for r in paired_lives]
+                other = [mn._score(theirs[r["founder"]]["panels"][n], n) or 0.0
+                         for r in paired_lives]
+                mean, error = mn.paired(mine, other)
+                cells.append(f"{n} {mean:+.2f} ({error:.2f})")
+            lines.append(f"  {tag} less {model}: " + ", ".join(cells))
     return lines
 
 
@@ -541,16 +841,18 @@ def dev_plan(founders: tuple[int, ...] = DEV, batches: int = mn.BATCHES,
 
 
 def control_plan(founders: tuple[int, ...], parameters: int, held_probes: int = 4,
-                 modes: tuple[str, ...] = ("offline",)) -> list[dict[str, Any]]:
-    """The chamber's LSTM and transformer at ``parameters``, taught the same say-back mix
-    (``meaning.sentence_control``)."""
+                 modes: tuple[str, ...] = ("offline",), train: str = "sayback",
+                 batches: int = mn.BATCHES) -> list[dict[str, Any]]:
+    """The chamber's LSTM and transformer at ``parameters``, taught the same lesson batches:
+    the say-back mix (``meaning.sentence_control``) or the full mix (``control_life``)."""
     out = []
+    kind = "store_control" if train == "all" else "sentence_control"
     for model in ("lstm", "transformer"):
         width = mn.wide_width(model, parameters, limit=1200)
         for mode in modes:
-            out += [{"kind": "sentence_control", "model": model, "mode": mode, "founder": f,
-                     "parameters": parameters, "width": width, "held_probes": held_probes}
-                    for f in founders]
+            out += [{"kind": kind, "model": model, "mode": mode, "founder": f, "train": train,
+                     "parameters": parameters, "width": width, "held_probes": held_probes,
+                     "batches": batches} for f in founders]
     return out
 
 
