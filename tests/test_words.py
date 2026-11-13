@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from cadence.space.map import Map
-from cadence.words import PLACES, Body, Lexicon, Words
+from cadence.words import PLACES, Body, Lexicon, Senses, Words
 
 
 def _named(seed: int = 0, namings: int = 300) -> tuple[Lexicon, list[str], list[str]]:
@@ -179,3 +179,86 @@ def test_a_heard_form_with_no_letters() -> None:
     assert not again.written[unit] and again.say(("kind", 2)) == kinds[2]
     with pytest.raises(ValueError, match="outside the letters"):
         lexicon.enter("zuzo", written=False)  # a form of letters is a written form
+
+
+def test_the_voice_chooses_a_heard_word() -> None:
+    """The parrot's voice replays a word's heard sound: the lexicon chooses which word."""
+    lexicon, kinds, _ = _named(4, namings=120)
+    unit = lexicon.enter("~3", written=False)
+    for _ in range(3):
+        lexicon.name(["~3"], {("kind", 1): 0.5})
+    assert lexicon.choose(("kind", 1), among="heard") == unit
+    assert lexicon.forms[lexicon.choose(("kind", 1))] == kinds[1] == lexicon.say(("kind", 1))
+    assert lexicon.choose(("kind", 3), among="heard") is None  # no heard form names it
+    with pytest.raises(ValueError, match="among"):
+        lexicon.choose(("kind", 1), among="sung")
+
+
+def test_a_pistachio_makes_a_mark_a_link() -> None:
+    """Three factors: a word heard in focus leaves a mark that fades; a pistachio makes the marks
+    of its moment lasting links, in both directions; a word whose pistachio is withheld keeps
+    none."""
+    lexicon = Lexicon({"kind": 3, "colour": 2})
+    for _ in range(4):  # heard with no pistachio: the marks fade
+        lexicon.mark("dako", {("kind", 0): 0.6, ("colour", 1): 0.4})
+        for _ in range(12):
+            lexicon.fade()
+    assert not lexicon.marks and lexicon.hear("dako").max() < 0.02
+    assert lexicon.say(("kind", 0)) is None
+    for k, colour in ((0, 1), (0, 0), (0, 1)):  # heard, then a pistachio: a link
+        lexicon.mark("dako", {("kind", k): 0.6, ("colour", colour): 0.4})
+        assert lexicon.confirm(1.0) == 1
+    lexicon.mark("mipu", {("kind", 1): 0.6, ("colour", 0): 0.4})  # its pistachio withheld
+    for _ in range(12):
+        lexicon.fade()
+    assert int(np.argmax(lexicon.hear("dako"))) == lexicon.index("kind", 0)
+    assert lexicon.say(("kind", 0)) == "dako" and lexicon.say(("kind", 1)) is None
+    assert lexicon.hear("mipu").max() < 0.02
+
+
+def test_a_lesson_of_the_heard_words_alone() -> None:
+    """``heard_only``: a lesson moves the heard words' synapses alone; by default every synapse
+    takes the lesson's step (a word active through overlap is pulled toward silence)."""
+    for heard_only in (False, True):
+        lexicon = Lexicon({"kind": 3, "colour": 2}, heard_only=heard_only)
+        lexicon.name("dako", {("kind", 0): 0.5})
+        before = np.asarray(lexicon.graph.efficacy).copy()
+        lexicon.name("mipu", {("kind", 1): 0.5})
+        moved = np.flatnonzero(np.asarray(lexicon.graph.efficacy) != before)
+        touched = set(lexicon._touch[lexicon.unit("mipu")].tolist())
+        assert set(moved.tolist()) <= touched if heard_only else not set(moved.tolist()) <= (
+            touched)
+    assert Lexicon({"kind": 2}, heard_only=True).settings["heard_only"] is True
+    assert "heard_only" not in Lexicon({"kind": 2}).settings
+
+
+def test_a_pattern_is_heard_back_by_its_group() -> None:
+    """``pattern_back``: for a concept given as a pattern over its group, a word whose hearing
+    peaks anywhere in that group counts as heard back."""
+    lexicon = Lexicon({"near": 4, "kind": 2}, pattern_back=True)
+    for _ in range(3):
+        lexicon.name("tozo", {("near", 1): 0.5, ("near", 2): 0.2})
+    pattern = np.zeros(lexicon.concepts)
+    pattern[lexicon.groups["near"]] = [0.0, 0.3, 0.6, 0.0]  # peaks at unit 2, the word at 1
+    assert lexicon.say(pattern) == "tozo"
+
+
+def test_learned_senses_take_the_moment_and_the_naming() -> None:
+    """Senses with ``perceive`` and ``named`` are called by ``look`` and ``name``."""
+    calls: list[str] = []
+
+    class Learned(Senses):
+        def perceive(self, seen, lit):
+            calls.append("perceive")
+            return [(k, p, {"colour": 0}) for k, p in seen]
+
+        def named(self, brain, word, at):
+            calls.append("named")
+            return brain.attend(at)
+
+    held = Map((-2.0, 2.0, -2.0, 2.0), (24, 24), units=2, values={"colour": 2})
+    brain = Words(held, senses=Learned(held, Body()))
+    brain.look(seen=[(0, [1.0, 0.0])])
+    assert held.values_at([1.0, 0.0]) == {"colour": 0}
+    brain.name("dako", [1.0, 0.0])
+    assert calls == ["perceive", "named"]

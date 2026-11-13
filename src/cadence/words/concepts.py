@@ -555,27 +555,16 @@ class Concepts(Senses):
 
 
 class LearnedWords(Words):
-    """``cadence.words.Words`` whose senses are ``Concepts``: ``look`` passes the eyes' raw
-    reports through ``Concepts.perceive`` before the map takes them, and ``name`` takes
-    ``Concepts.named``'s lesson and concepts. The two calls a ``Words`` makes of senses that
-    have ``perceive`` and ``named``; this class makes them on a ``Words`` that does not."""
+    """``cadence.words.Words`` whose senses are ``Concepts``, on their body: ``Words.look``
+    passes the eyes' raw reports through ``Concepts.perceive`` before the map takes them, and
+    ``Words.name`` takes ``Concepts.named``'s lesson and concepts (the calls ``Words`` makes of
+    learned senses)."""
 
     def __init__(self, map: Any, concepts: Concepts, **settings: Any):
         if concepts.map is not map:
             raise ValueError("the concepts read the brain's own map")
         super().__init__(map, senses=concepts, body=concepts.body, **settings)
         self.senses: Concepts = concepts
-
-    def look(self, seen: Any = (), lit: Any = None, heard: Any = (), felt: Any = ()) -> None:
-        super().look(self.senses.perceive(seen, lit), lit, heard, felt)
-
-    def name(self, word: str | list[str], at: Any) -> float:
-        if not isinstance(word, str):
-            return super().name(word, at)
-        concepts = self.senses.named(self, word, at)
-        if concepts is None:
-            return float("nan")
-        return self.lexicon.name(word, concepts, groups=tuple(self.shares))
 
 
 __all__ = ["Around", "Circle", "Concepts", "Features", "LearnedWords", "Region"]

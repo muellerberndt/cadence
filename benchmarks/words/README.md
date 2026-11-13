@@ -11,8 +11,9 @@ not know" where it holds no answer. The brain is `cadence.words.Words` ([the gui
 | `world.py` | Rooms of things (kind, colour, place), the parrot's eyes, the places around the parrot, the nonce words drawn for each founder, the teacher's question forms and the scoring |
 | `words.py` | A founder's life as one script of events (rooms, turns, namings, practice, test questions), the brain's life on it and its readings |
 | `controls.py` | An LSTM and a causal transformer given the same script as tokens, online and offline, at the brain's parameter count and at nine times it |
-| `gates.py` | The declared run: every arm's lives on the founders, and the gates read from their files |
-| `PROTOCOL.md` | The declared protocol 1: founders, arms, readings and gates |
+| `gates.py` | The declared runs: every arm's lives on the founders, and the gates read from their files |
+| `several.py` | The rung of several things of one kind, how many, is there (#328): its chamber and controls (`PROTOCOL_SEVERAL.md`) |
+| `PROTOCOL.md`, `PROTOCOL_2.md` | The declared protocols 1 (W1 to W7) and 2 (W11, pistachios): founders, arms, readings and gates |
 | `test_words.py` | The chamber's contracts |
 
 Every word is a nonce word of consonant-vowel syllables drawn for the founder, so no word can be
