@@ -129,3 +129,46 @@ the level a record has to reach, at this size.
 
 One AWS c7i.8xlarge spot box (Name=cadence-0100-heads), one process per life and one thread per
 brain process; the controls on two threads each.
+
+## The outcome
+
+Read on 14 November 2026 ([#325](https://github.com/muellerberndt/cadence/issues/325#issuecomment-6862847511)).
+Every declared cell is in. Every gate passes:
+
+| Gate | Reading | Bar | Founders at the bar | Range | Verdict |
+| --- | --- | --- | --- | --- | --- |
+| A1 | delivered, parts 2 | 0.95 | 12 of 12 | 1.000 | passes |
+| A1 | delivered, parts 4 | 0.95 | 12 of 12 | 1.000 | passes |
+| A1 | delivered, parts 8 | 0.95 | 12 of 12 | .995 to 1.000 | passes |
+| A2 | said, parts 2 | 0.90 | 12 of 12 | .996 to 1.000 | passes |
+| A2 | said, parts 4 | 0.90 | 12 of 12 | .996 to 1.000 | passes |
+| A2 | said, parts 8 | 0.90 | 12 of 12 | .904 to .981 | passes |
+| A3 | said, chain 2 | 0.95 | 12 of 12 | .980 to 1.000 | passes |
+| A3 | said, chain 3 | 0.90 | 11 of 12 | .750 to 1.000 | passes |
+| A4a | silent, parts no record answers | 0.95 | 12 of 12 | .997 to 1.000 | passes |
+| A4b | refused, questions no record answers | 0.90 | 11 of 12 | .773 to 1.000 | passes |
+| A4c | said, chain 3: `heads` less `birth`, means | 0.30 | | +0.965 | passes |
+| A5 | said, parts 2: `heads` 0.999, the better online control 0.000 | within .03 | 6 founders | | passes |
+| A5 | said, parts 4: `heads` 0.999, the better online control 0.000 | within .03 | 6 founders | | passes |
+| A5 | said, parts 8: `heads` 0.938, the better online control 0.000 | within .03 | 6 founders | | passes |
+| A5 | said, chain 2: `heads` 0.997, the better online control 0.000 | within .03 | 6 founders | | passes |
+| A5 | said, chain 3: `heads` 0.993, the better online control 0.000 | within .03 | 6 founders | | passes |
+| A6 | the read's ms, parts 2 over parts 1: 0.925 over 0.700 | under 2 | | 1.32 | passes |
+| A6 | the read's ms, parts 4 over parts 1: 1.348 over 0.700 | under 4 | | 1.93 | passes |
+| A6 | the read's ms, parts 8 over parts 1: 2.211 over 0.700 | under 8 | | 3.16 | passes |
+
+| Arm, 100,000 records | Founders | Parameters | parts 2 | parts 4 | parts 8 | chain 2 | chain 3 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `heads`, said | 12 | 1,460,612 | .996 to 1.000 | .996 to 1.000 | .904 to .981 | .980 to 1.000 | .750 to 1.000 |
+| `birth`, said | 12 | 1,460,612 | .980 to 1.000 | .983 to 1.000 | .804 to .958 | .530 to .630 | .000 to .020 |
+| `handed`, said | 6 | 1,460,612 | 1.000 | 1.000 | .924 to .959 | 1.000 | .995 to 1.000 |
+| `rest`, said | 6 | 807,676 | .000 | .000 | .000 | .040 to .195 | .000 to .005 |
+| transformer, online | 6 | 1,502,440 | .000 | .000 | .000 | .000 | .000 |
+| LSTM, online | 6 | 1,464,648 | .000 | .000 | .000 | .000 | .000 |
+| transformer, offline | 3 | 1,502,440 | .000 to .004 | .000 | .000 | .005 to .020 | .005 to .020 |
+
+An answer of `heads` costs 2.65e8 multiply-accumulates for one part and 5.32e8 for eight; a
+forward pass of the transformer over its window and the question costs 1.20e9 to 1.25e9. Located terms: on
+founder 3261 chains of three hops on new subjects are delivered at .735 (1.000 on the lesson
+subjects): a head's gates read the question's whole key, the subject's own form code with it.
+The offline transformer's held cross-entropy was still falling when its 3 hours ended.

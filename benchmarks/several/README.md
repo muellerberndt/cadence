@@ -131,6 +131,15 @@ Three terms were located on the way to the declared read:
    it answers another question. A lacking subject holds nothing whatever the gates, and the
    chains learn as before.
 
+### The declared run
+
+Twelve fresh founders, 20,000 lessons, readings at 100,000 records of subjects no lesson used
+([`PROTOCOL.md`](PROTOCOL.md#the-outcome)): every gate passes. The heads deliver the records of
+two, four and eight parts at .995 to 1.000 and say them at .996 to 1.000, .996 to 1.000 and
+.904 to .981; chains of two hops are said at .980 to 1.000 and of three at .750 to 1.000 (11 of
+12 founders at .90); a part no record answers is silent at .997 to 1.000. The transformer and
+the LSTM at the same parameters, with every needed fact in their window, say .00 to .02.
+
 ## Run
 
     PYTHONPATH=src python benchmarks/several/several_chamber.py --plan benchmarks/several/declared/brain.json --out brain.jsonl --workers 24

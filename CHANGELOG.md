@@ -22,6 +22,10 @@
 - **`benchmarks/several`**: the chamber of questions whose one answer needs several of the
   brain's own records (parts of 1 to 8 subjects, chains of 2 and 3 hops, parts and chains no
   record answers), with a transformer and an LSTM that hold the records in their context.
+  On twelve fresh founders at 100,000 records the heads deliver the records of two, four and
+  eight parts at .995 to 1.000, say them at .996 to 1.000, .996 to 1.000 and .904 to .981, say
+  chains of two and three hops at .980 to 1.000 and .750 to 1.000, and stay silent where no
+  record answers at .997 to 1.000; every declared gate passes.
 - With both options unset a brain is composed, reads, learns and saves as it did.
 
 ## 0.99.0 - 2026-11-13
