@@ -738,7 +738,7 @@ def test_a_store_on_disk_continues_from_its_files(tmp_path):
     for cue in noisy:  # the store on disk reads as the same store in memory
         assert third.read(cue, credit=False).first() == memory.read(cue, credit=False).first()
     third._cold = True  # a store whose reads wait for the disk fetches its rows by threads
-    for i, cue in enumerate(noisy):
+    for cue in noisy:
         assert third.read(cue, credit=False).first() == memory.read(cue, credit=False).first()
         third._cold = True
     third.close()

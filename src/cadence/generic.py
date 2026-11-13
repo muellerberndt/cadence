@@ -128,6 +128,11 @@ FADE_FORMAT = "cadence-brain/3"
 # own, which 0.96.0 and earlier refuse, whatever else the brain holds: its file carries a maturity
 # and a fading store as the files named for them do. Every other brain keeps its name.
 LONGTERM_FORMAT = "cadence-brain/4"
+# A brain whose long-term records grow their table, lie in files of their own or are told apart
+# by what was heard (``longterm_grow``, ``longterm_path``, ``longterm_apart``, #310) saves under
+# a format name of its own, which 0.99.0 and earlier refuse by name; a brain with records
+# without them keeps LONGTERM_FORMAT.
+RECORDS_FORMAT = "cadence-brain/5"
 # A memory's group in BRAIN_FORMAT and the prefix the reader validates its arrays under; the
 # episodic memory's arrays are the context store's and the stream's (``_flat_layout``).
 _MEMORY_PREFIXES = {
@@ -728,6 +733,7 @@ _LONGTERM_FOUNDERS: dict[str, Any] = {
     "heads": 1, "amplitude": 3.0, "match": 0.75, "revise": 0.999, "turn": None, "rare": 0.03,
     "distinct": None, "best": False, "rest": False,
     "pairs": 0, "expansion": None, "winners": None, "candidates": None, "fade": True,
+    "grow": False, "path": None, "sure": 0.0, "apart": False,
 }
 # The settings a brain is composed with and keeps for its life: ``retune`` refuses each of them
 # as a construction setting, and ``grow`` names those it does not add as construction choices.
@@ -795,6 +801,23 @@ def _longterm_genes(longterm: Any, genes: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(out["fade"], (bool, np.bool_)):
         raise ValueError("longterm_fade must be boolean")
     out["fade"] = bool(out["fade"])
+    for name in ("grow", "apart"):
+        if not isinstance(out[name], (bool, np.bool_)):
+            raise ValueError(f"longterm_{name} must be boolean")
+        out[name] = bool(out[name])
+    out["sure"] = real("longterm_sure", out["sure"], low=0)
+    if out["sure"] > 1:
+        raise ValueError("longterm_sure is a cosine: it lies in [0, 1]")
+    if (out["grow"] or out["sure"]) and not out["pairs"]:
+        raise ValueError("longterm_grow and longterm_sure belong to the address of pairs: "
+                         "pass longterm_pairs=units")
+    if out["path"] is not None:
+        if not isinstance(out["path"], (str, os.PathLike)):
+            raise ValueError("longterm_path is a directory: a path")
+        out["path"] = os.fspath(out["path"])
+    if out["apart"] and (out["turn"] is not None or out["distinct"] is not None):
+        raise ValueError("longterm_apart tells apart the records keyed by a held message from "
+                         "a turn: it is not built for longterm_turn")
     return out
 
 
@@ -2820,7 +2843,9 @@ class Brain:
                 best=kept_records["best"], rest=kept_records["rest"],
                 pairs=kept_records["pairs"], expansion=kept_records["expansion"],
                 winners=kept_records["winners"], candidates=kept_records["candidates"],
-                fade=kept_records["fade"],
+                fade=kept_records["fade"], grow=kept_records["grow"],
+                path=kept_records["path"], sure=kept_records["sure"],
+                apart=kept_records["apart"],
             )
         # The index memory of the stream's moments. Populations named ``recall`` and ``next``
         # without ``recall=True`` are ordinary ones: an instrument may name and drive its own.
@@ -6780,7 +6805,8 @@ class Brain:
         store = self.hippocampus
         fading = isinstance(store, SynapticMemory) and bool(store.fade)
         metadata: dict[str, Any] = {
-            "format": LONGTERM_FORMAT if self.longterm is not None
+            "format": RECORDS_FORMAT if self.longterm is not None and self.longterm.wide
+            else LONGTERM_FORMAT if self.longterm is not None
             else FADE_FORMAT if fading
             else BRAIN_FORMAT if agent.maturity is None else MATURITY_FORMAT,
             "actor": agent.config.to_dict(),
@@ -6958,15 +6984,26 @@ class Brain:
                 raise ValueError("not a Brain checkpoint; use Learner.load for a learner")
             saved = json.loads(str(archive["brain"]))
             if not isinstance(saved, dict) or saved.get("format") not in (
-                BRAIN_FORMAT, MATURITY_FORMAT, FADE_FORMAT, LONGTERM_FORMAT
+                BRAIN_FORMAT, MATURITY_FORMAT, FADE_FORMAT, LONGTERM_FORMAT, RECORDS_FORMAT
             ):
                 raise ValueError("unsupported Brain checkpoint format")
             saved_memories = saved.get("memories")
             with_records = isinstance(saved_memories, dict) and "longterm" in saved_memories
-            if (saved["format"] == LONGTERM_FORMAT) != with_records:
+            if (saved["format"] in (LONGTERM_FORMAT, RECORDS_FORMAT)) != with_records:
                 raise ValueError(
                     f"long-term records belong to checkpoint format {LONGTERM_FORMAT}"
                 )
+            if with_records:
+                # records that grow, lie in files or are told apart are named by their format
+                assert isinstance(saved_memories, dict)
+                told = saved_memories["longterm"]
+                wide = isinstance(told, dict) and bool(
+                    told.get("grow") or told.get("path") is not None or told.get("apart"))
+                if (saved["format"] == RECORDS_FORMAT) != wide:
+                    raise ValueError(
+                        f"records that grow, lie in files or are told apart belong to "
+                        f"checkpoint format {RECORDS_FORMAT}"
+                    )
             fading = _saved_fade(saved)
             if not with_records and (saved["format"] == FADE_FORMAT) != fading:
                 raise ValueError(f"a fading store belongs to checkpoint format {FADE_FORMAT}")

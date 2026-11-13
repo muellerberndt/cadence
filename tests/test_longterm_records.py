@@ -710,3 +710,143 @@ def test_entries_saved_as_tables_load_as_the_lists_they_were():
     for name in ("sets", "wset", "cue", "codebook", "stamps"):
         np.testing.assert_array_equal(getattr(second.longterm, name), getattr(kept, name),
                                       err_msg=name)
+
+
+# -- records at any size: a table that grows, files, a read that ends at its record, and facts
+# told apart by what was heard (cadence#310)
+
+FACTS = [(agent, verb, (agent * 3 + verb) % 4) for agent in range(6) for verb in range(4)]
+
+
+def test_records_that_grow_read_as_the_sized_table_s_and_save_under_their_own_format(tmp_path):
+    sized = brain(longterm=600, **PAIRS)
+    grown = brain(longterm=600, **PAIRS, longterm_grow=True, longterm_sure=0.999)
+    assert grown.longterm.address() == {
+        **{name[len("longterm_"):]: value for name, value in PAIRS.items()},
+        "grow": True, "sure": 0.999}
+    for b in (sized, grown):
+        for fact in FACTS:
+            tell(b, *fact)
+        tell(b, 2, 1, 0)  # told again with another patient: revised in place
+    store = grown.longterm.stores[0]
+    assert store.grow and store.sure == 0.999 and store.count == 24 > store.candidates
+    assert grown.longterm.counts == sized.longterm.counts
+    assert int((store.cells[: store._level + store._split] != store.EMPTY).sum()) == store.entries
+    for agent, verb, _ in FACTS:
+        ask(sized, agent, verb)
+        ask(grown, agent, verb)
+        np.testing.assert_array_equal(grown.longterm.read_slots, sized.longterm.read_slots)
+    assert _format(sized.save(tmp_path / "sized.npz")) == "cadence-brain/4"
+    path = grown.save(tmp_path / "grown.npz")
+    assert _format(path) == "cadence-brain/5"  # a name 0.99.0 and earlier refuse
+    loaded = cd.Brain.load(path)
+    assert loaded.longterm.to_dict() == grown.longterm.to_dict()
+    again = loaded.longterm.stores[0]
+    assert (again._level, again._split, again.entries) == (store._level, store._split,
+                                                           store.entries)
+    for b in (grown, loaded):
+        tell(b, 5, 3, 2)  # the loaded brain's table grows as the saved one's does
+    for agent, verb, _ in FACTS[:8] + [(5, 3, 2)]:
+        ask(grown, agent, verb)
+        ask(loaded, agent, verb)
+        np.testing.assert_array_equal(loaded.longterm.read_slots, grown.longterm.read_slots)
+    np.testing.assert_array_equal(again.cells[: again._level + again._split],
+                                  store.cells[: store._level + store._split])
+
+
+def test_records_on_disk_stay_in_their_files_and_a_checkpoint_names_them(tmp_path):
+    import json
+
+    folder = tmp_path / "records"
+    settings = {**PAIRS, "longterm_grow": True, "longterm_sure": 0.999}
+    memory = brain(longterm=600, **settings)
+    disk = brain(longterm=600, **settings, longterm_path=folder)
+    assert disk.longterm.address()["path"] == str(folder)
+    for b in (memory, disk):
+        for fact in FACTS:
+            tell(b, *fact)
+    assert (folder / "stream-0" / "keys.npy").exists()
+    for agent, verb, _ in FACTS:
+        ask(memory, agent, verb)
+        ask(disk, agent, verb)
+        np.testing.assert_array_equal(disk.longterm.read_slots, memory.longterm.read_slots)
+    path = disk.save(tmp_path / "disk.npz", compressed=False)
+    with np.load(path, allow_pickle=False) as archive:
+        names = set(archive)
+        saved = json.loads(str(archive["brain"]))
+    assert saved["format"] == "cadence-brain/5"
+    assert "memories/longterm/store/0/state" in names
+    assert not {n for n in names if n.endswith(("store/0/keys", "store/0/values"))}
+    assert saved["memories"]["longterm"]["folders"] == ["stream-0"]
+    loaded = cd.Brain.load(path)  # the records are the files': the loaded brain continues them
+    assert loaded.longterm.stores[0].count == 24
+    tell(loaded, 5, 3, 2)
+    loaded.longterm.stores[0].flush()
+    for agent, verb, _ in FACTS[:6]:
+        ask(disk, agent, verb)
+        ask(loaded, agent, verb)
+        np.testing.assert_array_equal(loaded.longterm.read_slots, disk.longterm.read_slots)
+    # a brain made over the directory continues its records; other settings are refused
+    over = brain(longterm=600, **settings, longterm_path=folder)
+    ask(over, 0, 0)
+    assert over.longterm.stores[0].count == 24 and over.longterm.read_slots[0, 0] == 0
+    other = brain(longterm=700, **settings, longterm_path=folder)
+    with pytest.raises(ValueError, match="other settings"):
+        ask(other, 0, 0)
+    over.longterm.clear()  # the records and their files
+    assert not (folder / "stream-0").exists() and over.longterm.stores == []
+    with pytest.raises(ValueError, match="the files of stream 0"):
+        cd.Brain.load(path)
+
+
+def test_facts_whose_keys_are_one_key_are_told_apart_by_what_was_heard(tmp_path):
+    one = np.zeros(70)
+    one[[3, 11, 29, 40, 55]] = 1.0  # every episode's held message gives this key
+
+    def same_key(b):
+        b.message.key = lambda: np.tile(one, (len(b.message.trace), 1))
+        return b
+
+    plain = same_key(brain(longterm=64))
+    apart = same_key(brain(longterm=64, longterm_apart=True))
+    assert apart.longterm.address() == {"apart": True} and not apart.longterm.batched
+    for b in (plain, apart):
+        for fact in FACTS:
+            tell(b, *fact)
+    assert plain.longterm.stores[0].count == 1  # one key: one record, the last telling's
+    kept = apart.longterm
+    store = kept.stores[0]
+    assert store.apart == INPUTS and store.count == 24 and kept.counts["revisions"] == 0
+    for agent, verb, patient in FACTS:  # each question reads the record of its own fact
+        ask(apart, agent, verb)
+        slot = int(kept.read_slots[0, 0])
+        np.testing.assert_array_equal(store.values[slot], moment(10 + patient)[0])
+    tell(apart, 2, 1, 0)  # a fact told again with another patient revises its own record
+    tell(apart, 4, 0, FACTS[16][2])  # and one told again as it was writes nothing
+    assert store.count == 24 and kept.counts["revisions"] == 1 and kept.counts["agreed"] == 1
+    ask(apart, 2, 1)
+    np.testing.assert_array_equal(store.values[int(kept.read_slots[0, 0])], moment(10)[0])
+    path = apart.save(tmp_path / "apart.npz")
+    assert _format(path) == "cadence-brain/5"
+    loaded = same_key(cd.Brain.load(path))
+    np.testing.assert_array_equal(loaded.longterm.stores[0].signs[:24], store.signs[:24])
+    for agent, verb, _ in FACTS[:6]:
+        ask(apart, agent, verb)
+        ask(loaded, agent, verb)
+        np.testing.assert_array_equal(loaded.longterm.read_slots, kept.read_slots)
+
+
+def test_the_settings_of_records_at_any_size_are_checked_and_off_by_default(tmp_path):
+    plain = brain(longterm=16).longterm
+    assert (plain.grow, plain.path, plain.sure, plain.apart, plain.wide) == (
+        False, None, 0.0, False, False)
+    for settings in ({"longterm_grow": True}, {"longterm_sure": 0.9},
+                     {"longterm_grow": 1, **PAIRS}, {"longterm_sure": 1.5, **PAIRS},
+                     {"longterm_apart": 1}, {"longterm_path": 3}):
+        with pytest.raises(ValueError):
+            brain(longterm=600, **settings)
+    with pytest.raises(ValueError, match="longterm_turn"):
+        cd.Brain.compose(INPUTS, 4, modules=(32,), seed=0, backend="cpu", message=70,
+                         longterm=16, longterm_turn=TURN, longterm_apart=True)
+    with pytest.raises(ValueError, match="needs long-term records"):
+        cd.Brain.compose(INPUTS, 4, seed=0, backend="cpu", longterm_path=tmp_path)

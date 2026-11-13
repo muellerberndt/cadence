@@ -94,6 +94,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from copy import copy, deepcopy
@@ -934,7 +935,11 @@ class LongTermMemory:
         row = np.asarray(source, dtype=np.float64)
         if row.shape != (self.apart,) or not np.isfinite(row).all():
             raise ValueError(f"a source is one finite row of {self.apart} values")
-        drive = row.astype(self.dtype) @ self._sign
+        on = np.flatnonzero(row) if self._lean else row
+        if self._lean and 8 * len(on) <= self.apart:  # a few active values: their weights alone
+            drive = row[on].astype(self.dtype) @ self._sign[on]
+        else:
+            drive = row.astype(self.dtype) @ self._sign
         return np.sort(np.argpartition(drive, -self.SIGN)[-self.SIGN:]).astype(np.int16)
 
     def _shared(self, slots: np.ndarray, sign: np.ndarray) -> np.ndarray:
@@ -1481,6 +1486,20 @@ class LongTermRecords:
     record before it on head 1's where there is one, so an answer is read from one region however
     many facts it takes; with one head, the region holds the answering record alone. Where the
     first record holds every such entry, the question asks one fact and the chain is that record.
+
+    **Records at any size (``grow``, ``path``, ``sure``; cadence#310).** Each stream's store may
+    grow its table with its records (``grow=True``), keep its arrays in files under
+    ``path/stream-<n>`` (``path=directory``), and end a read at the record that holds the
+    message's key (``sure=cosine``), as ``LongTermMemory`` gives them. With ``path`` the records
+    are the files': a checkpoint names the directory and holds none of them, ``clear()`` removes
+    the files, and a brain made over a directory that holds records continues them.
+
+    **Facts told apart by what was heard (``apart=True``).** Two different episodes whose held
+    messages are one key are one record: the second telling revises the first. With ``apart``
+    a stream also keeps the sum of the moments it heard before the turn, as they were heard,
+    and gives it to the store as the fact's source (``LongTermMemory(apart=inputs)``): a write
+    whose key a record holds revises that record only where the heard moments agree, and a read
+    takes, among the records that hold its key, the one whose heard moments it shares.
     """
 
     # the store's settings that the brain does not name: the library store's founders, a first
@@ -1510,6 +1529,10 @@ class LongTermRecords:
         winners: int | None = None,
         candidates: int | None = None,
         fade: bool = True,
+        grow: bool = False,
+        path: Any = None,
+        sure: float = 0.0,
+        apart: bool = False,
     ) -> None:
         if turn is None and (
             message is None or message.boundary is None or not message.boundary_holds
@@ -1544,6 +1567,14 @@ class LongTermRecords:
         self.expansion = None if expansion is None else int(expansion)
         self.winners = None if winners is None else int(winners)
         self.candidates = None if candidates is None else int(candidates)
+        # records at any size: a table that grows, the directory of the streams' files, the
+        # cosine that ends a read, and facts told apart by the moments heard
+        self.grow, self.sure, self.apart = bool(grow), float(sure), bool(apart)
+        self.path = None if path is None else os.fspath(path)
+        if self.apart and (turn is not None or distinct is not None):
+            raise ValueError("longterm_apart tells apart the records keyed by a held message "
+                             "from a turn: it is not built for longterm_turn")
+        self._folders: list[str] = []  # each stream's folder under ``path``
         self.width, self.value_width = int(message.units), int(message.inputs)
         populations = connectome.populations
         self.columns: list[slice | np.ndarray] = []
@@ -1560,7 +1591,7 @@ class LongTermRecords:
         self.stores: list[LongTermMemory] = []
         # whether a store reads through an address (past ``direct`` slots): then the stores
         # are read one by one; and whether it reads by cosine
-        probe = self._store()
+        probe = self._store(probe=True)
         self._store_coarse, self._cosine = probe.coarse, probe.cosine
         self._binary = True
         self._bank()
@@ -1574,6 +1605,8 @@ class LongTermRecords:
         self.key = np.zeros((0, self.width))
         self.heard = np.zeros(self.width)
         self.moments = 0.0
+        # with ``apart``: the sum of the moments each stream heard before its turn
+        self.source = np.zeros((0, self.value_width))
         # with ``distinct``: each stream's slots' write order (0 for none); the codebook of heard
         # moments (an entry for each code, and each entry's code); each stream's records as
         # entries, each slot's entries in ascending order and each entry's slots; and each
@@ -1600,21 +1633,56 @@ class LongTermRecords:
                 out[name] = getattr(self, name)
         if not self.fade:
             out["fade"] = False
+        if self.grow:
+            out["grow"] = True
+        if self.path is not None:
+            out["path"] = self.path
+        if self.sure:
+            out["sure"] = self.sure
+        if self.apart:
+            out["apart"] = True
         return out
 
-    def _store(self) -> LongTermMemory:
-        return LongTermMemory(self.width, self.value_width, self.capacity, revise=self.revise,
-                              seed=self.seed, **self.STORE, **self.address())
+    def _store(self, probe: bool = False, folder: str | None = None) -> LongTermMemory:
+        """A stream's store. With ``path`` it lies in a folder of its own under the directory:
+        ``folder`` names one a checkpoint kept, a folder that holds a store is continued, and
+        the next unused one is made. ``probe`` makes a store in memory to read its settings."""
+        settings: dict[str, Any] = {
+            "revise": self.revise, "seed": self.seed, **self.STORE, **self.address()}
+        settings.pop("path", None)
+        if self.apart:
+            settings["apart"] = self.value_width
+        if self.path is None or probe:
+            return LongTermMemory(self.width, self.value_width, self.capacity, **settings)
+        if folder is None:
+            folder = f"stream-{len(self._folders)}"
+            while folder in self._folders:
+                folder = f"stream-{int(folder.split('-')[1]) + 1}"
+        self._folders.append(folder)
+        where = Path(self.path) / folder
+        if not (where / "store.json").exists():
+            return LongTermMemory(self.width, self.value_width, self.capacity, path=where,
+                                  **settings)
+        store = LongTermMemory.open(where)
+        wanted = LongTermMemory(self.width, self.value_width, self.capacity,
+                                **{**settings, "direct": store.direct}).to_dict()
+        held = store.to_dict()
+        if {**held, "path": None} != {**wanted, "path": None}:
+            raise ValueError(f"{where} holds a store of other settings")
+        return store
 
     @staticmethod
     def _saved(store: LongTermMemory) -> tuple[tuple[str, ...], tuple[str, ...]]:
         """The arrays of a store's address a checkpoint keeps: those kept by rows, the first
         ``count`` of each, and those kept whole."""
+        signs = ("signs",) if store.apart else ()
         if not store.coarse:
-            return (), ()
+            return signs, ()
+        if store.grow:  # the rows of units the records were filed under; the cells held
+            return ("filed", *signs), ("cells", "table")
         if store.pairs:
-            return (), LongTermMemory.PAIR_ADDRESS
-        return LongTermRecords.SAVED_ADDRESS_ROWS, ("lists", "counts")
+            return signs, LongTermMemory.PAIR_ADDRESS
+        return (*LongTermRecords.SAVED_ADDRESS_ROWS, *signs), ("lists", "counts")
 
     # -- the streams' records as one bank
 
@@ -1622,7 +1690,13 @@ class LongTermRecords:
     def batched(self) -> bool:
         """Whether the streams' records are read, written and faded as one bank: every slot
         scored (no address), and keys of zeros and ones, which a held message gives."""
-        return self.BATCHED and self._binary and not self._store_coarse
+        return self.BATCHED and self._binary and not self._own and not self.apart
+
+    @property
+    def _own(self) -> bool:
+        """Whether each store is read by itself and keeps its own sums: a store read through an
+        address, and a store on disk, whose sums are its files'."""
+        return self._store_coarse or self.path is not None
 
     def _bank(self) -> None:
         """The streams' sums (``deep``, ``recent``, ``faded``) as rows of three shared arrays,
@@ -1631,18 +1705,18 @@ class LongTermRecords:
         units, one product over every stream."""
         streams, capacity = len(self.stores), self.capacity
         names = ("deep", "recent", "faded", *(("norms",) if self._cosine else ()))
-        sums = [np.zeros((streams, capacity)) for _ in range(4)]
-        # stores read through an address are read one by one and keep no index
-        index = np.zeros((streams, self.width, 0 if self._store_coarse else capacity),
-                         dtype=np.uint8)
+        # stores read through an address are read one by one: they keep no index, and their
+        # sums stay their own (their files', for records on disk)
+        sums = [np.zeros((streams, 0 if self._own else capacity)) for _ in range(4)]
+        index = np.zeros((streams, self.width, 0 if self._own else capacity), dtype=np.uint8)
         binary = True
         for s, store in enumerate(self.stores):
+            if self._own:
+                continue
             for shared, name in zip(sums, names, strict=False):
                 shared[s] = getattr(store, name)
                 setattr(store, name, shared[s])
             held = np.asarray(store.keys[: store.count])
-            if self._store_coarse:
-                continue
             binary = binary and bool(np.isin(held, (0.0, 1.0)).all())
             index[s, :, : store.count] = held.T.astype(np.uint8)
         self._deep, self._recent, self._faded, self._norms = sums
@@ -1673,6 +1747,8 @@ class LongTermRecords:
         if self.turn is not None and len(self.window) != batch:
             self.window = np.zeros((batch, self.width))
             self.key = np.zeros((batch, self.width))
+        if self.apart and len(self.source) != batch:
+            self.source = np.zeros((batch, self.value_width))
 
     # -- the records' entries (``distinct``), as arrays
 
@@ -1816,7 +1892,8 @@ class LongTermRecords:
             picks = np.full((len(rows), self.heads), -1, dtype=np.int64)
             for i, row in enumerate(rows):
                 read = self.stores[int(row)].read(
-                    keys[row], heads=self.heads, credit=not self._private
+                    keys[row], heads=self.heads, credit=not self._private,
+                    source=self.source[row] if self.apart else None,
                 )
                 picks[i] = [read.first(head) for head in range(self.heads)]
                 if self._store_coarse and not self._private:
@@ -1849,6 +1926,9 @@ class LongTermRecords:
         keys = self._keys(batch)
         turned = held & (self.since < 0)
         after = self.since >= 0
+        if self.apart:  # the moments heard before the turn, as they were heard
+            before = ~turned & ~after
+            self.source[before] += x[before]
         self.since = np.where(after, self.since + 1, np.where(turned, 0, -1))
         if self._private:
             return
@@ -2016,6 +2096,9 @@ class LongTermRecords:
         than the record the key finds (the same key and value write nothing, the same key and
         another value revise that record, a key no record holds takes a slot)."""
         store = self.stores[row]
+        if self.apart:
+            self._record_apart(row, key, value)
+            return
         found = -1
         if store.count and self.batched:
             cached = self._cache.get(row)
@@ -2051,6 +2134,30 @@ class LongTermRecords:
                 self._index[row, :, slot] = key.astype(np.uint8)
         else:
             slot, revised = store.write(key, value)
+        self.counts["writes"] += 1
+        self.counts["revisions"] += int(revised)
+
+    def _record_apart(self, row: int, key: np.ndarray, value: np.ndarray) -> None:
+        """``record`` with the moments heard as the fact's source: the record that holds the
+        key and the source's signature is the fact told before (the same value writes nothing,
+        another revises it); a key held under another signature is another fact, which takes a
+        slot of its own."""
+        store, source = self.stores[row], self.source[row]
+        found = -1
+        if store.count:
+            cached = self._cache.get(row)
+            if cached is not None and cached[2] == store.writes and np.array_equal(cached[1], key):
+                found = cached[0]  # the read before the settle, with the same source
+            else:
+                found = store.read(key, credit=False, source=source).first()
+        if found >= 0 and self._holds(store, found, key, self.revise) and int(store._shared(
+                np.array([found]), store._signature(source))[0]) >= store.SAME:
+            if np.array_equal(np.asarray(store.values[found], dtype=np.float64), value):
+                self.counts["agreed"] += 1  # the moment says nothing the record does not
+                return
+            _, revised = store.write(key, value, recognised=found, source=source)
+        else:
+            _, revised = store.write(key, value, source=source)  # the store's own recognition
         self.counts["writes"] += 1
         self.counts["revisions"] += int(revised)
 
@@ -2094,9 +2201,13 @@ class LongTermRecords:
                 self.key = np.zeros((batch, self.width))
                 self._wsets = [set() for _ in range(batch)]
                 self._cues = [np.zeros(0, dtype=np.int64) for _ in range(batch)]
+            if self.apart:
+                self.source = np.zeros((batch, self.value_width))
         else:
             self.since[rows] = -1
             self.read_slots[rows] = -1
+            if self.apart and len(self.source) == batch:
+                self.source[rows] = 0.0
             if self.turn is not None and len(self.window) == batch:
                 self.window[rows] = 0.0
                 self.key[rows] = 0.0
@@ -2110,7 +2221,10 @@ class LongTermRecords:
         """Keep the streams of ``rows``, their records with them."""
         index = np.arange(len(self.since))[rows]
         self.stores = [self.stores[int(i)] for i in index if int(i) < len(self.stores)]
+        self._folders = [self._folders[int(i)] for i in index if int(i) < len(self._folders)]
         self.since, self.read_slots = self.since[index], self.read_slots[index]
+        if self.apart and len(self.source) >= len(index):
+            self.source = self.source[index]
         if self.turn is not None and len(self.window) >= len(index):
             self.window, self.key = self.window[index], self.key[index]
         if len(self.stamps) >= len(index):
@@ -2124,7 +2238,12 @@ class LongTermRecords:
         self._bank()
 
     def clear(self) -> None:
-        """Empty every stream's records."""
+        """Empty every stream's records; with ``path``, their files with them."""
+        for store, folder in zip(self.stores, self._folders, strict=False):
+            store.close()
+            assert self.path is not None
+            shutil.rmtree(Path(self.path) / folder, ignore_errors=True)
+        self._folders = []
         self.stores = []
         self.stamps = np.zeros((0, self.capacity))
         self._members, self._postings = [], []
@@ -2137,6 +2256,7 @@ class LongTermRecords:
         out = copy(self)
         out.since, out.read_slots = self.since.copy(), self.read_slots.copy()
         out.window, out.key, out.heard = self.window.copy(), self.key.copy(), self.heard.copy()
+        out.source = self.source.copy()
         out._wsets = [set(held) for held in self._wsets]
         out._cues = [held.copy() for held in self._cues]
         out._entries, out._codes = dict(self._entries), list(self._codes)
@@ -2150,6 +2270,8 @@ class LongTermRecords:
         out: dict[str, np.ndarray] = {"since": self.since, "read_slots": self.read_slots}
         if self.turn is not None:
             out.update(window=self.window, key=self.key)
+        if self.apart:
+            out["source"] = self.source
         return out
 
     # a record's arrays a checkpoint keeps, the first ``count`` rows of each, and the address's
@@ -2171,7 +2293,15 @@ class LongTermRecords:
         if self.rest:
             out["rest"] = True
         out.update(self.address())
+        if self.path is not None:
+            out["folders"] = list(self._folders)
         return out
+
+    @property
+    def wide(self) -> bool:
+        """Whether the records' saved form is one that 0.99.0 and earlier do not read: a table
+        that grows, files of their own, or facts told apart."""
+        return bool(self.grow or self.path is not None or self.apart)
 
     def arrays(self) -> dict[str, np.ndarray]:
         """What a checkpoint keeps (``Brain.save``): the streams' turns and every stream's
@@ -2195,6 +2325,11 @@ class LongTermRecords:
                        window_entries=np.array(window, dtype=np.int64).reshape(-1, 2),
                        cue_entries=np.array(cue, dtype=np.int64).reshape(-1, 2))
         for s, store in enumerate(self.stores):
+            if self.path is not None:  # the records stay in their files, made current
+                store.flush()
+                out[f"store/{s}/state"] = np.array(
+                    [store.count, store.writes, store._cursor], dtype=np.int64)
+                continue
             kept = store.arrays()
             by_rows, whole = self._saved(store)
             for name in (*self.SAVED_ROWS, *by_rows):
@@ -2227,20 +2362,48 @@ class LongTermRecords:
         """Take back what ``arrays`` kept of ``stores`` streams' records and of the streams'
         turns, into a memory of the same settings (``Brain.load``). Refused where a shape
         disagrees with the settings."""
-        missing = [f"store/{s}/{name}" for s in range(int(stores)) for name in
-                   (*self.SAVED_ROWS, "state") if f"store/{s}/{name}" not in arrays]
+        rows = (*self.SAVED_ROWS, "state") if self.path is None else ("state",)
+        missing = [f"store/{s}/{name}" for s in range(int(stores)) for name in rows
+                   if f"store/{s}/{name}" not in arrays]
         missing += [name for name in ("since", "read_slots") if name not in arrays]
         if missing:
             raise ValueError(f"missing saved long-term records: {missing[0]}")
-        self.stores = []
+        for store in self.stores:
+            store.close()
+        self.stores, self._folders = [], []
+        named: Any = (counts or {}).get("folders", ())
+        folders: list[Any] = list(named) if self.path is not None and isinstance(
+            named, (list, tuple)) else []
+        if self.path is not None and len(folders) != int(stores):
+            raise ValueError("invalid saved long-term records: the streams' folders")
         for s in range(int(stores)):
-            store = self._store()
-            full = store.arrays()
             state = np.asarray(arrays[f"store/{s}/state"])
             if state.shape != (3,) or not 0 <= int(state[0]) <= self.capacity:
                 raise ValueError("invalid saved long-term records: counts")
-            count = int(state[0])
+            if self.path is not None:
+                # the records are their files': the store as it lies there is continued
+                if not isinstance(folders[s], str) or not (
+                        Path(self.path) / folders[s] / "store.json").exists():
+                    raise ValueError(f"missing saved long-term records: the files of stream {s} "
+                                     f"under {self.path}")
+                self.stores.append(self._store(folder=folders[s]))
+                continue
+            store = self._store()
             by_rows, whole = self._saved(store)
+            if store.grow:
+                names = (*self.SAVED_ROWS, *by_rows, *whole)
+                lost = [name for name in names if f"store/{s}/{name}" not in arrays]
+                if lost:
+                    raise ValueError(f"missing saved long-term records: store/{s}/{lost[0]}")
+                try:
+                    store.restore({**{name: np.asarray(arrays[f"store/{s}/{name}"])
+                                      for name in names}, "state": state})
+                except ValueError as exc:
+                    raise ValueError(f"invalid saved long-term records: {exc}") from exc
+                self.stores.append(store)
+                continue
+            full = store.arrays()
+            count = int(state[0])
             for name in (*self.SAVED_ROWS, *by_rows):
                 given = np.asarray(arrays[f"store/{s}/{name}"])
                 if given.shape != (count, *full[name].shape[1:]):
@@ -2258,6 +2421,11 @@ class LongTermRecords:
         if since.ndim != 1 or slots.shape != (len(since), self.heads):
             raise ValueError("invalid saved long-term records: the streams' turns")
         self.since, self.read_slots = since, slots
+        if self.apart:
+            source = np.asarray(arrays.get("source", np.zeros(0)))
+            if source.shape != (len(since), self.value_width):
+                raise ValueError("invalid saved long-term records: the moments heard")
+            self.source = source.astype(float)
         if self.turn is not None:
             names = ("window", "key", "heard", "moments")
             if any(name not in arrays for name in names):
