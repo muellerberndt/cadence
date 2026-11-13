@@ -827,7 +827,7 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
          streams: int = 16, reads: int = 48, backend: str = "cpu", pistachio: str = "earned",
          steps: list[str] | None = None, log: Any = None, keep: bool = False,
          save: str | None = None, master: bool = True,
-         control: str | None = None, ckpt: str | None = None) -> dict[str, Any]:
+         control: str | None = None, ckpt: str | None = None, peek: int = 0) -> dict[str, Any]:
     """One founder's night through the steps; each step read on a frozen copy after it."""
     budget = {"N0": 1500, "N0b": 300, "N1": 1000, "N2": 1200, "N3": 800, "N4": 1500, "N5": 1200,
               "N6": 800, **(blocks or {})}
@@ -890,7 +890,8 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
         for b in range(first, int(budget[name])):
             if b > first and b % 250 == 0:
                 checkpoint(index, b)
-            if earlier and rng.random() < REHEARSAL:  # the trainer revisits earlier words
+            if earlier and rng.random() < float(p.genome.get("rehearsal", REHEARSAL)):
+                # the trainer revisits earlier words
                 old = str(rng.choice(earlier))
                 key = f"{old}:dagger" if old != "imitate" or int(
                     p.genome.get("imitate_corrected", 0)) else old  # imitation with correction
@@ -904,6 +905,8 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
             if log is not None and b % 50 == 0:
                 log(f"{name} {b} {key} right={np.mean(got['right']):.2f} "
                     f"t={time.time() - began:.0f}s")
+            if peek and log is not None and b > first and b % peek == 0:  # a development read
+                log(f"{name} read at block {b}: {read(p, rng, tests, held, 32)}")
             if master and b >= 100 and b % 100 == 0 and len(paid) >= 40 and float(
                     np.mean(paid[-40:])) >= SAMPLED_GATE:
                 check = read(p, rng, tests, held, 32)  # the step's forms, greedy, frozen
@@ -947,7 +950,8 @@ if __name__ == "__main__":
                   streams=int(given.get("streams", 16)), reads=int(given.get("reads", 48)),
                   pistachio=str(given.get("pistachio", "earned")), steps=given.get("steps"),
                   save=given.get("save"), control=given.get("control"), ckpt=given.get("ckpt"),
-                  master=bool(given.get("master", True)), log=lambda s: print(s, flush=True))
+                  master=bool(given.get("master", True)), log=lambda s: print(s, flush=True),
+                  peek=int(given.get("peek", 0)))
     result["settings"] = given
     text = json.dumps(result, default=float, indent=1)
     if target:
