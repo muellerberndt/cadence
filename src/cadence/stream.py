@@ -775,6 +775,40 @@ def _roles(roles: Any, inputs: int) -> tuple[tuple[int, ...], ...]:
     return tuple(out)
 
 
+OPERATIONS = ("set", "write", "shift", "pop")  # what a role does to a group of a store
+
+
+def _operations(operations: Any) -> tuple[tuple[tuple[str, int], ...], ...]:
+    """``operations`` as a tuple, one entry per role, each a tuple of ``(operation, group)``;
+    refused otherwise."""
+    if operations is None:
+        return ()
+    try:
+        table = tuple(tuple(tuple(step) for step in role) for role in operations)
+    except TypeError as exc:
+        raise ValueError("operations are one list of (operation, group) pairs per role") from exc
+    out = []
+    for role in table:
+        steps = []
+        for step in role:
+            if (
+                len(step) != 2
+                or step[0] not in OPERATIONS
+                or isinstance(step[1], (bool, np.bool_))
+                or not isinstance(step[1], (int, np.integer))
+                or step[1] < 0
+            ):
+                raise ValueError(
+                    "an operation is a pair (operation, group): one of "
+                    f"{', '.join(OPERATIONS)} and a group's index, 0 or above"
+                )
+            steps.append((str(step[0]), int(step[1])))
+        out.append(tuple(steps))
+    if out and not any(out):
+        raise ValueError("operations name at least one operation")
+    return tuple(out)
+
+
 @dataclass
 class HeldMessage(Message):
     """A ``Message`` on a region of a brain's own neurons (``Brain.compose(message=units)``).
@@ -789,6 +823,17 @@ class HeldMessage(Message):
     With ``settled`` a block takes the association's own settled activity of the latest moment
     that joined it, in place of the fixed code: the region holds what the brain's settle made of
     each moment, one unit per association neuron, and no fixed code is written.
+
+    With ``operations`` beside ``settled`` the blocks are a store the brain's own choice
+    operates. The table holds one entry per choice of a motor slot (the role slot), each a list
+    of ``(operation, group)``: ``set`` puts the moment's settled activity into the group's one
+    block, ``write`` appends it to the group, ``shift`` moves the group's head to its next block,
+    ``pop`` removes the group's last block. The state is ``groups * phases`` blocks, and the
+    region holds one block per group, its head: a queue's first block not shifted past, a
+    stack's (``stacks``) last block, silence where the group holds none. So the association
+    reads every group's head at once through the region's plastic synapses, and a group's
+    blocks pass one head. After each act ``hear`` runs the operations of the role the brain
+    named (or the role a lesson named for the moment).
 
     With a ``port`` region the brain also reads its message one block at a time
     (``message_read``). With ``roles`` the turn's term is one per role, shared by the role's
@@ -815,8 +860,12 @@ class HeldMessage(Message):
     gains: int = 1
     target: str = "message"
     port: str = "message_read"
+    operations: tuple[tuple[tuple[str, int], ...], ...] = ()
+    stacks: tuple[int, ...] = ()
+    slot: int = -1  # the motor slot that names a moment's role (the brain reads it)
     hearing: np.ndarray = field(init=False, repr=False)
     previous: np.ndarray = field(init=False, repr=False)
+    passed: np.ndarray = field(init=False, repr=False)
 
     SCORE_TEMPERATURE = 0.1  # of the blocks' scores in the read's lesson, the recall memory's
 
@@ -848,18 +897,37 @@ class HeldMessage(Message):
         self.glow = np.asarray(populations[self.target], dtype=np.int64)
         self.association = np.asarray(populations["association"], dtype=np.int64)
         self.reads = self.port in populations
+        self.operations = _operations(self.operations)
+        if self.operations:
+            if not self.settled or self.roles or self.reads or self.boundary is not None:
+                raise ValueError(
+                    "message operations work a store of settled activity: pass settled=True, "
+                    "and no roles, read port or boundary"
+                )
+            groups = 1 + max(g for role in self.operations for _, g in role)
+            try:
+                stacks = tuple(sorted({int(g) for g in self.stacks}))
+            except (TypeError, ValueError) as exc:
+                raise ValueError("message stacks are groups' indices") from exc
+            if any(not 0 <= g < groups for g in stacks):
+                raise ValueError("message stacks are indices of the groups the operations name")
+            self.stacks = stacks
+        elif tuple(self.stacks):
+            raise ValueError("message stacks need the operations that work them")
         super().__post_init__()
-        if len(self.glow) != self.width:
+        if len(self.glow) != self.shown * int(self.units):
             raise ValueError(
                 f"the {self.target} population holds {len(self.glow)} neurons, where the "
-                f"message holds {self.width} (blocks * units)"
+                f"message holds {self.shown * int(self.units)} (blocks * units)"
             )
         self._glow_columns = columns(self.glow)
-        self.hearing = np.ones(self.blocks * self.gains)
+        self.hearing = np.ones(self.shown * self.gains)
         # whether the association reads the whole message: a message composed silent beside
         # its read holds no synapse of its own
         self.direct = bool(np.isin(np.asarray(connectome.pre), self.glow).any())
         self.last: tuple[np.ndarray, ...] | None = None  # the latest read, for its lesson
+        # roles named for the next moment in place of the brain's own (``name``)
+        self.named: tuple[np.ndarray, np.ndarray | None] | None = None
         self.maps: list[_Maps] = []
         if self.reads:
             port = np.asarray(populations[self.port], dtype=np.int64)
@@ -892,19 +960,108 @@ class HeldMessage(Message):
         super().reset(batch, rows)
         if whole:
             self.previous = np.zeros((batch, wide))
+            self.passed = np.zeros((batch, self.groups), dtype=np.int64)
         else:
             self.previous[rows] = 0.0
+            self.passed[rows] = 0
         self.last = None
+        self.named = None
 
     def keep(self, rows: np.ndarray) -> None:
         super().keep(rows)
         self.previous = self.previous[rows]
+        self.passed = self.passed[rows]
         self.last = None
+        self.named = None
 
-    def hear(self, observations: np.ndarray, cortex: np.ndarray | None = None) -> None:
+    def name(self, roles: Any, observations: Any = None) -> None:
+        """Name each stream's role for the next moment heard, in place of the role the brain
+        names there: a lesson names its taught roles so (the store follows the lesson, as the
+        next moment hears the taught word), and a caller may. With ``observations`` the roles
+        hold for a moment of those observations alone. The next ``hear`` takes them."""
+        if not self.operations:
+            raise ValueError("roles are named for a store worked by operations")
+        roles = np.array(roles, dtype=np.int64).ravel()
+        self.named = (
+            roles, None if observations is None else np.array(observations, dtype=float)
+        )
+
+    @property
+    def groups(self) -> int:
+        """The groups of blocks: with ``operations`` the groups they name."""
+        if self.operations:
+            return 1 + max(g for role in self.operations for _, g in role)
+        return len(self.roles) + 1 if self.roles else 1
+
+    @property
+    def shown(self) -> int:
+        """The blocks the region holds: every block, or with ``operations`` one a group."""
+        return self.groups if self.operations else self.blocks
+
+    def operate(self, roles: np.ndarray, activity: np.ndarray) -> None:
+        """Each stream's role runs its operations with the stream's settled ``activity``; a
+        role outside the table runs none. ``counts`` holds the blocks a group was given and
+        ``passed`` those its head moved past."""
+        phases, units = int(self.phases), int(self.units)
+        held = self.trace.reshape(len(self.trace), self.groups, phases, units)
+        for i, role in enumerate(np.asarray(roles, dtype=np.int64).ravel()[:len(held)]):
+            if not 0 <= role < len(self.operations):
+                continue
+            for operation, g in self.operations[int(role)]:
+                given, behind = int(self.counts[i, g]), int(self.passed[i, g])
+                if operation == "set":
+                    held[i, g] = 0.0
+                    held[i, g, 0] = activity[i]
+                    self.counts[i, g], self.passed[i, g] = 1, 0
+                elif operation == "write":
+                    held[i, g, given % phases] = activity[i]
+                    self.counts[i, g] = given + 1
+                elif operation == "shift":
+                    if behind < given:
+                        self.passed[i, g] = behind + 1
+                elif given > behind:  # pop
+                    held[i, g, (given - 1) % phases] = 0.0
+                    self.counts[i, g] = given - 1
+
+    def heads(self) -> np.ndarray:
+        """What every group shows, ``(streams, groups * units)``: a queue its first block not
+        shifted past, a stack its last block, silence where a group holds none."""
+        rows, phases, units = len(self.trace), int(self.phases), int(self.units)
+        held = self.trace.reshape(rows, self.groups, phases, units)
+        out = np.zeros((rows, self.groups, units))
+        every = np.arange(rows)
+        for g in range(self.groups):
+            given, behind = self.counts[:, g], self.passed[:, g]
+            at = ((given - 1) if g in self.stacks else behind) % phases
+            out[:, g] = np.where((given > behind)[:, None], held[every, g, at], 0.0)
+        return np.asarray(out.reshape(rows, self.groups * units))
+
+    def hear(self, observations: np.ndarray, cortex: np.ndarray | None = None,
+             roles: np.ndarray | None = None) -> None:
         """One heard moment per stream joins its block; ``cortex`` is the association's settled
-        activity at that moment, which the next moment's read addresses with."""
-        if self.settled:  # the block takes the association's own settled activity
+        activity at that moment, which the next moment's read addresses with. With
+        ``operations`` the moment runs the operations of each stream's role (``roles``, one per
+        stream; None runs none)."""
+        if self.operations:
+            x = np.asarray(observations, dtype=float)
+            if x.ndim != 2 or x.shape[1] != self.inputs:
+                raise ValueError(f"observations are one row of {self.inputs} values per stream")
+            named, self.named = self.named, None
+            if len(self.trace) != len(x):
+                self.reset(len(x))
+            if named is not None and len(named[0]) == len(x) and (
+                named[1] is None or np.array_equal(named[1], x)
+            ):
+                roles = named[0]
+            if roles is not None:
+                now = (
+                    np.array(cortex, dtype=float)
+                    if cortex is not None and np.shape(cortex) == (len(x), int(self.units))
+                    else np.zeros((len(x), int(self.units)))
+                )
+                self.operate(roles, now)
+            self.told += 1
+        elif self.settled:  # the block takes the association's own settled activity
             rows = len(np.atleast_2d(observations))
             now = (
                 np.array(cortex, dtype=float)
@@ -928,8 +1085,10 @@ class HeldMessage(Message):
         """What the streams hold, the learned maps apart."""
         out = {"trace": self.trace, "told": self.told, "held": self.held,
                "previous": self.previous}
-        if self.roles:
+        if self.roles or self.operations:
             out["counts"] = self.counts
+        if self.operations:
+            out["passed"] = self.passed
         return out
 
     # -- the read
@@ -958,7 +1117,8 @@ class HeldMessage(Message):
         present = len(self.trace) == len(out)
         loud = self.amplitude * np.repeat(self.hearing, int(self.units) // self.gains)
         if self.direct:
-            out[:, self._glow_columns] = loud * self.trace if present else 0.0
+            held = self.heads() if self.operations and present else self.trace
+            out[:, self._glow_columns] = loud * held if present else 0.0
         if self.reads:
             self.last = None
             x = self._heard_of(moment) if present else None
@@ -1051,7 +1211,10 @@ class HeldMessage(Message):
         branch = copy(self)
         branch.trace, branch.told = self.trace.copy(), self.told.copy()
         branch.previous = self.previous.copy()
+        if self.operations:  # the branch's own operations leave the stream's store as it is
+            branch.counts, branch.passed = self.counts.copy(), self.passed.copy()
         branch.last = None
+        branch.named = None
         return branch
 
     def arrays(self) -> dict[str, np.ndarray]:
@@ -1068,6 +1231,9 @@ class HeldMessage(Message):
             "amplitude": self.amplitude,
             "gains": int(self.gains),
             **({"settled": True} if self.settled else {}),
+            **({"operations": [[[name, int(g)] for name, g in role] for role in self.operations],
+                "stacks": [int(g) for g in self.stacks], "slot": int(self.slot)}
+               if self.operations else {}),
             "target": self.target,
             "neurons": int(len(self.glow)),
         }
@@ -1075,6 +1241,26 @@ class HeldMessage(Message):
             out.update(read=True, read_amplitude=self.read_amplitude, read_rate=self.read_rate,
                        read_temperature=self.read_temperature)
         return out
+
+
+class _Heads:
+    """A message worked by operations as a carried route's memory (``Hearing.add``): what its
+    region holds is each group's head, where another memory's is its ``trace``."""
+
+    def __init__(self, message: HeldMessage) -> None:
+        self.message = message
+
+    @property
+    def trace(self) -> np.ndarray:
+        return self.message.heads()
+
+    @property
+    def amplitude(self) -> float:
+        return self.message.amplitude
+
+    @property
+    def hearing(self) -> np.ndarray:
+        return self.message.hearing
 
 
 # A head's map of the moment ``(M_x, M_c, m)``, read as ``x M_x + c M_c + m`` from the moment's

@@ -125,30 +125,38 @@ class Store:
             w, q = self.written[:, g], self.passed[:, g]
             at = ((w - 1) if g in self.stacks else q) % self.depth
             out[:, g] = np.where((w > q)[:, None], self.blocks[np.arange(rows), g, at], 0.0)
-        return out.reshape(rows, -1)
+        return out.reshape(rows, self.groups * self.units)
 
     def state(self) -> np.ndarray:
         """Every block, ``(streams, groups * depth * units)``."""
-        return self.blocks.reshape(len(self.blocks), -1)
+        return self.blocks.reshape(len(self.blocks), self.groups * self.depth * self.units)
 
 
-def make_brain(founder: int, settings: dict[str, Any] | None = None, module: int = 256) -> Any:
-    """The chamber's brain with the role slot and the region the heads are shown on: every row
-    taught, the previous observation heard (``history_decays=(0.0,)``), the recall memory of
-    the default composition."""
+def make_brain(founder: int, settings: dict[str, Any] | None = None, module: int = 256,
+               depth: int | None = DEPTH) -> Any:
+    """The chamber's brain with the role slot and the store: every row taught, the previous
+    observation heard (``history_decays=(0.0,)``), the recall memory of the default
+    composition. ``depth`` blocks a group is the library's store (``message_settled`` with
+    ``message_operations``); None composes the region alone, for the instrument's own
+    ``Store`` to write its heads onto (``install``)."""
     import cadence as cd
 
     settings = {"learning_surprise": False, "history_decays": [0.0], "message_amplitude": 3.0,
                 **(settings or {})}
+    store = ({"message_phases": len(GROUPS)} if depth is None else
+             {"message_phases": int(depth), "message_settled": True,
+              "message_operations": [list(steps) for _, steps in OPS],
+              "message_stacks": list(STACKS)})
     return cd.Brain.compose(
         gr.INPUTS, sum(SLOTS), modules=(module,), seed=int(founder), slots=SLOTS,
-        **{"backend": "cpu", "recall": True, "message": module, "message_phases": len(GROUPS),
-           **settings})
+        **{"backend": "cpu", "recall": True, "message": module, **store, **settings})
 
 
-def install(brain: Any, store: Store) -> None:
-    """The heads onto the region the association reads them from, for the next settle."""
-    brain.message.trace = store.heads()
+def install(brain: Any, store: Store | None) -> None:
+    """The heads onto the region the association reads them from, for the next settle; the
+    library's store shows its own."""
+    if store is not None:
+        brain.message.trace = store.heads()
 
 
 def settled(brain: Any, rows: int) -> np.ndarray:
@@ -245,7 +253,7 @@ def _act(brain: Any, x: np.ndarray, work: dict[str, float]) -> tuple[np.ndarray,
     return words, roles
 
 
-def speak(brain: Any, rows: list[gr.Row], store: Store, *, teach: bool = False,
+def speak(brain: Any, rows: list[gr.Row], store: Store | None, *, teach: bool = False,
           bar: bool = True, forced: bool = False, work: dict[str, float] | None = None,
           cap: int = 4, watch: Any = None, echo: bool = True,
           listen: bool = False) -> list[list[int]]:
@@ -254,7 +262,8 @@ def speak(brain: Any, rows: list[gr.Row], store: Store, *, teach: bool = False,
     ``teach`` a lesson comes before every act (at a heard moment the echo, where
     ``heard_label`` names one) and the store follows the taught roles. ``forced`` gives every
     previous word and every taught role without a lesson. In a reading the words and the roles
-    are the brain's own. ``watch(when, index, words, roles, labels)`` is called after each act
+    are the brain's own. ``store`` is the instrument's own, or None for the library's (the
+    brain's ``message``). ``watch(when, index, words, roles, labels)`` is called after each act
     (``when`` is ``"heard"`` or ``"said"``; ``labels`` None where no lesson names the moment),
     and ``watch("held", -1, None, None, None)`` once the last heard moment is acted on; with
     ``listen`` the batch ends there."""
@@ -265,17 +274,32 @@ def speak(brain: Any, rows: list[gr.Row], store: Store, *, teach: bool = False,
     if (teach or forced) and len({len(r.target) for r in rows}) != 1:
         raise ValueError("a taught batch's sentences have one length")
     brain.reset()
-    store.reset(n)
+    if store is not None:
+        store.reset(n)
+
+    def follow(labels: np.ndarray | None, roles: np.ndarray, taught: bool) -> None:
+        # the instrument's store follows the given role, or the brain's own
+        if store is not None:
+            store.apply(roles if labels is None else labels[:, 2], settled(brain, n))
+            install(brain, store)
+
+    def give(labels: np.ndarray) -> None:
+        # the library's store is given a role no lesson named (a lesson names its own)
+        if store is None:
+            brain.message.name(labels[:, 2])
+
     for t in range(len(rows[0].pre)):
         x = np.stack([r.pre[t] for r in rows])
         named = [heard_label(r, t) for r in rows]
         labels = None if any(v is None for v in named) else np.array(named, dtype=np.int64)
-        if teach and echo and labels is not None:
+        taught = teach and echo and labels is not None
+        if taught and labels is not None:
             _lesson(brain, x, labels, work, said=False)
-        words, roles = _act(brain, x, work)
         given = labels is not None and (teach or forced)
-        store.apply(labels[:, 2] if given and labels is not None else roles, settled(brain, n))
-        install(brain, store)
+        if given and not taught and labels is not None:
+            give(labels)
+        words, roles = _act(brain, x, work)
+        follow(labels if given else None, roles, taught)
         if watch is not None:
             watch("heard", t, words, roles, labels)
     if watch is not None:
@@ -300,9 +324,10 @@ def speak(brain: Any, rows: list[gr.Row], store: Store, *, teach: bool = False,
         labels = np.array([said_label(r, j) for r in rows], dtype=np.int64)
         if teach:
             _lesson(brain, x, labels, work, said=True)
+        elif forced:
+            give(labels)
         words, roles = _act(brain, x, work)
-        store.apply(labels[:, 2] if teach or forced else roles, settled(brain, n))
-        install(brain, store)
+        follow(labels if teach or forced else None, roles, teach)
         if watch is not None:
             watch("said", j, words, roles, labels)
         for i, r in enumerate(rows):
@@ -322,7 +347,7 @@ def speak(brain: Any, rows: list[gr.Row], store: Store, *, teach: bool = False,
 # --------------------------------------------------------------------------- the readings
 
 
-def panels(brain: Any, store: Store, tests: dict[str, list[list[gr.Row]]],
+def panels(brain: Any, store: Store | None, tests: dict[str, list[list[gr.Row]]],
            names: tuple[str, ...], bar: bool = True) -> dict[str, Any]:
     """Whole sentences, closed loop: the words and the roles the brain's own."""
     out = {}
@@ -334,7 +359,7 @@ def panels(brain: Any, store: Store, tests: dict[str, list[list[gr.Row]]],
     return out
 
 
-def by_kind(brain: Any, store: Store, batches: list[list[gr.Row]]) -> dict[str, Any]:
+def by_kind(brain: Any, store: Store | None, batches: list[list[gr.Row]]) -> dict[str, Any]:
     """With every previous word and every taught role given: each word said right by its kind
     (``words``), and the role named right at the heard moments a lesson names and at the said
     ones (``roles``): where a sentence is lost."""
@@ -362,7 +387,7 @@ def by_kind(brain: Any, store: Store, batches: list[list[gr.Row]]) -> dict[str, 
             "roles": {k: round(v[0] / v[1], 4) for k, v in sorted(roles.items())}}
 
 
-def held_states(brain: Any, store: Store, batches: list[list[gr.Row]],
+def held_states(brain: Any, store: Store | None, batches: list[list[gr.Row]],
                 ) -> list[tuple[gr.Row, dict[str, Any]]]:
     """Each sentence's state after its last heard moment, the roles the brain's own: the
     settled association (``settled``), every block of the store (``message``) and the two
@@ -375,7 +400,8 @@ def held_states(brain: Any, store: Store, batches: list[list[gr.Row]],
                   held: dict[str, np.ndarray] = held, rows: list[gr.Row] = rows) -> None:
             if when == "held":
                 held["settled"] = settled(brain, len(rows)).astype(np.float32)
-                held["message"] = store.state().astype(np.float32)
+                held["message"] = np.asarray(
+                    brain.message.state if store is None else store.state(), dtype=np.float32)
 
         speak(brain, rows, store, watch=watch, listen=True)
         for i, row in enumerate(rows):
@@ -385,7 +411,7 @@ def held_states(brain: Any, store: Store, batches: list[list[gr.Row]],
     return items
 
 
-def probes(brain: Any, store: Store, founder: int, both: dict[str, list[list[gr.Row]]],
+def probes(brain: Any, store: Store | None, founder: int, both: dict[str, list[list[gr.Row]]],
            ) -> dict[str, Any]:
     """Probes of every clause component after the last heard moment, fitted on trained
     combinations and scored on held-out ones (``meaning.transfer_probes``)."""
@@ -403,8 +429,9 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     """One life (``"kind": "store"``): ``founder``, ``batches`` of the say-back mix
     (``meaning.sayback_batch``), ``module``, ``depth``, ``settings`` over ``make_brain``'s,
     ``echo`` (lessons at the heard moments, on unless false), ``panel_batches``,
-    ``held_probes`` and ``long_probes`` (batches per shape), ``checkpoints`` (batch counts at
-    which the lean panels are read), ``tag``."""
+    ``emulated`` (the instrument's own store in place of the library's), ``held_probes``
+    (batches per shape), ``checkpoints`` (batch counts at which the lean
+    panels are read, appended to the file ``progress`` names), ``tag``."""
     warnings.simplefilter("ignore")
     import cadence as cd
 
@@ -413,15 +440,18 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     module = int(spec.get("module", 256))
     echo = bool(spec.get("echo", True))
     started = time.monotonic()
-    brain = make_brain(founder, spec.get("settings"), module)
-    store = Store(module, int(spec.get("depth", DEPTH)))
+    depth = int(spec.get("depth", DEPTH))
+    emulated = bool(spec.get("emulated", False))
+    brain = make_brain(founder, spec.get("settings"), module, None if emulated else depth)
+    store = Store(module, depth) if emulated else None
     split = gr.Split.of(founder)
     count = int(spec.get("panel_batches", 4))
     tests = {**gr.panels(founder, count), **mn.sayback_panels(founder, count)}
     rng = np.random.default_rng(np.random.SeedSequence([founder, gr.SEEDS["train"]]))
     row: dict[str, Any] = {
         "kind": "store", "tag": spec.get("tag"), "founder": founder, "batches": batches,
-        "module": module, "depth": store.depth, "settings": spec.get("settings", {}),
+        "module": module, "depth": depth, "emulated": emulated,
+        "settings": spec.get("settings", {}),
         "echo": echo, "parameters": int(brain.parameters()), "cadence": cd.__version__,
         "curve": [],
     }
@@ -433,6 +463,10 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
             lean = panels(brain, store, {k: v[:2] for k, v in tests.items()}, LEAN)
             row["curve"].append({"batches": b, "seconds": round(time.monotonic() - started, 1),
                                  **{k: mn._score(v, k) for k, v in lean.items()}})
+            if spec.get("progress"):  # a file the checkpoints are appended to as they are read
+                with Path(spec["progress"]).open("a") as sink:
+                    sink.write(json.dumps({"tag": row["tag"], "founder": founder,
+                                           **row["curve"][-1]}) + "\n")
     work["seconds"] = round(time.monotonic() - started, 1)
     row["work"] = work
     row["synapses"] = int(brain.describe()["layout"]["synapses"])

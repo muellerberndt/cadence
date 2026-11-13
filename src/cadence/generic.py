@@ -107,6 +107,8 @@ from .stream import (
     PatternSeparator,
     Recall,
     Trace,
+    _Heads,
+    _operations,
     _route_matrix,
 )
 
@@ -711,6 +713,7 @@ _MESSAGE_FOUNDERS: dict[str, Any] = {
     "phases": 4, "winners": 5, "fan_in": 16, "amplitude": 1.5, "gains": 1, "read": False,
     "read_amplitude": 3.0, "read_rate": 0.01, "read_temperature": 0.25,
     "boundary": None, "boundary_holds": False, "roles": (), "settled": False,
+    "operations": (), "stacks": (), "slot": -1,
 }
 
 
@@ -738,7 +741,7 @@ _CONSTRUCTION = frozenset({
     "history_decays",
     "message", "message_phases", "message_winners", "message_fan_in", "message_gains",
     "message_boundary", "message_boundary_holds", "message_roles", "message_settled",
-    "message_read",
+    "message_read", "message_operations", "message_stacks", "message_slot",
     "longterm", *(f"longterm_{name}" for name in _LONGTERM_FOUNDERS),
     "carried_gain",
     *_EPISODIC_SETTINGS, "recall", *(f"recall_{name}" for name in Recall.CONSTRUCTION),
@@ -828,6 +831,31 @@ def _message_genes(message: Any, genes: Mapping[str, Any]) -> dict[str, Any]:
     except (TypeError, ValueError) as exc:
         raise ValueError("message_roles are groups of input channels") from exc
     out["blocks"] = out["phases"] * (len(out["roles"]) + 1 if out["roles"] else 1)
+    out["shown"] = out["blocks"]  # the blocks the region holds
+    # a store the brain's own role slot operates (``message_operations``, with ``settled``):
+    # groups of ``phases`` blocks, and the region holds each group's head
+    out["operations"] = _operations(out["operations"])
+    try:
+        out["stacks"] = tuple(int(g) for g in (out["stacks"] or ()))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("message_stacks are groups' indices") from exc
+    if isinstance(out["slot"], (bool, np.bool_)) or not isinstance(out["slot"], (int, np.integer)):
+        raise ValueError("message_slot must be a motor slot's index")
+    out["slot"] = int(out["slot"])
+    if out["operations"]:
+        if not out["settled"] or out["roles"] or out["read"] or out["boundary"] is not None:
+            raise ValueError(
+                "message_operations work a store of settled activity: pass "
+                "message_settled=True, and no message_roles, message_read or message_boundary"
+            )
+        groups = 1 + max(g for role in out["operations"] for _, g in role)
+        if any(not 0 <= g < groups for g in out["stacks"]):
+            raise ValueError(
+                "message_stacks are indices of the groups message_operations name"
+            )
+        out["blocks"], out["shown"] = out["phases"] * groups, groups
+    elif out["stacks"] or out["slot"] != -1:
+        raise ValueError("message_stacks and message_slot need message_operations")
     if out["units"] % out["gains"]:
         raise ValueError("message_gains must divide the units of a block")
     for name in ("amplitude", "read_amplitude", "read_rate"):
@@ -1547,10 +1575,11 @@ def _validate_life_state(
         if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
             raise ValueError("invalid saved message seed")
         width = held["blocks"] * held["units"]
+        shown = held["shown"] * held["units"]
         if (
             told.get("inputs") != sensory
-            or len(populations["message"]) != width
-            or told.get("neurons") != width
+            or len(populations["message"]) != shown
+            or told.get("neurons") != shown
             or (held["read"] and len(populations.get("message_read", ())) != held["units"])
         ):
             raise ValueError("a saved message needs one neuron per unit of every block")
@@ -1564,6 +1593,11 @@ def _validate_life_state(
             counts = array("message/counts", (batch, len(held["roles"]) + 1))
             if counts.dtype.kind not in "iu" or (counts < 0).any():
                 raise ValueError("invalid saved message role counts")
+        if held["operations"]:
+            for name in ("counts", "passed"):
+                moved = array(f"message/{name}", (batch, held["shown"]))
+                if moved.dtype.kind not in "iu" or (moved < 0).any():
+                    raise ValueError("invalid saved message store counts")
         array("message/previous", (batch, association))
         if held["read"]:
             turns = len(held["roles"]) + 1 if held["roles"] else held["blocks"]
@@ -2293,7 +2327,7 @@ def _layout(
             raise ValueError(
                 "a message needs a vector brain without a learned code in this version"
             )
-        regions.append(Region("message", messaged["blocks"] * messaged["units"]))
+        regions.append(Region("message", messaged["shown"] * messaged["units"]))
         if messaged["amplitude"] or not messaged["read"]:
             # the association reads the whole message; a message composed silent beside its
             # read (``message_amplitude=0.0``) is read through the port alone
@@ -2313,6 +2347,11 @@ def _layout(
         if not messaged:
             raise ValueError(
                 "longterm keys its records on the brain's held message: pass message=units"
+            )
+        if messaged["operations"]:
+            raise ValueError(
+                "longterm keys its records on a message's code: a store worked by "
+                "message_operations keys none in this version"
             )
         for name in LongTermRecords.ports(longterm["heads"]):
             regions.append(Region(name, heard_width))
@@ -2805,6 +2844,15 @@ class Brain:
                     "message_settled holds the association's settled activity: message must "
                     "be the association's width"
                 )
+            if messaged["operations"]:
+                # the role slot: one of the motor's slots, with a choice for every role
+                sizes = [int(size) for size in self.learner.slot_sizes]
+                if not -len(sizes) <= messaged["slot"] < len(sizes):
+                    raise ValueError("message_slot must be one of the brain's motor slots")
+                if len(messaged["operations"]) > sizes[messaged["slot"]]:
+                    raise ValueError(
+                        "message_operations name more roles than the role slot has choices"
+                    )
             self.message = HeldMessage(
                 heard_width, phases=messaged["phases"], units=messaged["units"],
                 winners=messaged["winners"], fan_in=messaged["fan_in"], seed=seed,
@@ -2814,6 +2862,8 @@ class Brain:
                 read_amplitude=messaged["read_amplitude"], read_rate=messaged["read_rate"],
                 read_temperature=messaged["read_temperature"],
                 port="message_read" if messaged["read"] else "",
+                operations=messaged["operations"], stacks=messaged["stacks"],
+                slot=messaged["slot"],
             )
         # the long-term records (``longterm=records``): each stream's records keyed by its held
         # message at the turn, read before the settle onto regions the association reads
@@ -3947,6 +3997,12 @@ class Brain:
                 genes["message_roles"] = [list(group) for group in held.roles]
             if held.settled:
                 genes["message_settled"] = True
+            if held.operations:
+                genes.update(
+                    message_operations=[[[name, int(g)] for name, g in role]
+                                        for role in held.operations],
+                    message_stacks=[int(g) for g in held.stacks], message_slot=int(held.slot),
+                )
             if held.reads:
                 genes.update(
                     message_read=True, message_read_amplitude=held.read_amplitude,
@@ -5487,6 +5543,14 @@ class Brain:
             episodic.remember(place, key, labels, value, shown)
         self._prepared = None
         self.basal_ganglia._drive = None
+        if (
+            not replayed and labels is not None and self.message is not None
+            and self.message.operations
+        ):
+            # the store follows the role the lesson names when the moment is acted on, as the
+            # next moment hears the taught word
+            named = np.asarray(labels, dtype=np.int64).reshape(batch, -1)
+            self.message.name(named[:, self.message.slot], self._heard(x, code))
         if not replayed and labels is not None:
             # with ``learning_rehearsal``, rows of earlier lessons are replayed with their
             # episodes on fresh streams that leave the live ones as they are, and this lesson's
@@ -5521,11 +5585,13 @@ class Brain:
             # one gain per block, or per group of a block's neurons (``message_gains``)
             groups, width = int(self.message.gains), int(self.message.units)
             width //= groups
-            for k in range(self.message.blocks):
+            # a store worked by operations holds its groups' heads on the region
+            source = _Heads(self.message) if self.message.operations else self.message
+            for k in range(self.message.shown):
                 for g in range(groups):
                     slot = k * groups + g
                     hearing.add(
-                        f"message_{k}" if groups == 1 else f"message_{k}_{g}", self.message,
+                        f"message_{k}" if groups == 1 else f"message_{k}_{g}", source,
                         slot, slot * width, (slot + 1) * width,
                         self.message.glow[slot * width:(slot + 1) * width],
                     )
@@ -6195,6 +6261,7 @@ class Brain:
         # the branch's own temporal context, the stream's moved on privately by the branch's
         # acts
         issues = echo is not None or (recalled is not None and recalled.action)
+        operated = told is not None and bool(told.operations)  # the branch names its roles
         episodic = branch.get("episodic")
         # the learned code's live state stays as it was: an imagined moment settles the region
         # as a real one does, at the step its competition needs, and the branch leaves the
@@ -6223,22 +6290,31 @@ class Brain:
                 if trace is not None:
                     trace.update(phase.state)
                 command = None
-                if issues:
+                choice = None
+                if issues or operated:
                     # the imagined branch issues, privately, the act the brain would issue: its
                     # complete greedy choice, the readout with the episodic vote under the branch's
                     # own key, after which the branch's context moves on
                     key = None if episodic is None else episodic.key(code)
                     choice = self._greedy(phase.state, place, key)
-                    if episodic is not None and key is not None:
+                    if issues and episodic is not None and key is not None:
                         episodic.issue(key, choice, code)  # keyed as the stream keys its own
-                    command = self._command(choice)
+                    if issues:
+                        command = self._command(choice)
                 if echo is not None:
                     assert command is not None
                     echo.issue(command)
                 if heard is not None:
                     # the imagined observation, as the cortex read it, joins the private history
                     heard.hear(self._heard(value, code))
-                if told is not None:
+                if told is not None and operated:
+                    assert choice is not None
+                    told.hear(
+                        self._heard(value, code),
+                        np.asarray(_on_host(phase.state.activation))[:, self.association_index],
+                        np.asarray(choice, dtype=np.int64).reshape(len(value), -1)[:, told.slot],
+                    )
+                elif told is not None:
                     told.hear(self._heard(value, code), None if trace is None else trace.last)
                 if kept is not None:
                     kept.hear(self._heard(value, code))  # its turns move on; nothing written
@@ -6445,7 +6521,15 @@ class Brain:
             # the observation acted on, as the cortex read it, joins the heard past; the next
             # drive holds the present
             self.history.hear(self._heard(x, code))
-        if self.message is not None:
+        if self.message is not None and self.message.operations:
+            # the role the brain named, or the one a lesson named for this moment
+            # (``HeldMessage.name``), runs its operations on the store with the moment's
+            # settled activity
+            roles = np.asarray(action, dtype=np.int64).reshape(len(x), -1)[:, self.message.slot]
+            cortex = None if state is None else np.asarray(
+                _on_host(state.activation))[:, self.association_index]
+            self.message.hear(self._heard(x, code), cortex, roles)
+        elif self.message is not None:
             # the moment acted on joins the message, and its settled cortex addresses the
             # next moment's read of it
             self.message.hear(
@@ -7165,12 +7249,15 @@ class Brain:
                     connectome=built.connectome, amplitude=built.amplitude, gains=built.gains,
                     read_amplitude=built.read_amplitude, read_rate=built.read_rate,
                     read_temperature=built.read_temperature, port=built.port,
+                    operations=built.operations, stacks=built.stacks, slot=built.slot,
                 )
                 message.trace = data["message/trace"].astype(float)
                 message.told = data["message/told"].astype(np.int64)
                 message.held = data["message/held"].astype(bool)
-                if message.roles:
+                if message.roles or message.operations:
                     message.counts = data["message/counts"].astype(np.int64)
+                if message.operations:
+                    message.passed = data["message/passed"].astype(np.int64)
                 message.previous = data["message/previous"].astype(float)
                 if message.reads:
                     message.maps = [

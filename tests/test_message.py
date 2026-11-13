@@ -405,3 +405,132 @@ def test_a_settled_message_holds_the_associations_own_activity_by_role(tmp_path)
     assert np.array_equal(loaded.act(stream[2], greedy=True), brain.act(stream[2], greedy=True))
     with pytest.raises(ValueError):
         _brain(message=8, message_settled=True)  # not the association's width
+
+
+# ------------------------------------------------- a store the brain's role slot works (#308)
+
+# two word slots' worth of choices and the role slot: none, a register, a queue, its shift, a
+# stack and its pop
+_OPERATIONS = [[], [("set", 0)], [("write", 1)], [("shift", 1)], [("write", 2)], [("pop", 2)]]
+
+
+def _worked(**settings):
+    return cd.Brain.compose(12, 4 + 6, modules=(16,), seed=5, backend="cpu", slots=(4, 6),
+                            message=16, message_settled=True, message_phases=3,
+                            message_operations=_OPERATIONS, message_stacks=[2], **settings)
+
+
+def _say(brain, moment, roles):
+    """One moment acted on with its roles named, as a lesson names them."""
+    brain.message.name(roles)
+    brain.act(moment, greedy=True)
+    return np.asarray(brain.working_memory.last, dtype=float).copy()
+
+
+def test_a_worked_store_holds_groups_and_shows_their_heads():
+    brain = _worked()
+    told = brain.message
+    assert (told.groups, told.blocks, told.shown) == (3, 9, 3) and told.stacks == (2,)
+    assert len(brain.connectome.populations["message"]) == 3 * 16  # one block a group
+    assert {f"message_{k}" for k in range(3)} <= set(brain.carried_gains)
+    stream = _stream(np.random.default_rng(1), 8)
+    a = _say(brain, stream[0], [1, 2, 4])  # set the register; write the queue; push the stack
+    heads = told.heads().reshape(3, 3, 16)
+    assert np.allclose(heads[0, 0], a[0]) and not heads[0, 1:].any()
+    assert np.allclose(heads[1, 1], a[1]) and np.allclose(heads[2, 2], a[2])
+    b = _say(brain, stream[1], [1, 2, 4])
+    heads = told.heads().reshape(3, 3, 16)
+    assert np.allclose(heads[0, 0], b[0])  # a register holds its latest moment
+    assert np.allclose(heads[1, 1], a[1])  # a queue shows its first block
+    assert np.allclose(heads[2, 2], b[2])  # a stack its last
+    _say(brain, stream[2], [0, 3, 5])  # none; shift the queue; pop the stack
+    heads = told.heads().reshape(3, 3, 16)
+    assert np.allclose(heads[0, 0], b[0])
+    assert np.allclose(heads[1, 1], b[1]) and np.allclose(heads[2, 2], a[2])
+    _say(brain, stream[3], [0, 3, 5])
+    assert not told.heads().reshape(3, 3, 16)[1:].any()  # a group with no block shows silence
+    _say(brain, stream[4], [0, 3, 5])  # past its end a queue stays, and an empty stack
+    assert told.passed[1, 1] == 2 and told.counts[2, 2] == 0
+    region = brain.connectome.populations["message"]
+    drive = brain.stimulus(stream[5])
+    assert np.allclose(drive[:, region], 1.5 * told.heads())  # the gains start at one
+    brain.reset()
+    assert not told.state.any() and not told.heads().any()
+
+
+def test_a_worked_store_follows_the_brains_own_role_and_a_lessons():
+    brain = _worked()
+    stream = _stream(np.random.default_rng(2), 4)
+    said = np.asarray(brain.act(stream[0], greedy=True)).reshape(3, 2)
+    for i, role in enumerate(said[:, 1]):  # each stream's own role ran its operations
+        steps = _OPERATIONS[int(role)]
+        wrote = sum(1 for name, _ in steps if name in ("set", "write"))
+        assert int(brain.message.counts[i].sum()) == wrote
+    brain.reset()
+    labels = np.array([[0, 2], [1, 2], [2, 2]])
+    brain.lesson(stream[1], labels)
+    brain.act(stream[1], greedy=True)  # the moment the lesson named: the store follows it
+    assert brain.message.counts[:, 1].tolist() == [1, 1, 1]
+    assert np.allclose(brain.message.heads().reshape(3, 3, 16)[:, 1], brain.working_memory.last)
+    brain.lesson(stream[2], labels)
+    own = np.asarray(brain.act(stream[3], greedy=True)).reshape(3, 2)[:, 1]
+    # a lesson of other observations names nothing for this moment: the brain's own role runs
+    expected = [1 + sum(1 for name, g in _OPERATIONS[int(r)] if (name, g) == ("write", 1))
+                for r in own]
+    assert brain.message.counts[:, 1].tolist() == expected
+
+
+def test_a_worked_store_is_kept_by_a_checkpoint_and_left_by_an_imagined_branch(tmp_path):
+    brain = _worked()
+    stream = _stream(np.random.default_rng(3), 5)
+    _say(brain, stream[0], [1, 2, 4])
+    _say(brain, stream[1], [2, 2, 4])
+    _say(brain, stream[2], [3, 0, 5])
+    genes = brain.describe()["genes"]
+    assert genes["message_operations"] == [[[name, g] for name, g in role]
+                                           for role in _OPERATIONS]
+    assert genes["message_stacks"] == [2] and genes["message_slot"] == -1
+    loaded = cd.Brain.load(brain.save(tmp_path / "worked"))
+    for name in ("trace", "counts", "passed"):
+        assert np.array_equal(getattr(loaded.message, name), getattr(brain.message, name))
+    assert loaded.message.operations == brain.message.operations
+    assert np.array_equal(loaded.message.heads(), brain.message.heads())
+    assert np.array_equal(loaded.act(stream[3], greedy=True), brain.act(stream[3], greedy=True))
+    one = _worked()
+    _say(one, stream[0][:1], [2])
+    kept = {name: getattr(one.message, name).copy() for name in ("trace", "counts", "passed")}
+    one.imagine([stream[1][:1], stream[2][:1]])  # the branch names and runs its own roles
+    for name, value in kept.items():
+        assert np.array_equal(getattr(one.message, name), value)
+    with pytest.raises(ValueError):
+        brain.retune(message_operations=_OPERATIONS)
+
+
+def test_a_brain_without_operations_keeps_its_bits():
+    plain = _brain(message=16, message_settled=True, message_roles=((0, 1), (2,)),
+                   message_phases=2, message_read=True, message_amplitude=0.0)
+    assert plain.message.operations == () and plain.message.shown == plain.message.blocks
+    assert "message_operations" not in plain.describe()["genes"]
+    assert "passed" not in plain.message.arrays()
+    with pytest.raises(ValueError):
+        plain.message.name([0, 0, 0])
+
+
+@pytest.mark.parametrize("settings", [
+    {"message_operations": [[], [("set", 0)]]},  # without message_settled
+    {"message_settled": True, "message_operations": [[], [("keep", 0)]]},
+    {"message_settled": True, "message_operations": [[], [("set", -1)]]},
+    {"message_settled": True, "message_operations": [[], []]},
+    {"message_settled": True, "message_operations": [[], [("set", 0)]], "message_stacks": [3]},
+    {"message_settled": True, "message_operations": [[], [("set", 0)]], "message_slot": 5},
+    {"message_settled": True, "message_operations": [[("set", 0)]] * 7},  # more than choices
+    {"message_settled": True, "message_operations": [[], [("set", 0)]], "message_read": True},
+    {"message_settled": True, "message_operations": [[], [("set", 0)]],
+     "message_roles": ((0,),)},
+    {"message_settled": True, "message_stacks": [0]},
+    {"message_settled": True, "message_operations": [[], [("set", 0)]], "longterm": 16},
+])
+def test_worked_store_refusals(settings):
+    with pytest.raises(ValueError):
+        cd.Brain.compose(12, 4 + 6, modules=(16,), seed=5, backend="cpu", slots=(4, 6),
+                         message=16, **settings)
