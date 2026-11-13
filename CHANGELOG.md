@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+### Meaning learned in one deep brain (#334)
+
+`cadence.meaning` is imported by name, and `import cadence` loads none of it. The guide is
+[docs/meaning.md](docs/meaning.md); the chamber is `benchmarks/meaning`.
+
+- **`cadence.meaning.Eyes`, `Seen`, `Circle`, `Line`, `Forms`**: the born senses of a thing as
+  tuned inputs (hue, lightness, shape, size, surface, direction, distance, salience), a scene of
+  slots in an order with no meaning, and a heard word's code drawn per form.
+- **`cadence.meaning.compose`, `HAND_SET`, `SPACE`, `anatomy`**: a deep composed brain from a
+  genome of named genes (the regions, the apical compartment, where the ear enters, the recall
+  memory, the voice and a second motor slot, the actor-critic's rates and hold), each gene
+  declared for `cadence.genes`.
+- **`cadence.meaning.host.MeaningParrot`**: a trained brain on a page, one moment at a time:
+  `see`, `hear`, `moment`, `pistachio`.
+- **`benchmarks/meaning`**: the night's chamber (`night.py`: the world, every question form, the
+  self-hearing lesson, the pistachio-gated lesson on the parrot's own reply taken on the brain as
+  it was when it replied, the correction on the parrot's own states, the glimpse and the scan,
+  checkpoints), the controls in the brain's place (`meaning_controls.py`), the exam and
+  introspection (`exam.py`, `introspect.py`), the page's files (`export_page.py`) and the tables
+  (`report.py`).
+
 ### Words for things (#326)
 
 `cadence.words` is imported by name, and `import cadence` loads none of it. The guide is
