@@ -778,16 +778,19 @@ def control(cache: Path, model: str, mode: str, seed: int, parameters: int,
     ``offline_epochs``, else ``epochs``); read the same way, after every pass with
     ``read_each_pass`` and at the end without. With ``out`` the learner is saved after every
     pass and a stopped run continues from there (``stop_after`` passes ends it as a lost machine
-    would)."""
+    would). ``controls_device`` in the protocol names where torch runs the learner (the CPU
+    without it); its first weights are drawn on the CPU from the seed wherever it runs."""
     import controls as ct
     import torch
 
     torch.set_num_threads(1)
+    device = str(protocol.get("controls_device", "cpu"))
     train, held = load(cache, "train"), load(cache, "held")
     inputs = train[0][0].shape[1]
     matcher = word_matcher(protocol)
     width = ct.matched_width(model, parameters, inputs, SYMBOLS)
-    learner = ct.Learner(model, "ctc", width, inputs, SYMBOLS, seed, ct.RATES[mode])
+    learner = ct.Learner(model, "ctc", width, inputs, SYMBOLS, seed, ct.RATES[mode],
+                         device=device)
     order = np.random.default_rng([seed, 7]).permutation(len(train))
     record: dict[str, Any] = {"arm": f"{model}-ctc-{mode}", "seed": seed, "width": width,
                               "parameters": ct.count(learner.net), "probes": []}
@@ -798,9 +801,9 @@ def control(cache: Path, model: str, mode: str, seed: int, parameters: int,
         ticked = time.monotonic()
         with torch.no_grad():
             for x, _ in held:
-                logits = learner.net(torch.from_numpy(x[None]))[0]
-                actions.append(np.argmax(logits.numpy(), -1))
-                logps.append(torch.log_softmax(logits, -1).numpy().astype(np.float64))
+                logits = learner.net(torch.from_numpy(x[None]).to(device))[0]
+                actions.append(np.argmax(logits.cpu().numpy(), -1))
+                logps.append(torch.log_softmax(logits, -1).cpu().numpy().astype(np.float64))
         read_seconds = time.monotonic() - ticked
         score = {**read(actions, held), **locate(actions, logps, held)}
         if matcher is not None:
@@ -821,7 +824,7 @@ def control(cache: Path, model: str, mode: str, seed: int, parameters: int,
     best, waited, first = float("inf"), 0, 0
     state = None if out is None else out / f"speech-{record['arm']}-{seed}.state.pt"
     if state is not None and state.exists():  # a stopped run: from its last whole pass
-        kept = torch.load(state, weights_only=False)
+        kept = torch.load(state, weights_only=False, map_location=device)
         learner.net.load_state_dict(kept["net"])
         learner.opt.load_state_dict(kept["opt"])
         learner.work = dict(kept["work"])
