@@ -1773,7 +1773,8 @@ same units, and then they share a key: the second telling would revise the first
 they were heard, and gives it to the store as the fact's source ([keys held
 apart](#keys-held-apart-opt-in)). A write whose key a record holds revises that record only
 where the heard moments agree. A read takes, among the records that hold its key, the one
-whose heard moments it shares. It is built for records keyed by a held message from a turn,
+whose heard moments it shares. The heard moments are told exactly, so the stores compare a
+source's whole signature (`same=8`). It is built for records keyed by a held message from a turn,
 without `longterm_turn`.
 
 A brain whose records grow, lie in files or are told apart saves in checkpoint format
@@ -2664,6 +2665,7 @@ copy stays behind to split the read.
 | `grow` | `False` | The table of pairs grows with its records, and the capacity is a bound: [records at any size](#records-at-any-size-opt-in) |
 | `path` | `None` | A directory that holds every array of the memory as a file: [records at any size](#records-at-any-size-opt-in) |
 | `sure` | `0.0`, off | The cosine at which a record found under the most pairs ends a read: [records at any size](#records-at-any-size-opt-in) |
+| `same` | `5` | The units of a source's signature (of 8) two writes share where they are one fact's: [keys held apart](#keys-held-apart-opt-in) |
 
 `read(cue, heads=1, credit=True)` returns a `LongTermRead` (`slots`, `weights`, `first(head)`,
 `mass(slot, head)`); `value(read, head)` is what a head holds; `write(key, value)` returns the
@@ -2834,6 +2836,14 @@ assert np.array_equal(facts.value(facts.read(key, source=second, credit=False)),
 slot, revised = facts.write(key, paris, source=first)         # the first fact, told again
 assert revised and facts.count == 2
 ```
+
+The signature is the source's 8 most driven units under a second fixed projection, and two
+signatures agree where they share `same` of them (5 unless you set it). A source that is told
+again exactly, as a brain's heard moments are, can ask for all 8 with `same=8`: then two sources
+that differ in one coordinate of a few (a noun's singular and its plural) are always two facts.
+With `sure`, a read or a write that carries a source ends early only at a record that holds its
+signature; where the record its key finds holds another fact's, it reads in full and finds its
+own.
 
 **Beside a brain.** The memory's read of a moment's key is held on input coordinates of its own,
 as a recall port is held through a settle, and lessons teach the brain to answer from it:

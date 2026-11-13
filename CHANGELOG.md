@@ -22,13 +22,17 @@ guide is [docs/memory.md](docs/memory.md#records-at-any-size-opt-in).
 - **`LongTermMemory(sure=cosine)`: a read that ends at its record.** A read of one head first
   reads the pairs of the cue's `pairs` most driven units (120 cells in place of 32,640) and ends
   where a record found there holds a key at that cosine to the cue; any other cue is read in
-  full, so the first choice is the whole read's.
+  full, so the first choice is the whole read's. A read or a write that carries a source
+  (`apart`) ends there only at a record that holds the source's signature.
+- **`LongTermMemory(same=units)`**: the units of a source's signature (of 8) that two writes
+  share where they are one fact's; 5 unless set, as before.
 - **`Brain.compose(longterm_grow=, longterm_path=, longterm_sure=)`** give each stream's store
   these settings. With `longterm_path` a stream's records lie under `stream-<n>`, a checkpoint
   names the directory and holds none of them, and `brain.longterm.clear()` removes the files.
 - **`Brain.compose(longterm_apart=True)`: facts told apart by what was heard.** Two episodes
   whose held messages are one key keep two records: the stream gives the store the moments
-  heard before the turn as the fact's source.
+  heard before the turn as the fact's source, and its stores compare the whole signature
+  (`same=8`): heard moments are told exactly.
 - **A checkpoint format of its own.** A brain whose records grow, lie in files or are told
   apart saves as `cadence-brain/5`, which 0.99.0 and earlier refuse by name. Every other brain
   keeps its format.
