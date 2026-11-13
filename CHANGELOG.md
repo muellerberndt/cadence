@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Speech: the soft lesson (#304)
+
+No default changes: every existing call reads, learns and saves as before.
+
+- **`cadence.speech.align.soft_path(log_beliefs, transcript, sharpness=1.0)`**: a distribution
+  per step in place of the forced path's one symbol, the share of the transcript's paths that
+  say each symbol at that step, each path weighed by the brain's beliefs along it (CTC's
+  occupation shares). Taught as a lesson's `targets`, the pull on the motor neurons is the
+  descent of CTC's loss on the brain's beliefs, computed outside the brain from the beliefs
+  alone. `sharpness` above 1 weighs the better paths more; at a large value the rows are the
+  forced path's symbols.
+- **`soft_step(brain, rows, targets)`**: one moment of the soft lesson, `Brain.lesson(targets=)`
+  then a greedy act, the learned fields taking their step at the act.
+- **`log_beliefs(brain, rows, hold=True)`**: a brain reads its own beliefs between two batches,
+  its learned fields held and its streams at rest afterwards, so no copy is loaded.
+- **`Alignments.realign(..., soft=True, sharpness=)`** holds a soft path and
+  **`Alignments.targets(keys, steps, symbols)`** gives the distributions of hearings heard side
+  by side; `Alignments.lesson` refuses a hearing that holds a soft path.
+- `LearnedFields.learn` with its tables held reads no patches (the same result with less work).
+
 ### Benchmarks
 
 - **The letters chamber, round 4** (`benchmarks/letters/`, #304). `fields256_p` read after every

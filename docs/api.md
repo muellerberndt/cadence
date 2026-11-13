@@ -739,7 +739,9 @@ Hearing.fit(utterances, *, window=24, stack=4, clip=3.0, scale=0.3, floor=1e-3) 
 LogMel(hearing, *, rate=16000, frame=400, hop=160, fft=512)
 even_path(steps, transcript) -> (steps,)
 forced_path(log_beliefs, transcript, *, blank=0, states=False) -> (steps,)
-log_beliefs(brain, utterances) -> list of (steps, symbols)
+soft_path(log_beliefs, transcript, *, blank=0, sharpness=1.0) -> (steps, symbols)
+soft_step(brain, rows, targets) -> report
+log_beliefs(brain, utterances, *, hold=False) -> list of (steps, symbols)
 Alignments(*, blank=0)
 Alphabet(letters="abcdefghijklmnopqrstuvwxyz'")
 collapse(symbols, *, blank=0) -> list[int]
@@ -749,7 +751,8 @@ WordBeam(words, *, counts=None, alphabet=None, beam=16, top=8, prior_weight=0.0,
 
 The guide explains `log_mel` and `Hearing` under [hearing](speech.md#hearing-audio-as-an-image),
 `Alignments`, `forced_path` and `log_beliefs` under
-[training from transcripts](speech.md#training-from-transcripts), and `Alphabet`, `collapse` and
+[training from transcripts](speech.md#training-from-transcripts), `soft_path` and `soft_step`
+under [the soft lesson](speech.md#the-soft-lesson-every-path-of-the-transcript), and `Alphabet`, `collapse` and
 `WordBeam` under [reading text](speech.md#reading-text-with-and-without-a-word-list), with their
 settings and refusals in [one table](speech.md#settings-refusals-and-cost). The other five names:
 
