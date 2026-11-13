@@ -204,7 +204,7 @@ def run_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
 
     torch.set_num_threads(int(spec.get("threads", 1)))
     founder, kind, schedule = int(spec["founder"]), spec["kind"], spec["schedule"]
-    window, lessons = int(spec.get("window", 32)), int(spec.get("lessons", 4000))
+    window, lessons = int(spec.get("window", 64)), int(spec.get("lessons", 4000))
     layers, heads = int(spec.get("layers", 4)), int(spec.get("attention_heads", 8))
     lexicon = sw.Lexicon()
     taught = sw.Population([founder, 325, 1], int(spec.get("lesson_subjects", 600)), "t")

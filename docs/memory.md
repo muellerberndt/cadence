@@ -166,6 +166,7 @@ a training setting ([curriculum and rehearsal](teach.md#curriculum-and-rehearsal
 | A position nothing marks, past the table: a period of 40, n-back at 400 | `recall_capacity` about 2.5 times the distance: a new brain holds the grid and 128 slots | [reads over long context](#reads-over-long-context) |
 | Thousands of facts, asked long after they were told | `cd.LongTermMemory` beside the brain; or `recall_position=0, recall_temperature=0.05` and a `recall_capacity` that holds them | [a large memory](#a-large-memory) |
 | Two or more facts in one answer | `recall_heads=2` | [several heads](#several-heads-opt-in) |
+| One answer needs several of the brain's long-term records | `longterm_heads=k, longterm_attention=1.0, longterm_motor=0.05` | [several heads, each with a record of its own](#several-heads-each-with-a-record-of-its-own-opt-in) |
 | A read that depends on what another read found | a "think" moment between the two reads | [several heads](#several-heads-opt-in) |
 | "How long ago?", "was A told before B?" | `recall_when=True` | [when a read item happened](#when-a-read-item-happened-opt-in) |
 | The answer is the token the read found, tokens no lesson used included | `recall_tokens=..., recall_gain=1.0` | [the learned value path](#the-learned-value-path-opt-in) |
@@ -1849,6 +1850,83 @@ one fact and that record is the chain.
 | `longterm_distinct` | `None`, off | construction | A cue keeps its entries of at least this share of its heaviest weight |
 | `longterm_best` | `False` | construction | The read takes the record holding the most of the cue's weight; needs `longterm_distinct` |
 | `longterm_rest` | `False` | construction | A second read takes what the question asks beyond the first record; the answering record on `longterm`; needs `longterm_distinct` |
+| `longterm_attention` | `None`, off | construction | The rate of the heads' lesson: each head reads a record of its own in one answer ([below](#several-heads-each-with-a-record-of-its-own-opt-in)); needs `longterm_distinct` |
+| `longterm_motor` | `0.0`, off | construction | The scale of a plastic projection from each head's region to the motor region |
+
+### Several heads, each with a record of its own (opt-in)
+
+A transformer answers from several places of its context at once: each attention head reads a
+position of its own. `longterm_attention=rate` gives the brain's records the same: in one
+answer each of the `longterm_heads` heads reads a record of its own, and what each head holds
+to is learned by the brain's lessons. "What is the home of ada and bo and cy ?" reads three
+records in one settle, ada's on the first head's region, bo's on the second's, cy's on the
+third's, and the brain says the three places with three motor slots.
+
+- **Each head takes the question's next telling word.** A word few records hold (a name) tells
+  records apart; a word many records hold (a relation) is context. The heads read in turn, and
+  each takes as its focus the first telling word of the question, in the order heard, that no
+  head before it took. Its records are those whose key holds that word, and a record is read
+  once. A record is found by its key, what was heard before its turn, so a record that only
+  says a name as its value is no record about that name.
+- **Gates say which context a head holds to.** A head holds one gate per place in the question,
+  counted from the question's first word and from its last, read from a map of the question's
+  key. A record's level is the share its key holds of what the head looks for: the focus and
+  the context words, each at its gate. The head takes the record of the highest level and holds
+  it where the level reaches `longterm_match`. The maps start at zero, so a newborn head weighs
+  every context word alike.
+- **A head with no record holds nothing.** A word no record holds and few questions hold is a
+  telling word with no record: its head stays silent and the next head reads the next word. A
+  subject that lacks the relation asked is silent as well: its other records hold too little of
+  what the head looks for.
+- **A chain.** A head with no telling word of the question left takes what the head before it
+  read as its focus. "The home of the boss of ada" reads ada's boss on the first head, then
+  the boss's home on the second. A chain lies on its regions from its end, the record that
+  answers on the first, as `longterm_rest` lays its chain.
+- **The lesson.** After each lesson every head's choice is scored against what the lesson moved:
+  for each record the head could have taken, and for taking none, the heads after it read again
+  as they would have, and the records the regions would then hold are scored against the
+  movement of the neurons the regions reach, read back through their synapses. The head's map
+  steps toward the choices that score above its own. In a chain this teaches each head which
+  relation to follow: the word before the subject for the first head, the word before that for
+  the second.
+- **A pathway to the motor region (`longterm_motor=scale`).** Each head's region also projects
+  to the motor region through plastic synapses of that initial scale, taught by the same
+  lessons, so a motor slot learns to say what one region holds. With it the heads' lesson reads
+  the movement back through these synapses alone.
+
+```python
+asker = Brain.compose(inputs=15, actions=10, slots=2, modules=(32,), seed=0, message=70,
+                      longterm=64, longterm_turn=TURN, longterm_distinct=0.1,
+                      longterm_match=0.6, longterm_heads=2, longterm_attention=1.0,
+                      longterm_motor=0.05)
+for verb in (6, 7):                                     # two relations of six subjects
+    for agent in range(6):
+        asker.reset()
+        for on in (verb, agent, TURN, 10 + (agent + verb) % 4):
+            asker.act(seen(on), greedy=True)
+asker.reset()
+for on in (6, 0, 3, TURN):                              # relation 6 of subjects 0 and 3
+    asker.act(seen(on), greedy=True)
+drive = asker.stimulus(np.zeros((1, 15)))
+assert asker.longterm.read_slots[0].tolist() == [0, 3]  # a record a head, in the order asked
+assert np.allclose(drive[0, asker.connectome.populations["longterm_1"]], 3.0 * seen(11)[0])
+report = asker.lesson(np.zeros((1, 15)), np.array([[0, 1]]))   # a lesson also steps the heads
+assert "heads_moved" in report
+```
+
+`brain.longterm.attended` is a `RecordHeads` (`cadence.record_heads`): `maps` (one per head),
+`last` (each stream's latest read: its question, each head's record and levels) and
+`parameters`. `brain.longterm.work` counts the accumulates of the latest read, and
+`brain.longterm.questions` and `asked_in` the questions heard and how many of them held each
+entry. A checkpoint keeps the maps and the counts.
+
+Limits: a relation word few records hold reads as a telling word; a question naming two
+relations of one subject reads one of them, since a telling word is read once; and the order in
+which the heads take the telling words is the order heard, which no lesson changes.
+
+The [several-records chamber](../benchmarks/several/README.md) reads these settings on
+questions of two, four and eight parts and on chains of two and three hops, beside a
+transformer that holds the records in its context.
 
 The [encyclopedia chamber](../benchmarks/encyclopedia/README.md) reads these settings on facts
 from Wikidata.

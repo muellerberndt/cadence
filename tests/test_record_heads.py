@@ -27,7 +27,7 @@ def brain(heads: int = HEADS, **settings):
     made = {"longterm_attention": 1.0, **settings}
     return cd.Brain.compose(
         INPUTS, heads * 5, slots=heads, modules=(32,), seed=0, backend="cpu", message=70,
-        longterm=64, longterm_turn=TURN, longterm_distinct=0.1, longterm_match=0.5,
+        longterm=64, longterm_turn=TURN, longterm_distinct=0.1, longterm_match=0.6,
         longterm_heads=heads, **{k: v for k, v in made.items() if v is not None},
     )
 
@@ -48,14 +48,19 @@ def ask(b, *words: int) -> np.ndarray:
 
 
 def told(b) -> None:
-    """Twenty facts: relation ``R`` of every subject (record ``s`` holds subject ``s``'s),
-    ``R2`` of subjects 0 to 5 (records 12 to 17), and two links (records 18 and 19)."""
+    """Twenty-four facts: relation ``R`` of every subject (record ``s`` holds subject ``s``'s),
+    ``R2`` of subjects 0 to 5 (records 12 to 17), and a link from each of subjects 6 to 11
+    (records 18 to 23; subject 6's link is subject 2)."""
     for subject in range(12):
         tell(b, R, subject, 16 + subject % 4)
     for subject in range(6):
         tell(b, R2, subject, 16 + (subject + 1) % 4)
-    tell(b, LINK, 1, 2)
-    tell(b, LINK, 4, 5)
+    for subject in range(6, 12):
+        tell(b, LINK, subject, subject - 4)
+    # one question heard: "and", a word no record holds, is a word of questions from here on
+    b.reset()
+    for on in (R, OF, 10, AND, 11, TURN, None):
+        b.act(moment(on), greedy=True)
 
 
 def test_the_option_is_named_checked_and_off_by_default():
@@ -67,9 +72,8 @@ def test_the_option_is_named_checked_and_off_by_default():
     assert isinstance(b.longterm.attended, RecordHeads) and b.longterm.attention == 1.0
     assert b.longterm.to_dict()["attention"] == 1.0
     assert b.describe()["genes"]["longterm_attention"] == 1.0
-    assert all(bias[-1] == RecordHeads.BAR and not bias[:-1].any() and not m.any()
-               for m, bias in b.longterm.attended.maps)  # a newborn head: every gate one half
-    assert b.parameters() - plain.parameters() == HEADS * (70 + 1) * (2 * RecordHeads.POSITIONS + 2)
+    assert not any(m.any() or bias.any() for m, bias in b.longterm.attended.maps)  # one half
+    assert b.parameters() - plain.parameters() == HEADS * (70 + 1) * (2 * RecordHeads.POSITIONS + 1)
     with pytest.raises(ValueError, match="longterm_distinct"):
         cd.Brain.compose(INPUTS, 4, modules=(32,), seed=0, message=70, longterm=16,
                          longterm_turn=TURN, longterm_attention=1.0)
@@ -92,8 +96,8 @@ def test_each_head_reads_a_record_of_its_own_and_a_record_is_read_once():
     told(b)
     drive = ask(b, R, OF, 0, AND, 1, AND, 2)  # relation R of subjects 0, 1 and 2
     kept = b.longterm
-    held = sorted(int(s) for s in kept.read_slots[0])
-    assert held == [0, 1, 2]  # the three records the question names, each on one head
+    held = [int(s) for s in kept.read_slots[0]]
+    assert held == [0, 1, 2]  # the records the question names, in its order, each on one head
     for head, name in enumerate(kept.ports(HEADS)):
         slot = int(kept.read_slots[0, head])
         region = b.connectome.populations[name]
@@ -106,14 +110,15 @@ def test_a_head_with_no_record_holds_nothing():
     told(b)
     drive = ask(b, R, OF, 9)  # one part: subject 9 holds one record
     kept = b.longterm
-    assert sorted(int(s) for s in kept.read_slots[0]) == [-1, -1, 9]
-    silent = [h for h in range(HEADS) if kept.read_slots[0, h] < 0]
-    for head in silent:
+    assert [int(s) for s in kept.read_slots[0]] == [9, -1, -1]
+    for head in (1, 2):
         assert not drive[0, b.connectome.populations[kept.ports(HEADS)[head]]].any()
     ask(b, R, OF, 24)  # a word no fact holds: every head holds nothing
     assert (kept.read_slots[0] == -1).all()
-    ask(b, 25, 26)  # words no record holds
-    assert (kept.read_slots[0] == -1).all()
+    ask(b, R, OF, 0, AND, 24, AND, 2)  # the head of the unknown word holds nothing
+    assert [int(s) for s in kept.read_slots[0]] == [0, -1, 2]
+    assert kept.questions == 1  # a question is counted once its answer's moment is heard
+    assert kept.asked_in[kept.entry(b.message.code(moment(AND))[0])] == 1
 
 
 def test_a_record_is_found_by_its_key_and_not_by_its_value():
@@ -121,10 +126,8 @@ def test_a_record_is_found_by_its_key_and_not_by_its_value():
     told(b)
     ask(b, R, OF, 2)  # subject 2 is the subject of two records and the value of a link's
     kept = b.longterm
-    assert sorted(int(s) for s in kept.read_slots[0]) == [-1, -1, 2]  # a subject is read once
+    assert [int(s) for s in kept.read_slots[0]] == [2, -1, -1]  # a subject is read once
     assert 18 not in kept.read_slots[0]  # the link's record names subject 2 only as its value
-    ask(b, R, AND, R2, OF, 2)  # two relations of one subject: a record for each
-    assert sorted(int(s) for s in kept.read_slots[0]) == [-1, 2, 14]
     assert kept.said(0, 18) == kept.entry(b.message.code(moment(2))[0])
 
 
@@ -133,11 +136,12 @@ def test_a_chain_lies_on_its_regions_from_its_end():
     told(b)
     heads = b.longterm.attended
     # the first head attends the link and its subject, the second the relation and the chain
-    for head, places in ((0, (2, 4)), (1, (0, heads.chain))):
+    # the first head holds to the link and its subject, the second to the relation
+    for head, places in ((0, (2, 4)), (1, (0,))):
         m, bias = heads.maps[head]
-        bias[: heads.chain + 1] = -8.0
+        bias[:] = -8.0
         bias[list(places)] = 16.0  # over the term by the place from the question's end
-    drive = ask(b, R, OF, LINK, OF, 1)  # relation R of the link of subject 1: of subject 2
+    drive = ask(b, R, OF, LINK, OF, 6)  # relation R of the link of subject 6: of subject 2
     kept = b.longterm
     assert [int(s) for s in kept.read_slots[0]] == [2, 18]  # the answering record on head 0
     np.testing.assert_allclose(drive[0, b.connectome.populations["longterm"]],
@@ -211,4 +215,4 @@ def test_a_saved_brain_with_learned_heads_continues_as_the_one_saved(tmp_path):
         x = moment(on)
         np.testing.assert_array_equal(first.act(x, greedy=True), second.act(x, greedy=True))
         np.testing.assert_array_equal(first.longterm.read_slots, second.longterm.read_slots)
-    assert {1, 2} <= {int(s) for s in second.longterm.read_slots[0]}
+    assert [int(s) for s in second.longterm.read_slots[0]] == [2, 1, -1]

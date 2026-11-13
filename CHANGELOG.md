@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### Several heads into the brain's records (#325)
+
+- **`longterm_attention=rate`** (opt-in, with `longterm_distinct`): in one answer each of the
+  `longterm_heads` heads reads a record of its own. A head takes the question's next telling
+  word as its focus and reads the record about it whose key holds the most of the question's
+  context, each context word at the gate of the head's learned map; a head with no record
+  holds nothing; a head with no telling word left follows the head before it, a chain laid on
+  the regions from its end. `Brain.lesson` steps the maps (`heads_moved` in its report): each
+  choice a head could have made is scored, with the heads after it read again, against the
+  movement the lesson made. `cadence.record_heads.RecordHeads` holds the maps as
+  `brain.longterm.attended`.
+- **`longterm_motor=scale`** (opt-in): a plastic projection from each head's region to the motor
+  region, so a motor slot learns to say what one region holds.
+- **`benchmarks/several`**: the chamber of questions whose one answer needs several of the
+  brain's own records (parts of 1 to 8 subjects, chains of 2 and 3 hops, parts and chains no
+  record answers), with a transformer and an LSTM that hold the records in their context.
+- With both options unset a brain is composed, reads, learns and saves as it did.
+
 ## 0.99.0 - 2026-11-13
 
 A map of what is where, held in the brain's own carried activity (`cadence.space.map.Map`,

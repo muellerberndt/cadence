@@ -595,7 +595,15 @@ are kept as lists, and `sets`, `wset` and `cue` build the tables of entries from
 `longterm_best=True` reads the record holding the most of the cue's weight, the latest among
 equals, and `longterm_rest=True` cues a second read with the first record's entries outside the
 cue and the cue's entries the first record does not hold, the regions holding the chain from its
-end (the answering record on `longterm`). `read_slots` holds each head's
+end (the answering record on `longterm`). `longterm_attention=rate` (None: off; with
+`longterm_distinct`) builds a `RecordHeads` (in `cadence.record_heads`) as `attended`: each head
+takes the question's next telling entry as its focus and reads a record of its own, the gates of
+its learned map (`maps`) weigh the question's context entries, a head whose best record's level
+falls short of `longterm_match` holds nothing, a head with no telling entry left follows the
+head before it (a chain, laid on the regions from its end), and `Brain.lesson` steps the maps
+(`heads_moved`, `heads_refused` in its report); `work` counts the latest read's accumulates and
+`questions` and `asked_in` the questions heard. `longterm_motor=scale` (0.0: off) adds a plastic
+projection from each head's region to the motor region. `read_slots` holds each head's
 record at the latest read (-1 for none), `counts` the writes, revisions, statements agreed and
 reads, and `clear()` empties every stream's records. `LongTermRecords.ports(heads)` names the
 regions (`longterm`, `longterm_1`, ...). The streams' records are read, written and faded as one
