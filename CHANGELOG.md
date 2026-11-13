@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Relations between things (#327)
+
+- **`cadence.words.relations.Relations`** (a part of `Words`, opt-in: `Words(map,
+  parts=[Relations()])`): a parrot learns words for where things are from each other and from
+  itself (in front of, to the right of, behind, to the left of, near, far from) from questions
+  answered for it, and answers in both directions: "where is the X from the Y?", "what is left
+  of the X?", "is the X near the Y?", and the same from itself ("... you"). Vector cells (8
+  direction cells in the frame of where the parrot faces, 6 distance cells on a log scale) give
+  a thing's code from a reference; an answer word is named with that code, each group at the
+  sharpness of the word's own hearing there, so a word keeps the group its lessons agree on;
+  each relation word's synapses onto the cells are held at one length (`norm`). The motor
+  describes a thing from a reference, one word a group; a thing is found by a relation where
+  its description holds the question's relation word. Which of two things is the reference is
+  a read learned from answered questions (the parrot is never the thing placed); "yes" and
+  "no" are named with the parrot's own verdict. Guide: [docs/relations.md](docs/relations.md).
+- **The relations chamber** (`benchmarks/words/relations.py`, `relations_controls.py`,
+  `relations_gates.py`): nonce words per founder, naming, questions answered from the parrot
+  and from things, a relation word held out of practice and taught in four answered questions,
+  held-out pairs of kinds, and the matched LSTM and transformer on the same script.
+
 ### Words for things (#326)
 
 `cadence.words` is imported by name, and `import cadence` loads none of it. The guide is
