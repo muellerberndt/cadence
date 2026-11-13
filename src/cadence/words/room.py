@@ -23,14 +23,18 @@ what is asked about: the group whose most active concept is the most active of a
 asked by settling for the things that concept names. The read neurons are gains: each found
 thing's concepts, every group times its read's settled activity, drive the lexicon's saying
 settle, and its motor says the word. So what a question word asks for is in the synapses its
-practice taught, and no table maps a question word, or a read, to an answer. Where nothing is
+practice taught, the reads compete for their gains, and no table maps a question word, or a
+read, to an answer. Where nothing is
 found, or the question names no concept the lexicon holds, the concept is the read that finds
 nothing.
 
 **Practice.** A question with the teacher's answer: the brain hears the answer's words and
-reads, in its own lexicon, which group of concepts they name; the question's words are taught
-that group's read. An answer that names no concept, given where the brain's read finds nothing,
-is named with the read that finds nothing.
+reads, in its own lexicon, which group of concepts they name; the question's words that name no
+concept (the words of asking, not the word asked about) are taught that group's read. An answer
+that names no concept, given where the brain's read finds nothing, is named with the read that
+finds nothing. **Reward.** With the answer never told, the brain tries a read (``ask(explore=
+True)``), and a right answer earns a reward (``reward``: a pistachio, 1): the words of asking are
+taught the read it tried, at the reward's surprise.
 """
 
 from __future__ import annotations
@@ -161,7 +165,8 @@ class Words:
     def __init__(self, map: Any, *, senses: Any = None, parts: Any = (),
                  lexicon: Lexicon | None = None, body: Body | None = None,
                  shares: dict[str, float] | None = None, floor: float = 0.05,
-                 rate: float = 0.05, capacity: int = 256, backend: Any = "cpu"):
+                 rate: float = 0.05, capacity: int = 256, temperature: float = 0.1,
+                 sharpness: float = 0.02, seed: int = 0, backend: Any = "cpu"):
         self.map = map
         self.body = body if body is not None else Body()
         self.senses = senses if senses is not None else Senses(map, self.body)
@@ -182,6 +187,9 @@ class Words:
         self.shares = {"kind": float(kind), **{g: float(given.get(g, (1.0 - kind) / max(
             len(rest), 1))) for g in rest}}
         self.floor = float(floor)
+        self.temperature = float(temperature)  # how a read is chosen where the brain tries one
+        self.sharpness = float(sharpness)  # how the reads compete when the brain answers
+        self.rng = np.random.default_rng(np.random.SeedSequence([int(seed), 326, 11]))
         self.last: dict[str, Any] = {}  # what the latest question heard and found
 
     # -- living and naming
@@ -208,7 +216,7 @@ class Words:
         described = self.senses.describe(place)
         return None if described is None else self.concepts(described, self.shares)
 
-    def name(self, word: str, at: Any) -> float:
+    def name(self, word: str | list[str], at: Any) -> float:
         """A naming: the brain attends to the thing at ``at`` and hears ``word``. Gives the
         lesson's error (as a share of its target), or nan where the map holds nothing there."""
         concepts = self.attend(at)
@@ -249,20 +257,48 @@ class Words:
         self.last["things"] = things
         return things
 
-    def answer(self, heard: Heard, described: dict[str, np.ndarray]) -> np.ndarray | None:
+    def answer(self, heard: Heard, described: dict[str, np.ndarray],
+               gains: dict[str, float] | None = None) -> np.ndarray | None:
         """The concepts the motor says of a thing found: every group of it times its read's
-        settled activity, at a peak of one; None where no read is above the floor."""
-        gains = {g: r for g, r in heard.reads.items() if r > self.floor}
+        gain, at a peak of one; None where no read is above the floor. The reads compete for
+        their gains, a softmax of their settled activity at ``sharpness``, unless ``gains``
+        are given."""
+        if gains is None:
+            live = {g: r for g, r in heard.reads.items() if r > self.floor}
+            if live:
+                acts = np.array(list(live.values()))
+                odds = np.exp((acts - acts.max()) / max(self.sharpness, 1e-9))
+                gains = dict(zip(live, odds / odds.sum(), strict=True))
+            else:
+                gains = {}
         vector = self.concepts(described, gains)
         return vector / vector.max() if vector.max() > 0 else None
 
-    def ask(self, question: str) -> list[str]:
+    def choose(self, heard: Heard) -> tuple[str, float]:
+        """A read tried: drawn from the reads' settled activity at ``temperature``, and the
+        chance it was drawn with. Where no read is learned every read is as likely."""
+        groups = list(heard.reads)
+        acts = np.array([heard.reads[g] for g in groups])
+        odds = np.exp((acts - acts.max()) / max(self.temperature, 1e-9))
+        odds /= odds.sum()
+        pick = int(self.rng.choice(len(groups), p=odds))
+        return groups[pick], float(odds[pick])
+
+    def ask(self, question: str | list[str], *, explore: bool = False) -> list[str]:
         """The words the brain says to a question: one a thing found, said by the lexicon's
-        motor; the word for the read that finds nothing where nothing is found."""
+        motor; the word for the read that finds nothing where nothing is found. With
+        ``explore`` the brain tries one read, drawn by ``choose``, in place of the reads'
+        gains: what a reward (``reward``) teaches."""
         heard = self.hear(self._words(question))
+        if explore:
+            taken, chance = self.choose(heard)
+        else:  # the read the gains favour, and how sure the brain is of it
+            taken = max(heard.reads, key=lambda g: heard.reads[g])
+            chance = self._odds(heard, taken)
+        self.last.update({"taken": taken, "chance": chance})
         said = []
         for _place, described in self.find(heard):
-            vector = self.answer(heard, described)
+            vector = self.answer(heard, described, {taken: 1.0} if explore else None)
             word = self.lexicon.say(vector) if vector is not None else None
             if word is not None:
                 said.append(word)
@@ -271,12 +307,49 @@ class Words:
         self.last["said"] = said
         return said
 
+    def _odds(self, heard: Heard, taken: str) -> float:
+        acts = np.array(list(heard.reads.values()))
+        odds = np.exp((acts - acts.max()) / max(self.temperature, 1e-9))
+        return float(odds[list(heard.reads).index(taken)] / odds.sum())
+
+    def reward(self, amount: float = 1.0) -> float:
+        """A reward for the latest answer (a pistachio for a right one: 1): the question's
+        words of asking are taught the read the answer took, at the reward's surprise (the
+        reward less the chance the brain gave that read). A reward of zero teaches nothing.
+        Gives the surprise."""
+        heard = self.last.get("heard")
+        taken = self.last.get("taken")
+        if heard is None or taken is None:
+            return 0.0
+        surprise = float(amount) - float(self.last.get("chance", 0.0))
+        asking = self.asking(heard.words)
+        if float(amount) > 0 and surprise > 0 and asking:
+            self.lexicon.name(asking, {("read", self.answers.index(taken)): 1.0},
+                              groups=("read",), weight=surprise)
+        return surprise
+
+    def asking(self, words: list[str]) -> list[str]:
+        """The words of a question that learn what it asks for: those that name no concept of
+        the senses (a word that names a kind, a colour or a place is what the question is
+        about, and keeps no read)."""
+        groups = self.lexicon.groups
+        out = []
+        for word in words:
+            heard = self.lexicon.hear(word)
+            if max(float(heard[groups[g]].max()) for g in self.senses.groups) <= self.floor:
+                out.append(word)
+        return out
+
     @staticmethod
-    def _words(question: str) -> list[str]:
+    def _words(question: str | list[str]) -> list[str]:
+        """A question's words: a text split into words, or a list of words already heard
+        (written forms or heard keys), as it is."""
+        if not isinstance(question, str):
+            return [str(w) for w in question]
         return [w for w in "".join(c if c.isalpha() or c in " '" else " "
                                    for c in question.lower()).split()]
 
-    def practice(self, question: str, answer: str | list[str]) -> None:
+    def practice(self, question: str | list[str], answer: str | list[str]) -> None:
         """A question with the teacher's answer: one word (a form, which may hold spaces, as
         ``"i do not know"``) or a list of them. The answer's words are heard: where the lexicon
         names a group the brain can answer with, the question's words are taught that group's
@@ -289,8 +362,9 @@ class Words:
         said = [answer] if isinstance(answer, str) else list(answer)
         told = self.lexicon.hear(said)
         named = max(self.answers, key=lambda g: float(told[groups[g]].max()))
-        if told[groups[named]].max() > self.floor:
-            self.lexicon.name(words, {("read", self.answers.index(named)): 1.0},
+        asking = self.asking(words)
+        if told[groups[named]].max() > self.floor and asking:
+            self.lexicon.name(asking, {("read", self.answers.index(named)): 1.0},
                               groups=("read",))
         elif not found and len(said) == 1:
             self.lexicon.name(said[0], {("none", 0): 1.0}, groups=("none",))
