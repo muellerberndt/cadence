@@ -305,8 +305,8 @@ class Words:
             word = self.lexicon.say(vector) if vector is not None else None
             if word is not None:
                 said.append(word)
-        if not said:
-            said = [self.lexicon.say(("none", 0)) or ""]
+        if not said:  # nothing found: the word for the read that finds nothing, where linked
+            said = [self.lexicon.say(("none", 0), floor=0.02) or ""]
         self.last["said"] = said
         return said
 
@@ -328,7 +328,7 @@ class Words:
             return 0.0
         surprise = float(amount) - float(self.last.get("chance", 0.0))
         asking = self.asking(heard.words)
-        if float(amount) > 0 and surprise > 0 and asking:
+        if float(amount) > 0 and surprise > 0 and asking and not self.last.get("imitated"):
             self.lexicon.name(asking, {("read", self.answers.index(taken)): 1.0},
                               groups=("read",), weight=surprise)
         if float(amount) > 0:  # the marks of the moment become links
@@ -368,9 +368,12 @@ class Words:
         if described is not None:
             vector = self.answer(heard, described, {taken: 1.0} if explore else None)
             word = self.lexicon.say(vector) if vector is not None else None
+        imitated = False
         if word is None and self.lexicon.heard_last is not None and self.lexicon.written[
                 self.lexicon.heard_last]:
             word = self.lexicon.forms[self.lexicon.heard_last]  # an imitation
+            imitated = True
+        self.last["imitated"] = imitated  # a read did not say it: a pistachio teaches no read
         if word is not None:
             self.listen(word)
         self.last["said"] = [word] if word is not None else []
