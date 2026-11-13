@@ -18,7 +18,8 @@ share; a concept present at some of its namings is held at the share of namings 
 at, so a word's meaning is what its namings share.
 
 - **Hearing** drives the neurons of the heard words and the concept neurons settle: the
-  concepts the words name. A word never heard drives nothing, so the concepts stay at rest.
+  concepts the words name. A word never heard drives nothing: the concepts settle as they do
+  in silence.
   A word neuron has a threshold (``threshold``): it is active where it is heard or where a
   driven concept names it, and silent under the weak drive of concepts another word named.
 - **Saying** drives a concept's neuron and the word neurons settle; the motor chooses the most
@@ -103,6 +104,8 @@ class Lexicon:
         self._units: dict[str, int] = {}
         self.letters = np.zeros((self.capacity, self.length, len(LETTERS) + 1))
         self.lessons = 0
+        # settles run and their multiply-accumulates: a sweep reads every synapse once
+        self.work = {"settles": 0, "macs": 0}
 
     # -- concepts and words
 
@@ -206,6 +209,7 @@ class Lexicon:
         learner.update(free, plus, minus)
         self.graph = learner.brain
         self.lessons += 1
+        self._count(3)  # the free phase and the two nudged ones
         outputs = np.concatenate([self.groups[g].start + np.arange(
             self.groups[g].stop - self.groups[g].start) for g in groups])
         answer = np.asarray(free.activation)[0, self.concept[outputs]]
@@ -229,6 +233,7 @@ class Lexicon:
         rows = [[words] if isinstance(words, str) else list(words)]
         state = self.graph.settle_batch(self._drive(rows, enter=False), steps=self.steps,
                                         tolerance=None)
+        self._count(1)
         return np.asarray(np.asarray(state.activation)[0, self.concept], dtype=np.float64)
 
     def words_for(self, concept: Any) -> np.ndarray:
@@ -242,8 +247,13 @@ class Lexicon:
         else:
             drive[0, self.concept] = self.drive * np.asarray(concept, dtype=np.float64)
         state = self.graph.settle_batch(drive, steps=self.steps, tolerance=None)
+        self._count(1)
         return np.asarray(np.asarray(state.activation)[0, self.word[: len(self.forms)]],
                           dtype=np.float64)
+
+    def _count(self, settles: int) -> None:
+        self.work["settles"] += settles
+        self.work["macs"] += settles * self.steps * int(self.connectome.synapses)
 
     def say(self, concept: Any, floor: float = 1e-3) -> str | None:
         """The word the motor says for a concept: the motor chooses the most active word neuron

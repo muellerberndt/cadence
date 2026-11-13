@@ -20,6 +20,7 @@ The pieces are opt-in: a program that does not import `cadence.space` gets a lib
 | Tell it what the senses report | `moment(seen=, heard=, felt=, lit=)` | [how a position travels](#how-a-position-travels) |
 | Ask where a thing is, or what is at a place | `where_is`, `what_is_at` | [questions](#questions-answered-by-settling) |
 | Read every thing it holds | `things`, `sheet` | [the inventory](#the-inventory) |
+| What each thing is like: its colour | `Map(values=)`, `values_at`, `where_is_value` | [values carried with a thing](#values-carried-with-a-thing) |
 | A thing that leaves view | `empty`, `reach` | [a place seen empty](#a-place-seen-empty) |
 | Keep the map | `save`, `Map.load`, `reset` | [the carried state](#the-carried-state) |
 | Hold it in a brain, or load the built-in one | `Brain.space`, `cadence.modules.load("place")` | [a brain that holds a map](#a-brain-that-holds-a-map) |
@@ -199,6 +200,45 @@ brain: `asked` (`"moment"`, `"where_is"` or `"what_is_at"`), `sweeps` and every 
 activity at each sweep (`map`, `held`, `where`, `what`, `reference`, `clock`, `doubt`, `lost`). A
 watched settle begins with the sheet at rest and takes two sweeps: the first settles the sheet
 on its drive, the second the two regions that read it.
+
+## Values carried with a thing
+
+`Map(plane, values={"colour": 6})` gives every cell one more unit a value of each group, after the
+kinds' units: the sheet is `width` units wide (`units` plus every group's count). What a thing is
+like rides on its place, as in the visual cortex's maps of features: two red things of two kinds
+are two things, each red where it is.
+
+- **A report names its values.** `moment(seen=[(kind, place, {"colour": 2})])` writes the value's
+  unit on the report's four cells with the kind's weights. A report with no value of a group (a
+  sound, the arm's own readings) writes the value the thing it claims held, so the colour goes
+  with the thing.
+- **Carried and moved with the thing.** The value units carry as the kind's units do; a thing whose
+  place is seen empty takes its values onto the cells out of sight around where it was held, and a
+  thing kept with no place keeps none.
+- **Which report is which thing** is read on the kinds' units alone.
+
+```python
+paint = Map((-1.0, 1.0, -1.0, 1.0), (24, 24), units=8, values={"colour": 6})
+RED, BLUE = 0, 1
+paint.moment(seen=[(APPLE, [0.5, 0.5], {"colour": RED}), (BREAD, [-0.5, 0.3], {"colour": RED}),
+                   (HAND, [0.0, -0.6], {"colour": BLUE})])
+assert paint.values_at([0.5, 0.5]) == {"colour": RED}         # "what colour is the apple?"
+assert len(paint.where_is_value("colour", RED)) == 2           # "what is red?": two things
+assert paint.what_is_at(None, cells=paint.centers[:, 1] < -0.3) == HAND   # a question by cells
+assert [t["values"] for t in paint.things()] == [{"colour": RED}] * 2 + [{"colour": BLUE}]
+paint.moment(heard=[(APPLE, [0.7, 0.6])])                       # moved unseen: its colour goes too
+assert paint.values_at([0.7, 0.6]) == {"colour": RED}
+```
+
+| Read | What it settles on |
+| --- | --- |
+| `values_at(place, within=, cells=)` | The settle of `what_is_at`, `what` read on each group's units: `{group: value}`, None for a group held nowhere there |
+| `where_is_value(group, value)` | The value's unit opens its pool's reference, the sheet settles on that unit alone, and `where` holds the places |
+| `what_is_at(None, cells=flags)` | The kind on the cells the flags keep, for a question by a region (a place around the body) |
+| `things()` | Each entry gains `values` |
+
+With `values` unset the map is as it was, to the bit. [Words for things](words.md) asks the map
+in both directions with words learned from naming.
 
 ## A place seen empty
 
