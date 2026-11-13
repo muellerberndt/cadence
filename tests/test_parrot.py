@@ -198,3 +198,19 @@ def test_whole_brain_exports(tmp_path):
     assert index["moments"][1]["reward"] == 1.0
     assert {"retina", "wulst", "map", "ncl", "vta"} <= {r["id"] for r in index["regions"]}
     assert sum(t["synapses"] for t in index["tracts"]) == index["synapses"]
+
+
+def test_heard_records_grow_deeper_with_each_hearing():
+    from cadence.parrot.records import HeardRecords
+
+    rng = np.random.default_rng(0)
+    records = HeardRecords(width=16, value_width=8, capacity=32)
+    apple, cup = np.eye(16)[2], np.eye(16)[9]
+    word = rng.normal(size=8)
+    for _ in range(4):  # "apple" heard four times with the apple in focus
+        records.write(apple, word + rng.normal(scale=0.05, size=8), surprise=0.5)
+    records.write(cup, rng.normal(size=8))  # "cup" heard once
+    often, once = records.fetch(apple), records.fetch(cup)
+    assert often is not None and once is not None
+    assert often[1] > once[1]  # the word heard often is the stronger record
+    assert np.corrcoef(often[0], word)[0, 1] > 0.9
