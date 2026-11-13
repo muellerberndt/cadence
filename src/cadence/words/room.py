@@ -192,6 +192,8 @@ class Words:
         self.sharpness = float(sharpness)  # how the reads compete when the brain answers
         self.rng = np.random.default_rng(np.random.SeedSequence([int(seed), 326, 11]))
         self.last: dict[str, Any] = {}  # what the latest question heard and found
+        self.focused: np.ndarray | None = None  # the concepts of the thing in focus
+        self.focused_at: np.ndarray | None = None  # its place
 
     # -- living and naming
 
@@ -321,13 +323,80 @@ class Words:
         heard = self.last.get("heard")
         taken = self.last.get("taken")
         if heard is None or taken is None:
+            if float(amount) > 0:  # a pistachio with no question: the marks become links
+                self.lexicon.confirm(float(amount))
             return 0.0
         surprise = float(amount) - float(self.last.get("chance", 0.0))
         asking = self.asking(heard.words)
         if float(amount) > 0 and surprise > 0 and asking:
             self.lexicon.name(asking, {("read", self.answers.index(taken)): 1.0},
                               groups=("read",), weight=surprise)
+        if float(amount) > 0:  # the marks of the moment become links
+            self.lexicon.confirm(float(amount))
         return surprise
+
+    # -- the training game: a word heard in focus leaves a mark, a pistachio makes it a link
+
+    def focus(self, place: Any) -> np.ndarray | None:
+        """The parrot focuses on the thing at a place: its concepts, at the naming shares, are
+        what a word heard now marks. None where the map holds nothing there."""
+        self.focused = self.attend(place)
+        self.focused_at = np.asarray(place, dtype=np.float64) if self.focused is not None else None
+        return self.focused
+
+    def listen(self, word: str | list[str]) -> None:
+        """A word heard while the parrot focuses on a thing leaves a mark on the links between
+        them (``Lexicon.mark``); a pistachio (``reward``) makes the marks links."""
+        if self.focused is not None:
+            self.lexicon.mark(word, self.focused, groups=tuple(self.shares))
+
+    def answer_focus(self, question: str | list[str], *, explore: bool = False) -> list[str]:
+        """The parrot's turn: a question about the thing in focus ("what is this?"). Its
+        concepts, every group times its read's gain (a read tried with ``explore``), drive the
+        saying settle; where no link names them, the parrot says the word it heard last (an
+        imitation). The word it says while in focus marks its links as hearing does."""
+        heard = self.hear(self._words(question))
+        if explore:
+            taken, chance = self.choose(heard)
+        else:
+            taken = max(heard.reads, key=lambda g: heard.reads[g])
+            chance = self._odds(heard, taken)
+        self.last.update({"taken": taken, "chance": chance})
+        at = self.focused_at
+        described = None if at is None else self.senses.describe(at)
+        word = None
+        if described is not None:
+            vector = self.answer(heard, described, {taken: 1.0} if explore else None)
+            word = self.lexicon.say(vector) if vector is not None else None
+        if word is None and self.lexicon.heard_last is not None and self.lexicon.written[
+                self.lexicon.heard_last]:
+            word = self.lexicon.forms[self.lexicon.heard_last]  # an imitation
+        if word is not None:
+            self.listen(word)
+        self.last["said"] = [word] if word is not None else []
+        return list(self.last["said"])
+
+    def point(self, word: str | list[str], places: Any) -> int:
+        """Understanding by acting: the parrot turns to the thing a heard word names among
+        ``places``: the thing whose concepts the word's links settle on most, or one at random
+        where they name none. Its focus moves there, and the word marks that thing's links.
+        Gives the place's number."""
+        heard = self.lexicon.hear(self._words(word) if not isinstance(word, str) else word)
+        heard = heard - self.lexicon.hear([])  # what the word names beyond silence
+        scores = []
+        for place in places:
+            concepts = self.attend(place)
+            scores.append(-np.inf if concepts is None else float(concepts @ heard))
+        best = int(np.argmax(scores))
+        if not scores[best] > 0.01:
+            best = int(self.rng.integers(len(places)))
+        self.focus(places[best])
+        self.listen(word)
+        return best
+
+    def moment(self) -> None:
+        """A moment of the game passes: the marks fade."""
+        self.lexicon.fade()
 
     def asking(self, words: list[str]) -> list[str]:
         """The words of a question that learn what it asks for: those that name no concept of

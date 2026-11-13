@@ -54,7 +54,7 @@ class Lexicon:
 
     def __init__(self, concepts: dict[str, int], *, capacity: int = 256, rate: float = 0.05,
                  steps: int = 12, length: int = 16, level: float = 0.5, drive: float = 2.0,
-                 threshold: float = 0.15, backend: Any = "cpu"):
+                 threshold: float = 0.15, keep: float = 0.5, backend: Any = "cpu"):
         from ..brain import Brain as Graph
         from ..connectome import Connectome
         from ..learning import learning_neuron_model
@@ -72,10 +72,11 @@ class Lexicon:
         self.capacity, self.rate, self.steps = int(capacity), float(rate), int(steps)
         self.length, self.level, self.drive = int(length), float(level), float(drive)
         self.threshold = float(threshold)
+        self.keep = float(keep)  # the share of a mark a moment leaves
         self.settings = {"concepts": {k: s.stop - s.start for k, s in self.groups.items()},
                          "capacity": self.capacity, "rate": self.rate, "steps": self.steps,
                          "length": self.length, "level": self.level, "drive": self.drive,
-                         "threshold": self.threshold}
+                         "threshold": self.threshold, "keep": self.keep}
         self.word = np.arange(self.capacity)
         self.concept = self.capacity + np.arange(self.concepts)
         self.neurons = n = self.capacity + self.concepts
@@ -98,6 +99,9 @@ class Lexicon:
         self._post = np.asarray(self.connectome.post)
         self._learners: dict[tuple[str, ...], Any] = {}
         self.counts: dict[tuple[str, ...], np.ndarray] = {}  # each word's lessons, by outputs
+        self.marks: dict[tuple[str, ...], np.ndarray] = {}  # eligibility, by outputs (``mark``)
+        self.marked: dict[tuple[str, ...], dict[int, float]] = {}  # each marked word's strength
+        self.heard_last: int | None = None  # the word neuron a mark heard last
         # each word neuron's synapses, both directions, as numbers into the connectome
         owner = np.where(np.isin(self._pre, self.word), self._pre, self._post)
         order = np.argsort(owner, kind="stable")
@@ -236,6 +240,81 @@ class Lexicon:
         answer = np.asarray(free.activation)[0, self.concept[outputs]]
         wanted = target[0, self.concept[outputs]]
         return float(np.abs(answer - wanted).sum() / max(np.abs(wanted).sum(), 1e-12))
+
+    # -- three factors: a mark, a pistachio, a link
+
+    def mark(self, words: Any, concepts: Any, *, groups: Any = None) -> None:
+        """Hearing ``words`` while ``concepts`` are active leaves a mark on their links: the
+        step a naming lesson would take (the library's free and nudged phases and their
+        contrast, ``Learner.contrast``), held as an eligibility trace and not applied; a word's
+        new mark replaces its old one. A pistachio (``confirm``) makes the marks lasting links, in
+        both directions; with none they fade (``fade``). A word's share is 1 / n at its n-th
+        link, no less than ``rate``."""
+        rows = [[words] if isinstance(words, str) else list(words)]
+        target_shares = self._concepts(concepts)
+        groups = tuple(self.groups) if groups is None else tuple(groups)
+        learner = self._learner(groups)
+        drive = self._drive(rows, enter=True)
+        lit = np.tanh(drive[:, self.word] / 2.0)
+        shared = float((lit.sum(axis=0) ** 2).sum()) / len(drive)
+        links = self.counts.setdefault(groups, np.zeros(self.capacity))
+        heard = sorted({int(u) for u in np.flatnonzero(drive[0, self.word])})
+        if not heard:
+            return
+        shares = {u: max(1.0 / (links[u] + 1), self.rate) for u in heard}
+        top = max(shares.values())
+        steps = np.zeros(self.connectome.synapses)
+        for u, share in shares.items():
+            steps[self._touch[u]] = share / top
+        target = np.zeros_like(drive)
+        target[0, self.concept] = self.level * target_shares
+        free = learner.free(drive)
+        plus = learner.nudged(drive, free, target)
+        minus = learner.nudged(drive, free, target, sign=-1.0)
+        edges, _ = learner.contrast(free, plus, minus)
+        eta = top / (0.25 * max(shared, 1e-12))
+        held = self.marks.setdefault(groups, np.zeros(self.connectome.synapses))
+        step = eta * np.asarray(edges, dtype=np.float64) * steps
+        marked = self.marked.setdefault(groups, {})
+        for u in heard:  # a word's mark is its latest co-activity: a new mark replaces its old
+            held[self._touch[u]] = step[self._touch[u]]
+            marked[u] = 1.0
+        self.heard_last = heard[-1]
+        self._count(3)
+
+    def confirm(self, amount: float = 1.0) -> int:
+        """A pistachio: the marks of this moment, times ``amount``, become lasting links
+        (``Learner.apply``: the pair of synapses moves as one, in both directions). Gives the
+        words whose links it made; the marks are spent."""
+        made = 0
+        for groups, held in list(self.marks.items()):
+            learner = self._learner(groups)
+            learner.synapse_rate = None
+            learner.apply(float(amount) * held, np.zeros(self.neurons))
+            self.graph = learner.brain
+            links = self.counts.setdefault(groups, np.zeros(self.capacity))
+            for u, strength in self.marked.get(groups, {}).items():
+                links[u] += float(amount) * strength  # a faded mark makes a weaker link
+                made += 1
+        if made:
+            self.lessons += 1
+        self.marks.clear()
+        self.marked.clear()
+        return made
+
+    def fade(self) -> None:
+        """One moment passes: every mark keeps ``keep`` of itself; a faded mark is gone."""
+        for groups in list(self.marks):
+            self.marks[groups] *= self.keep
+            marked = self.marked.get(groups, {})
+            for u in list(marked):
+                marked[u] *= self.keep
+                if marked[u] < 1e-3:
+                    self.marks[groups][self._touch[u]] = 0.0
+                    del marked[u]
+            if not marked:
+                del self.marks[groups]
+                self.marked.pop(groups, None)
 
     def _concepts(self, concepts: Any) -> np.ndarray:
         if isinstance(concepts, dict):
