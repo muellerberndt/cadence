@@ -652,7 +652,7 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
          save: str | None = None, master: bool = True,
          control: str | None = None, ckpt: str | None = None) -> dict[str, Any]:
     """One founder's night through the steps; each step read on a frozen copy after it."""
-    budget = {"N0": 1500, "N0b": 1500, "N1": 1500, "N2": 2000, "N3": 1500, "N4": 3000, "N5": 2000,
+    budget = {"N0": 1500, "N0b": 300, "N1": 1500, "N2": 2000, "N3": 1500, "N4": 3000, "N5": 2000,
               "N6": 1500, **(blocks or {})}
     rng = np.random.default_rng(np.random.SeedSequence([int(seed), 334, 31]))
     held = held_of(rng)
