@@ -97,8 +97,10 @@ NEW_WORD = "zabu"  # heard and babbled from birth, never a name in training: the
 CATCH = 2       # moments from a right reply to the pistachio in the beak
 TURN = 3        # moments of the parrot's turn
 TAIL = CATCH + 2
-# a step ends once the last 40 blocks of the parrot's own turns earned this share of pistachios
+# a step ends once a frozen greedy reading of its forms reaches this share (read every 100 blocks
+# once the parrot's own sampled turns earn SAMPLED_GATE of the pistachios)
 MASTERY = {"N0": .92, "N1": .92, "N2": .9, "N3": .88, "N4": .88, "N5": .9, "N6": .85}
+SAMPLED_GATE = 0.5
 NIGHT: dict[str, Any] = {"actor_hold": 0.93, "actor_eta": 0.1, "ear_entry": "module_0",
                          "history_decays": (0.0, 0.5, 0.8), "self_reward": 0.1,
                          "reply_suppression": 1, "gated_lesson": 1.0, "recall": 0,
@@ -609,11 +611,15 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
             if log is not None and b % 50 == 0:
                 log(f"{name} {b} {key} right={np.mean(got['right']):.2f} "
                     f"t={time.time() - began:.0f}s")
-            if master and b >= 100 and b % 25 == 0 and len(paid) >= 40 and float(
-                    np.mean(paid[-40:])) >= MASTERY.get(name, 0.9):
+            if master and b >= 100 and b % 100 == 0 and len(paid) >= 40 and float(
+                    np.mean(paid[-40:])) >= SAMPLED_GATE:
+                check = read(p, rng, tests, held, 32)  # the step's forms, greedy, frozen
                 if log is not None:
-                    log(f"{name} mastered at block {b}: paid {np.mean(paid[-40:]):.2f}")
-                break
+                    log(f"{name} check at block {b}: {check}")
+                if min(check.values()) >= MASTERY.get(name, 0.9):
+                    if log is not None:
+                        log(f"{name} mastered at block {b}")
+                    break
         out.setdefault("blocks_lived", {})[name] = b + 1
         seen += tests
         reading = read(p, rng, sorted(set(seen)), held, reads)
