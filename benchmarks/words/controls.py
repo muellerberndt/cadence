@@ -373,3 +373,163 @@ if __name__ == "__main__":
     seed, model, mode = int(sys.argv[1]), sys.argv[2], sys.argv[3]
     given = json.loads(sys.argv[4]) if len(sys.argv) > 4 else {}
     print(json.dumps(run(seed, model, mode, 6656, **given), indent=1, default=float))
+
+
+# -- the training game (protocol 3): the controls play the parrot's game by pistachios
+
+GAME_MARKERS = ("FOCUS", "HEARD", "POINT") + tuple(f"pos{i}" for i in range(8))
+
+
+class GameTokens(Tokens):
+    """The vocabulary with the game's markers, the positions of a room's things and "this"."""
+
+    def __init__(self, lex: world.Lexicon, this: str):
+        super().__init__(lex)
+        for name in (*GAME_MARKERS, this):
+            if name not in self.index:
+                self.index[name] = len(self.names)
+                self.names.append(name)
+
+
+def game_items(seed: int, **given: Any) -> list[tuple[Any, ...]]:
+    """The game's script as the controls' items, in the brain's order."""
+    import game
+
+    lex = world.lexicon(seed)
+    this = game.this_word(seed)
+    tok = GameTokens(lex, this)
+    out: list[tuple[Any, ...]] = []
+    r: world.Room | None = None
+    focus: list[int] = []
+    heard: list[int] = []
+    for event in game.script(seed, **given):
+        kind = event[0]
+        if kind == "room":
+            r = event[1]
+        elif kind == "turn":
+            assert r is not None
+            r.heading = event[1]
+        elif kind == "focus":
+            assert r is not None
+            t = min(r.things, key=lambda th: float(np.linalg.norm(th.place - event[1])))
+            focus = [tok("FOCUS"), tok(f"kind{t.kind}"), tok(f"colour{t.colour}"),
+                     tok(f"place{world.place_of(r.heading, t.place)}")]
+            heard = []
+        elif kind == "listen":
+            heard += [tok("HEARD"), tok(event[1])]
+        elif kind == "answer":
+            assert r is not None
+            _, question, word, group, stage = event
+            prompt = room_tokens(tok, r) + focus + heard + [tok("ASK")] + [
+                tok(w) for w in question.split()] + [tok("SAY")]
+            out.append(("answer", prompt, tok(word), group, stage))
+        elif kind == "point":
+            assert r is not None
+            _, word, _places, right_ones, group, stage = event
+            prompt = room_tokens(tok, r) + [tok("HEARD"), tok(word), tok("POINT")]
+            out.append(("point", prompt, [tok(f"pos{i}") for i in right_ones], group, stage))
+        elif kind == "watch":
+            assert r is not None
+            _, place, word, right, group, stage = event
+            t = min(r.things, key=lambda th: float(np.linalg.norm(th.place - place)))
+            seen = [tok("FOCUS"), tok(f"kind{t.kind}"), tok(f"colour{t.colour}"),
+                    tok(f"place{world.place_of(r.heading, t.place)}")]
+            question = game.question_of(lex, this, group)
+            prompt = room_tokens(tok, r) + seen + [tok("ASK")] + [
+                tok(w) for w in question.split()] + [tok("SAY")]
+            out.append(("watch", prompt, tok(word), right, group, stage))
+        elif kind == "ask":
+            assert r is not None
+            q = event[2]
+            prompt = room_tokens(tok, r) + [tok("ASK")] + [tok(w) for w in q.text.split()] + [
+                tok("SAY")]
+            out.append(("ask", event[1], (prompt, q)))
+    return out
+
+
+def _sample_once(control: Control, prompt: list[int], rng: np.random.Generator,
+                 allowed: list[int] | None = None) -> tuple[int, Any]:
+    """One token sampled from a control's answer to a prompt (among ``allowed``), with its
+    log-probability."""
+    torch = control.torch
+    logits = control.net(torch.tensor([prompt]))[0, -1]
+    if allowed is not None:
+        mask = torch.full_like(logits, float("-inf"))
+        mask[allowed] = 0.0
+        logits = logits + mask
+    probs = torch.softmax(logits, dim=-1)
+    odds = probs.detach().numpy().astype(np.float64)
+    token = int(rng.choice(len(odds), p=odds / odds.sum()))
+    control.work["macs"] += 3 * control.net.macs(len(prompt))
+    return token, torch.log(probs[token] + 1e-12)
+
+
+def _reinforce_step(control: Control, logp: Any, reward: float) -> None:
+    torch = control.torch
+    baseline = control.work.get("baseline", 0.0)
+    loss = -(reward - baseline) * logp
+    control.opt.zero_grad()
+    loss.backward()
+    torch.nn.utils.clip_grad_norm_(control.net.parameters(), CLIP)
+    control.opt.step()
+    control.work["baseline"] = 0.9 * baseline + 0.1 * reward
+    control.work["updates"] += 1
+
+
+def run_game(seed: int, model: str, mode: str, parameters: int, *, arm: str = "game",
+             **given: Any) -> dict[str, Any]:
+    """A control's life on the founder's game: at the parrot's turn it samples a word, at the
+    pointing a thing's position, each learned by REINFORCE from the pistachio the parrot would
+    get (the arm's rule); a paid answer it watches is a supervised step. ``online``: one pass;
+    ``offline``: the game played 10 times over. Then protocol 1's test, answered greedily."""
+    import game
+    import torch
+
+    torch.set_num_threads(1)
+    lex = world.lexicon(seed)
+    tok = GameTokens(lex, game.this_word(seed))
+    items = game_items(seed, **given)
+    width = matched_width(model, parameters, len(tok))
+    control = Control(model, width, len(tok), seed, RATES[mode])
+    rng = np.random.default_rng(np.random.SeedSequence([int(seed), 326, 15]))
+    began = time.monotonic()
+    positions = [tok(f"pos{i}") for i in range(8)]
+    turns: list[bool] = []
+    for _ in range(1 if mode == "online" else 10):
+        for item in items:
+            kind = item[0]
+            if kind == "answer":
+                _, prompt, word, group, stage = item
+                token, logp = _sample_once(control, prompt, rng)
+                right = token == word
+                turns.append(right)
+                _reinforce_step(control, logp, 1.0 if right and game.paid(arm, group, stage,
+                                                                           rng) else 0.0)
+            elif kind == "point":
+                _, prompt, right_ones, group, stage = item
+                token, logp = _sample_once(control, prompt, rng, positions)
+                right = token in right_ones
+                _reinforce_step(control, logp, 1.0 if right and game.paid(arm, group, stage,
+                                                                           rng) else 0.0)
+            elif kind == "watch":
+                _, prompt, word, right, group, stage = item
+                if right and game.paid(arm, group, stage, rng):
+                    control.update([(prompt, [word, tok("END")])])
+    trained_at = time.monotonic()
+    readings: dict[str, list[bool]] = {}
+    for _kind, gate, (prompt, q) in [i for i in items if i[0] == "ask"]:
+        said = [tok.names[t] for t in control.say(prompt, tok("END"))]
+        ok = world.right(q, said)
+        readings.setdefault(gate, []).append(ok)
+        if gate == "W5_by_place" and q.about == "several":
+            readings.setdefault("W5_by_place_held", []).append(ok)
+        if gate.startswith("W1"):
+            readings.setdefault(f"W1_{q.form}", []).append(ok)
+    import words
+
+    out = words.readings_of(seed, {}, readings, [], None,
+                            {"train": trained_at - began, "test": time.monotonic() - trained_at})
+    out.update({"model": model, "mode": mode, "width": width, "parameters": count(control.net),
+                "updates": control.work["updates"], "macs": control.work["macs"], "arm": arm,
+                "turn_right": float(np.mean(turns)) if turns else float("nan")})
+    return out
