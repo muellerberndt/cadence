@@ -111,6 +111,7 @@ TAIL = CATCH + 2
 # once the parrot's own sampled turns earn SAMPLED_GATE of the pistachios)
 MASTERY = {"N0": .92, "N1": .92, "N2": .9, "N3": .88, "N4": .88, "N5": .9, "N6": .85}
 SAMPLED_GATE = 0.5
+REHEARSAL = 0.3  # the share of a step's blocks that revisit the earlier steps' forms
 NIGHT: dict[str, Any] = {"actor_hold": 0.93, "actor_eta": 0.1, "ear_entry": "module_0",
                          "history_decays": (0.0, 0.5, 0.8), "self_reward": 0.1,
                          "reply_suppression": 1, "gated_lesson": 1.0, "recall": 0,
@@ -681,15 +682,20 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
         first = start[1] if index == start[0] else 0
         if first == 0:
             paid = []
+        earlier = [f for _, _, ts in STEPS[:index] for f in ts]
         for b in range(first, int(budget[name])):
             if b > first and b % 250 == 0:
                 checkpoint(index, b)
-            key = keys[int(rng.choice(len(keys), p=weights / weights.sum()))]
+            if earlier and rng.random() < REHEARSAL:  # the trainer revisits earlier words
+                old = str(rng.choice(earlier))
+                key = old if old == "imitate" else f"{old}:dagger"
+            else:
+                key = keys[int(rng.choice(len(keys), p=weights / weights.sum()))]
             form, mode = key.split(":") if ":" in key else (key, "turn")
             exs = (imitate_block(p, rng, held) if form == "imitate"
                    else block(p, rng, form, mode, held))
             got = live(p, exs, rng, pistachio=pistachio)
-            if mode in ("turn", "dagger") and form not in ("bite",):
+            if mode in ("turn", "dagger") and form not in ("bite",) and form in tests:
                 paid.append(float(np.mean(got["right"])))
             if log is not None and b % 50 == 0:
                 log(f"{name} {b} {key} right={np.mean(got['right']):.2f} "
