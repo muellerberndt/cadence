@@ -14,7 +14,9 @@ closing words and ".", which ends the exchange.
 form at a channel drawn for the founder, so the forms carry no spelling), the gap, the glimpse
 (what the eyes report of the thing in view, ``textworld.look``, and a "seen" flag) and the focus
 (the held thing's glimpse and its flag). **What it does**: one voice act (a word or silence) and
-one gaze act (pass or hold).
+one gaze act (pass or hold). The voice is held while the teacher speaks and while the eyes
+search (born: the songbird's song nuclei are inhibited while it listens); no lesson teaches the
+question's moments, and what the voice does then is not heard.
 
 **Teaching.** ``teacher``: each moment's label is the teacher's, and the next moment follows the
 teacher's words (teacher forcing). ``dagger``: the parrot's own greedy words are heard and move
@@ -236,6 +238,10 @@ def run(policy: Policy, layout: Layout, items: list[tuple[tw.Scene, tw.Question]
         teach = learn and mode != "free"
         if hasattr(policy, "phases"):  # a learner that acts by the exchange's phase
             policy.phases = [e.phase for e in eps]
+        if teach:
+            # the voice is held while the teacher speaks (born suppression while hearing): the
+            # question's moments teach nothing; every learner lives them
+            mask = mask & np.array([e.phase != "question" for e in eps])
         if getattr(policy, "keyed", False):  # a learner that reads the situation's symbols
             acts = policy.moment_keys([policy.key(e) for e in eps], labels if teach else None,
                                       mask, teach)

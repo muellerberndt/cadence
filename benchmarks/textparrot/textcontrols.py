@@ -111,21 +111,25 @@ def sequences(eps: list[tc.Episode], layout: tc.Layout) -> tuple[np.ndarray, ...
     rows = []
     for e in eps:
         replay = tc.Episode(layout, e.scene, e.q, "teacher")
-        xs, vs, gs = [], [], []
+        xs: list[np.ndarray] = []
+        vs: list[int] = []
+        gs: list[int] = []
+        ms: list[float] = []
         while not replay.done and len(xs) < MAX_LENGTH:
             xs.append(replay.observe())
             w, g = replay.expert()
             vs.append(layout.act_of(w))
             gs.append(g)
+            ms.append(0.0 if replay.phase == "question" else 1.0)  # as the brain's lessons
             replay.advance(w, g)
-        rows.append((np.array(xs), np.array(vs), np.array(gs)))
+        rows.append((np.array(xs), np.array(vs), np.array(gs), np.array(ms)))
     t = max(len(r[0]) for r in rows)
     x = np.zeros((len(rows), t, layout.inputs), np.float32)
     v = np.zeros((len(rows), t), np.int64)
     g = np.zeros((len(rows), t), np.int64)
     m = np.zeros((len(rows), t), np.float32)
-    for i, (a, b, c) in enumerate(rows):
-        x[i, :len(a)], v[i, :len(a)], g[i, :len(a)], m[i, :len(a)] = a, b, c, 1.0
+    for i, (a, b, c, d) in enumerate(rows):
+        x[i, :len(a)], v[i, :len(a)], g[i, :len(a)], m[i, :len(a)] = a, b, c, d
     return x, v, g, m
 
 

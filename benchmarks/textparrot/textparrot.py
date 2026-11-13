@@ -202,7 +202,7 @@ class BrainPolicy:
 
     def moment(self, x: np.ndarray, labels: np.ndarray | None, mask: np.ndarray,
                learn: bool) -> np.ndarray:
-        if learn and labels is not None:
+        if learn and labels is not None and mask.any():
             w = mask.astype(float)
             self.brain.lesson(x, labels, weights=None if w.all() else w)
             self.lessons += 1
