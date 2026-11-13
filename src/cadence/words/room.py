@@ -153,7 +153,9 @@ class Words:
 
     ``shares`` are a naming's shares of the senses' groups, by name: the kind's (0.4 unless
     given), the rest split evenly among the other groups. ``floor`` is the activity a concept
-    needs to count as named.
+    needs to count as named. ``heard_only`` and ``pattern_back`` are the lexicon's opt-ins.
+    Learned senses may give ``perceive(seen, lit)`` (the eyes' readings into the map's reports,
+    at ``look``) and ``named(brain, word, at)`` (a naming's concepts, at ``name``).
 
     A part is an object with ``groups`` (the concept groups it adds to the lexicon, by name and
     size) and any of: ``answers`` (those of its groups a question may ask for, each given a
@@ -167,7 +169,8 @@ class Words:
                  lexicon: Lexicon | None = None, body: Body | None = None,
                  shares: dict[str, float] | None = None, floor: float = 0.05,
                  rate: float = 0.05, capacity: int = 256, temperature: float = 0.1,
-                 sharpness: float = 0.02, seed: int = 0, backend: Any = "cpu"):
+                 sharpness: float = 0.02, seed: int = 0, heard_only: bool = False,
+                 pattern_back: bool = False, backend: Any = "cpu"):
         self.map = map
         self.body = body if body is not None else Body()
         self.senses = senses if senses is not None else Senses(map, self.body)
@@ -181,7 +184,8 @@ class Words:
         self.answers = answers  # the groups a question may ask for, a read each
         concepts = {**sensed, "read": len(answers), **added, "none": 1}
         self.lexicon = lexicon if lexicon is not None else Lexicon(
-            concepts, rate=rate, capacity=capacity, backend=backend)
+            concepts, rate=rate, capacity=capacity, heard_only=heard_only,
+            pattern_back=pattern_back, backend=backend)
         given = dict(shares or {})
         kind = given.pop("kind", 0.4)
         rest = [g for g in sensed if g != "kind"]
@@ -198,7 +202,10 @@ class Words:
     # -- living and naming
 
     def look(self, seen: Any = (), lit: Any = None, heard: Any = (), felt: Any = ()) -> None:
-        """One moment of the senses: each part takes it first, then the map."""
+        """One moment of the senses: learned senses with ``perceive`` turn the eyes' readings
+        into the map's reports first; each part takes the moment, then the map."""
+        if hasattr(self.senses, "perceive"):
+            seen = self.senses.perceive(seen, lit)
         for part in self.parts:
             if hasattr(part, "sense"):
                 part.sense(self, seen, lit)
@@ -222,7 +229,10 @@ class Words:
     def name(self, word: str | list[str], at: Any) -> float:
         """A naming: the brain attends to the thing at ``at`` and hears ``word``. Gives the
         lesson's error (as a share of its target), or nan where the map holds nothing there."""
-        concepts = self.attend(at)
+        if isinstance(word, str) and hasattr(self.senses, "named"):
+            concepts = self.senses.named(self, word, at)  # learned senses take the naming first
+        else:
+            concepts = self.attend(at)
         if concepts is None:
             return float("nan")
         return self.lexicon.name(word, concepts, groups=tuple(self.shares))
