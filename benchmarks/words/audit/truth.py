@@ -1,7 +1,7 @@
 """The answer a question has over a room as a brain could hold it (cadence#326 audit).
 
 ``answer(lex, things, q)`` is the world's answer to ``q``'s form computed over ``things``, a list
-of ``(kind, colour, place around the robot)``: the room as the world holds it
+of ``(kind, colour, place around the parrot)``: the room as the world holds it
 (``triples(room)``), or changed the way a probe changed what the brain holds (a colour moved on,
 the body turned, things never seen left out). It agrees with ``world.py``'s answers on the
 unchanged room."""
@@ -15,7 +15,7 @@ import world
 
 
 def triples(r: world.Room, *, only: Any = None) -> list[tuple[int, int, int]]:
-    """The room's things as ``(kind, colour, place around the robot)``; ``only(thing)`` keeps
+    """The room's things as ``(kind, colour, place around the parrot)``; ``only(thing)`` keeps
     some."""
     return [(t.kind, t.colour, world.place_of(r.heading, t.place)) for t in r.things
             if only is None or only(t)]

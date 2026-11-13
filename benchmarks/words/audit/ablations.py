@@ -22,7 +22,7 @@ Each probe, its change and the answer it predicts:
 - ``colour_lie``: the room looked at with every colour reported one on; each colour one on.
 - ``half_seen``: the room looked at in one direction only; "I do not know" for things never in
   view.
-- ``no_reset``: the map never emptied between test rooms; the world's answer (things no longer
+- ``no_reset``: the map never emptied between test rooms; the world's answer (things gone
   there cleared by sight).
 
     python ablations.py <founder> <out> [short]
@@ -151,7 +151,7 @@ class ColourLie(Probe):
 
 
 class HalfSeen(Probe):
-    """The room looked at in the direction the robot faces only (the camera's 120 degrees):
+    """The room looked at in the direction the parrot faces only (the camera's 120 degrees):
     a thing never in view is not held."""
 
     name = "half_seen"

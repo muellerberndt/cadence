@@ -21,7 +21,7 @@ Scenes the world never builds, on the brain the life left (``after``):
 
 - ``close_<d>``: two things of different kinds and colours ``d`` metres apart (the world keeps
   0.45 m), each asked where it is and its colour, what has its colour, what is at its place;
-- ``same_kind``: two things of one kind in two colours and two places around the robot, asked
+- ``same_kind``: two things of one kind in two colours and two places around the parrot, asked
   where the kind is (both places), its colour (both colours) and what has each colour;
 - ``crowded``: rooms of the eight trained kinds, every question form;
 - ``test_after_new_words``: rooms drawn as the test's rooms are, every question form, asked
