@@ -1,8 +1,8 @@
 """Time in words: where things were, from the brain's records, and where they will be, from its
 forecast, with the words for time learned from answered questions (cadence#326, W8 to W10).
 
-``Words`` answers from its map: what is where now. ``Times`` answers from three sources, and the
-words of a question choose among them:
+``Episodes`` is a part of ``cadence.words.Words`` (``Words(map, parts=[Episodes(map)])``). A
+question is answered from three sources, and the words of the question choose among them:
 
 - **the records**, the places things left. Each moment the brain compares where its map holds
   each thing with the place the thing rested at; a thing that leaves its place by more than
@@ -10,7 +10,7 @@ words of a question choose among them:
   (``cadence.longterm.LongTermMemory``) keyed by the thing and the moment. A thing that holds its
   place again (it moved less than ``still`` in a moment) rests there. The map holds the latest
   place alone: the place before comes from the records only.
-- **the map**, what is where now (``Words``'s reads).
+- **the map**, what is where now (what ``Words`` finds).
 - **the forecast**, the map ``ahead`` moments on as its learned physics predicts
   (``Map.forecast(moments)``, a copy that leaves the map as it is). A map with no physics
   forecasts itself: what is at rest stays.
@@ -20,22 +20,19 @@ whose activity drifts a little every moment, so two moments near in time hold ne
 record's key is the thing's code and the context of the moment it was written; a read is cued by
 the thing and the context now, so among a thing's records the latest scores first.
 
-**The words for time.** The lexicon holds one more concept a source (``when``: the records, the
-map, the forecast), joined to every word by synapses that start at zero. A question's words
-settle on them as on every other concept. In practice the brain hears the teacher's answer and
-finds which of its sources give that answer for the thing asked about; where its sources
-disagree, the question's words are taught those sources. No word is wired to a source, and the
-words for time are nonce words like every other.
+**The words for time.** The part adds one concept a source to the lexicon (``when``: the
+records, the map, the forecast), joined to every word by synapses that start at zero. A
+question's words settle on them as on every other concept. In practice the brain hears the
+teacher's answer and finds which of its sources give that answer for the thing asked about;
+where its sources disagree, the question's words of asking are taught those sources. No word is
+wired to a source, and the words for time are nonce words like every other.
 
-**An answer.** Each source finds the things the question names and reads each one (its place,
-its colour or its kind) as ``Words`` does on the map. The settled ``when`` activities are gains
-on what the sources found: a thing's drive on the concepts is each source's concept at its gain
-(its activity over the most active source's), and the lexicon's motor says the most active word
-of that drive. A drive too weak to raise a word over its threshold says nothing; where no thing
-is said, the brain says the word for the read that finds nothing. A question whose words settle
-on no source above the floor asks the map alone, as ``Words`` does. With the records barred
-(``Records.barred``), a question about the past finds nothing at the records' gain, and the
-brain says it does not know.
+**An answer.** The settled ``when`` activities compete for the sources' gains as the reads
+compete for theirs (a softmax at the brain's ``sharpness``); a question whose words settle on no
+source above the floor asks the map alone. Each source whose gain is above the brain's
+``floor`` finds the things the question names, and a thing's concepts are each source's at its
+gain; ``Words`` then reads and says them. With the records barred (``Records.barred``), a
+question about the past finds nothing at the records' gain, and the brain says it does not know.
 """
 
 from __future__ import annotations
@@ -44,9 +41,6 @@ import math
 from typing import Any
 
 import numpy as np
-
-from .lexicon import Lexicon
-from .room import PLACES, READS, Words
 
 SOURCES = ("records", "map", "forecast")  # where an answer comes from: the past, now, ahead
 
@@ -121,16 +115,19 @@ class Records:
         self.store.write(self.key(code), value, recognised=-1)
         self.work["writes"] += 1
 
-    def recall(self, code: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
+    def recall(self, code: np.ndarray, *, probe: bool = False
+               ) -> tuple[np.ndarray, np.ndarray] | None:
         """The latest place the thing of ``code`` left and the code it had there: the memory
         read with the thing's code and the context now. None where the records are barred or
-        hold no record of the thing."""
+        hold no record of the thing. A ``probe`` (a reader looking in) leaves the records and
+        the work as they were."""
         if self.barred or not self.store.count:
             return None
         cue = self.key(code)
-        read = self.store.read(cue)
-        self.work["reads"] += 1
-        self.work["macs"] += self.store.count * len(cue)
+        read = self.store.read(cue, credit=not probe)
+        if not probe:
+            self.work["reads"] += 1
+            self.work["macs"] += self.store.count * len(cue)
         slot = read.first()
         if slot < 0:
             return None
@@ -140,83 +137,77 @@ class Records:
             return None  # the best record is of another thing
         return value[:2].copy(), held.copy()
 
-    def moment(self) -> None:
+    def tick(self) -> None:
         """One moment: the clock drifts and the store's records fade by their use."""
         self.clock.tick()
         self.store.moment()
         self.work["macs"] += self.clock.units
 
 
-class Times(Words):
-    """A brain that answers about its room in time: ``Words`` with its records (``Records``,
-    made here unless given), its forecast ``ahead`` moments on, and a lexicon whose concepts add
-    the three sources (``when``). ``leave`` is the distance in metres a thing goes from where it
-    rested for the place to be written as a record; ``still`` the distance under which a thing
-    that moved rests again. Every other setting is ``Words``'s.
+class Episodes:
+    """A part of ``cadence.words.Words`` that answers in time: its records (``Records`` sized to
+    ``map``'s sheet, made here unless given) and its forecast ``ahead`` moments on, with one
+    concept a source (``when``) in the lexicon. ``leave`` is the distance in metres a thing goes
+    from where it rested for the place to be written as a record; ``still`` the distance under
+    which a thing that moved rests again.
 
-    ``moment(...)`` is one moment of the map's (its reports and sight) followed by the records'
-    moment; ``enter()`` begins a new room (the map is emptied, the records stay); ``ask`` and
-    ``practice`` are ``Words``'s, in time."""
+    The part keeps up with the map: before each moment the brain looks (``Words.look``) and
+    before each question, every map moment not yet witnessed is witnessed (the clock drifts and
+    the records are written). A map that holds nothing (a new room) holds no resting place.
+    ``last`` holds what each source found for the latest question and the sources' gains."""
 
     def __init__(self, map: Any, *, records: Records | None = None, ahead: int = 8,
-                 leave: float = 0.3, still: float = 0.02, lexicon: Lexicon | None = None,
-                 rate: float = 0.05, capacity: int = 256, backend: Any = "cpu",
-                 seed: int = 0, **settings: Any):
-        group = str(settings.get("group", "colour"))
-        if group not in map.values:
-            raise ValueError(f"the map holds no values of {group!r}: Map(values={{{group!r}: n}})")
-        values = map.values[group].stop - map.values[group].start
-        if lexicon is None:
-            lexicon = Lexicon({"kind": len(map.codes), "colour": values, "place": len(PLACES),
-                               "read": len(READS), "none": 1, "when": len(SOURCES)},
-                              rate=rate, capacity=capacity, backend=backend)
-        if "when" not in lexicon.groups:
-            raise ValueError("a brain in time takes a lexicon with the concepts 'when'")
-        super().__init__(map, lexicon=lexicon, rate=rate, capacity=capacity, backend=backend,
-                         **settings)
+                 leave: float = 0.3, still: float = 0.02, seed: int = 0):
+        if int(ahead) < 0 or not float(leave) > float(still) >= 0.0:
+            raise ValueError("ahead is 0 moments or more, and leave exceeds still")
+        self.groups = {"when": len(SOURCES)}
         self.records = records if records is not None else Records(map.width, seed=seed)
         if self.records.width != map.width:
             raise ValueError("the records take a code as wide as the map's sheet")
-        if int(ahead) < 0 or not float(leave) > float(still) >= 0.0:
-            raise ValueError("ahead is 0 moments or more, and leave exceeds still")
         self.ahead, self.leave, self.still = int(ahead), float(leave), float(still)
         self._rested: dict[int, np.ndarray | None] = {}  # where each thing rests; None: moving
-        self._last: dict[int, np.ndarray] = {}  # where the map held each thing the moment before
+        self._last: dict[int, np.ndarray] = {}  # where the map held each thing, last witnessed
+        self._witnessed = int(map.work["moments"])
+        self.last: dict[str, Any] = {}
         # the forecasts made, their moments and the questions asked of them (a forecast is a
         # copy: its work is counted here)
         self.work = {"forecasts": 0, "forecast_moments": 0, "forecast_questions": 0}
 
-    # -- living: the map's moments and the records written
+    # -- living: the records written as the map's moments pass
 
-    def enter(self) -> None:
-        """A new room: the map holds nothing and no thing rests anywhere. The records stay."""
-        self.map.reset()
-        self._rested.clear()
-        self._last.clear()
-
-    def moment(self, **reports: Any) -> None:
-        """One moment: the map's (``seen``, ``heard``, ``felt``, ``lit``), then the records'."""
-        self.map.moment(**reports)
-        self.witness()
-
-    def code(self, kind: int, values: dict[str, int | None] | None = None) -> np.ndarray:
+    @staticmethod
+    def code(map: Any, kind: int, values: dict[str, int | None] | None = None) -> np.ndarray:
         """A thing's code on the map's sheet: its kind's units and its values' units."""
-        out = np.zeros(self.map.width)
-        out[: self.map.units] = self.map.codes[int(kind)]
+        out = np.zeros(map.width)
+        out[: map.units] = map.codes[int(kind)]
         for name, value in (values or {}).items():
-            if value is not None and name in self.map.values:
-                out[self.map.values[name].start + int(value)] = 1.0
+            if value is not None and name in map.values:
+                out[map.values[name].start + int(value)] = 1.0
         return out
 
-    def witness(self) -> None:
-        """The records' moment: the clock drifts, and each thing the map holds is compared with
-        where it rested. A thing that left its resting place by more than ``leave`` is written
-        as a record of that place and is moving; a moving thing that moved less than ``still``
-        in the moment rests where it is. A thing the map holds in several places is where it
-        was sensed last."""
-        self.records.moment()
+    def sense(self, brain: Any, seen: Any, lit: Any) -> None:
+        """Before a moment of the senses: the moments the map took since the last witness."""
+        self.witness(brain.map)
+
+    def witness(self, map: Any) -> None:
+        """For each map moment not yet witnessed the clock drifts; then each thing the map holds
+        is compared with where it rested: a thing that left its resting place by more than
+        ``leave`` is written as a record of that place and is moving; a moving thing that moved
+        less than ``still`` since rests where it is. A thing the map holds in several places is
+        where it was sensed last."""
+        moments = int(map.work["moments"])
+        for _ in range(max(moments - self._witnessed, 0)):
+            self.records.tick()
+        fresh = moments != self._witnessed
+        self._witnessed = moments
+        if not map.potential.any():  # a map that holds nothing: a new room
+            self._rested.clear()
+            self._last.clear()
+            return
+        if not fresh:
+            return
         latest: dict[int, dict[str, Any]] = {}
-        for entry in self.map.things():
+        for entry in map.things():
             if entry["place"] is None:
                 continue
             kind = int(entry["kind"])
@@ -229,7 +220,7 @@ class Times(Words):
             else:
                 rested = self._rested.get(kind)
                 if rested is not None and float(np.linalg.norm(place - rested)) > self.leave:
-                    self.records.write(self.code(kind, entry.get("values")), rested)
+                    self.records.write(self.code(map, kind, entry.get("values")), rested)
                     self._rested[kind] = None
                 elif rested is None and float(
                         np.linalg.norm(place - self._last[kind])) <= self.still:
@@ -238,123 +229,118 @@ class Times(Words):
 
     # -- what each source finds
 
-    def _read(self, held: Any, place: np.ndarray, read: int, kind: int) -> tuple[str, int] | None:
-        """The read's concept of the thing of ``kind`` at ``place`` on a map."""
-        if READS[read] == "kind":
-            return ("kind", int(kind))
-        if READS[read] == "colour":
-            value = held.values_at(place)[self.group]
-            return None if value is None else ("colour", int(value))
-        return ("place", self.body.place(place))
+    def gains(self, brain: Any, heard: Any) -> np.ndarray:
+        """The sources' gains from a question's settle: the ``when`` activities compete, a
+        softmax at the brain's ``sharpness``; where no source is named above the floor, the
+        question asks the map alone: the present."""
+        when = np.maximum(np.asarray(heard.concepts[brain.lexicon.groups["when"]],
+                                     dtype=np.float64), 0.0)
+        if not when.max() > brain.floor:
+            return np.asarray(np.eye(len(SOURCES))[SOURCES.index("map")])
+        odds = np.exp((when - when.max()) / max(float(brain.sharpness), 1e-9))
+        return np.asarray(odds / odds.sum())
 
-    def _on_map(self, held: Any, about: tuple[str, int], read: int) -> list[tuple[int, Any]]:
-        """The things a map holds that a concept names, each with the read's concept of it:
-        ``(kind, concept)``."""
-        group, value = about
-        mine, self.map = self.map, held
-        try:
-            if group == "kind":
-                found = [(int(value), p) for p in held.where_is(value)]
-            else:
-                places = (list(held.where_is_value(self.group, value)) if group == "colour"
-                          else self._things_in(value))
-                found = [(int(k), p) for p in places
-                         for k in [held.what_is_at(p)] if k is not None]
-            out = []
-            for kind, place in found:
-                concept = self._read(held, place, read, kind)
-                if concept is not None:
-                    out.append((kind, concept))
-            return out
-        finally:
-            self.map = mine
+    @staticmethod
+    def _on(brain: Any, held: Any, about: tuple[str, np.ndarray]
+            ) -> list[tuple[np.ndarray, dict[str, np.ndarray]]]:
+        """The things a map holds that the question names, each a place and what the senses
+        give of it there."""
+        from .room import Senses
 
-    def _in_records(self, about: tuple[str, int], read: int) -> list[tuple[int, Any]]:
-        """What the records hold of the thing a kind names: the latest place it left, read for
-        the read's concept. The records are read by a thing: a colour or a place around the
-        body finds nothing there."""
-        group, value = about
+        senses = Senses(held, brain.body)
+        out = []
+        for place in senses.find(*about):
+            described = senses.describe(place)
+            if described is not None:
+                out.append((np.asarray(place), described))
+        return out
+
+    def _recalled(self, brain: Any, about: tuple[str, np.ndarray], probe: bool = False
+                  ) -> list[tuple[np.ndarray, dict[str, np.ndarray]]]:
+        """What the records hold of the thing a kind names: the latest place it left and what
+        it was there. The records are read by a thing: a value or a place around the body
+        finds nothing there."""
+        group, pattern = about
         if group != "kind":
             return []
-        recalled = self.records.recall(self.code(int(value)))
+        kind = int(np.argmax(pattern))
+        recalled = self.records.recall(self.code(brain.map, kind), probe=probe)
         if recalled is None:
             return []
         place, code = recalled
-        if READS[read] == "kind":
-            return [(int(value), ("kind", int(value)))]
-        if READS[read] == "colour":
-            units = code[self.map.values[self.group]]
-            return [(int(value), ("colour", int(np.argmax(units))))] if units.max() > 0 else []
-        return [(int(value), ("place", self.body.place(place)))]
+        described: dict[str, np.ndarray] = {"kind": np.eye(len(brain.map.codes))[kind]}
+        for name, units in brain.map.values.items():
+            described[name] = np.asarray(code[units], dtype=np.float64).copy()
+        described["place"] = np.eye(int(brain.senses.groups["place"]))[brain.body.place(place)]
+        return [(place, described)]
 
-    def sources(self, about: tuple[str, int] | None,
-                read: int | None) -> dict[str, list[tuple[int, Any]]]:
-        """What each source finds for a question: ``{source: [(kind, concept), ...]}``."""
-        if about is None or read is None:
-            return {s: [] for s in SOURCES}
-        ahead = forecast(self.map, self.ahead)
-        asked = int(ahead.work["questions"])
-        out = {"records": self._in_records(about, read),
-               "map": self._on_map(self.map, about, read),
-               "forecast": self._on_map(ahead, about, read)}
-        if ahead is not self.map:
-            self.work["forecasts"] += 1
-            self.work["forecast_moments"] += self.ahead
-            self.work["forecast_questions"] += int(ahead.work["questions"]) - asked
+    def sources(self, brain: Any, about: tuple[str, np.ndarray] | None, things: list[Any],
+                needed: Any = None, probe: bool = False) -> dict[str, list[Any]]:
+        """What each source finds of what a question names, ``{source: [(place, concepts)]}``:
+        the map's are ``things`` (what ``Words`` found); a source whose entry of ``needed`` is
+        False is not asked. A ``probe`` leaves the records and the work as they were."""
+        out: dict[str, list[Any]] = {"records": [], "map": list(things), "forecast": []}
+        if about is None:
+            return out
+        if needed is None or needed[0]:
+            out["records"] = self._recalled(brain, about, probe)
+        if needed is None or needed[2]:
+            ahead = forecast(brain.map, self.ahead)
+            if ahead is brain.map:
+                out["forecast"] = list(things)
+            else:
+                asked = int(ahead.work["questions"])
+                out["forecast"] = self._on(brain, ahead, about)
+                if not probe:
+                    self.work["forecasts"] += 1
+                    self.work["forecast_moments"] += self.ahead
+                    self.work["forecast_questions"] += int(ahead.work["questions"]) - asked
         return out
 
-    # -- a question in time
-
-    def gains(self) -> np.ndarray:
-        """The sources' gains from the latest question's settle: each ``when`` concept's
-        activity over the most active one's, none below zero. Where no source is named above
-        the floor, the question asks the map alone: the present."""
-        heard = np.maximum(np.asarray(self.last["heard"][self.lexicon.groups["when"]],
-                                      dtype=np.float64), 0.0)
-        if not heard.max() > self.floor:
-            return np.asarray(np.eye(len(SOURCES))[SOURCES.index("map")])
-        return np.asarray(heard / heard.max())
-
-    def ask(self, question: str) -> list[str]:
-        """The words the brain says to a question: one a thing its sources found, said by the
-        lexicon's motor from the sum of each source's concept at its gain; the word for the read
-        that finds nothing where no thing is said."""
-        about, read = self._heard(self._words(question))
-        found = self.sources(about, read)
-        gains = self.gains()
-        drives: dict[int, np.ndarray] = {}
+    def find(self, brain: Any, heard: Any, things: list[Any]) -> list[Any]:
+        """The things found in time: each source whose gain is above the brain's floor finds
+        the things the question names, and a thing's concepts (by its kind) are each source's
+        at its gain; its place is the one of the source of the most gain."""
+        self.witness(brain.map)
+        gains = self.gains(brain, heard)
+        found = self.sources(brain, heard.about, things, needed=gains > brain.floor)
+        combined: dict[int, tuple[float, np.ndarray, dict[str, np.ndarray]]] = {}
         for source, gain in zip(SOURCES, gains, strict=True):
-            for kind, concept in found[source]:
-                drive = drives.setdefault(kind, np.zeros(self.lexicon.concepts))
-                drive[self.lexicon.index(*concept)] += gain
-        said = [word for drive in drives.values() for word in [self.lexicon.say(drive)] if word]
-        if not said:
-            word = self.lexicon.say(("none", 0))
-            said = [word if word is not None else ""]
-        self.last.update({"found": found, "gains": gains, "said": said})
-        return said
+            if not gain > brain.floor:
+                continue
+            for place, described in found[source]:
+                kind = int(np.argmax(described["kind"]))
+                top, at, held = combined.get(kind, (0.0, place, {}))
+                for group, pattern in described.items():
+                    held[group] = held.get(group, 0.0) + float(gain) * np.asarray(pattern)
+                combined[kind] = (max(top, float(gain)), place if gain > top else at, held)
+        self.last = {"found": found, "gains": gains, "map": list(things)}
+        return [(at, held) for _, at, held in combined.values()]
 
-    def practice(self, question: str, answer: str | list[str]) -> None:
-        """``Words.practice``, and the lesson of time: where the answer is one word naming a
-        concept, the sources that find that concept for a thing are found; where some source
-        finds the thing with another concept, the question's words are taught the sources that
-        gave the answer, at equal shares."""
-        super().practice(question, answer)
-        said = [answer] if isinstance(answer, str) else list(answer)
-        if len(said) != 1:
+    # -- practice: the lesson of time
+
+    def practice(self, brain: Any, words: list[str], answer: list[str], heard: Any) -> None:
+        """The lesson of time: where the answer is one word naming a concept, the sources that
+        find that concept for a thing are found; where some source finds the thing with another
+        concept, the question's words of asking are taught the sources that gave the answer, at
+        equal shares."""
+        if len(answer) != 1 or heard.about is None:
             return
-        words = self._words(question)
-        about, read = self._heard(words)
-        heard = self.lexicon.hear(said)
-        groups = self.lexicon.groups
-        named = max(("kind", "colour", "place"), key=lambda g: float(heard[groups[g]].max()))
-        if not heard[groups[named]].max() > self.floor:
+        groups = brain.lexicon.groups
+        told = brain.lexicon.hear(answer)
+        named = max(brain.senses.groups, key=lambda g: float(told[groups[g]].max()))
+        if not told[groups[named]].max() > brain.floor:
             return
-        concept = (named, int(np.argmax(heard[groups[named]])))
-        found = self.sources(about, read)
-        gave = [any(c == concept for _, c in found[s]) for s in SOURCES]
-        other = [any(c != concept for _, c in found[s]) for s in SOURCES]
-        if any(gave) and any(o and not g for o, g in zip(other, gave, strict=True)):
+        concept = int(np.argmax(told[groups[named]]))
+        found = self.sources(brain, heard.about, self.last.get("map", []))
+        gave, other = [], []
+        for source in SOURCES:
+            held = [int(np.argmax(d[named])) for _, d in found[source]
+                    if named in d and np.asarray(d[named]).max() > 0]
+            gave.append(concept in held)
+            other.append(any(h != concept for h in held))
+        asking = brain.asking(words)
+        if asking and any(gave) and any(o and not g for o, g in zip(other, gave, strict=True)):
             share = 1.0 / sum(gave)
-            self.lexicon.name(words, {("when", i): share for i, g in enumerate(gave) if g},
-                              groups=("when",))
+            brain.lexicon.name(asking, {("when", i): share for i, g in enumerate(gave) if g},
+                               groups=("when",))

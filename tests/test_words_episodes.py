@@ -9,7 +9,8 @@ import numpy as np
 import pytest
 
 from cadence.space.map import Map
-from cadence.words.episodes import SOURCES, Clock, Records, Times, forecast
+from cadence.words import Words
+from cadence.words.episodes import SOURCES, Clock, Episodes, Records, forecast
 
 
 def test_the_clock_drifts() -> None:
@@ -40,11 +41,11 @@ def test_records_by_the_thing_and_the_time() -> None:
     assert records.recall(_code(0)) is None  # nothing written
     records.write(_code(0), (1.0, 0.0))
     for _ in range(30):
-        records.moment()
+        records.tick()
     records.write(_code(1), (0.0, 1.0))
     records.write(_code(0), (-1.0, 0.0))  # the same thing left another place, later
     for _ in range(5):
-        records.moment()
+        records.tick()
     place, held = records.recall(_code(0))  # type: ignore[misc]
     assert np.allclose(place, (-1.0, 0.0)) and np.array_equal(held, _code(0))
     assert np.allclose(records.recall(_code(1))[0], (0.0, 1.0))  # type: ignore[index]
@@ -58,7 +59,13 @@ def _room() -> Map:
     return Map((-2.0, 2.0, -2.0, 2.0), (24, 24), units=3, values={"colour": 2})
 
 
-def _look(brain: Times, things: dict[int, tuple[np.ndarray, int]], heading: float) -> None:
+def _brain(seed: int = 0, **settings: object) -> tuple[Words, Episodes]:
+    held = _room()
+    part = Episodes(held, seed=seed, **settings)  # type: ignore[arg-type]
+    return Words(held, parts=[part], seed=seed), part
+
+
+def _look(brain: Words, things: dict[int, tuple[np.ndarray, int]], heading: float) -> None:
     """The parrot looks around in eight moments and turns back to ``heading``."""
     for i in range(9):
         brain.body.heading = heading + (i % 8) * math.pi / 4 if i < 8 else heading
@@ -69,35 +76,39 @@ def _look(brain: Times, things: dict[int, tuple[np.ndarray, int]], heading: floa
             return np.asarray(np.abs(np.angle(np.exp(1j * a))) <= math.radians(60))
 
         seen = [(k, p, {"colour": c}) for k, (p, c) in things.items() if lit(p[None])[0]]
-        brain.moment(seen=seen, lit=lit)
+        brain.look(seen=seen, lit=lit)
 
 
 def test_a_thing_carried_away_is_written_and_recalled() -> None:
-    brain = Times(_room())
+    brain, part = _brain()
     things = {0: (np.array([1.2, 0.0]), 1), 1: (np.array([0.0, 1.2]), 0)}
-    brain.enter()
     _look(brain, things, 0.0)
-    assert brain.records.store.count == 0  # nothing moved: nothing written
+    part.witness(brain.map)
+    assert part.records.store.count == 0  # nothing moved: nothing written
     things[0] = (np.array([-1.2, 0.1]), 1)  # the teacher carries the ball behind the parrot
     _look(brain, things, 0.0)
     _look(brain, things, 0.0)
-    assert brain.records.store.count == 1
-    place, held = brain.records.recall(brain.code(0))  # type: ignore[misc]
+    part.witness(brain.map)
+    assert part.records.store.count == 1
+    place, held = part.records.recall(part.code(brain.map, 0))  # type: ignore[misc]
     assert np.linalg.norm(place - (1.2, 0.0)) < 0.15 and held[3 + 1] == 1.0  # with its colour
     assert brain.body.place(place) == 0 and brain.body.place(things[0][0]) == 2
-    found = brain.sources(("kind", 0), 2)  # where (the read of a place) is the ball?
-    assert found == {"records": [(0, ("place", 0))], "map": [(0, ("place", 2))],
-                     "forecast": [(0, ("place", 2))]}
-    brain.enter()  # a new room: the records stay
-    assert brain.records.store.count == 1
+    found = part.sources(brain, ("kind", np.eye(3)[0]),
+                         part._on(brain, brain.map, ("kind", np.eye(3)[0])))
+    places = {s: [int(np.argmax(d["place"])) for _, d in found[s]] for s in SOURCES}
+    assert places == {"records": [0], "map": [2], "forecast": [2]}
+    brain.map.reset()  # a new room: the records stay, no thing rests anywhere
+    _look(brain, {0: (np.array([0.0, -1.2]), 0)}, 0.0)
+    part.witness(brain.map)
+    assert part.records.store.count == 1
 
 
-def _taught(times: bool = True) -> tuple[Times, dict[str, str]]:
+def _taught(times: bool = True) -> tuple[Words, dict[str, str]]:
     """A brain taught the words of three kinds and four places by naming, then "was" and "is"
     by questions about things the teacher carried (or, without ``times``, where things are
     with no word for time, nothing carried)."""
     rng = np.random.default_rng(0)
-    brain = Times(_room(), seed=0)
+    brain, _ = _brain()
     kinds, places = ["dako", "mipu", "sefa"], ["fobe", "riza", "kosa", "lume"]
     said = {"was": "tavi", "is": "nole"}
 
@@ -108,7 +119,7 @@ def _taught(times: bool = True) -> tuple[Times, dict[str, str]]:
 
     for _ in range(12):  # naming
         things = new_room()
-        brain.enter()
+        brain.map.reset()
         _look(brain, things, 0.0)
         for _ in range(6):
             k = int(rng.integers(3))
@@ -117,7 +128,7 @@ def _taught(times: bool = True) -> tuple[Times, dict[str, str]]:
             brain.name(word, p)
     for _ in range(10):  # practice: a thing carried to the opposite side
         things = new_room()
-        brain.enter()
+        brain.map.reset()
         _look(brain, things, 0.0)
         k = int(rng.integers(3))
         was = things[k][0]
@@ -135,23 +146,24 @@ def _taught(times: bool = True) -> tuple[Times, dict[str, str]]:
 
 def test_was_and_is_are_learned_and_the_past_comes_from_the_records() -> None:
     brain, words = _taught()
+    part = brain.parts[0]
     when = brain.lexicon.groups["when"]
     assert int(np.argmax(brain.lexicon.hear(words["was"])[when])) == SOURCES.index("records")
     assert int(np.argmax(brain.lexicon.hear(words["is"])[when])) == SOURCES.index("map")
     things = {0: (np.array([1.2, 0.3]), 0), 1: (np.array([-0.2, 1.3]), 1),
               2: (np.array([0.1, -1.4]), 0)}
-    brain.enter()
+    brain.map.reset()
     _look(brain, things, 0.0)
     things[2] = (np.array([-1.3, -0.2]), 0)  # carried from the right to behind
     _look(brain, things, 0.0)
     _look(brain, things, 0.0)
     assert brain.ask(f"wo {words['was']} ta {words['kind2']}") == [words["place1"]]
     assert brain.ask(f"wo {words['is']} ta {words['kind2']}") == [words["place2"]]
-    gains = brain.last["gains"]
-    assert gains[SOURCES.index("map")] == 1.0 and gains[SOURCES.index("records")] < 0.5
-    brain.records.barred = True  # the records barred: the past is not answered
+    gains = part.last["gains"]
+    assert gains[SOURCES.index("map")] > 0.4 and gains[SOURCES.index("records")] < 0.05
+    part.records.barred = True  # the records barred: the past is not answered
     assert words["place1"] not in brain.ask(f"wo {words['was']} ta {words['kind2']}")
-    brain.records.barred = False
+    part.records.barred = False
     assert brain.ask(f"wo {words['is']} ta {words['kind0']}") == [words["place0"]]
 
 
@@ -159,23 +171,21 @@ def test_a_question_that_names_no_time_asks_the_map() -> None:
     brain, words = _taught(times=False)  # nothing moved: no lesson of time was taken
     assert brain.lexicon.counts.get(("when",)) is None
     things = {0: (np.array([1.2, 0.3]), 0), 1: (np.array([-0.2, 1.3]), 1)}
-    brain.enter()
+    brain.map.reset()
     _look(brain, things, 0.0)
     assert brain.ask(f"wo ta {words['kind1']}") == [words["place3"]]
-    assert brain.last["gains"].tolist() == [0.0, 1.0, 0.0]
+    assert brain.parts[0].last["gains"].tolist() == [0.0, 1.0, 0.0]
 
 
 def test_the_forecast_of_a_map_without_physics_is_the_map() -> None:
     held = _room()
     assert forecast(held, 8) is held
-    brain = Times(held)
+    brain, _ = _brain()
     with pytest.raises(ValueError, match="leave"):
-        Times(_room(), leave=0.01, still=0.02)
-    with pytest.raises(ValueError, match="when"):
-        from cadence.words import Lexicon
-
-        Times(_room(), lexicon=Lexicon({"kind": 3}))
-    assert brain.lexicon.concepts == 3 + 2 + 4 + 3 + 1 + 3
+        Episodes(_room(), leave=0.01, still=0.02)
+    with pytest.raises(ValueError, match="as wide"):
+        Episodes(_room(), records=Records(4))
+    assert brain.lexicon.concepts == 3 + 2 + 4 + 3 + 3 + 1  # the senses, reads, when, none
 
 
 def test_things_first_seen_together_are_told_apart_by_the_physics() -> None:

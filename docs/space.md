@@ -228,6 +228,9 @@ are two things, each red where it is.
   place is seen empty takes its values onto the cells out of sight around where it was held, and a
   thing kept with no place keeps none.
 - **Which report is which thing** is read on the kinds' units alone.
+- **With learned physics** a thing carried out of view takes its values with it: its motion
+  record goes on every unit it holds at its cells, the value units too, and the forecast keeps
+  them ([learned physics on the map](#learned-physics-on-the-map)).
 
 ```python
 paint = Map((-1.0, 1.0, -1.0, 1.0), (24, 24), units=8, values={"colour": 6})

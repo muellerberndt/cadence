@@ -75,3 +75,30 @@ def test_values_are_refused_where_they_do_not_fit() -> None:
     assert plain.width == plain.units and "values" not in plain.parts()[0]
     plain.moment(seen=[(0, [0.0, 0.0])])
     assert "values" not in plain.things()[0]
+
+
+def test_a_moving_thing_keeps_its_colour_out_of_sight() -> None:
+    """A red ball rolls behind an occluder: a taught physics carries it on its line out of view,
+    and its colour goes with it, on the map and in the map's forecast."""
+    from cadence.space.physics import Physics
+
+    physics = Physics()  # as if it had watched a world where things seldom stop or turn
+    physics.stats[:] = [0.005e6, 0.005e6, 1e6, 0.5, 1.0, 0.25, 1.0, 1e5, 1e5 * 0.015**2, 1e5]
+    physics.fit()
+    room = Map((-1.0, 1.0, -0.2, 1.4), values={"colour": 6}, physics=physics)
+    before_occluder = lambda points: np.asarray(points)[:, 0] < 0.0  # noqa: E731
+    rng = np.random.default_rng(0)
+    truth = np.array([-0.8, 0.6]) + np.arange(70)[:, None] * np.array([0.015, 0.0])
+    for t in range(70):
+        seen = ([(BALL, truth[t] + rng.normal(0.0, 0.01, 2), {"colour": RED})]
+                if truth[t, 0] < 0.0 else [])
+        room.moment(seen=seen, lit=before_occluder)
+    (ball,) = [t for t in room.things() if t["kind"] == BALL]
+    assert ball["state"] == "moving" and ball["values"] == {"colour": RED}
+    assert np.linalg.norm(ball["place"] - truth[-1]) < 0.06  # carried on its line
+    assert room.values_at(ball["place"]) == {"colour": RED}
+    assert room.what_is_at(ball["place"]) == BALL
+    ahead = room.forecast(10)
+    core = min(ahead.where_is(BALL), key=lambda p: np.linalg.norm(p - (truth[-1] + [0.15, 0.0])))
+    assert ahead.values_at(core) == {"colour": RED} and ahead.what_is_at(core) == BALL
+    assert np.allclose(room.where_is_value("colour", RED), [ball["place"]], atol=0.03)
