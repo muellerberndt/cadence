@@ -592,8 +592,7 @@ def test_a_word_without_a_form_leaves_its_form_open():
     plan = mn.eighth_plan(tuple(range(8)))
     lives = [s["tag"] for s in plan["eighth"]]
     assert {tag: lives.count(tag) for tag in set(lives)} == {
-        "words_free": 8, "open_free": 8, "parts_free": 2, "words_256": 2, "open_256": 2,
-        "parts_256": 1}
+        "words_free": 8, "open_free": 8, "parts_free": 2, "words_256": 2, "open_256": 2}
     assert len(mn.EIGHTH) == 96 and len(plan["eighth_controls"]) == 2 * 2 * 6
     assert plan["eighth_controls"][0]["parameters"] == mn.make_brain(
         0, {**mn.BOTH, "parts": "open"}, 256).parameters()

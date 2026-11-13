@@ -2779,8 +2779,8 @@ def eighth_plan(founders: tuple[int, ...] = EIGHTH) -> dict[str, list[dict[str, 
     (the default composition at 64) on every founder: words and parts with that form left open;
     on the first quarter, parts as protocol 7 taught them (the form ``none`` on every word
     without a number). From the held state (the read barred, 256 association neurons) on the
-    first quarter: words and the open form, and protocol 7's parts on its first half. The
-    chamber's LSTM and transformer at ``open_256``'s count on the first six."""
+    first quarter: words and the open form. The chamber's LSTM and transformer at
+    ``open_256``'s count on the first six."""
     held = {"arm": "barred", "module": 256, "probe_scale": 0.0, "held_probes": 4}
     free = {"arm": "default", "probe_scale": 0.0, "held_probes": 4}
     quarter = founders[:max(len(founders) // 4, 1)]
@@ -2790,8 +2790,6 @@ def eighth_plan(founders: tuple[int, ...] = EIGHTH) -> dict[str, list[dict[str, 
         "parts_free": ({**free, "settings": {"parts": True}}, quarter),
         "words_256": ({**held, "settings": BOTH}, quarter),
         "open_256": ({**held, "settings": {**BOTH, "parts": "open"}}, quarter),
-        "parts_256": ({**held, "settings": {**BOTH, "parts": True}},
-                      quarter[:max(len(quarter) // 2, 1)]),
     }
     brains = [{**spec, "founder": f, "tag": tag} for tag, (spec, own) in arms.items()
               for f in own]
@@ -2919,22 +2917,29 @@ def ninth_plan(founders: tuple[int, ...] = NINTH) -> dict[str, list[dict[str, An
     quarters of the agent-number-verb triples are held out (``Split.scaled``). From the held
     state (the read barred, 256 association neurons, ten message winners): words, and parts with
     the form of a formless word left open. The chamber's LSTM and transformer at ``open_256``'s
-    count on the first six founders."""
+    count on the first six founders. Past 16 nouns and 8 verbs the plan is the reading beside
+    the gate: the first two founders, and the controls online alone (an offline control replays
+    up to 30 epochs, which at that size is more than a day a life)."""
     if not gr.SCALED:
         raise ValueError("protocol 9 is read at a scaled lexicon: CADENCE_GRAMMAR_LEXICON=16x8")
     lexicon = [gr.NOUNS, gr.VERBS]
+    wide = gr.NOUNS * gr.VERBS > 16 * 8
+    if wide:
+        founders = founders[:2]
     held = {"arm": "barred", "module": 256, "probe_scale": 0.0, "held_probes": 8,
             "lexicon": lexicon}
+    own = {**BOTH, **SCALED_MESSAGE}
     arms: dict[str, dict[str, Any]] = {
-        "words_256": {**held, "settings": {**BOTH, **SCALED_MESSAGE}},
-        "open_256": {**held, "settings": {**BOTH, **SCALED_MESSAGE, "parts": "open"}},
+        "words_256": {**held, "settings": own},
+        "open_256": {**held, "settings": {**own, "parts": "open"}},
     }
     brains = [{**spec, "founder": f, "tag": tag} for tag, spec in arms.items() for f in founders]
     parameters = int(make_brain(founders[0], arms["open_256"]["settings"], 256).parameters())
     controls = [{"model": model, "mode": mode, "founder": f, "phases": [["g1", BATCHES]],
                  "parameters": parameters, "lexicon": lexicon,
                  "width": wide_width(model, parameters, limit=2048)}
-                for model in ("lstm", "transformer") for mode in ("online", "offline")
+                for model in ("lstm", "transformer")
+                for mode in (("online",) if wide else ("online", "offline"))
                 for f in founders[:6]]
     return {"ninth": brains, "ninth_controls": controls}
 

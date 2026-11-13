@@ -1159,6 +1159,10 @@ whose third `near` stands where every lesson says `end`, fall with the louder tr
 ([a slot the lesson leaves open](../../docs/teach.md#a-slot-the-lesson-leaves-open)): the lesson
 neither judges nor pulls it.
 
+[MEANING_PROTOCOL_9.md](MEANING_PROTOCOL_9.md) reads the motor of parts at a scaled lexicon,
+sixteen nouns and eight verbs (`CADENCE_GRAMMAR_LEXICON=16x8`), where three quarters of the
+agent-number-verb triples are held out, and at 512 nouns and 128 verbs beside it.
+
 ### What the held-meaning readings establish
 
 - In the default composition a sentence's meaning lives in the recall memory's slots. The carried
