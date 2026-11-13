@@ -368,8 +368,37 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
     judged = [False] * n
     oks = [False] * n
     turn_x: list[list[np.ndarray]] = [[] for _ in range(n)]
+    turn_t: list[list[int]] = [[] for _ in range(n)]
+    moment_t: list[list[int]] = [[] for _ in range(n)]
     echo_due: list[dict[int, int]] = [{} for _ in range(n)]  # moment -> answer word index
     echoes: list[tuple[int, int, int]] = []  # (stream, word index, the echo's unit)
+    # the brain as it was at each moment of a turn, before it acted: a lesson about a reply is
+    # taken on the state the parrot replied from, and its change added to the living brain
+    snaps: dict[int, tuple[Any, np.ndarray]] = {}
+
+    def teach_at(entries: dict[int, list[tuple[int, int, int, float]]]) -> int:
+        taken = 0
+        for m, rows_of in entries.items():
+            if m not in snaps or not rows_of:
+                continue
+            snap, xm = snaps[m]
+            labels = np.stack([np.full(n, p.silence), np.zeros(n, dtype=np.int64)], 1)
+            w8 = np.zeros(n)
+            for i, unit, bit, weight in rows_of:
+                labels[i] = (unit, bit)
+                w8[i] = weight
+            graph = snap.learner.brain
+            eff, bias = np.array(graph.efficacy, copy=True), np.array(graph.bias, copy=True)
+            rep = snap.lesson(xm, labels, weights=w8)
+            p.work["lesson_sweeps"] += float(rep.get("total_row_sweeps", 0.0))
+            after = snap.learner.brain
+            live_graph = brain.learner.brain
+            brain.learner.brain = live_graph.with_parameters(
+                efficacy=np.asarray(live_graph.efficacy) + (np.asarray(after.efficacy) - eff),
+                bias=np.asarray(live_graph.bias) + (np.asarray(after.bias) - bias))
+            taken += int((w8 > 0).sum())
+        return taken
+
     for t in range(moments):
         x = p.observe(exs, t, own, praise[t], rng)
         if learn:
@@ -386,35 +415,28 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
                 p.work["lesson_sweeps"] += float(report.get("total_row_sweeps", 0.0))
             gated = [i for i in range(n) if praise[t, i] and moment_x[i]]
             if float(g["gated_lesson"]) > 0 and gated:
-                # the acts that earned the pistachio, made lasting: one lesson a word position,
-                # each praised row on the moment it said that word, its own act the label
-                for k in range(max(len(moment_x[i]) for i in gated)):
-                    rows, w8 = x.copy(), np.zeros(n)
-                    labels = np.stack([np.full(n, p.silence), np.zeros(n, dtype=np.int64)], 1)
-                    for i in gated:
-                        if k < len(moment_x[i]):
-                            rows[i], w8[i] = moment_x[i][k], float(g["gated_lesson"])
-                            labels[i] = (moment_unit[i][k], int(exs[i].bite))
-                    rep = brain.lesson(rows, labels, weights=w8)
-                    p.work["lesson_sweeps"] += float(rep.get("total_row_sweeps", 0.0))
-                    p.work["gated"] += int((w8 > 0).sum())
+                # the acts that earned the pistachio, made lasting: each on the moment it was
+                # made, the parrot's own act the label
+                entries: dict[int, list[tuple[int, int, int, float]]] = {}
                 for i in gated:
-                    moment_x[i], moment_unit[i] = [], []
+                    for unit, mt in zip(moment_unit[i], moment_t[i], strict=True):
+                        entries.setdefault(mt, []).append(
+                            (i, unit, int(exs[i].bite), float(g["gated_lesson"])))
+                    moment_x[i], moment_unit[i], moment_t[i] = [], [], []
+                p.work["gated"] += teach_at(entries)
             if echoes and float(g["correction_lesson"]) > 0:
                 # the trainer's correction, echoed by the parrot's own imitation, learned on the
-                # state the parrot was in when it replied (one lesson a word position)
-                for k in sorted({e[1] for e in echoes}):
-                    rows, w8 = x.copy(), np.zeros(n)
-                    labels = np.stack([np.full(n, p.silence), np.zeros(n, dtype=np.int64)], 1)
-                    for i, kk, unit in echoes:
-                        if kk == k and unit != p.silence and turn_x[i]:
-                            rows[i] = turn_x[i][min(k, len(turn_x[i]) - 1)]
-                            labels[i, 0], w8[i] = unit, float(g["correction_lesson"])
-                    if w8.any():
-                        rep = brain.lesson(rows, labels, weights=w8)
-                        p.work["lesson_sweeps"] += float(rep.get("total_row_sweeps", 0.0))
-                        p.work["corrected"] = p.work.get("corrected", 0) + int((w8 > 0).sum())
+                # state the parrot was in when it replied
+                entries = {}
+                for i, k, unit in echoes:
+                    if unit != p.silence and turn_t[i]:
+                        mt = turn_t[i][min(k, len(turn_t[i]) - 1)]
+                        entries.setdefault(mt, []).append(
+                            (i, unit, 0, float(g["correction_lesson"])))
+                p.work["corrected"] = p.work.get("corrected", 0) + teach_at(entries)
                 echoes = []
+            if any(ex.turn <= t < ex.turn + TURN for ex in exs):
+                snaps[t] = (copy.deepcopy(brain), x.copy())
             action = np.asarray(brain.act(x)).reshape(n, -1)
         else:
             action = np.asarray(brain.act(x, greedy=True)).reshape(n, -1)
@@ -435,15 +457,17 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
                 if learn and ex.question is None and ex.extra["edible"]:
                     reward[t + 1, i] += 1.0  # the taste
                     praise[t + 1, i] = True
-                    moment_x[i], moment_unit[i] = [x[i]], [p.silence]
+                    moment_x[i], moment_unit[i], moment_t[i] = [x[i]], [p.silence], [t]
             if t in echo_due[i]:
                 echoes.append((i, echo_due[i].pop(t), int(voiced[i])))
             if in_turn and not ex.bite:
                 turn_x[i].append(x[i])
+                turn_t[i].append(t)
                 said[i].append(w)
                 if w is not None and learn:
                     moment_x[i].append(x[i])
                     moment_unit[i].append(int(voiced[i]))
+                    moment_t[i].append(t)
             if t == ex.turn + TURN - 1 and not judged[i] and not ex.bite:
                 judged[i] = True
                 replies[i] = reply_of(said[i])
@@ -456,7 +480,7 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
                     reward[t + 1 + CATCH, i] += 1.0
                     p.work["pistachios"] += 1
                 elif learn:
-                    moment_x[i], moment_unit[i] = [], []
+                    moment_x[i], moment_unit[i], moment_t[i] = [], [], []
                 if learn and not oks[i] and ex.extra.get("dagger"):
                     for k, word in enumerate(ex.question.answer):  # the trainer corrects
                         while len(ex.heard) <= t + 1 + k:
