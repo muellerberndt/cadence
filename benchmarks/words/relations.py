@@ -26,8 +26,9 @@ Question forms (nonce words; English for the reader):
 One life (``script``): naming (kinds, and "you" while the parrot attends to itself); practice
 from the parrot ("where" and "how far" from it); practice of every form; the test in fresh
 rooms, after the relation word held out of the life so far is taught in ``examples``
-answered questions; the test asks every form about the practised relations and about the new
-one. Kind pairs drawn for the founder (``held_pairs``) never
+answered questions (``taught``: "what is R the X?" answered with the things, or "where is the
+X from the Y?" answered with R); the test asks every form about the practised relations and
+about the new one. Kind pairs drawn for the founder (``held_pairs``) never
 meet in a practice room.
 """
 
@@ -58,7 +59,7 @@ SALT = 327
 FORMS = ("things", "things_you", "where", "where_you", "howfar", "howfar_you", "is", "is_you")
 DEFAULTS = {"naming_rooms": 30, "namings": 12, "selves": 10, "body_rooms": 16, "body_asked": 8,
             "practice_rooms": 40, "asked": 10, "test_rooms": 30, "test_asked": 2,
-            "examples": 4, "held_pairs": 5}
+            "examples": 4, "held_pairs": 5, "taught": "things"}
 
 
 @dataclass
@@ -292,18 +293,24 @@ def script(seed: int, **given: Any) -> list[tuple[Any, ...]]:
         pool = every_question(w, r, known, rng)
         events += [("practice", a) for a in draw(rng, pool, s["asked"])]
 
-    # 4. the held-out relation word, taught in a few answered questions whose examples span
-    # what the word names and what it does not: a word for a quarter across its quarter, each
-    # at another distance from near to far; a word for a distance across its range, each in
-    # another quarter
+    # 4. the held-out relation word, taught in a few answered questions. ``taught="things"``:
+    # "what is R the X?" in the words the parrot knows, answered with the things (never none),
+    # R heard for the first time at the first; ``"where"``: "where is the X from the Y?" (or
+    # "how far"), answered with R, the examples spanning what R names and what it does not (a
+    # word for a quarter across its quarter, each at another distance; a word for a distance
+    # across its range, each in another quarter)
     far = new >= 4
     taught = 0
     while taught < s["examples"]:
         r = a_room(rng)
-        form = "howfar" if far else "where"
-        found = [a for a in every_question(w, r, [new], rng, (form,))[form] if a.relation == new]
-        found = [a for a in found if other_of(a, r) == taught % SPANS
-                 and span_of(a, r) == taught % SPANS]
+        if s["taught"] == "things":
+            found = [a for a in every_question(w, r, [new], rng, ("things",))["things"]
+                     if a.answer != [w.base.none]]
+        else:
+            form = "howfar" if far else "where"
+            found = [a for a in every_question(w, r, [new], rng, (form,))[form]
+                     if a.relation == new and other_of(a, r) == taught % SPANS
+                     and span_of(a, r) == taught % SPANS]
         if not found:
             continue
         events += [("room", r), ("practice", found[int(rng.integers(len(found)))])]

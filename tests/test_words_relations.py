@@ -98,3 +98,30 @@ def test_the_relation_groups_at_zero_say_no_relation() -> None:
     part.name_self(brain, "you")
     code = part.code(brain.body.at, places[0], brain.body.heading)
     assert part.describe(brain, code) == {"direction": None, "distance": None}
+
+
+def test_a_new_relation_word_taught_through_known_words() -> None:
+    """"What is riza you?" answered with the thing: the question's only new word takes the
+    meaning the answer shows, and is said in the other direction."""
+    brain, part, rng = _brain(2)
+    for _ in range(12):
+        places = _room(brain, rng)
+        for k in range(4):
+            brain.name(KINDS[k], places[k])
+    part.name_self(brain, "you")
+    for _ in range(16):  # three of the quarter words, from "where is the X from you?"
+        _room(brain, rng)
+        for k in range(3):
+            brain.practice(f"where is the {KINDS[k]} from you", QUARTERS[k])
+    for _ in range(4):  # the frame "what is R you?", on the words known
+        _room(brain, rng)
+        for k in range(3):
+            brain.practice(f"what is {QUARTERS[k]} you", KINDS[k])
+    assert brain.lexicon.unit(QUARTERS[3]) is None
+    for _ in range(4):  # the fourth word, only through "what is riza you?"
+        _room(brain, rng)
+        brain.practice(f"what is {QUARTERS[3]} you", KINDS[3])
+    _room(brain, rng)
+    assert part._group_of(brain, brain.lexicon.hear(QUARTERS[3])) == "direction"
+    assert brain.ask(f"what is {QUARTERS[3]} you") == [KINDS[3]]
+    assert brain.ask(f"where is the {KINDS[3]} from you") == [QUARTERS[3]]

@@ -14,7 +14,7 @@ if str(HERE) not in sys.path:
 import relations as R  # noqa: E402
 
 SMALL = {"naming_rooms": 3, "namings": 6, "selves": 2, "body_rooms": 2, "body_asked": 4,
-         "practice_rooms": 2, "asked": 6, "test_rooms": 1, "test_asked": 1, "examples": 4}
+         "practice_rooms": 2, "asked": 6, "test_rooms": 3, "test_asked": 1, "examples": 4}
 
 
 def test_the_teacher_asks_only_clear_questions() -> None:
@@ -45,8 +45,7 @@ def test_the_teacher_asks_only_clear_questions() -> None:
         assert all(R.clear(a.relation, origin, t.place, room.heading) for t in judged)
         if event[0] == "practice":
             if a.relation == new:  # the held-out word's own examples, after practice
-                assert R.span_of(a, room) == taught % R.SPANS
-                assert R.other_of(a, room) == taught % R.SPANS
+                assert a.form == "things" and a.answer != [words.base.none]
                 taught += 1
             else:
                 kinds = room.kinds()
@@ -64,6 +63,20 @@ def test_the_truth_of_a_relation() -> None:
         5, origin, np.array([1.5, 0.0]), 0.0)
     assert not R.clear(0, origin, np.array([1.0, 0.95]), 0.0)  # at a quarter's edge
     assert not R.clear(4, origin, np.array([1.05, 0.0]), 0.0)  # at near's edge
+
+
+def test_the_new_word_taught_by_where_spans_its_range() -> None:
+    small = {**SMALL, "taught": "where"}
+    new, room, taught = R.held_out_word(6), None, 0
+    for event in R.script(6, **small):
+        if event[0] == "room":
+            room = event[1]
+        elif event[0] == "practice" and event[1].relation == new:
+            a = event[1]
+            assert room is not None and a.form in ("where", "howfar")
+            assert R.span_of(a, room) == taught % R.SPANS == R.other_of(a, room)
+            taught += 1
+    assert taught == small["examples"]
 
 
 def test_a_small_life_reads_every_gate() -> None:

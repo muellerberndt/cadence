@@ -40,12 +40,13 @@ is never the thing placed; of two things named, the anchor read says which is th
 answer word is named with the X's code from the Y, as a word is named with a thing; where the
 answer decides which of the two things the X was placed from, the question's words are taught
 that anchor. "What is left of the X?" answered with things: the question's relation word is
-named with each one's code. "Is the X left of the Y?" answered with a word: the word is named
-with the parrot's own verdict. A relation word's lesson teaches each relation group at the
-sharpness of the word's own hearing there, so the group where its lessons agree keeps its
-pattern and the other falls toward zero; after each lesson its synapses onto the relation groups
-are held at one length (``norm``, synaptic scaling). No program maps a relation word to a
-geometric test.
+named with each one's code; a word the parrot hears there for the first time, the question's
+only new word, takes that meaning ("what is next to the apple?" answered with the cup). "Is
+the X left of the Y?" answered with a word: the word is named with the parrot's own verdict.
+A relation word's lesson teaches each relation group at the sharpness of the word's own hearing
+there, so the group where its lessons agree keeps its pattern and the other falls toward zero;
+after each lesson its synapses onto the relation groups are held at one length (``norm``,
+synaptic scaling). No program maps a relation word to a geometric test.
 """
 
 from __future__ import annotations
@@ -151,6 +152,12 @@ class Relations:
         """A hearing on the relation groups alone."""
         groups = brain.lexicon.groups
         return np.concatenate([heard[groups[g]] for g in RELATION_GROUPS])
+
+    def _names_relation(self, brain: Any, heard: np.ndarray) -> bool:
+        """Whether a hearing settles on the relation groups above the floor and above every
+        other concept (a word that names a thing, or asks, settles elsewhere first)."""
+        relational = float(self._relational(brain, heard).max())
+        return relational > brain.floor and relational >= float(heard.max())
 
     def _group_of(self, brain: Any, heard: np.ndarray) -> str | None:
         """The relation group a hearing names: the one it departs most on; None where it
@@ -365,13 +372,22 @@ class Relations:
         heading = float(brain.body.heading)
         told = [lexicon.hear([w]) if lexicon.unit(w) is not None else None for w in said]
         names_thing = [t is not None and t[groups["kind"]].max() > brain.floor for t in told]
-        if len(named) == 1 and relation:
+        if len(named) == 1 and said and all(names_thing):
             # "what is left of the X?" answered with things: each relation word of the
-            # question is named with each one's code from the reference
-            if not all(names_thing):
-                return
+            # question is named with each one's code from the reference. A relation word too
+            # weak yet to say itself back hears on the relation cells, and is taught as well;
+            # so is a word heard for the first time in the question, where it is the question's
+            # only new word and the question holds no relation word known (a new word takes the
+            # meaning the answer shows: "what is next to the apple?" answered with the cup
+            # teaches "next to")
+            new = [w for w in dict.fromkeys(words) if w not in parse["hearing"]]
+            weak = [w for w, h in parse["hearing"].items()
+                    if lexicon.unit(w) not in relation and self._names_relation(brain, h)]
+            taught = [lexicon.forms[u] for u in relation] + weak
+            if not taught and len(new) == 1:  # no relation word known: the new word names it
+                taught = new
             origin = self._place(brain, named[0])
-            if origin is None:
+            if not taught or origin is None:
                 return
             for t in told:
                 assert t is not None
@@ -379,14 +395,14 @@ class Relations:
                 if place is None:
                     continue
                 code = self.code(origin, place, heading)
-                for unit in relation:
-                    self._teach(brain, lexicon.forms[unit], code)
+                for word in taught:
+                    self._teach(brain, word, code)
             return
         if len(named) < 2 or len(said) != 1 or names_thing[0]:
             return
         # a question with a word that hears on the relation groups names a relation, even one
         # too weak yet to be said back: its answer is a verdict, never a relation word
-        relational = any(float(self._relational(brain, heard_word).max()) > brain.floor
+        relational = any(self._names_relation(brain, heard_word)
                          for heard_word in parse["hearing"].values())
         if relational and not relation:
             return
