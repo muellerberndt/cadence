@@ -10,7 +10,9 @@ population code, as hue, orientation, place and head-direction cells tile their 
 - **size**, a line over the logarithm of the thing's width;
 - **direction**, a circle over the angle of the thing from where the head points;
 - **distance**, a line over the logarithm of the distance;
-- **salience**, one input: the thing moves or is held up (born salience, as the tectum's).
+- **salience**, one input: the thing moves or is held up (born salience, as the tectum's);
+- **surface** (with ``surfaces``), one line per surface reading (gloss, roughness,
+  translucency, softness): what material is made of, as the eye and the beak's touch report it.
 
 A scene is a fixed number of such slots, in an order with no meaning (the order the map lists its
 things). A heard word reaches the brain as the code of its sound (``Forms``): a sparse code drawn
@@ -76,6 +78,7 @@ class Seen:
     direction: float
     distance: float
     salient: bool = False
+    surface: np.ndarray | None = None  # one value in 0 to 1 per surface reading
 
 
 @dataclass
@@ -90,12 +93,15 @@ class Eyes:
     sizes: int = 4
     directions: int = 12
     distances: int = 4
+    surfaces: int = 0  # surface readings the senses report (0: none)
+    per_surface: int = 4
     _hue: Circle = field(init=False, repr=False)
     _light: Line = field(init=False, repr=False)
     _shape: Line = field(init=False, repr=False)
     _size: Line = field(init=False, repr=False)
     _direction: Circle = field(init=False, repr=False)
     _distance: Line = field(init=False, repr=False)
+    _surface: Line = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._hue = Circle(self.hues)
@@ -104,13 +110,14 @@ class Eyes:
         self._size = Line(self.sizes, math.log(0.05), math.log(0.5))
         self._direction = Circle(self.directions)
         self._distance = Line(self.distances, math.log(0.4), math.log(2.0))
+        self._surface = Line(self.per_surface, 0.0, 1.0)
 
     @property
     def parts(self) -> dict[str, int]:
         """Each sense's inputs in one slot, in the slot's order."""
         return {"hue": self.hues, "lightness": self.lights, "shape": self.shapes * self.per_shape,
                 "size": self.sizes, "direction": self.directions, "distance": self.distances,
-                "salience": 1}
+                "salience": 1, "surface": self.surfaces * self.per_surface}
 
     @property
     def slot_width(self) -> int:
@@ -133,7 +140,16 @@ class Eyes:
             self._direction(seen.direction),
             self._distance(math.log(max(seen.distance, 1e-3))),
             [1.0 if seen.salient else 0.0],
+            self._surfaces(seen),
         ])
+
+    def _surfaces(self, seen: Seen) -> np.ndarray:
+        if not self.surfaces:
+            return np.zeros(0)
+        if seen.surface is None:
+            return np.zeros(self.surfaces * self.per_surface)
+        values = np.asarray(seen.surface, dtype=np.float64).reshape(self.surfaces)
+        return np.concatenate([self._surface(v) for v in values])
 
     def scene(self, things: list[Seen]) -> np.ndarray:
         """The scene's inputs: each thing in a slot of its own, in the order given, empty slots
