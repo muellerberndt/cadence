@@ -1,0 +1,21 @@
+{
+  "format": "cadence-parrot-kinds/1",
+  "explain": "The eyes' stand-in for each kind the page places: a primitive of the kind's real size (half-sizes in metres along the thing's own x, y (up) and z) and its albedo (linear RGB). The page's models carry the same albedo.",
+  "kinds": {
+    "apple":  {"shape": "ellipsoid", "half": [0.0375, 0.034, 0.0375], "albedo": [0.62, 0.07, 0.05]},
+    "ball":   {"shape": "sphere",    "half": [0.037, 0.037, 0.037],   "albedo": [0.10, 0.25, 0.70]},
+    "cup":    {"shape": "cylinder",  "half": [0.040, 0.045, 0.040],   "albedo": [0.12, 0.55, 0.50]},
+    "banana": {"shape": "ellipsoid", "half": [0.095, 0.020, 0.022],   "albedo": [0.85, 0.70, 0.12]},
+    "block":  {"shape": "box",       "half": [0.025, 0.025, 0.025],   "albedo": [0.75, 0.12, 0.45]},
+    "duck":   {"shape": "ellipsoid", "half": [0.035, 0.040, 0.045],   "albedo": [0.92, 0.80, 0.05]},
+    "lemon":  {"shape": "ellipsoid", "half": [0.035, 0.028, 0.028],   "albedo": [0.80, 0.85, 0.25]},
+    "pear":   {"shape": "ellipsoid", "half": [0.034, 0.045, 0.034],   "albedo": [0.40, 0.62, 0.12]}
+  },
+  "room": {
+    "table": {"x": [-0.80, 0.80], "z": [-0.55, 0.55], "albedo": [0.55, 0.42, 0.30]},
+    "floor": {"y": -0.75, "albedo": [0.35, 0.33, 0.32]},
+    "walls": {"half": 2.0, "albedo": [0.82, 0.80, 0.76]},
+    "ceiling": {"y": 1.75, "albedo": [0.92, 0.92, 0.92]}
+  },
+  "light": {"direction": [0.3, 1.0, 0.4], "ambient": 0.45, "diffuse": 0.60}
+}
