@@ -16,11 +16,15 @@ to hold to (`longterm_attention`), with a pathway from each head's region to the
 (`longterm_motor`), read and say several of its own records in one answer, at 100,000 records,
 beside a transformer that holds the records in its context?
 
+The read is `record_heads.py` at the declared commit: a head reads the records about its focus
+that hold some of the question's context, and a record's level is the share its key holds of
+the focus and the context words, each at the head's gate.
+
 ### The chamber
 
 `several_world.py` as committed: 4 attribute relations and 3 links, each held by half of the
 subjects, 32 places, the wordings and the two populations frozen there. A life
-(`several_chamber.py`): the lesson population of 600 subjects told once; 10,000 lessons, each a
+(`several_chamber.py`): the lesson population of 600 subjects told once; 20,000 lessons, each a
 question taught at its answer's moment and then said (a chain of 2 or 3 hops with probability
 .3, else parts of k subjects with k drawn in proportion to k; a part absent or a chain broken
 with probability .15); then, with the records emptied, three readings on reading populations of
@@ -30,17 +34,24 @@ part absent at .3, and 100 broken chains of each length. No reading teaches.
 
 ### Founders and arms
 
-Founders 3250 to 3261 (twelve; no life of any lane used them). Every arm is
+Founders 3250 to 3261 (twelve; no life of any lane used them) for `heads` and `birth`, the arms
+the gates read; founders 3250 to 3255 for the reference arms `handed`, `rest` and `none`. Every
+arm is
 `Brain.compose(257, 264, slots=8, modules=(128,), backend="cpu", message=280,
 longterm=records, longterm_turn=256, longterm_heads=8, longterm_distinct=0.1,
-longterm_fade=False, ...)` at the library's defaults on the lane branch.
+longterm_best=True, longterm_fade=False, ...)` at the library's defaults on the lane branch
+(`longterm_best` is the chamber's setting for every arm with records; the read of
+`longterm_attention` does not use it). The plans are [`declared/brain.json`](declared/brain.json)
+(`heads`, `birth`), [`declared/reference.json`](declared/reference.json) (`handed`, `rest`,
+`none`), [`declared/controls.json`](declared/controls.json) (online) and
+[`declared/offline.json`](declared/offline.json).
 
 | Arm | Settings beside those | What it reads |
 | --- | --- | --- |
 | `heads` | `longterm_match=0.6, longterm_attention=1.0, longterm_motor=0.05` | The delivery under test |
 | `birth` | `heads` with `longterm_attention=0.0`: the heads' maps held at zero | What the heads' lesson adds |
 | `handed` | `birth`, every head handed its record at each answer | The ceiling of the answer's path |
-| `rest` | `longterm_match=0.5, longterm_best=True, longterm_rest=True`: the read of 0.98 with eight heads | The heads of 0.99 |
+| `rest` | `longterm_match=0.5, longterm_rest=True`: the read of 0.98 with eight heads | The heads of 0.99 |
 | `none` | no message and no records | The floor |
 
 No arm but `handed` is given a record, a cue or a place for any head: every head's read comes
@@ -51,10 +62,14 @@ from the question as heard.
 sequence per question: a window of 64 told facts in a shuffled order, then the question. The
 window is handed: it always holds every fact the answer needs and every other fact of each
 subject the question names or its chain reaches, with facts drawn at random up to 64. `online`
-is one pass over the brain's 10,000 lesson questions (batches of 16); `offline` trains on fresh
-draws of lesson questions until its score on 512 held lesson questions stops rising (patience
-3 rounds of 10,000), 12 rounds pass or 2 hours end. The controls are read on the questions of
-the 100,000 reading.
+is one pass over the brain's 20,000 lesson questions (batches of 16, Adam at 1e-3), for both;
+the transformer `offline` (founders 3250 to 3252) trains on fresh draws of lesson questions
+until 512 held lesson questions stop gaining (neither said whole more often nor their
+cross-entropy a hundredth lower, for 3 rounds of 20,000 questions), 12 rounds pass or 3 hours
+end. An LSTM offline is not run: in development (founder 0, four rounds of 10,000) it held its
+first round's answers, `nothing` on every slot. The controls are read on the
+questions of the 100,000 reading. The parameter count each control's width is matched to is the
+count of `heads` (1,460,612).
 
 ### Readings
 
@@ -87,7 +102,7 @@ on at least 10 of the 12 founders.
   no record answers, pooled over one-part questions and broken chains; (c) the lessons' share:
   the founders' mean of `said` on chains of 3 hops of `heads` less `birth` is at least .30.
 - **A5, beside the controls.** The table of `said`, parameters and multiply-accumulates of
-  `heads` beside the four controls is reported whole. The gate: the mean of `said` of `heads`
+  `heads` beside the three controls is reported whole. The gate: the mean of `said` of `heads`
   over founders 3250 to 3255 is no more than .03 under the better `online` control's mean on
   each of parts of 2, 4 and 8 and chains of 2 and 3 hops.
 - **A6, cost.** The read's milliseconds per answer, the founders' mean: on parts of 8 under 8
@@ -96,11 +111,12 @@ on at least 10 of the 12 founders.
 ### Expectations, stated before the run
 
 A1 holds at 1.00 where no two subjects share a code, and falls by the share that do. A2 holds on
-parts of 2 and 4 and is the gate most at risk on parts of 8, whose last slots are taught least.
-A3 holds. A4 holds; `birth` says chains of 3 hops near .00 and parts as `heads` does, since a
-newborn head reads the parts in the order heard. A5: the online controls say parts of 8 and
-chains of 3 hops under the brain; the offline transformer is the control most likely to pass
-it. A6 holds: a read scores the records about each head's focus.
+parts of 2 and 4 and is the gate most at risk on parts of 8, whose last slots are taught least
+(development, 20,000 lessons: .917 to .975 on six founders). A3 holds. A4 holds; `birth` says
+chains of 3 hops near .00 and parts as `heads` does, since a newborn head reads the parts in the
+order heard. A5 holds: one pass over the lessons teaches neither online control to say a part
+(development: .00 to .07); the offline transformer is the control most likely to say parts. A6
+holds: a read scores the records about each head's focus.
 
 ### What a failure names
 
@@ -112,4 +128,4 @@ the level a record has to reach, at this size.
 ### Compute
 
 One AWS c7i.8xlarge spot box (Name=cadence-0100-heads), one process per life and one thread per
-brain process; the controls on three threads each.
+brain process; the controls on two threads each.

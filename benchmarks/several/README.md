@@ -96,8 +96,45 @@ Two terms are located:
    region the handed records of four parts are said at .99 to 1.00, and those of eight at .11 to
    .18 after 6,000 lessons, each part at .85: the slots asked least often are taught last.
 
+### Step 1: the mechanism, development readings
+
+Development founders 0 to 5 (0 to 2 in the first row), marked as development: no gate reads
+them. `said` per kind of question; `silent` pooled over the parts no record answers; `refused`
+pooled over the questions no record answers.
+
+| Reading | Arm | Records | parts 2 | parts 4 | parts 8 | chain 2 | chain 3 | silent | refused |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 10,000 lessons | `heads` | 100,000 | .969 to .992 | .991 to 1.000 | .859 to .894 | 1.000 | .980 to 1.000 | .950 to 1.000 | .927 to .991 |
+| 10,000 lessons | `handed` | 100,000 | 1.000 | 1.000 | .849 to .885 | 1.000 | .990 to 1.000 | 1.000 | 1.000 |
+| 20,000 lessons | `heads` | 1,000 | .965 to 1.000 | .991 to 1.000 | .917 to .975 | 1.000 | .990 to 1.000 | .970 to 1.000 | .940 to 1.000 |
+| 20,000, the level of the context alone | `heads` | 1,000 | .996 to 1.000 | .992 to 1.000 | .735 to .966 | .020 to 1.000 | .000 to .995 | 1.000 | .103 to 1.000 |
+| 20,000, records that hold some context | `heads` | 1,000 | 1.000 | .991 to 1.000 | .928 to .995 | 1.000 | .990 to 1.000 | 1.000 | .960 to 1.000 |
+| 20,000, records that hold some context | `birth` | 1,000 | .992 to 1.000 | .992 to 1.000 | .870 to .929 | .525 to .655 | .000 to .040 | 1.000 | .419 to .747 |
+
+Three terms were located on the way to the declared read:
+
+1. **The lessons of the last slots.** Parts of eight are said at .86 to .89 after 10,000 lessons,
+   with every record handed as well (.85 to .89): each part is said at .98, and a question of
+   eight parts needs all eight. After 20,000 lessons parts of eight are said at .92 to .98.
+2. **Silence crossed with chains.** In questions of two parts, a first subject that lacks the
+   relation asked held one of its other records on all 39 such parts read (founder 0, 10,000
+   lessons, 1,000 records); the second head stayed silent on all 34 of its own. In a chain
+   the first head learns to pass over the attribute word, the fourth word of the question, and
+   its gate on the subject rises: in "what is the work of e13 and e98 ?" the first head's gate
+   on `work` stood at .28 and on `e13` at .56, so e13's school record reached the level .66,
+   above the bar. Reading the level from the context alone made the silence whole and left
+   chains of three hops unlearned on four founders of six: every first hop then starts at a
+   third of the cue, under the bar, and the lesson gives a right first hop no credit while the
+   later hops fall short.
+3. **The declared read.** The level keeps the focus and the context at the gates, and a head
+   reads only the records that hold some of the question's context: a record holding none of
+   it answers another question. A lacking subject holds nothing whatever the gates, and the
+   chains learn as before.
+
 ## Run
 
-    PYTHONPATH=src python benchmarks/several/several_chamber.py --plan benchmarks/several/declared/brain.json --out brain.jsonl --workers 30
+    PYTHONPATH=src python benchmarks/several/several_chamber.py --plan benchmarks/several/declared/brain.json --out brain.jsonl --workers 24
+    PYTHONPATH=src python benchmarks/several/several_chamber.py --plan benchmarks/several/declared/reference.json --out brain.jsonl --workers 18
     PYTHONPATH=src python benchmarks/several/several_controls.py --plan benchmarks/several/declared/controls.json --out controls.jsonl --workers 6
+    PYTHONPATH=src python benchmarks/several/several_controls.py --plan benchmarks/several/declared/offline.json --out controls.jsonl --workers 3
     python benchmarks/several/several_summary.py --rows brain.jsonl --controls controls.jsonl

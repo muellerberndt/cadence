@@ -14,8 +14,9 @@ holds; the control is given the window that fits. ``in_window`` is 1 by construc
 
 **Training.** The lessons are the brain's: the same lesson population and the same draws of
 questions. ``online`` is one pass over the brain's ``lessons`` questions; ``offline`` trains on
-fresh draws of lesson questions until its score on 512 held lesson questions stops rising
-(patience 3 rounds of ``lessons`` questions), ``rounds`` rounds pass or the time budget ends.
+fresh draws of lesson questions until 512 held lesson questions stop gaining (neither said whole
+more often nor their cross-entropy a hundredth lower, for 3 rounds of ``lessons`` questions),
+``rounds`` rounds pass or the time budget ends.
 Adam, cross-entropy summed over the slots, gradient norm clipped at 1.
 
 **Width.** The width whose parameter count is nearest ``target``, the brain's parameters.
@@ -191,12 +192,18 @@ class Learner:
         return float(loss.item())
 
     def said(self, items: list[tuple[np.ndarray, np.ndarray]]) -> np.ndarray:
+        return self.judged(items)[0]
+
+    def judged(self, items: list[tuple[np.ndarray, np.ndarray]]) -> tuple[np.ndarray, float]:
+        """What each slot says, and the cross-entropy of the answers per slot."""
         torch = self.torch
-        x, lengths, _ = batch_of(items)
+        x, lengths, y = batch_of(items)
         self.net.eval()
         with torch.no_grad():
             logits = self.net(x, lengths).reshape(len(items), sw.SLOTS, self.slot_actions)
-            return np.asarray(logits.argmax(-1))
+            loss = torch.nn.functional.cross_entropy(
+                logits.reshape(-1, self.slot_actions), y.reshape(-1))
+            return np.asarray(logits.argmax(-1)), float(loss.item())
 
 
 def run_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
@@ -218,12 +225,15 @@ def run_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
     held = [sequence(lexicon, taught, ch.lesson_question(taught, held_rng, spec), held_rng, window)
             for _ in range(512)]
 
-    def held_score() -> float:
-        right = []
+    def held_score() -> tuple[float, float]:
+        """The held lesson questions: the share said whole, and the cross-entropy per slot."""
+        right, loss = [], 0.0
         for start in range(0, len(held), 64):
             part = held[start : start + 64]
-            right += list((learner.said(part) == np.stack([y for _, y in part])).all(axis=1))
-        return float(np.mean(right))
+            said, lost = learner.judged(part)
+            right += list((said == np.stack([y for _, y in part])).all(axis=1))
+            loss += lost * len(part)
+        return float(np.mean(right)), loss / len(held)
 
     def one_round(draw: np.random.Generator) -> None:
         for _ in range(lessons // size_batch):
@@ -233,17 +243,23 @@ def run_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
 
     t0 = time.perf_counter()
     one_round(rng)  # the brain's lessons, once
-    curve = [round(held_score(), 4)]
+    said, loss = held_score()
+    curve, losses = [round(said, 4)], [round(loss, 4)]
     rounds = 1
     if schedule == "offline":
-        best, since = curve[0], 0
+        # a round counts as progress where the held questions are said whole more often, or
+        # their cross-entropy falls by a hundredth: a slot's answers can sharpen long before
+        # whole questions are said
+        best, low, since = said, loss, 0
         budget = float(spec.get("budget", 3600.0))
         while rounds < int(spec.get("rounds", 60)) and time.perf_counter() - t0 < budget:
             one_round(rng)
             rounds += 1
-            curve.append(round(held_score(), 4))
-            if curve[-1] > best + 1e-3:
-                best, since = curve[-1], 0
+            said, loss = held_score()
+            curve.append(round(said, 4))
+            losses.append(round(loss, 4))
+            if said > best + 1e-3 or loss < low * (1.0 - 1e-2):
+                best, low, since = max(best, said), min(low, loss), 0
             else:
                 since += 1
                 if since >= 3:
@@ -251,7 +267,8 @@ def run_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
     base = {"founder": founder, "arm": f"{kind}, {schedule}", "kind": kind,
             "schedule": schedule, "parameters": count(learner.net), "width": width,
             "layers": layers, "window": window, "lessons": lessons * rounds, "rounds": rounds,
-            "nursery_curve": curve, "nursery_seconds": round(time.perf_counter() - t0),
+            "nursery_curve": curve, "nursery_loss": losses,
+            "nursery_seconds": round(time.perf_counter() - t0),
             "nursery_macs": float(learner.work["macs"])}
     out = []
     n = int(spec.get("questions", 200))
