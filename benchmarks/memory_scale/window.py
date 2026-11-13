@@ -232,8 +232,8 @@ def reading(world: br.World, founder: int, n: int, questions: int) -> dict[str, 
     plain = np.setdiff1d(np.arange(n), revised)
     asked = {}
     for kind, pool in (("unrevised", plain), ("revised", revised)):
-        asked[kind] = np.array([pool[int(rng.integers(len(pool), size=1)[0])]
-                                for _ in range(questions)])
+        asked[f"ask_{kind}"] = np.array([pool[int(rng.integers(len(pool), size=1)[0])]
+                                         for _ in range(questions)])
     return {"about": about, "first": first, "current": current, "revised": revised, **asked}
 
 
@@ -276,7 +276,7 @@ def read_window(net: Any, world: br.World, drawn: dict[str, np.ndarray],
         torch.set_num_threads(1)  # a question is read on one core, as the brain's is
         for kind in ("unrevised", "revised"):
             right = []
-            for fact in drawn[kind]:
+            for fact in drawn[f"ask_{kind}"]:
                 t0 = time.perf_counter()
                 about = int(drawn["about"][fact])
                 x = net.tokens(torch.tensor([about % lex.verbs]),
@@ -324,7 +324,7 @@ def read_index(net: Any, world: br.World, drawn: dict[str, np.ndarray],
     with torch.no_grad():
         for kind in ("unrevised", "revised"):
             right, found = [], []
-            for fact in drawn[kind]:
+            for fact in drawn[f"ask_{kind}"]:
                 t0 = time.perf_counter()
                 about = int(drawn["about"][fact])
                 act, agent = about % lex.verbs, about // lex.verbs

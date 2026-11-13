@@ -712,7 +712,8 @@ def test_a_store_on_disk_continues_from_its_files(tmp_path):
     files = {f.name for f in folder.iterdir()}
     assert files >= {"store.json", "state.npy", "keys.npy", "values.npy", "cells.npy",
                      "filed.npy", "projection.npy", "norms.npy"}
-    # the files' lengths are the bound's; the blocks on the disk follow the records
+    # the files' lengths are the bound's (their blocks follow the records where the file
+    # system keeps sparse files)
     assert (folder / "keys.npy").stat().st_size > (1 << 17) * 32 * 4
     assert store.nbytes < (folder / "keys.npy").stat().st_size
     with pytest.raises(ValueError, match="holds a store"):

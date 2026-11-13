@@ -953,3 +953,134 @@ def test_own_keys_by_parts_are_the_keys_of_the_whole_reading(monkeypatch):
     whole = br.own_keys(brain, world, about)
     monkeypatch.setattr(br, "PART", 7)
     np.testing.assert_array_equal(br.own_keys(brain, world, about), whole)
+
+
+# -- records at any size (cadence#310): the sixth and seventh declarations' instruments
+
+SMALL = {"founders": [0], "n": [3000], "forms": [{"form": "code", "width": 32}],
+         "trials": 60, "timed": 20, "writes": 300, "capacity": 20_000,
+         "settings": {"pairs": 8, "expansion": 512, "winners": 32, "candidates": 64,
+                      "direct": 0, "sure": 0.999}}
+
+
+def test_a_part_of_a_scale_cell_s_records_is_drawn_again_the_same():
+    sc = _load("scale")
+    keys, values = sc.draw_part(3, 200_000, "code", 32, 8, 2)
+    again, _ = sc.draw_part(3, 200_000, "code", 32, 8, 2)
+    np.testing.assert_array_equal(keys, again)
+    assert keys.shape == (sc.PART, 32) and values.shape == (sc.PART, 8)
+    np.testing.assert_allclose(np.linalg.norm(keys, axis=1), 1.0, atol=1e-5)
+    last, _ = sc.draw_part(3, 200_000, "code", 32, 8, 3)
+    assert len(last) == 200_000 - 3 * sc.PART  # the last part holds the rest
+    # the first quarter of a part lies in families of 8 at cosine .8; the rest are alone
+    family = keys[:8].astype(np.float64)
+    inside = (family @ family.T)[np.triu_indices(8, 1)]
+    assert abs(inside.mean() - 0.8) < 0.08
+    record = np.array([0, 7, sc.PART // 4 - 1, sc.PART // 4, sc.PART + 5, 2 * sc.PART - 1])
+    assert sc.single(200_000, "code", record).tolist() == [False, False, False, True, False,
+                                                           True]
+    hashed, _ = sc.draw_part(3, 5000, "hashed", 280, 8, 0)
+    assert set(np.unique(hashed)) == {0.0, 1.0} and 15 <= hashed.sum(axis=1).min()
+    assert sc.single(5000, "hashed", record[:3]).all()
+
+
+def test_the_scale_instrument_builds_reads_and_writes_a_store_on_disk(tmp_path, monkeypatch):
+    sc = _load("scale")
+    monkeypatch.setattr(sc, "PART", 512)
+    cell = sc.cell_of(SMALL, 0)
+    assert sc.name_of(cell) == "code32-n3000-f0"
+    built = sc.build(cell, tmp_path)[0]
+    assert built["step"] == "build" and built["entries"] + built["dropped"] == 3000 * 28
+    # the last part was filed onto the table the first parts left: its cells split in turn
+    assert 0 < built["cells_before_growth"] < built["cells"]
+    assert built["bytes_per_record"] < 1000 and built["disk_bytes"] > 0
+    rows = sc.read(cell, tmp_path)
+    reads = {(r["arm"], r.get("pass"), r["cue"]): r for r in rows if r["step"] == "read"}
+    assert reads["disk", "first", "exact"]["found"] == 1.0
+    assert reads["disk", "first", "exact"]["scored"] <= 64  # the read ended at its record
+    assert reads["scan", None, "exact"]["found"] == 1.0
+    assert reads["disk", "first", "noisy"]["found"] >= reads["scan", None, "noisy"]["found"] - 0.1
+    assert reads["disk", "again", "noisy"]["trials"] == 20
+    wrote = next(r for r in rows if r["step"] == "write")
+    assert wrote["found_new"] == 1.0 and wrote["found_earlier"] == 1.0
+    assert wrote["records_after"] == 3300 and wrote["cells_after"] > wrote["cells_before"]
+    assert wrote["cells_per_write"] <= 5  # a record of 28 pairs calls for five cells at most
+    in_memory = sc.memory({**cell, "writes": 0}, tmp_path)
+    assert {r["arm"] for r in in_memory} == {"grow", "pairs"}
+    exact = [r for r in in_memory if r["cue"] == "exact"]
+    assert all(r["found"] == 1.0 for r in exact)
+
+
+def test_the_window_s_controls_read_the_draws_the_brain_reads(monkeypatch):
+    br, wn = _load("brain_records"), _load("window")
+    monkeypatch.setattr(wn, "br", br)
+    world = br.World(2, 64, 48)
+    told, asked = [], []
+    monkeypatch.setattr(br, "tell", lambda brain, moments: told.append(moments))
+    monkeypatch.setattr(br, "ask", lambda brain, moments, label=None: (
+        asked.append(moments), np.zeros(1, dtype=np.int64))[1])
+    br.read_at(object(), world, 2, 60, questions=5, streams=1)
+    drawn = wn.reading(world, 2, 60, 5)
+    lex = world.lexicon
+
+    def said(moments):  # the act, the agent form and the patient form a telling's moments hold
+        act = int(np.argmax(moments[0][0, lex.forms + lex.verbs + lex.nouns:][: lex.verbs]))
+        stems = slice(lex.forms + lex.verbs, lex.forms + lex.verbs + lex.nouns)
+        agent = int(np.argmax(moments[1][0, stems])) + lex.nouns * int(
+            moments[1][0, lex._flag("PLURAL")])
+        return act, agent, int(np.argmax(moments[3][0, stems]))
+
+    order = np.concatenate([np.arange(60), drawn["revised"]])
+    patients = np.concatenate([drawn["first"], drawn["current"][drawn["revised"]]])
+    assert len(told) == len(order) == 66
+    for moments, fact, patient in zip(told, order, patients, strict=True):
+        about = int(drawn["about"][fact])
+        assert said(moments) == (about % lex.verbs, about // lex.verbs, int(patient))
+    asks = np.concatenate([drawn["ask_unrevised"], drawn["ask_revised"]])
+    assert len(asks) == 10 and set(drawn["ask_revised"]) <= set(drawn["revised"])
+    for moments, fact in zip(asked, asks, strict=True):
+        about = int(drawn["about"][fact])
+        assert said(moments)[:2] == (about % lex.verbs, about // lex.verbs)
+
+
+def test_the_window_holds_what_it_was_taught_and_the_index_fetches_the_fact():
+    pytest.importorskip("torch")
+    wn = _load("window")
+    spec = {"founder": 0, "n": [150], "nouns": 64, "verbs": 48, "target": 60_000, "layers": 2,
+            "heads": 2, "minutes": 5, "steps": 12, "taught": 32, "asked": 8, "rows": 4,
+            "questions": 20, "fetched": 8}
+    rows = {r["arm"]: r for r in wn.run_cell(spec)}
+    assert set(rows) == {"context", "retrieval"}
+    window, index = rows["context"], rows["retrieval"]
+    assert window["steps"] == 12 and abs(window["parameters"] - 60_000) < 6_000
+    assert window["tokens"] == 165  # the facts and a tenth told again
+    # the window keeps every layer's keys and values; the index two postings and three words
+    assert window["bytes_per_record"] == round(165 * 2 * 2 * window["width"] * 4 / 150, 1)
+    assert index["bytes_per_record"] == round(165 * 28 / 150, 1)
+    assert index["found_unrevised"] == 1.0 and index["found_revised"] == 1.0
+    assert window["macs_per_read"] > 2 * 165 * window["width"]
+    skipped = wn.run_cell({**spec, "window_most": 100})
+    assert [r["arm"] for r in skipped] == ["retrieval"]  # a window past the most is not read
+
+
+def test_the_sixth_declaration_s_plans_parse_on_their_founders():
+    import json
+
+    br = _load("brain_records")
+    million = json.loads((HERE / "protocol-6" / "brain-million.json").read_text())
+    todo = br.cells(million)
+    assert [c["founder"] for c in todo] == list(range(3220, 3232))
+    assert todo[0]["n"] == [1_000_000] and todo[0]["streams"] == 1
+    assert todo[0]["capacity"] >= 1_100_000
+    assert todo[0]["store"] == {"pairs": 16, "expansion": 16384, "winners": 256,
+                                "candidates": 4096, "fade": False, "grow": True, "sure": 0.999,
+                                "apart": True, "path": "/data/records/million"}
+    world = br.World(0, todo[0]["nouns"], todo[0]["verbs"])
+    assert world.inputs == 3588 and len(world.pool) >= 1_000_000
+    sizes = json.loads((HERE / "protocol-6" / "brain-sizes.json").read_text())
+    window = json.loads((HERE / "protocol-6" / "window.json").read_text())
+    assert sizes["founders"] == window["founders"] == list(range(3240, 3252))
+    assert sizes["n"] == window["n"] == [1000, 10_000, 100_000]
+    assert (sizes["nouns"], sizes["verbs"]) == (window["nouns"], window["verbs"]) == (256, 256)
+    assert sizes["questions"] == window["questions"] and window["target"] == 2_403_231
+    assert not set(range(3220, 3252)) & set(range(3100, 3152))  # fresh founders

@@ -2763,7 +2763,8 @@ memory. Three settings lift both limits. Each is off unless you set it.
 - **`grow=True`: a table that grows.** The table starts at 64 cells and takes a cell at a time
   as records are written. A write splits the few cells its own entries call for (four or five
   for a record of 28 pairs, twenty for one of 120), so no write stops to rebuild the table.
-  `capacity` becomes a bound on the slots. The bound costs nothing until slots are written, so
+  `capacity` becomes a bound on the slots. In memory the bound costs nothing until slots are
+  written, and on disk the same holds on a file system that keeps sparse files (ext4, XFS), so
   set it generously: 134,217,727 (2 to the 27th, less one) keeps five bits of every entry for
   its tag.
 - **`path=directory`: records on disk.** Every array of the memory is a file under the
