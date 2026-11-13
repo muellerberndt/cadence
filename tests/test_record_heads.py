@@ -154,9 +154,12 @@ def test_a_lesson_steps_the_heads_maps_and_a_frozen_rate_holds_them():
     told(b)
     before = [m.copy() for m, _ in b.longterm.attended.maps]
     moved = 0.0
+    # a question of two context words (a relation and a link): which one a head holds to is
+    # what its gates choose (with one context word every gate reads alike)
+    asked = (R, OF, LINK, OF, 6, TURN)
     for _ in range(6):
         b.reset()
-        for on in (R, OF, 0, AND, 1, TURN):
+        for on in asked:
             b.act(moment(on), greedy=True)
         report = b.lesson(moment(None), np.array([[2, 3, 4]]))
         moved += report["heads_moved"]
@@ -168,7 +171,7 @@ def test_a_lesson_steps_the_heads_maps_and_a_frozen_rate_holds_them():
     frozen = brain(longterm_attention=0.0)
     told(frozen)
     frozen.reset()
-    for on in (R, OF, 0, AND, 1, TURN):
+    for on in asked:
         frozen.act(moment(on), greedy=True)
     assert frozen.lesson(moment(None), np.array([[2, 3, 4]]))["heads_moved"] == 0.0
     assert not any(m.any() for m, _ in frozen.longterm.attended.maps)

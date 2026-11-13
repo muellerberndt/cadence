@@ -14,12 +14,14 @@ entry of the value the head before it read stands after the question's own, so a
 telling entry of the question left follows the head before it: a chain.
 
 A record is found by its key, the entries heard before its turn. The head's records are those
-whose key holds its focus, each read once. A record's level is the share its key holds of the
-record the head looks for, the focus and every context entry, each at the head's gate for its
-place. The head takes the record of the highest level, the latest telling among equals, and
+whose key holds its focus, each read once. Every one of them holds the focus, so the context
+tells them apart: a record's level is the share its key holds of the question's context
+entries, each at the head's gate for its place (one for every record of a question with no
+context). The head takes the record of the highest level, the latest telling among equals, and
 holds it where its level reaches ``longterm_match``. A head whose focus no record holds, or
 whose best record falls short, holds nothing, and its focus is taken all the same, so the head
-after it reads the question's next word.
+after it reads the question's next word. In a question of one relation, a subject that lacks it
+has records that hold none of the context: its head holds nothing whatever its gates.
 
 **What is learned.** Head ``h`` holds a gate per place in the question and a gate for the
 chain,
@@ -228,8 +230,8 @@ class RecordHeads:
         if not len(slots):
             return -1, None
         gates = 1.0 / (1.0 + np.exp(-logits))
-        sought = sought.copy()  # the record the head looks for: the context and the focus
-        sought[focus] = True
+        # the record the head looks for: the context, each word at the head's gate. Every
+        # record about the focus holds the focus, so the context alone tells them apart
         cue = np.where(sought, gates, 0.0)
         whole = float(cue.sum())
         holds = np.stack([self._key_row(turn, int(s)) for s in slots]).astype(np.float64)
@@ -237,7 +239,10 @@ class RecordHeads:
             link_held = np.array([chained in self._key_of(row, int(s)) for s in slots],
                                  dtype=np.float64)
             holds = np.concatenate([holds, link_held[:, None]], axis=1)
-        levels = (holds @ cue) / whole
+        if whole > 1e-12:
+            levels = (holds @ cue) / whole
+        else:  # a question with no context: every record about the focus is what it looks for
+            levels, whole = np.ones(len(slots)), 1.0
         turn.work += float(holds.size)
         best = float(levels.max())
         pick = -1

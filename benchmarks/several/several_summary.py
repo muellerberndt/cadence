@@ -91,15 +91,83 @@ def absent(rows: list[dict[str, Any]]) -> list[str]:
     return out
 
 
+def pooled(row: dict[str, Any], names: list[str]) -> float | None:
+    """One founder's reading pooled over the groups ``names``, each by its questions."""
+    held = [row["scores"][n] for n in names if n in row["scores"]]
+    total = sum(h["questions"] for h in held)
+    return sum(h["right"] * h["questions"] for h in held) / total if total else None
+
+
+def mean(values: list[float]) -> float:
+    return sum(values) / len(values) if values else float("nan")
+
+
+def gates(rows: list[dict[str, Any]], arm: str = "heads", size: int = 100_000,
+          birth: str = "birth", need: int = 10) -> list[str]:
+    """The declared gates A1 to A6 read on ``arm`` at ``size`` records (``PROTOCOL.md``)."""
+    cell = sorted((r for r in rows if r["arm"] == arm and int(r.get("size", 0)) == size),
+                  key=lambda r: r["founder"])
+    out = ["| Gate | Reading | Bar | Founders at the bar | Range | Verdict |",
+           "| --- | --- | --- | --- | --- | --- |"]
+
+    def line(gate: str, name: str, values: list[float], bar: float) -> bool:
+        at = sum(v >= bar - 1e-9 for v in values)
+        passed = at >= min(need, len(values)) and bool(values)
+        out.append(f"| {gate} | {name} | {bar:.2f} | {at} of {len(values)} | {spread(values)} | "
+                   f"{'passes' if passed else 'fails'} |")
+        return passed
+
+    for k in (2, 4, 8):
+        line("A1", f"delivered, parts {k}", reading(cell, f"delivered parts {k}"), 0.95)
+    for k in (2, 4, 8):
+        line("A2", f"said, parts {k}", reading(cell, f"said parts {k}"), 0.90)
+    line("A3", "said, chain 2", reading(cell, "said chain 2"), 0.95)
+    line("A3", "said, chain 3", reading(cell, "said chain 3"), 0.90)
+    silent = [pooled(r, [f"silent parts {k} absent" for k in (2, 4, 8)]) for r in cell]
+    line("A4a", "silent, parts no record answers", [v for v in silent if v is not None], 0.95)
+    refused = [pooled(r, ["refused parts 1 absent", "refused chain 2 absent",
+                          "refused chain 3 absent"]) for r in cell]
+    line("A4b", "refused, questions no record answers",
+         [v for v in refused if v is not None], 0.90)
+    born = [r for r in rows if r["arm"] == birth and int(r.get("size", 0)) == size]
+    share = mean(reading(cell, "said chain 3")) - mean(reading(born, "said chain 3"))
+    out.append(f"| A4c | said, chain 3: `{arm}` less `{birth}`, means | 0.30 | | {share:+.3f} | "
+               f"{'passes' if share >= 0.30 else 'fails'} |")
+    controls = [r for r in rows if r.get("schedule") == "online"
+                and int(r.get("size", 0)) == size]
+    shared = {r["founder"] for r in controls}
+    mine = [r for r in cell if r["founder"] in shared]
+    for group in ("parts 2", "parts 4", "parts 8", "chain 2", "chain 3"):
+        best = max((mean(reading([r for r in controls if r["kind"] == kind], f"said {group}"))
+                    for kind in sorted({r["kind"] for r in controls})), default=float("nan"))
+        own = mean(reading(mine, f"said {group}"))
+        verdict = "passes" if controls and own >= best - 0.03 else "fails"
+        out.append(f"| A5 | said, {group}: `{arm}` {own:.3f}, the better online control "
+                   f"{best:.3f} | within .03 | {len(mine)} founders | | {verdict} |")
+    one = mean([r["costs"]["parts 1"]["read_ms"] for r in cell if "parts 1" in r.get("costs", {})])
+    for k in (2, 4, 8):
+        got = mean([r["costs"][f"parts {k}"]["read_ms"] for r in cell
+                    if f"parts {k}" in r.get("costs", {})])
+        out.append(f"| A6 | the read's ms, parts {k} over parts 1: {got:.3f} over {one:.3f} | "
+                   f"under {k} | | {got / one:.2f} | {'passes' if got < k * one else 'fails'} |")
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("--rows", type=Path, required=True)
     parser.add_argument("--controls", type=Path)
     parser.add_argument("--kinds", nargs="*", default=["said", "part", "delivered", "ordered"])
+    parser.add_argument("--gates", nargs="?", const="heads", default=None,
+                        help="the arm the declared gates are read on")
+    parser.add_argument("--size", type=int, default=100_000)
     args = parser.parse_args(argv)
     rows = load(args.rows)
     if args.controls is not None and args.controls.exists():
         rows += load(args.controls)
+    if args.gates:
+        print("\n".join(gates(rows, args.gates, args.size)))
+        print()
     print("\n".join(table(rows, tuple(args.kinds))))
     print()
     print("\n".join(absent(rows)))

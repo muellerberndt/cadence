@@ -75,7 +75,11 @@ def test_a_small_life_of_the_learned_heads_reads_and_scores_every_group():
     scores = row["scores"]
     for group in ("parts 1", "parts 2", "parts 4", "parts 8", "chain 2", "chain 3"):
         for kind in ("said", "part", "delivered", "ordered"):
-            assert scores[f"{kind} {group}"]["questions"] == 2
+            # two questions and one with parts absent at .3 (or a broken chain): three in all
+            held = [scores[name]["questions"] for name in (f"{kind} {group}",
+                                                           f"{kind} {group} absent")
+                    if name in scores]
+            assert sum(held) == 3
         assert row["costs"][group]["read_macs"] > 0 and row["costs"][group]["read_ms"] > 0
     # a newborn's heads take the question's subjects in the order heard: parts lie in order
     assert scores["ordered parts 8"]["right"] == 1.0 and scores["delivered parts 4"]["right"] == 1.0

@@ -25,7 +25,8 @@ the ceiling of the answer's path with the read given, and no arm of the brain's 
   ``ordered``: head j holds the record of part j (a chain: the heads hold it from its end);
 - ``silent``: of the parts no record answers, the share whose head holds nothing;
   ``refused``: of the questions no record answers, the share the brain answers ``NOTHING``;
-- seconds and multiply-accumulates of an answer, and the read's own milliseconds.
+- seconds and multiply-accumulates of an answer, and the milliseconds of the records' read at
+  the answer's moment.
 
     PYTHONPATH=src python benchmarks/several/several_chamber.py --plan plan.json --out rows.jsonl
 """
@@ -103,10 +104,12 @@ class Life:
             read = self.kept.stimulus
 
             def stimulus(drive: Any, moment: Any = None) -> np.ndarray:
+                kept = self.kept
+                reading = reads(kept)  # the moment after a turn: the heads read
                 t0 = time.perf_counter()
                 out = np.asarray(read(drive, moment))
-                self.read_seconds += time.perf_counter() - t0
-                kept = self.kept
+                if reading:
+                    self.read_seconds += time.perf_counter() - t0
                 if oracle and self.handed is not None and len(kept.since) and kept.since[0] == 0:
                     kept.read_slots[:] = -1
                     for head, columns in enumerate(kept.columns):
