@@ -214,3 +214,23 @@ def test_heard_records_grow_deeper_with_each_hearing():
     assert often is not None and once is not None
     assert often[1] > once[1]  # the word heard often is the stronger record
     assert np.corrcoef(often[0], word)[0, 1] > 0.9
+
+
+def test_the_focus_picks_among_many_things_in_view_pointed_and_moving():
+    focus = Focus()
+    things = [{"kind": k, "place": [0.4 * math.cos(k), 0.4 * math.sin(k)],
+               "state": "held"} for k in range(6)]
+    things[3]["state"] = "seen"
+    first = focus.choose(things, 0)
+    assert first is not None and first.kind == 3  # six things: one wins, the one in view
+    for m in range(1, 12):  # all at rest for a while: their usual move is near zero
+        focus.choose(things, m)
+    held = focus.current
+    assert held is not None
+    ray = np.asarray(things[5]["place"], dtype=float)
+    pointed = focus.choose(things, 12, pointed=(np.zeros(2), ray))
+    assert pointed is not None and pointed.kind == 5 and pointed.why == "pointed at"
+    moving = [dict(t) for t in things]
+    moving[1]["place"] = [moving[1]["place"][0] + 0.06, moving[1]["place"][1]]
+    drawn = focus.choose(moving, 13)
+    assert drawn is not None and drawn.kind == 1 and drawn.why == "moved"

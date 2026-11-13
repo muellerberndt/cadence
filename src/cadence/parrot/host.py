@@ -171,6 +171,10 @@ class Host:
         began = time.perf_counter()
         if meta.get("scene") is not None:
             self.scene = Scene.from_json(meta["scene"])
+        cue = meta.get("cue")
+        if isinstance(cue, dict) and cue.get("az") is not None:
+            # the visitor clicked a thing: the focus goes to it at once
+            self.parrot.point(float(cue["az"]), float(cue.get("el") or 0.0))
         cover = meta.get("cover", self.cover)
         size = HEIGHT * WIDTH * 3
         given = [arrays.get("left"), arrays.get("right")]

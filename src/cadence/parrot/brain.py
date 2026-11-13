@@ -73,7 +73,7 @@ GENES: dict[str, Any] = {
     # kinds
     "kinds_capacity": 12, "kinds_vigilance": 0.2,
     # the focus: the tectum and the isthmi
-    "focus_appear": 1.0, "focus_move": 0.8, "novelty": 0.6, "isthmi_local": 1.2,
+    "focus_appear": 1.0, "focus_move": 2.0, "novelty": 0.6, "isthmi_local": 1.2,
     "focus_habituate": 6.0, "focus_return": 30.0, "isthmi_global": 2.0, "focus_explore": 0.05,
     "focus_fixation": 5,
     # the head-bob rhythm on the neck's lean (held at zero in the control)
@@ -198,6 +198,7 @@ class Parrot:
                            inhibition=g["isthmi_global"], backend=backend)
         self.focused: Choice | None = None
         self.cue: dict[int, float] | None = None  # a heard thing's kind and weight (later)
+        self._pointed: tuple[np.ndarray, np.ndarray] | None = None  # a visitor's pointing
         self.body = Body()
         self.sightings: deque[list[Sighting]] = deque(maxlen=int(g["agreement_window"]))
         self.moments = 0
@@ -530,6 +531,16 @@ class Parrot:
             self.lessons += len(rows)
         return len(rows)
 
+    def point(self, azimuth: float, elevation: float = 0.0) -> None:
+        """The visitor points toward a direction in the head's frame (degrees, + left; the page's
+        click on a thing): at the next moment the focus goes to the thing the map holds nearest
+        that direction, and the head turns to it (joint attention)."""
+        eyes = self.body.eyes()
+        head = directions(np.array(math.radians(float(azimuth))),
+                          np.array(math.radians(float(elevation))))
+        ray = flat(np.asarray(eyes.rotation @ head))
+        self._pointed = (flat(eyes.pivot), ray)
+
     def _look(self) -> np.ndarray:
         """The head's targets: the focus (one winner among the things on the map) turns the head
         so that it lies in front of the beak, as far as the neck allows. With no focus, and at
@@ -545,8 +556,10 @@ class Parrot:
             phase = 2.0 * math.pi * self.moments / max(int(g["peer_period"]), 2)
             lean = float(g["peer_amplitude"]) * HIGH[n] * 0.5 * (1.0 + math.sin(phase))
             targets[n] = 2.0 * (lean - LOW[n]) / (HIGH[n] - LOW[n]) - 1.0
-        self.focused = self.focus.choose(self.map.things(), self.moments, self.cue)
-        if self.moments < self._next_look:
+        pointed, self._pointed = self._pointed, None
+        self.focused = self.focus.choose(self.map.things(), self.moments, self.cue,
+                                         pointed=pointed)
+        if self.moments < self._next_look and pointed is None:
             return targets
         if self.focused is not None and self.rng.random() >= float(g["focus_explore"]):
             to = self.focused.place - flat(self.body.eyes().pivot)
