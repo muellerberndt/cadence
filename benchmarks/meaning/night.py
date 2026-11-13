@@ -22,11 +22,12 @@ record of the word); the brain never sees a spelling. The English forms serve th
 demo alone.
 
 **An exchange.** The trainer's question, one word a moment (about 300 ms); in the model/rival game
-a second trainer says the answer after it; then the parrot's turn: three moments from the
-trainer's last word, in which its voice says words or nothing (an act made on the last word is
-said as the word ends). Its reply is the words it said, in order. While a trainer has more to say
-the parrot's voice is held (the born suppression of the voice while hearing, gene
-``reply_suppression``; evidence: feed-forward inhibition in the songbird's HVC while it listens).
+a second trainer says the answer after it; then the parrot's turn: three moments from the gap
+after the trainer stops, in which its voice says words or nothing (the question is then in the
+heard history and the working trace, and in the present sound no longer). Its reply is the
+words it said, in order. While a trainer has more to say the parrot's voice is held (the born
+suppression of the voice while hearing, gene ``reply_suppression``; evidence: feed-forward
+inhibition in the songbird's HVC while it listens).
 A right reply earns the trainer's praise word, heard at once, and a pistachio in the beak
 ``CATCH`` moments later.
 
@@ -546,9 +547,8 @@ def make_exchange(r: Room, q: Question, mode: str, rng: np.random.Generator) -> 
     if q.scan:  # born serial search: the focus visits each thing once, in a drawn order
         looked = [t for t in r.things if t is not q.focus]
         extra["scan"] = [looked[int(j)] for j in rng.permutation(len(looked))]
-        # the turn begins after the last heard word, as the focus starts to move
-        return Exchange(r, heard + [None], len(heard), q, extra=extra)
-    return Exchange(r, heard, len(heard) - 1, q, extra=extra)
+    # the parrot's turn opens in the gap after the trainer stops (a silent moment)
+    return Exchange(r, heard + [None], len(heard), q, extra=extra)
 
 
 def exchange(p: Parrot, rng: np.random.Generator, form: str, mode: str,
@@ -581,7 +581,7 @@ def block(p: Parrot, rng: np.random.Generator, form: str, mode: str,
 
 
 STEPS: list[tuple[str, dict[str, float], list[str]]] = [
-    ("N0", {"imitate": 1.0}, ["imitate"]),
+    ("N0", {"imitate": 0.4, "echo:dagger": 0.6}, ["imitate", "echo"]),
     ("N1", {"name:model": 0.3, "name:dagger": 0.7}, ["name"]),
     ("N2", {"colour_of:model": .15, "colour_of:dagger": .35, "by_colour:model": .15,
             "by_colour:dagger": .35}, ["colour_of", "by_colour"]),
@@ -596,15 +596,28 @@ STEPS: list[tuple[str, dict[str, float], list[str]]] = [
 ]
 
 
-def imitate_block(p: Parrot, rng: np.random.Generator, held: set[tuple[str, str]]
-                  ) -> list[Exchange]:
-    """The trainer says one word; the parrot's turn; the word said back pays."""
+def imitate_block(p: Parrot, rng: np.random.Generator, held: set[tuple[str, str]], *,
+                  gap: bool = False, dagger: bool = False) -> list[Exchange]:
+    """The trainer says one word and the word said back pays: at once (the turn on the word),
+    or with ``gap`` in the parrot's turn after the trainer stops; with ``dagger`` a miss is
+    corrected (the trainer says the word again)."""
     exs = []
     for _ in range(p.streams):
         r = room(rng, int(rng.integers(2, 5)), held)
         w = WORDS[int(rng.integers(len(WORDS)))]
-        exs.append(Exchange(r, [w], 0, Question([w], [w], "imitate")))
+        q = Question([w], [w], "echo" if gap else "imitate")
+        exs.append(Exchange(r, [w, None], 1, q, extra={"dagger": dagger}) if gap
+                   else Exchange(r, [w], 0, q))
     return exs
+
+
+def blocks_of(p: Parrot, rng: np.random.Generator, form: str, mode: str,
+              held: set[tuple[str, str]], *, test: bool = False) -> list[Exchange]:
+    if form == "imitate":
+        return imitate_block(p, rng, held)
+    if form == "echo":
+        return imitate_block(p, rng, held, gap=True, dagger=mode == "dagger")
+    return block(p, rng, form, mode, held, test=test)
 
 
 def read(p: Parrot, rng: np.random.Generator, forms: list[str], held: set[tuple[str, str]],
@@ -613,9 +626,7 @@ def read(p: Parrot, rng: np.random.Generator, forms: list[str], held: set[tuple[
     for form in forms:
         ok: list[bool] = []
         while len(ok) < n:
-            exs = (imitate_block(p, rng, held) if form == "imitate"
-                   else block(p, rng, form, "turn", held, test=form in ("colour_of",
-                                                                          "by_colour")))
+            exs = blocks_of(p, rng, form, "turn", held, test=form in ("colour_of", "by_colour"))
             ok += live(p, exs, rng, learn=False)["right"]
         out[form] = float(np.mean(ok[:n]))
     return out
@@ -692,8 +703,7 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
             else:
                 key = keys[int(rng.choice(len(keys), p=weights / weights.sum()))]
             form, mode = key.split(":") if ":" in key else (key, "turn")
-            exs = (imitate_block(p, rng, held) if form == "imitate"
-                   else block(p, rng, form, mode, held))
+            exs = blocks_of(p, rng, form, mode, held)
             got = live(p, exs, rng, pistachio=pistachio)
             if mode in ("turn", "dagger") and form not in ("bite",) and form in tests:
                 paid.append(float(np.mean(got["right"])))

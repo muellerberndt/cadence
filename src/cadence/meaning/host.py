@@ -13,7 +13,9 @@ Every moment (about 300 ms):
    the thing in focus is also seen in a place of its own (the glimpse).
 2. ``hear(word)``: the word a trainer says this moment (or None).
 3. ``moment()``: the brain settles and acts; it returns the word the voice says (None: silence
-   or held while the trainer has more to say). ``more=True`` holds the voice.
+   or held). ``more=True`` holds the voice: pass it on every moment the trainer speaks. The
+   parrot's turn is the gap after the trainer stops: three moments with no word heard (for a
+   question about the whole scene, one moment a thing, ``see(things, glimpse=thing)``).
 4. ``pistachio()``: a pistachio for the last reply: the three-factor rule, one lesson on the
    moments of the reply with the parrot's own words as the labels.
 

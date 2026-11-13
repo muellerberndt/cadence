@@ -4,8 +4,8 @@
 
 Writes ``brain.npz`` and ``spec.json``, then loads them with ``cadence.meaning.host`` and asks
 the owner's five questions in the owner's room as a page would (the thing asked about clicked,
-the words one a moment, the parrot's turn of three moments, or one a thing for a question about
-the scene), and writes the replies to ``page_check.json``.
+the words one a moment with the voice held, then the parrot's turn in the gap: three moments, or
+one a thing for a question about the scene), and writes the replies to ``page_check.json``.
 """
 
 from __future__ import annotations
@@ -33,28 +33,19 @@ def ask(m: MeaningParrot, things: list[dict[str, Any]], words: list[str], scan: 
     m.brain.reset()
     m.own = None
     m.see(things)
-    for w in words[:-1]:
+    for w in words:  # the trainer speaks; the voice is held
         m.hear(w)
         m.moment(more=True)
     said: list[str] = []
-    if scan:  # the focus visits each thing in turn, one a moment
-        m.hear(words[-1])
-        m.moment(more=True)
-        for t in things:
-            if t.get("focus"):
-                continue
+    looked = [t for t in things if not t.get("focus")] if scan else [None] * nt.TURN
+    for t in looked:  # the turn: the gap after the trainer stops (a scan: one thing a moment)
+        if t is not None:
             m.see(things, glimpse=t)
-            w = m.moment()
-            if w is not None and (not said or said[-1] != w):
-                said.append(w)
-    else:
-        m.hear(words[-1])
-        for _ in range(nt.TURN):
-            w = m.moment()
-            if w is None and said:
-                break
-            if w is not None and (not said or said[-1] != w):
-                said.append(w)
+        w = m.moment()
+        if w is None and said and not scan:
+            break
+        if w is not None and (not said or said[-1] != w):
+            said.append(w)
     m.turn_over()
     return said
 
