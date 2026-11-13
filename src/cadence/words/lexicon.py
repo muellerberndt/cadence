@@ -23,7 +23,9 @@ at, so a word's meaning is what its namings share.
   A word neuron has a threshold (``threshold``): it is active where it is heard or where a
   driven concept names it, and silent under the weak drive of concepts another word named.
 - **Saying** drives a concept's neuron and the word neurons settle; the motor chooses the most
-  active word and says its letters, one letter a part. The motor's letters are written when the
+  active word and says its letters, one letter a part. Before it says a word the brain hears
+  it: a word whose hearing settles on another concept of the groups said gives way to the next
+  most active. The motor's letters are written when the
   form enters, from the letters it was heard by.
 
 The synapses that join a word and a concept are one reciprocal pair, so the lessons of hearing
@@ -255,15 +257,39 @@ class Lexicon:
         self.work["settles"] += settles
         self.work["macs"] += settles * self.steps * int(self.connectome.synapses)
 
-    def say(self, concept: Any, floor: float = 1e-3) -> str | None:
+    def say(self, concept: Any, floor: float = 1e-3, tries: int = 3) -> str | None:
         """The word the motor says for a concept: the motor chooses the most active word neuron
         of the settle and says its letters, one a part; None where no word neuron is above
-        ``floor``."""
+        ``floor``. The brain hears a word it is about to say: a word whose hearing settles on
+        another concept than the one said (a word for a kind that named the colour of the one
+        thing it was shown on) gives way to the next most active, up to ``tries`` words."""
         active = self.words_for(concept)
         if not len(active) or active.max() <= floor:
             return None
-        letters = self.letters[int(np.argmax(active))].argmax(axis=1)
+        vector = self._vector(concept)
+        chosen = int(np.argmax(active))
+        if vector.max() > 0:
+            meant = int(np.argmax(vector))
+            # the groups the concept drives: a word is heard back among them
+            among = np.concatenate([np.arange(g.start, g.stop) for g in self.groups.values()
+                                    if vector[g].max() > 0])
+            for unit in np.argsort(-active)[: max(int(tries), 1)]:
+                if active[unit] <= floor:
+                    break
+                heard = self.hear(self.forms[int(unit)])
+                if int(among[np.argmax(heard[among])]) == meant:
+                    chosen = int(unit)
+                    break
+        letters = self.letters[chosen].argmax(axis=1)
         return "".join(LETTERS[c] for c in letters if c < len(LETTERS))
+
+    def _vector(self, concept: Any) -> np.ndarray:
+        """A concept to say as a vector over the concepts."""
+        if isinstance(concept, tuple):
+            concept = self.index(*concept)
+        if isinstance(concept, (int, np.integer)):
+            return np.asarray(np.eye(self.concepts)[int(concept)])
+        return np.asarray(concept, dtype=np.float64).reshape(self.concepts)
 
     # -- the state
 
