@@ -375,6 +375,53 @@ def _top(drive: Any, k: Any, out: Any) -> None:
             out[r, q] = kept[q] if q < n else -1
 
 
+def _top_few(keys: Any, projection: Any, sums: Any, k: Any, out: Any) -> None:
+    """``_top`` for keys of few active coordinates, with the drive made here: each key drives
+    the units by its active coordinates' weights alone (rows of ``projection``), less its mean
+    times the units' summed weights ``sums``, as the address of pairs centres a key."""
+    rows, width = keys.shape
+    wide = projection.shape[1]
+    for r in _prange(rows):
+        mean = keys[r].mean()
+        drive = np.empty(wide, dtype=projection.dtype)
+        for u in range(wide):
+            drive[u] = -mean * sums[u]
+        for c in range(width):
+            v = keys[r, c]
+            if v != 0:
+                for u in range(wide):
+                    drive[u] += v * projection[c, u]
+        best = np.empty(k, dtype=projection.dtype)
+        unit = np.empty(k, dtype=np.int64)
+        n = 0
+        least = 0
+        for u in range(wide):
+            v = drive[u]
+            if not v > 0:
+                continue
+            if n < k:
+                best[n] = v
+                unit[n] = u
+                n += 1
+                if n == k:
+                    least = 0
+                    for q in range(1, k):
+                        if best[q] < best[least] or (best[q] == best[least]
+                                                     and unit[q] > unit[least]):
+                            least = q
+            elif v > best[least]:
+                best[least] = v
+                unit[least] = u
+                least = 0
+                for q in range(1, k):
+                    if best[q] < best[least] or (best[q] == best[least]
+                                                 and unit[q] > unit[least]):
+                        least = q
+        kept = np.sort(unit[:n])
+        for q in range(k):
+            out[r, q] = kept[q] if q < n else -1
+
+
 _COUNT: Any = None
 _COUNT_ROWS: Any = None
 _SPLIT: Any = None
@@ -382,6 +429,7 @@ _FILE: Any = _file
 _FILE_RANGES: Any = None
 _UNFILE: Any = None
 _TOP: Any = None
+_TOP_FEW: Any = None
 if COMPILED:
     _COUNT = _njit(cache=True)(_count)
     _COUNT_ROWS = _njit(cache=True)(_count_rows)
@@ -390,6 +438,7 @@ if COMPILED:
     _FILE_RANGES = _njit(cache=True, parallel=True)(_file_ranges)
     _UNFILE = _njit(cache=True)(_unfile)
     _TOP = _njit(cache=True, parallel=True)(_top)
+    _TOP_FEW = _njit(cache=True, parallel=True)(_top_few)
 
 
 # -- the NumPy forms, a record at a time

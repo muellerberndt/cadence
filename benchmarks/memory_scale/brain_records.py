@@ -45,6 +45,12 @@ store without the brain (``store_cell``).
 the settings of each stream's store (``store``: ``longterm_pairs`` and the others by the names
 ``Brain.compose`` takes after ``longterm_``). Without them a plan reads as the third declaration
 read it.
+
+**At 1,000,000 records (the sixth declaration).** The store's settings may name a table that
+grows, a read that ends at its record, facts told apart by what was heard, and a directory
+(``grow``, ``sure``, ``apart``, ``path``): each founder's records lie in a folder of its own
+under ``path``. The reading reports the records' bytes, in the store's arrays and on the disk,
+and ms per asked moment beside ms per told moment.
 """
 
 from __future__ import annotations
@@ -114,6 +120,8 @@ def make_brain(world: World, founder: int, records: int, heads: int = 1,
     settings: dict[str, Any] = {} if not records else {
         "longterm": records, "longterm_heads": heads,
         **{f"longterm_{name}": value for name, value in (store or {}).items()}}
+    if settings.get("longterm_path"):  # each founder's records in a folder of its own
+        settings["longterm_path"] = str(Path(settings["longterm_path"]) / f"founder-{founder}")
     return cd.Brain.compose(
         world.inputs, PATIENTS, modules=(64,), seed=founder, backend="cpu", message=UNITS,
         message_fan_in=world.fan_in(), message_boundary=world.turn,
@@ -204,13 +212,24 @@ def read_at(brain: Any, world: World, founder: int, n: int,
         out.update(records=[s.count for s in kept.stores[:STREAMS]], counts=dict(kept.counts))
         own = np.stack([own_keys(brain, world, abouts[s]) for s in range(STREAMS)])
         out["shared_keys"] = round(float(1.0 - own.mean()), 4)  # facts whose key another has
+        first_store = kept.stores[0]
+        out["bytes_per_record"] = round(first_store.nbytes / max(first_store.count, 1), 1)
+        if kept.path is not None:
+            first_store.flush()
+            folder = Path(kept.path) / kept._folders[0]
+            out["disk_bytes_per_record"] = round(sum(
+                f.stat().st_blocks * 512 for f in folder.iterdir()) / max(first_store.count, 1),
+                1)
+    ask_seconds = 0.0
     for kind, pool in (("unrevised", plain), ("revised", revised)):
         found, stale, used, found_own = [], [], [], []
         for _ in range(questions):
             at = pool[rng.integers(len(pool), size=STREAMS)]
             rows = np.arange(STREAMS)
             about = abouts[rows, at]
+            t0 = time.perf_counter()
             said = ask(brain, world.episode(about, None))
+            ask_seconds += time.perf_counter() - t0
             used += list(said == current[rows, at])
             for s in range(STREAMS):
                 hit = was = False
@@ -232,6 +251,7 @@ def read_at(brain: Any, world: World, founder: int, n: int,
                      "stale": round(float(np.mean(stale)), 4), "questions": len(used),
                      "found_own": round(float(np.mean(found_own)), 4) if found_own else None,
                      "own": len(found_own)}
+    out["ask_ms"] = round(1e3 * ask_seconds / (8 * questions), 4)
     return out
 
 

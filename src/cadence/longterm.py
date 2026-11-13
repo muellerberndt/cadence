@@ -1237,11 +1237,17 @@ class LongTermMemory:
                 raise ValueError("keys and values are finite")
             slots = np.arange(self.count, self.count + len(rows))
             if self.coarse and self.pairs and self.grow:
-                drive = self._drive(rows)
-                if _pairs._TOP is not None and self.COMPILED:
-                    _pairs._TOP(drive, self.pairs, self.filed[slots[0] : slots[0] + len(rows)])
+                into = self.filed[slots[0] : slots[0] + len(rows)]
+                compiled = _pairs._TOP is not None and self.COMPILED
+                if compiled and 8 * np.count_nonzero(rows) <= rows.size:
+                    # keys of few active coordinates: their weights alone drive the units (the
+                    # sum's order differs from the whole product's in a drive's last bits)
+                    _pairs._TOP_FEW(np.ascontiguousarray(rows), self.projection, self._sums,
+                                    self.pairs, into)
+                elif compiled:
+                    _pairs._TOP(self._drive(rows), self.pairs, into)
                 else:
-                    self.filed[slots] = _pairs.top_units(drive, self.pairs)
+                    self.filed[slots] = _pairs.top_units(self._drive(rows), self.pairs)
             elif self.coarse and self.pairs:
                 drive = self._drive(rows)
                 top = np.argpartition(drive, -self.pairs, axis=1)[:, -self.pairs:]

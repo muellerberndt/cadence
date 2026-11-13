@@ -5,9 +5,11 @@ A cell is a founder, a number of records N and a key form. It runs in steps, eac
 its own, so that the reading can run under a memory limit the building did not have:
 
 * ``build``: the records are drawn by parts (``PART`` at a time, never all in memory) and
-  written into a ``cadence.LongTermMemory(grow=True, path=...)`` by ``fill(file=False)``; one
-  ``file()`` then files them all. The store is flushed and closed. The step reports the seconds
-  of each stage and the bytes the store holds, in its arrays and on the disk.
+  written into a ``cadence.LongTermMemory(grow=True, path=...)`` by ``fill(file=False)``. One
+  ``file()`` files the first nine tenths onto an empty table; a second files the last tenth
+  onto the table those left (``grown``), which takes its cells by splitting, as it does for a
+  write. The store is flushed and closed. The step reports the seconds of each stage and the
+  bytes the store holds, in its arrays and on the disk.
 * ``read``: the store is opened again (``LongTermMemory.open``). Cues of every kind are read
   through the address and by the scan that scores every record (by parts, over the store's own
   keys): ``found`` for both. Then the timing: ms per read by cue kind, with the page faults that
@@ -182,16 +184,24 @@ def build(cell: dict[str, Any], root: Path) -> list[dict[str, Any]]:
     t0 = time.perf_counter()
     store = LongTermMemory(width, value_width, int(cell.get("capacity", 2 * n)), seed=founder,
                            grow=True, path=str(folder), **kept)
-    drawn = filled = 0.0
-    for part in range(-(-n // PART)):
+    drawn = filled = filed = grown = 0.0
+    parts = -(-n // PART)
+    first = max(1, round((1.0 - float(cell.get("grown", 0.1))) * parts))  # parts filed at once
+    cells_first = 0
+    for part in range(parts):
         t1 = time.perf_counter()
         keys, values = draw_part(founder, n, form, width, value_width, part)
         t2 = time.perf_counter()
         store.fill(keys, values, file=False, chunk=int(cell.get("chunk", 512)))
         drawn, filled = drawn + t2 - t1, filled + time.perf_counter() - t2
+        if part + 1 == first:
+            t1 = time.perf_counter()
+            store.file()
+            filed = time.perf_counter() - t1
+            cells_first = int(store._level + store._split)
     t1 = time.perf_counter()
-    store.file()
-    filed = time.perf_counter() - t1
+    store.file()  # the rest, onto the table as it stands: its cells split in turn
+    grown = time.perf_counter() - t1
     t1 = time.perf_counter()
     store.close()
     flushed = time.perf_counter() - t1
@@ -199,8 +209,9 @@ def build(cell: dict[str, Any], root: Path) -> list[dict[str, Any]]:
         **{k: cell[k] for k in ("founder", "n", "form", "width")}, "step": "build",
         "arm": "disk", "settings": kept, "capacity": store.capacity,
         "seconds": round(time.perf_counter() - t0, 1), "draw_s": round(drawn, 1),
-        "fill_s": round(filled, 1), "file_s": round(filed, 1), "flush_s": round(flushed, 1),
-        "fill_us_per_record": round(1e6 * (filled + filed) / n, 2),
+        "fill_s": round(filled, 1), "file_s": round(filed, 1), "grow_s": round(grown, 1),
+        "cells_before_growth": cells_first, "flush_s": round(flushed, 1),
+        "fill_us_per_record": round(1e6 * (filled + filed + grown) / n, 2),
         "bytes": int(store.nbytes), "bytes_per_record": round(store.nbytes / n, 1),
         "disk_bytes": on_disk(folder), "disk_bytes_per_record": round(on_disk(folder) / n, 1),
         "cells": int(store._level + store._split), "entries": int(store.entries),

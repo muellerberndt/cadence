@@ -803,3 +803,27 @@ def test_the_growing_table_and_the_store_on_disk_are_checked_and_off_by_default(
         LongTermMemory(8, 8, 30000, path=tmp_path / "units")  # the address of units, on disk
     with pytest.raises(ValueError, match="under 2\\*\\*28"):
         LongTermMemory(8, 8, 1 << 28, pairs=8, grow=True, direct=0)
+
+
+def test_keys_of_few_active_coordinates_are_filed_by_their_weights_alone():
+    from cadence import _pairs
+
+    rng = np.random.default_rng(7)
+    keys = np.zeros((2000, 96), dtype=np.float32)
+    for row in keys:
+        row[rng.choice(96, size=int(rng.integers(5, 9)), replace=False)] = 1.0
+    values = codes(rng, 2000, 8).astype(np.float32)
+    settings = {**PAIRED, "grow": True, "expansion": 1024}
+    memory = LongTermMemory(96, 8, 8000, **settings)
+    memory.fill(keys, values)
+    for i in range(0, 2000, 20):
+        assert np.array_equal(memory.keys[memory.read(keys[i], credit=False).first()], keys[i])
+    # the units a fill files a key under are the units its own write files it under
+    drive = memory._drive(keys[:300])
+    whole = _pairs.top_units(drive, 8)
+    kept = np.take_along_axis(drive, np.maximum(whole, 0), axis=1)
+    apart = (np.sort(drive, axis=1)[:, -9] < kept.min(axis=1) - 1e-5) & (whole >= 0).all(axis=1)
+    assert apart.sum() > 250  # rows whose eighth unit is clear of the ninth
+    np.testing.assert_array_equal(memory.filed[:300][apart], whole[apart])
+    for i in np.flatnonzero(apart)[:50]:
+        np.testing.assert_array_equal(memory._row(keys[i]), memory.filed[i])
