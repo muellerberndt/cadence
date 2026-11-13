@@ -4,9 +4,10 @@ receipts.
     python benchmarks/memory_scale/summarize_scale.py --dir benchmarks/memory_scale/results
 
 Reads ``sixth-brain-million``, ``sixth-brain-sizes`` and ``sixth-window`` (the gates of
-``PROTOCOL_6.md``) and ``seventh-scale`` and ``seventh-timing`` (the gates of
-``PROTOCOL_7.md``), ``.jsonl`` or ``.jsonl.gz``, where they exist, and prints each table in
-Markdown and each gate with the founders it holds on.
+``PROTOCOL_6.md``) and ``seventh-found``, ``seventh-hundred-million`` and ``seventh-timing``
+(the gates of ``PROTOCOL_7.md``), ``.jsonl`` or ``.jsonl.gz``, where they exist, and prints each
+table in Markdown and each gate with the founders it holds on. The cell at 100,000,000 is read
+alone on its box, so it stands among the found cells and among the timing cells.
 """
 
 from __future__ import annotations
@@ -357,9 +358,10 @@ def main(argv: list[str] | None = None) -> int:
     sizes, controls = load(args.dir, "sixth-brain-sizes"), load(args.dir, "sixth-window")
     if sizes and controls:
         window(sizes, controls)
-    built = load(args.dir, "seventh-scale")
-    if built:
-        scale(built, load(args.dir, "seventh-timing"))
+    largest = load(args.dir, "seventh-hundred-million")
+    found = load(args.dir, "seventh-found") + largest
+    if found:
+        scale(found, load(args.dir, "seventh-timing") + largest)
     return 0
 
 
