@@ -16,7 +16,7 @@ much it stands out:
 The candidates settle in one layer of neurons with mutual inhibition (the library's neuron rule);
 the most active above ``floor`` is the focus, and the head turns so that the focus lies in front
 of the beak, as far as the neck allows. With no thing on the map, the head looks to a new
-direction now and then. Every weight here is a gene with this hand-set value as its control.
+direction at times. Every weight here is a gene with this hand-set value as its control.
 """
 
 from __future__ import annotations

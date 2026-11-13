@@ -247,8 +247,8 @@ class Parrot:
         return eyes.places[eye].copy(), np.asarray(eyes.rotation @ head)
 
     def lit(self, eyes: Eyes) -> Any:
-        """The table's places the eyes see now: within either eye's field (5 degrees in from
-        its edges), 5 cm to 1.5 m from the head's pivot."""
+        """The table's places the eyes see at this pose: within either eye's field (5 degrees
+        in from its edges), 5 cm to 1.5 m from the head's pivot."""
         yaw = math.radians(self.body.joint("head_yaw"))
         pivot = flat(eyes.pivot)
         edge = EYE_AXIS + EYE_FIELD - math.radians(5.0)

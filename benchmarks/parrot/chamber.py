@@ -9,7 +9,7 @@ Readings, on fresh test scenes after the life (no lessons):
 
 - **E1, seen and held**: after a look-around, the share of things the map holds within
   ``margin`` of their place; then each thing so held that the neck can put in the blind spot,
-  there for ``behind`` moments: the share still held there.
+  there for ``behind`` moments: the share held there after them.
 - **E2, the same thing from another view**: the head turned so that the thing is seen by the
   left eye alone, by the right eye alone, then in front by both: the share of things held as
   exactly one thing near their place, with no other thing near them.
