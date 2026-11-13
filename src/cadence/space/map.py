@@ -86,12 +86,20 @@ class Map:
     that thing, moved unseen; with none, it is a new thing) and ``margin`` (a place a sense wrote
     the moment before counts as seen where the camera sees a place this near it).
 
+    With ``values``, groups of what a thing is like (``{"colour": 6}``: a group's name and its
+    count of values), each value is one more unit at every cell, after the kinds' units: the
+    sheet is ``units`` plus every group's count wide (``width``). A report may name values
+    (``(kind, place, {"colour": 2})``); they are written on the report's cells with its kind's
+    weights, carried with the thing and moved with it, and ``values_at``,
+    ``where_is_value`` and ``things`` read them. Which report is which thing is read on the
+    kinds' units alone.
+
     With ``trace`` every settle begins with the sheet at rest, runs two sweeps and is kept
     by sweep in ``trajectory``: ``asked`` (``"moment"``, ``"where_is"`` or ``"what_is_at"``),
     ``sweeps`` (2) and every region's activity above rest by sweep: ``map`` and ``held``
-    ``(sweeps + 1, cells x, cells y, units)``; ``where``, ``clock`` and ``doubt``
+    ``(sweeps + 1, cells x, cells y, width)``; ``where``, ``clock`` and ``doubt``
     ``(sweeps + 1, cells x, cells y)``; ``what``, ``reference`` and ``lost`` ``(sweeps + 1,
-    units)``. Row 0 is the state the settle begins from, row 1 the sheet settled and row 2
+    width)``. Row 0 is the state the settle begins from, row 1 the sheet settled and row 2
     ``where`` and ``what`` settled on it. The moments a cell's clock counts are its potential
     (``Map.clock``), which its activity saturates over.
 
@@ -104,6 +112,7 @@ class Map:
                  weight: int = 3, codes: np.ndarray | None = None, level: float = 0.02,
                  empty: str = "near", reach: float = 0.15, step: float = 0.15,
                  stride: float = 0.5, margin: float = 0.02, seed: int = 0,
+                 values: dict[str, int] | None = None,
                  trace: bool = False, backend: Any = "cpu"):
         from ..brain import Apical
         from ..brain import Brain as Graph
@@ -134,8 +143,21 @@ class Map:
         self.settings = {"plane": list(self.plane), "cells": [nx, ny], "units": self.units,
                          "level": self.level, "empty": empty, "reach": self.reach,
                          "step": self.step, "stride": self.stride, "margin": self.margin}
+        # each group of values: its units on the sheet, after the kinds' units
+        self.values: dict[str, slice] = {}
+        for name, many in (values or {}).items():
+            if not isinstance(name, str) or isinstance(many, bool) or int(many) != many or (
+                    int(many) < 1):
+                raise ValueError("values names each group with its count of values, 1 or more")
+            start = self.units + sum(s.stop - s.start for s in self.values.values())
+            self.values[name] = slice(start, start + int(many))
+        if self.values:
+            self.settings["values"] = {k: s.stop - s.start for k, s in self.values.items()}
+        self._valued = np.arange(self.units, self.units + sum(
+            s.stop - s.start for s in self.values.values()), dtype=np.intp)
+        self.width = self.units + len(self._valued)  # the sheet's units a cell
         self.count = count = nx * ny
-        d = self.units
+        d = self.width
         self._low = np.array([x_low, y_low])
         self.size = np.array([(x_high - x_low) / nx, (y_high - y_low) / ny])  # a cell, in metres
         xs = x_low + (np.arange(nx) + 0.5) * self.size[0]
@@ -184,12 +206,12 @@ class Map:
 
     def reset(self) -> None:
         """Empty the carried activity: the map then holds no thing."""
-        self.potential = np.zeros((self.count, self.units))  # the sheet's carried potentials
+        self.potential = np.zeros((self.count, self.width))  # the sheet's carried potentials
         self.clock = np.zeros(self.count)  # the moments since a sense wrote each cell
-        self.lost = np.zeros(self.units)  # the code units of things known with no place
+        self.lost = np.zeros(self.width)  # the code units of things known with no place
         self.doubt = np.zeros(self.count)  # one where a cell holds a thing not seen to be there
         self._sensed: list[tuple[int, str]] = []
-        self.reading = np.zeros(self.count + self.units)  # ``where`` and ``what``, settled
+        self.reading = np.zeros(self.count + self.width)  # ``where`` and ``what``, settled
         # what the camera saw around each report of the moment before
         self._views: list[tuple[np.ndarray, np.ndarray]] = []
 
@@ -293,7 +315,7 @@ class Map:
     def observation(self) -> np.ndarray:
         """What a brain that holds the map reads of it: the activity of ``where`` (one value a
         cell) and of ``what`` (one a code unit) as the latest moment settled them, side by
-        side, ``(cells + units,)``."""
+        side, ``(cells + width,)``."""
         return self.reading.copy()
 
     # -- places as weights on cells
@@ -353,8 +375,10 @@ class Map:
 
     def kind_of(self, code: np.ndarray) -> int | None:
         """The kind whose code a pattern over the units matches best, or None for no
-        activity."""
-        held = np.maximum(np.asarray(code, dtype=np.float64).reshape(self.units), 0.0)
+        activity. A pattern over the sheet's ``width`` is read on the kinds' units."""
+        held = np.asarray(code, dtype=np.float64).ravel()
+        held = np.maximum((held[: self.units] if len(held) == self.width else held).reshape(
+            self.units), 0.0)
         if not held.max() > 0:
             return None
         held = held / held.max()
@@ -398,7 +422,7 @@ class Map:
                 alive = carried if write is None else carried | (write != 0)
                 mask[0, run["map"]] = alive.ravel()
         if kept is not None:
-            mask[0, run["map"]] *= np.repeat(kept, self.units)
+            mask[0, run["map"]] *= np.repeat(kept, self.width)
         drive[0, run["clock"]] = self.clock if clock is None else clock
         drive[0, run["lost"]] = self.lost
         drive[0, run["doubt"]] = self.doubt if doubt is None else doubt
@@ -425,8 +449,8 @@ class Map:
             nx, ny = self.cells
             self.trajectory = {
                 "asked": asked, "sweeps": sweeps,
-                "map": rows[:, run["map"]].reshape(sweeps + 1, nx, ny, self.units),
-                "held": rows[:, run["held"]].reshape(sweeps + 1, nx, ny, self.units),
+                "map": rows[:, run["map"]].reshape(sweeps + 1, nx, ny, self.width),
+                "held": rows[:, run["held"]].reshape(sweeps + 1, nx, ny, self.width),
                 "where": rows[:, run["where"]].reshape(sweeps + 1, nx, ny),
                 "what": rows[:, run["what"]].copy(),
                 "reference": rows[:, run["reference"]].copy(),
@@ -457,9 +481,11 @@ class Map:
         kind that lie on cells of doubt are cleared as well: a thing of the kind is found. A
         cell in sight loses what it carried. A piece seen empty with no report of its kind is
         treated as ``empty`` says."""
+        told = [(sense, report) for sense, given in (("seen", seen), ("heard", heard),
+                                                      ("felt", felt)) for report in given]
         reports = [(int(kind), np.asarray(place, dtype=np.float64).reshape(2), sense)
-                   for sense, given in (("seen", seen), ("heard", heard), ("felt", felt))
-                   for kind, place in given]
+                   for sense, (kind, place, *_) in told]
+        said = [self._said(report) for _, report in told]  # the values each report names
         sight = np.zeros(self.count, dtype=bool)
         if callable(lit):
             sight = np.asarray(lit(self.centers), dtype=bool).reshape(self.count)
@@ -469,14 +495,14 @@ class Map:
         before = self.potential.copy()  # the map as the moment before left it
         sensed = self.clock < 0.5  # the cells a sense wrote the moment before
         activity = self._activity()
-        carried = np.ones((self.count, self.units), dtype=bool)
-        write = np.zeros((self.count, self.units))
+        carried = np.ones((self.count, self.width), dtype=bool)
+        write = np.zeros((self.count, self.width))
         clock = self.clock.copy()
         fresh = np.zeros(self.count, dtype=bool)
         doubt = self.doubt.copy()
         lost = self.lost.copy()
-        claimed = np.zeros((self.count, self.units), dtype=bool)
-        for kind, place, _ in reports:
+        claimed = np.zeros((self.count, self.width), dtype=bool)
+        for (kind, place, _), named in zip(reports, said, strict=True):
             units = np.flatnonzero(self.codes[kind])
             apart = np.linalg.norm(self.centers - place, axis=1)
             pieces = self._pieces(np.asarray(self._of_kind(kind, activity) > self._floor))
@@ -495,6 +521,8 @@ class Map:
             cells = weights > 0
             claimed[np.ix_(np.flatnonzero(cells), units)] = True  # the report takes its cells
             write[:, units] += (self.level * weights / np.linalg.norm(weights))[:, None]
+            if self.values:  # its values, named or carried from the thing it takes
+                self._write_values(kind, near, weights, named, activity, claimed, write)
             fresh |= cells
             lost[units] = 0.0  # a thing of the kind with no place is found
         carried &= ~claimed
@@ -516,6 +544,7 @@ class Map:
                     seen_here = piece[sight[piece]]
                     if len(seen_here):
                         carried[np.ix_(seen_here, units)] = False
+                        self._lift(kind, seen_here, activity, carried)
                         empty[seen_here] = True
                         if len(seen_here) == len(piece) and not (
                                 own[~sight] > self._floor).any():
@@ -532,6 +561,7 @@ class Map:
                 if not seen_empty:
                     continue  # the thing stays where the map held it
                 carried[np.ix_(piece, units)] = False
+                moved = self._lift(kind, piece, activity, carried)  # its values go with it
                 empty[piece] = True
                 if self.empty == "near":
                     apart = np.linalg.norm(self.centers - at, axis=1)
@@ -540,6 +570,7 @@ class Map:
                     if wide.any():  # onto the cells out of sight around where it was held
                         length = float(np.linalg.norm(before[piece][:, units].max(axis=1)))
                         write[:, units] += (length * wide / np.linalg.norm(wide))[:, None]
+                        write[:, moved] += (length * wide / np.linalg.norm(wide))[:, None]
                         clock = np.where(wide > 0, float(self.clock[piece].max()), clock)
                         doubt = np.where(wide > 0, 1.0, doubt)
                         continue
@@ -550,7 +581,7 @@ class Map:
         v = self._settle(write=write if write.any() else None, carried=carried, clock=clock,
                          fresh=fresh, doubt=doubt, sure=sure)
         run = self._runs
-        self.potential = v[run["map"]].reshape(self.count, self.units).copy()
+        self.potential = v[run["map"]].reshape(self.count, self.width).copy()
         self.clock = v[run["clock"]].copy()
         self.lost = v[run["lost"]].copy()
         self.doubt = v[run["doubt"]].copy()
@@ -560,6 +591,71 @@ class Map:
         # what the camera saw around each report, for the next moment's judgment
         self._views = [(place, looks(place, self.margin)) for _, place, _ in reports]
         self.work["moments"] += 1
+
+    # -- values carried with a thing (``values``)
+
+    def _said(self, report: Any) -> dict[str, int]:
+        """The values a report names: ``{group: value}`` from its third part, or none."""
+        if len(report) < 3:
+            return {}
+        if not self.values:
+            raise ValueError("a report is a kind and a place; values take a map with values=")
+        named = dict(report[2] or {})
+        for group, value in named.items():
+            if group not in self.values or not (
+                    0 <= int(value) < self.values[group].stop - self.values[group].start):
+                raise ValueError(f"no value {value!r} of a group {group!r} on this map")
+        return {group: int(value) for group, value in named.items()}
+
+    def _values_of(self, cells: np.ndarray, activity: np.ndarray) -> np.ndarray:
+        """The value units ``cells`` hold: in each group, the unit of most activity over them,
+        where it is above the floor."""
+        out = []
+        for units in self.values.values():
+            summed = activity[np.asarray(cells, dtype=np.intp)][:, units].sum(axis=0)
+            if len(summed) and summed.max() > self._floor:
+                out.append(units.start + int(np.argmax(summed)))
+        return np.asarray(out, dtype=np.intp)
+
+    def _write_values(self, kind: int, near: list[np.ndarray], weights: np.ndarray,
+                      named: dict[str, int], activity: np.ndarray, claimed: np.ndarray,
+                      write: np.ndarray) -> None:
+        """A report's values on its cells, at its kind's weights: those it names, and for a
+        group it names none, the value the pieces it takes held. The value units of its cells
+        and of those pieces (where no other kind is) are claimed: the value replaces theirs."""
+        units = np.flatnonzero(self.codes[kind])
+        taken = [np.union1d(piece, around[(activity[around][:, units] > 0).any(axis=1)])
+                 for piece in near for around in [self._around(piece)]]
+        cells = np.flatnonzero(weights > 0)
+        held = np.setdiff1d(np.concatenate([cells, *taken]),
+                            self._other_kinds(kind, activity)).astype(np.intp)
+        carried = self._values_of(np.concatenate(taken), activity) if taken else (
+            np.zeros(0, dtype=np.intp))
+        on = [self.values[group].start + value for group, value in named.items()]
+        on += [int(u) for u in carried if not any(
+            self.values[group].start <= u < self.values[group].stop for group in named)]
+        claimed[np.ix_(np.union1d(held, cells), self._valued)] = True
+        if on:
+            write[:, on] += (self.level * weights / np.linalg.norm(weights))[:, None]
+
+    def _lift(self, kind: int, cells: np.ndarray, activity: np.ndarray,
+              carried: np.ndarray) -> np.ndarray:
+        """A thing's values leave ``cells`` with it (where no other kind is): the value units
+        it held there, which go wherever its kind's units go."""
+        if not self.values:
+            return self._valued
+        moved = self._values_of(cells, activity)
+        off = np.setdiff1d(cells, self._other_kinds(kind, activity)).astype(np.intp)
+        carried[np.ix_(off, self._valued)] = False
+        return moved
+
+    def _cue(self, code: np.ndarray) -> np.ndarray:
+        """A code over the kinds' units as a drive on every pool's reference."""
+        if not self.values:
+            return code
+        out = np.zeros(self.width)
+        out[: len(code)] = code
+        return out
 
     def _looks(self, lit: Any, sight: np.ndarray) -> Any:
         """What the camera sees of a place: whether it sees the place, or with a distance which
@@ -595,7 +691,7 @@ class Map:
 
     def _present(self, activity: np.ndarray) -> list[int]:
         """The kinds whose every code unit holds activity somewhere."""
-        held = np.asarray((activity > self._floor).any(axis=0))
+        held = np.asarray((activity > self._floor).any(axis=0))[: self.units]
         return [kind for kind in range(len(self.codes)) if held[self.codes[kind] > 0].all()]
 
     # -- questions, answered by settling
@@ -607,27 +703,62 @@ class Map:
         where every one of them is active, and the least of them is read there. Each connected
         piece is one place, the mean of its activity."""
         code = self.codes[int(kind)]
-        v = self._settle(cue=code, asked="where_is")
+        v = self._settle(cue=self._cue(code), asked="where_is")
         self.work["questions"] += 1
         if code.sum() == 1:
             found = np.maximum(np.tanh(v[self._runs["where"]] / 2.0), 0.0)
         else:
-            settled = v[self._runs["map"]].reshape(self.count, self.units)
+            settled = v[self._runs["map"]].reshape(self.count, self.width)
             found = self._of_kind(int(kind), np.maximum(np.tanh(settled / 2.0), 0.0))
         return np.array([(found[p] @ self.centers[p]) / found[p].sum()
                          for p in self._pieces(found > self._floor)]).reshape(-1, 2)
 
-    def what_is_at(self, place: np.ndarray, within: float | None = None) -> int | None:
+    def what_is_at(self, place: np.ndarray | None, within: float | None = None, *,
+                   cells: np.ndarray | None = None) -> int | None:
         """What is at a place: the settle keeps the sheet's cells ``within`` metres of it (a
-        cell and a half unless given) and holds the others at zero, ``what`` settles on the
-        code there, and the kind whose code it matches is the answer; None where those cells
-        hold no thing."""
-        reach = 1.5 * float(self.size.max()) if within is None else float(within)
-        near = np.linalg.norm(self.centers - np.asarray(place, dtype=np.float64), axis=1) <= reach
+        cell and a half unless given), or the cells ``cells`` flags, and holds the others at
+        zero, ``what`` settles on the code there, and the kind whose code it matches is the
+        answer; None where those cells hold no thing."""
+        code = self._what(place, within, cells)
+        kinds = code[: self.units]
+        return self.kind_of(kinds) if kinds.max() > self._floor else None
+
+    def _what(self, place: np.ndarray | None, within: float | None,
+              cells: np.ndarray | None) -> np.ndarray:
+        """``what`` settled on the cells a question keeps, ``(width,)``."""
+        if cells is not None:
+            near = np.asarray(cells, dtype=bool).reshape(self.count)
+        else:
+            reach = 1.5 * float(self.size.max()) if within is None else float(within)
+            near = np.linalg.norm(self.centers - np.asarray(place, dtype=np.float64),
+                                  axis=1) <= reach
         v = self._settle(kept=near, asked="what_is_at")
         self.work["questions"] += 1
-        code = np.maximum(np.tanh(v[self._runs["what"]] / 2.0), 0.0)
-        return self.kind_of(code) if code.max() > self._floor else None
+        return np.asarray(np.maximum(np.tanh(v[self._runs["what"]] / 2.0), 0.0))
+
+    def values_at(self, place: np.ndarray | None, within: float | None = None, *,
+                  cells: np.ndarray | None = None) -> dict[str, int | None]:
+        """What the thing at a place is like, ``{group: value}``: the settle of
+        ``what_is_at``, ``what`` read on each group's units; None for a group whose units
+        hold nothing there."""
+        code = self._what(place, within, cells)
+        return {group: (int(np.argmax(code[units])) if code[units].max() > self._floor
+                        else None) for group, units in self.values.items()}
+
+    def where_is_value(self, group: str, value: int) -> np.ndarray:
+        """Where the things with a value are, ``(things, 2)`` (``"what is red?"``): the value's
+        unit drives its pool's reference, the sheet settles on that unit alone and ``where``
+        holds its places, each connected piece one place."""
+        units = self.values[group]
+        if not 0 <= int(value) < units.stop - units.start:
+            raise ValueError(f"no value {value!r} of a group {group!r} on this map")
+        cue = np.zeros(self.width)
+        cue[units.start + int(value)] = 1.0
+        v = self._settle(cue=cue, asked="where_is")
+        self.work["questions"] += 1
+        found = np.maximum(np.tanh(v[self._runs["where"]] / 2.0), 0.0)
+        return np.array([(found[p] @ self.centers[p]) / found[p].sum()
+                         for p in self._pieces(found > self._floor)]).reshape(-1, 2)
 
     # -- the inventory, read off the map
 
@@ -637,8 +768,9 @@ class Map:
         (the cells by connected piece), ``since`` (the moments since a sense wrote it) and
         ``state``: ``"seen"``, ``"heard"`` or ``"felt"`` at the moment a sense wrote it,
         ``"held"`` at its last known place, ``"near"`` on the cells out of sight around where it
-        was seen to be missing. A thing in doubt that lies in several pieces, sensed last at one
-        moment, is one entry with every piece. A kind known with no place is listed with
+        was seen to be missing; with ``values``, ``values`` (``{group: value}``, None for a
+        group its cells hold none of). A thing in doubt that lies in several pieces, sensed
+        last at one moment, is one entry with every piece. A kind known with no place is listed with
         ``place`` None and ``"not known where"``."""
         activity = self._activity()
         out: list[dict[str, Any]] = []
@@ -661,11 +793,17 @@ class Map:
                     entry = {"kind": kind, "place": (own[held] @ self.centers[held])
                              / own[held].sum(), "cells": held, "pieces": group, "since": since,
                              "state": state}
+                    if self.values:  # what it is like, read on its cells
+                        found = self._values_of(held, activity)
+                        entry["values"] = {name: next((int(u) - units.start for u in found
+                                                       if units.start <= u < units.stop), None)
+                                           for name, units in self.values.items()}
                     out.append(entry)
             if self.lost[np.flatnonzero(self.codes[kind])].min() > 0.5 and not (
                     own > self._floor).any():
                 out.append({"kind": kind, "place": None, "cells": np.zeros(0, dtype=np.intp),
-                            "pieces": [], "since": None, "state": "not known where"})
+                            "pieces": [], "since": None, "state": "not known where",
+                            **({"values": dict.fromkeys(self.values)} if self.values else {})})
         return out
 
     def area(self, kind: int, rate: float = 0.9) -> np.ndarray:
