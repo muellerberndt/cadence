@@ -353,10 +353,21 @@ def said_label(row: gr.Row, j: int, design: Design) -> tuple[int, int, int]:
     return (*mn.word_parts(row.target[j]), OP[role])
 
 
+_READ_RATES = ("address", "position_rate", "slope")  # what steps the recall read's address
+
+
 def _lesson(brain: Any, x: np.ndarray, labels: np.ndarray, work: dict[str, float],
-            said: bool) -> bool:
-    """One lesson; whether it was given (a refused one names no role for the store)."""
+            said: bool, quiet: bool = False) -> bool:
+    """One lesson; whether it was given (a refused one names no role for the store). With
+    ``quiet`` the recall read's address and position terms take no step (their rates held at
+    zero for the lesson): an echo teaches the word and its role, and the moment it names is
+    not yet in the slots, so the read's lesson there would step toward another moment."""
+    recall = brain.recall if quiet else None
+    rates = {name: getattr(recall, name) for name in _READ_RATES} if recall is not None else {}
     try:
+        if recall is not None:
+            for name in _READ_RATES:
+                setattr(recall, name, 0.0)
         report = brain.lesson(x, labels)
         work["lessons"] += 1
         work["lesson_row_sweeps"] += report.get("total_row_sweeps", 0.0)
@@ -367,6 +378,9 @@ def _lesson(brain: Any, x: np.ndarray, labels: np.ndarray, work: dict[str, float
     except RuntimeError:
         work["refused"] += 1
         return False
+    finally:
+        for name, rate in rates.items():
+            setattr(recall, name, rate)
     return True
 
 
@@ -389,7 +403,7 @@ def _act(brain: Any, x: np.ndarray, work: dict[str, float]) -> tuple[np.ndarray,
 def speak(brain: Any, rows: list[gr.Row], store: Store | None, design: Design, *,
           teach: bool = False, bar: bool = True, forced: bool = False,
           work: dict[str, float] | None = None, cap: int = 4, watch: Any = None,
-          echo: bool = True, listen: bool = False) -> list[list[int]]:
+          echo: bool = True, listen: bool = False, quiet: bool = False) -> list[list[int]]:
     """One batch on fresh streams. Every heard moment is acted on and the store follows the
     role; from ``GO`` each moment hears the previous word and the brain says the next. With
     ``teach`` a lesson comes before every act (at a heard moment the echo, where
@@ -399,7 +413,8 @@ def speak(brain: Any, rows: list[gr.Row], store: Store | None, design: Design, *
     brain's ``message``). ``watch(when, index, words, roles, labels)`` is called after each act
     (``when`` is ``"heard"`` or ``"said"``; ``labels`` None where no lesson names the moment),
     and ``watch("held", -1, None, None, None)`` once the last heard moment is acted on; with
-    ``listen`` the batch ends there."""
+    ``listen`` the batch ends there. With ``quiet`` an echo leaves the recall read's address as
+    it is (``_lesson``)."""
     work = work if work is not None else gr.new_work()
     n = len(rows)
     if len({len(r.pre) for r in rows}) != 1:
@@ -433,7 +448,7 @@ def speak(brain: Any, rows: list[gr.Row], store: Store | None, design: Design, *
         labels = None if any(v is None for v in named) else np.array(named, dtype=np.int64)
         taught = teach and echo and labels is not None
         if taught and labels is not None:
-            taught = _lesson(brain, x, labels, work, said=False)
+            taught = _lesson(brain, x, labels, work, said=False, quiet=quiet)
         given = labels is not None and (teach or forced)
         if given and not taught and labels is not None:
             give(labels)
@@ -660,7 +675,8 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     """One life (``"kind": "store"``): ``founder``, ``batches`` of the say-back mix
     (``meaning.sayback_batch``) or with ``"train": "all"`` of the full mix (``full_batch``, the
     full inventory and its panels), ``module``, ``depth``, ``settings`` over ``make_brain``'s,
-    ``echo`` (lessons at the heard moments, on unless false), ``panel_batches``,
+    ``echo`` (lessons at the heard moments, on unless false), ``quiet`` (an echo leaves the
+    recall read's address as it is), ``panel_batches``,
     ``emulated`` (the instrument's own store in place of the library's), ``held_probes``
     (batches per shape), ``checkpoints`` (batch counts at which the lean
     panels are read, appended to the file ``progress`` names), ``tag``."""
@@ -671,6 +687,7 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     batches = int(spec.get("batches", mn.BATCHES))
     module = int(spec.get("module", 256))
     echo = bool(spec.get("echo", True))
+    quiet = bool(spec.get("quiet", False))
     started = time.monotonic()
     depth = int(spec.get("depth", DEPTH))
     emulated = bool(spec.get("emulated", False))
@@ -692,14 +709,15 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
         "module": module, "depth": depth, "emulated": emulated, "train": train, "full": full,
         "design": design.name,
         "settings": spec.get("settings", {}),
-        "echo": echo, "parameters": int(brain.parameters()), "cadence": cd.__version__,
+        "echo": echo, "quiet": quiet, "parameters": int(brain.parameters()),
+        "cadence": cd.__version__,
         "curve": [],
     }
     work = gr.new_work()
     checks = set(int(c) for c in spec.get("checkpoints", ()))
     for b in range(1, batches + 1):
         speak(brain, lesson_batch(train, rng, split), store, design, teach=True, work=work,
-              echo=echo)
+              echo=echo, quiet=quiet)
         if b in checks:
             lean = panels(brain, store, design, {k: v[:2] for k, v in tests.items()},
                           LEAN + (LEAN_MORE if train == "all" else ()))

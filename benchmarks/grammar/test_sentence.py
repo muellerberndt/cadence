@@ -140,3 +140,22 @@ def test_a_life_reads_its_gates_beside_its_controls():
     assert any("less lstm with roles" in line for line in lines)
     plan = st.second_plan((0, 1))
     assert len(plan["second"]) == 2 and len(plan["second_controls"]) == 2 * 2 * 3
+
+
+def test_a_quiet_echo_leaves_the_reads_address_as_it_is():
+    warnings.simplefilter("ignore")
+    design = st.DESIGNS["alone"]
+    brain = st.make_brain(0, {"learning_surprise": False}, 32, st.DEPTH, True, design)
+    recall = brain.recall
+    rates = {name: getattr(recall, name) for name in st._READ_RATES}
+    row = gr.clause(np.random.default_rng(0), 1)
+    x = row.pre[0][None, :]
+    labels = np.array([st.heard_label(row, 0, design)])
+    brain.act(x, greedy=True)
+    before = [np.array(a, copy=True) for a in recall.head_map(0)]
+    work = gr.new_work()
+    assert st._lesson(brain, x, labels, work, said=False, quiet=True)
+    assert all(np.array_equal(a, b) for a, b in zip(before, recall.head_map(0), strict=True))
+    assert {name: getattr(recall, name) for name in st._READ_RATES} == rates
+    assert st._lesson(brain, x, labels, work, said=False)
+    assert any(not np.array_equal(a, b) for a, b in zip(before, recall.head_map(0), strict=True))
