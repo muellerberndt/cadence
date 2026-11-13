@@ -30,7 +30,9 @@ are what they were (contract tests), and a brain saves in the format it had.
   before the turn and gives it to the store as the fact's source (`LongTermMemory(apart=)`, the
   fourth declaration's C2). A write whose key a record holds revises that record only where the
   heard moments agree; a read takes, among the records that hold its key, the one whose heard
-  moments it shares.
+  moments it shares. The heard moments are told exactly, so the stores compare a source's whole
+  signature (`LongTermMemory(same=8)`, all 8 of its units), and a read or a write that carries a
+  source ends early (`sure`) only at a record that holds its signature.
 
 A brain whose records grow, lie in files or are told apart saves as `cadence-brain/5`, which
 0.99.0 and earlier refuse by name.
@@ -87,7 +89,9 @@ and questions.
   the width whose parameters are nearest the brain's. A told fact is one token; the facts and
   then the revisions enter the window in told order, each token attending to all before it; a
   question is one token read against the keys and values kept. Taught by backpropagation on
-  windows of 16 to 256 facts over the nursery's pairs to a budget of 45 minutes on two threads.
+  windows of 16 to 256 facts over the nursery's pairs for 3,600 steps on two threads (about 45
+  minutes on a box of its own; a count of steps, so the box's load does not change what it
+  learns).
   It is read at every size to 100,000 facts (110,000 tokens).
 - **The index** (arm `retrieval`): every told fact listed under its act and its agent; a
   question fetches the 8 facts that hold both of its words, then its agent's, the latest first,
@@ -125,8 +129,9 @@ declaration.
 | the brain at three sizes | `brain-sizes.json` | 3240 to 3251 | 1,000, 10,000, 100,000 |
 | the window and the index | `window.json` | 3240 to 3251 | 1,000, 10,000, 100,000 |
 
-One on-demand r7i.8xlarge (16 cores, 256 GB) in us-east-2, one thread per brain; the records on
-a gp3 volume.
+One on-demand r7i.8xlarge (32 threads, 256 GB) in us-east-2, the records on its gp3 volume:
+two threads a brain for the million, one a brain for the three sizes, two a window. The seventh
+declaration's cells share the box; every time here is reported, never gated.
 
 ## Expectations, stated before the runs
 

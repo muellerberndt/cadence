@@ -339,6 +339,15 @@ def _unfile(row: Any, slot: Any, flat: Any, depth: Any, expansion: Any, bits: An
     return removed
 
 
+def _weakest(best: Any, unit: Any, k: Any) -> int:
+    """The place of the weakest of ``k`` kept units (the higher unit among equal drives)."""
+    least = 0
+    for q in range(1, k):
+        if best[q] < best[least] or (best[q] == best[least] and unit[q] > unit[least]):
+            least = q
+    return least
+
+
 def _top(drive: Any, mean: Any, sums: Any, k: Any, out: Any) -> None:
     """Each row's ``k`` most driven units, those driven above zero, in ascending order of
     unit and then -1: ``out[r]`` for ``drive[r]`` less ``mean[r] * sums`` (a key's projection
@@ -351,28 +360,25 @@ def _top(drive: Any, mean: Any, sums: Any, k: Any, out: Any) -> None:
         n = 0
         least = 0  # the place of the weakest kept unit once k are kept (the higher among equals)
         centre = mean[r]
-        for u in range(wide):
+        u = 0
+        while u < wide and n < k:  # the first k units driven above zero
             v = drive[r, u] - centre * sums[u]
-            if not v > 0:
-                continue
-            if n < k:
+            if v > 0:
                 best[n] = v
                 unit[n] = u
                 n += 1
-                if n == k:
-                    least = 0
-                    for q in range(1, k):
-                        if best[q] < best[least] or (best[q] == best[least]
-                                                     and unit[q] > unit[least]):
-                            least = q
-            elif v > best[least]:
+            u += 1
+        if n == k:
+            least = _WEAKEST(best, unit, k)
+        floor = best[least]  # once k are kept every unit kept is driven above zero, so a unit
+        while u < wide:      # that passes the weakest passes zero: one test a unit
+            v = drive[r, u] - centre * sums[u]
+            if v > floor:
                 best[least] = v
                 unit[least] = u
-                least = 0
-                for q in range(1, k):
-                    if best[q] < best[least] or (best[q] == best[least]
-                                                 and unit[q] > unit[least]):
-                        least = q
+                least = _WEAKEST(best, unit, k)
+                floor = best[least]
+            u += 1
         kept = np.sort(unit[:n])
         for q in range(k):
             out[r, q] = kept[q] if q < n else -1
@@ -398,28 +404,25 @@ def _top_few(keys: Any, projection: Any, sums: Any, k: Any, out: Any) -> None:
         unit = np.empty(k, dtype=np.int64)
         n = 0
         least = 0
-        for u in range(wide):
+        u = 0
+        while u < wide and n < k:
             v = drive[u]
-            if not v > 0:
-                continue
-            if n < k:
+            if v > 0:
                 best[n] = v
                 unit[n] = u
                 n += 1
-                if n == k:
-                    least = 0
-                    for q in range(1, k):
-                        if best[q] < best[least] or (best[q] == best[least]
-                                                     and unit[q] > unit[least]):
-                            least = q
-            elif v > best[least]:
+            u += 1
+        if n == k:
+            least = _WEAKEST(best, unit, k)
+        floor = best[least]
+        while u < wide:
+            v = drive[u]
+            if v > floor:
                 best[least] = v
                 unit[least] = u
-                least = 0
-                for q in range(1, k):
-                    if best[q] < best[least] or (best[q] == best[least]
-                                                 and unit[q] > unit[least]):
-                        least = q
+                least = _WEAKEST(best, unit, k)
+                floor = best[least]
+            u += 1
         kept = np.sort(unit[:n])
         for q in range(k):
             out[r, q] = kept[q] if q < n else -1
@@ -441,7 +444,9 @@ _FILE_RANGES: Any = None
 _UNFILE: Any = None
 _TOP: Any = None
 _TOP_FEW: Any = None
+_WEAKEST: Any = _weakest
 if COMPILED:
+    _WEAKEST = _njit(cache=True)(_weakest)
     _COUNT = _njit(cache=True)(_count)
     _COUNT_ROWS = _njit(cache=True)(_count_rows)
     _SPLIT = _njit(cache=True)(_split)

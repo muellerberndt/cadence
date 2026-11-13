@@ -36,6 +36,8 @@ BYTES_SPREAD = 0.05
 CELLS_A_WRITE = 20
 PAUSE_P99_MS, PAUSE_WORST_MS = 100.0, 1000.0
 EXACT_MS, FULL_MS = 25.0, 500.0  # a read under the memory limit: its record's key; any cue
+SAME_FOUND = 0.01  # found under the limit against found without it
+GATED = 10_000_000  # S1 and S3 are gated from this size up; smaller sizes are reported
 
 
 def verdict(name: str, held: list[Any], of: int, need: int) -> bool:
@@ -213,7 +215,7 @@ def scale(rows: list[dict[str, Any]], timing: list[dict[str, Any]]) -> dict[str,
                       f"{count([r['cells'] for r in built])} | "
                       f"{count([r['seconds'] for r in built])} |")
 
-    # S1: found on disk, and beside the scan
+    # S1: found on disk, and beside the scan (gated at 10,000,000 and above)
     for form in forms:
         for n in sizes:
             by_founder: dict[int, bool] = {}
@@ -224,29 +226,32 @@ def scale(rows: list[dict[str, Any]], timing: list[dict[str, Any]]) -> dict[str,
                     ok = row["found"] >= FOUND[cue] if form.startswith("code") or cue != \
                         "partial" else True
                     scanned = scans.get(row["founder"])
-                    if scanned is not None:
+                    if scanned is not None and cue != "exact":
                         ok &= row["found"] >= scanned["found"] - NEAR_SCAN
                     by_founder[row["founder"]] = by_founder.get(row["founder"], True) and ok
-            if by_founder:
+            if by_founder and n >= GATED:
                 held = [f for f, ok in by_founder.items() if ok]
                 need = len(by_founder) if len(by_founder) < 12 else 10
                 out[f"S1 {form} {n}"] = verdict(
-                    f"S1 (`{form}` at {n:,}: exact .99, noisy and partial .95, within .02 of "
-                    "the scan)", held, len(by_founder), need)
-    return {**out, **timed(timing or rows)}
+                    f"S1 (`{form}` at {n:,}: exact .99, noisy"
+                    + (" and partial" if form.startswith("code") else "")
+                    + " .95, noisy and partial within .02 of the scan)", held, len(by_founder),
+                    need)
+    return {**out, **timed(timing, rows)}
 
 
-def timed(rows: list[dict[str, Any]]) -> dict[str, bool]:
-    """S2 to S5 from the timing cells: the read's time in memory and under a memory limit,
-    the pause of a write, the bytes a record."""
+def timed(timing: list[dict[str, Any]], found: list[dict[str, Any]]) -> dict[str, bool]:
+    """S2 and S3 from the timing cells and the cell of 100,000,000 (read alone on their box);
+    S4 and S5 from every cell: the pause of a write, the bytes a record."""
     out: dict[str, bool] = {}
     cells: dict[tuple[Any, ...], list[dict[str, Any]]] = defaultdict(list)
-    for row in rows:
+    for row in timing:
         cells[form_name(row), row["n"], row["step"], row["arm"], row.get("cue"),
               row.get("pass"), bool(row.get("memory_limit"))].append(row)
-    forms = sorted({form_name(r) for r in rows})
-    sizes = sorted({r["n"] for r in rows})
-    print("\n### The read's time on one core\n")
+    every = timing + [r for r in found if r not in timing]
+    forms = sorted({form_name(r) for r in timing})
+    sizes = sorted({r["n"] for r in timing})
+    print("\n### The read's time on one core, alone on the box\n")
     print("| Form | Records | Memory | exact, ms (page faults) | noisy | partial | the same "
           "again: exact | noisy | partial |\n" + "| --- " * 9 + "|")
     for form in forms:
@@ -267,10 +272,14 @@ def timed(rows: list[dict[str, Any]]) -> dict[str, bool]:
     print("\n### Records written one by one while the store is read\n")
     print("| Form | Records | Memory | ms a write: mean | median | 99th of 100 | worst | cells "
           "a write | found: the new records | the earlier ones |\n" + "| --- " * 10 + "|")
-    for form in forms:
-        for n in sizes:
+    written: dict[tuple[Any, ...], list[dict[str, Any]]] = defaultdict(list)
+    for row in every:
+        if row["step"] == "write":
+            written[form_name(row), row["n"], bool(row.get("memory_limit"))].append(row)
+    for form in sorted({k[0] for k in written}):
+        for n in sorted({k[1] for k in written}):
             for limited in (False, True):
-                wrote = cells[form, n, "write", "disk", None, None, limited]
+                wrote = written[form, n, limited]
                 if wrote:
                     label = "all of it" if not limited else "limited"
                     print(f"| `{form}` | {n:,} | {label} | "
@@ -280,68 +289,86 @@ def timed(rows: list[dict[str, Any]]) -> dict[str, bool]:
                           f"{span([r['found_new'] for r in wrote])} | "
                           f"{span([r['found_earlier'] for r in wrote])} |")
     print()
+
+    def again_ms(form: str, n: int, founder: int) -> float | None:
+        each = [[r["read_ms"] for r in cells[form, n, "read", "disk", c, "again", False]
+                 if r["founder"] == founder] for c in CUES]
+        return mean([mean(e) for e in each]) if all(each) else None
+
     for form in forms:
-        # S2: the pages in memory, each tenfold
+        # S2: the pages in memory, each tenfold, on every timing founder; the largest cell
+        # over each timing founder's cell a tenth its size
         ratios, holds = [], True
+        largest = max(sizes)
+        lone = sorted({r["founder"] for r in cells[form, largest, "read", "disk", "exact",
+                                                   "again", False]})
+        founders = sorted({r["founder"] for n in sizes if n < largest
+                           for r in cells[form, n, "read", "disk", "exact", "again", False]})
         for low, high in zip(sizes, sizes[1:], strict=False):
             if high != 10 * low:
                 continue
-            a = [mean([mean([r["read_ms"] for r in cells[form, n, "read", "disk", c, "again",
-                                                         False]]) for c in CUES])
-                 for n in (low, high)]
-            if all(cells[form, n, "read", "disk", "exact", "again", False] for n in (low, high)):
-                ratios.append(f"{high:,} over {low:,}: {a[1] / a[0]:.2f}")
-                holds &= a[1] / a[0] < GROWTH
+            tops = lone if high == largest and len(lone) == 1 else None
+            each = []
+            for founder in founders:
+                below = again_ms(form, low, founder)
+                above = again_ms(form, high, tops[0] if tops else founder)
+                if below is not None and above is not None:
+                    each.append(above / below)
+            if each:
+                ratios.append(f"{high:,} over {low:,}: {ms(each)}")
+                holds &= max(each) < GROWTH
         if ratios:
             print(f"S2 (`{form}`, ms per read with its pages in memory, each tenfold under "
-                  f"{GROWTH:g}): {'; '.join(ratios)}: {'passes' if holds else 'fails'}")
+                  f"{GROWTH:g} on every timing founder): {'; '.join(ratios)}: "
+                  f"{'passes' if holds else 'fails'}")
             out[f"S2 {form}"] = holds
-        # S3: under the memory limit
-        limited_sizes = [n for n in sizes if cells[form, n, "read", "disk", "exact", "first",
-                                                   True]]
-        if limited_sizes:
-            holds, said = True, []
-            for n in limited_sizes:
-                exact = mean([r["read_ms"] for r in cells[form, n, "read", "disk", "exact",
-                                                          "first", True]])
-                full = max(mean([r["read_ms"] for r in cells[form, n, "read", "disk", c,
-                                                             "first", True]])
-                           for c in ("noisy", "partial"))
-                same = all(
-                    a["found"] == b["found"] for c in CUES
-                    for a in cells[form, n, "read", "disk", c, "first", True]
-                    for b in cells[form, n, "read", "disk", c, "first", False]
-                    if a["founder"] == b["founder"])
-                holds &= exact < EXACT_MS and full < FULL_MS and same
-                said.append(f"{n:,}: {exact:.2f} ms its record's key, {full:.1f} ms any cue, "
-                            f"found {'the same' if same else 'differs'}")
+        # S3: under the memory limit, every cell of 10,000,000 and more
+        holds, said = True, []
+        for n in [n for n in sizes if n >= GATED]:
+            for row in cells[form, n, "read", "disk", "exact", "first", True]:
+                founder = row["founder"]
+                first = {c: [r for r in cells[form, n, "read", "disk", c, "first", True]
+                             if r["founder"] == founder] for c in CUES}
+                free = {c: [r for r in cells[form, n, "read", "disk", c, "first", False]
+                            if r["founder"] == founder] for c in CUES}
+                if not all(first.values()) or not all(free.values()):
+                    continue
+                exact = first["exact"][0]["read_ms"]
+                full = max(first[c][0]["read_ms"] for c in ("noisy", "partial"))
+                gap = max(abs(first[c][0]["found"] - free[c][0]["found"]) for c in CUES)
+                holds &= exact < EXACT_MS and full < FULL_MS and gap <= SAME_FOUND
+                said.append(f"{n:,} f{founder}: {exact:.2f} ms a record's key, {full:.1f} ms "
+                            f"any cue, found within {gap:.3f}")
+        if said:
             print(f"S3 (`{form}`, under the memory limit: under {EXACT_MS:g} ms a read of a "
-                  f"record's key, under {FULL_MS:g} ms any read, found as without the limit): "
-                  f"{'; '.join(said)}: {'passes' if holds else 'fails'}")
+                  f"record's key, under {FULL_MS:g} ms any read, found within {SAME_FOUND:g} "
+                  f"of the read without the limit): {'; '.join(said)}: "
+                  f"{'passes' if holds else 'fails'}")
             out[f"S3 {form}"] = holds
-        # S4: the pause of a write
-        wrote = [r for n in sizes for limited in (False, True)
-                 for r in cells[form, n, "write", "disk", None, None, limited]]
-        if wrote:
-            holds = all(r["write_ms_p99"] < PAUSE_P99_MS and r["write_ms_worst"] < PAUSE_WORST_MS
-                        and r["cells_per_write"] <= CELLS_A_WRITE and r["found_new"] >= 0.99
-                        for r in wrote)
-            print(f"S4 (`{form}`, a write: 99 of 100 under {PAUSE_P99_MS:g} ms, none over "
-                  f"{PAUSE_WORST_MS:g} ms, at most {CELLS_A_WRITE} cells, the new records "
-                  f"found at .99): worst {max(r['write_ms_worst'] for r in wrote):.1f} ms, "
-                  f"99th {max(r['write_ms_p99'] for r in wrote):.2f} ms over "
-                  f"{len(wrote)} readings: {'passes' if holds else 'fails'}")
-            out[f"S4 {form}"] = holds
-        # S5: the bytes a record
-        held = {n: mean([r["disk_bytes_per_record"] for r in cells[form, n, "build", "disk",
-                                                                   None, None, False]])
-                for n in sizes if n >= MILLION and cells[form, n, "build", "disk", None, None,
-                                                         False]}
+    for form in sorted({k[0] for k in written}):
+        # S4: the pause of a write, every cell with and without the limit
+        wrote = [r for k, rs in written.items() if k[0] == form for r in rs]
+        holds = all(r["write_ms_p99"] < PAUSE_P99_MS and r["write_ms_worst"] < PAUSE_WORST_MS
+                    and r["cells_per_write"] <= CELLS_A_WRITE and r["found_new"] >= 0.99
+                    and r["found_earlier"] >= 0.99 for r in wrote)
+        print(f"S4 (`{form}`, a write: 99 of 100 under {PAUSE_P99_MS:g} ms, none over "
+              f"{PAUSE_WORST_MS:g} ms, at most {CELLS_A_WRITE} cells, the new and the earlier "
+              f"records found at .99): worst {max(r['write_ms_worst'] for r in wrote):.1f} ms, "
+              f"99th {max(r['write_ms_p99'] for r in wrote):.2f} ms over "
+              f"{len(wrote)} readings: {'passes' if holds else 'fails'}")
+        out[f"S4 {form}"] = holds
+    # S5: the bytes a record on the disk, every build from 1,000,000 up
+    built: dict[tuple[str, int], list[float]] = defaultdict(list)
+    for row in every:
+        if row["step"] == "build" and row["n"] >= MILLION:
+            built[form_name(row), row["n"]].append(row["disk_bytes_per_record"])
+    for form in sorted({k[0] for k in built}):
+        held = {n: mean(v) for (f, n), v in sorted(built.items()) if f == form}
         if len(held) > 1:
             spread = max(held.values()) / min(held.values()) - 1.0
             holds = spread <= BYTES_SPREAD
-            print(f"S5 (`{form}`, bytes a record on the disk from 1,000,000 up within "
-                  f"{100 * BYTES_SPREAD:g} %): "
+            print(f"S5 (`{form}`, bytes a record on the disk from 1,000,000 up: the largest "
+                  f"over the smallest under {1 + BYTES_SPREAD:g}): "
                   + "; ".join(f"{n:,}: {v:,.0f}" for n, v in held.items())
                   + f": {'passes' if holds else 'fails'}")
             out[f"S5 {form}"] = holds

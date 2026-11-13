@@ -23,12 +23,13 @@
  "target": 2403231,
  "layers": 3,
  "heads": 4,
- "minutes": 45,
  "taught": 256,
  "asked": 16,
  "rows": 16,
  "questions": 400,
  "threads": 2,
  "fetched": 8,
- "window_most": 100000
+ "window_most": 100000,
+ "steps": 3600,
+ "minutes": 240
 }

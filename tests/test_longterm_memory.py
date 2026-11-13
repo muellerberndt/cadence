@@ -833,6 +833,31 @@ def test_the_growing_table_and_the_store_on_disk_are_checked_and_off_by_default(
         LongTermMemory(8, 8, 1 << 28, pairs=8, grow=True, direct=0)
 
 
+def test_the_compiled_selection_of_units_is_the_numpy_one_ties_and_short_rows_too():
+    from cadence import _pairs
+
+    if _pairs._TOP is None:
+        pytest.skip("Numba is not installed")
+    rng = np.random.default_rng(11)
+    drive = rng.integers(-6, 7, size=(400, 300)).astype(np.float32)  # many equal drives
+    drive[:40] = np.where(rng.random((40, 300)) < 0.97, -1.0, drive[:40])  # under k above zero
+    drive[40:50] = 0.0
+    mean, sums = np.zeros(400, dtype=np.float32), np.zeros(300, dtype=np.float32)
+    for k in (2, 8, 16):
+        out = np.empty((400, k), dtype=np.int64)
+        _pairs._TOP(drive, mean, sums, k, out)
+        np.testing.assert_array_equal(out, _pairs.top_units(drive, k))
+    keys = np.zeros((200, 32), dtype=np.float32)  # 8 of 32 on: every sum below is exact
+    for row in keys[5:]:
+        row[rng.choice(32, size=8, replace=False)] = 1.0
+    projection = rng.integers(-3, 4, size=(32, 300)).astype(np.float32)
+    weights = projection.sum(axis=0)
+    out = np.empty((200, 16), dtype=np.int64)
+    _pairs._TOP_FEW(keys, projection, weights, 16, out)
+    centred = keys @ projection - keys.mean(axis=1, keepdims=True) * weights
+    np.testing.assert_array_equal(out, _pairs.top_units(centred, 16))
+
+
 def test_keys_of_few_active_coordinates_are_filed_by_their_weights_alone():
     from cadence import _pairs
 
