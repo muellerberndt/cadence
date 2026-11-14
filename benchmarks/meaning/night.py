@@ -104,8 +104,8 @@ WORDS = (KIND_NAMES + tuple(COLOURS) + tuple(MATERIALS) + DIRECTIONS + ("round",
          + tuple(w for w in QUESTION_WORDS if w not in ("left", "right"))
          + ANSWER_WORDS + ("zabu",))
 # words the ear hears beyond the voice's repertoire, their codes drawn after the click's (so every
-# earlier code is unchanged): the demo stage's question word
-EXTRA_FORMS = ("shape",)
+# earlier code is unchanged): the demo and pretraining stages' question words
+EXTRA_FORMS = ("shape", "material")
 # the trainer's bridge signal: a click heard at once after a right reply, a sound the voice cannot
 # make (an animal trainer's clicker); a praise word would be imitated (the parrot said it in the
 # silent turn)
@@ -278,6 +278,27 @@ def ask(form: str, r: Room, rng: np.random.Generator) -> Question | None:
             return None
         x.focus = True
         return Question(["what", "shape", "has", "the", x.kind], ["round"], form, focus=x)
+    if form == "colour_this":  # the thing in focus, its name unsaid
+        x.focus = True
+        return Question(["what", "colour", "is", "this"], [x.colour], form, focus=x)
+    if form == "is_colour":  # yes or no, as often one as the other
+        x.focus = True
+        c = x.colour if rng.random() < 0.5 else str(rng.choice(
+            [c for c in COLOURS if c != x.colour]))
+        return Question(["is", "this", c], ["yes" if c == x.colour else "no"], form, focus=x)
+    if form in ("is_round", "can_eat_bal"):  # yes or no, as often one as the other
+        want = bool(rng.random() < 0.5)
+        fits = [t for t in things if (t.kind in ROUND if form == "is_round"
+                                      else t.material in EDIBLE) == want]
+        if not fits:
+            return None
+        x = fits[int(rng.integers(len(fits)))]
+        x.focus = True
+        words = ["is", "this", "round"] if form == "is_round" else ["can", "you", "eat", "this"]
+        return Question(words, ["yes" if want else "no"], form, focus=x)
+    if form == "material_this":
+        x.focus = True
+        return Question(["what", "material", "is", "this"], [x.material], form, focus=x)
     if form == "direction":  # where, the direction alone
         x.focus = True
         return Question(["where", "is", "the", x.kind], [direction_of(r.heading, x.place)],
