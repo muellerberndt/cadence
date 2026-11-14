@@ -66,6 +66,7 @@ class MeaningParrot:
         self.mixed_w = None if mixed is None else np.asarray(mixed["w"], dtype=np.float64)
         self.mixed_on = 0 if mixed is None else int(mixed["on"])
         self.mixed_decay = 0.0 if mixed is None else float(mixed["decay"])
+        self.mixed_balance = False if mixed is None else bool(mixed.get("balance", False))
         self.trace = np.zeros(self.width)
         self.brain.reset()
         # the word records: kept under the association's pattern, replayed to the ear at the turn
@@ -118,7 +119,11 @@ class MeaningParrot:
         ear = self.code(self.heard) + self.code(self.own) + self.recalled
         parts = glimpse + [scene]
         if self.mixed_w is not None:  # the glimpse and the heard trace, expanded and sparse
-            drive = np.concatenate([self.eyes.slot(focus), self.trace]) @ self.mixed_w
+            glimpse, trace = self.eyes.slot(focus), self.trace
+            if self.mixed_balance:  # each field at unit length
+                glimpse = glimpse / max(float(np.linalg.norm(glimpse)), 1e-9)
+                trace = trace / max(float(np.linalg.norm(trace)), 1e-9)
+            drive = np.concatenate([glimpse, trace]) @ self.mixed_w
             code = np.zeros(self.mixed_w.shape[1])
             code[np.argpartition(drive, -self.mixed_on)[-self.mixed_on:]] = 1.0
             parts.append(code)

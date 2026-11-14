@@ -409,7 +409,12 @@ class Parrot:
 
     def mixed_code(self, glimpse: np.ndarray, trace: np.ndarray) -> np.ndarray:
         """The sparse mixed code of the glimpse and the heard trace: the ``mixed_on`` most
-        driven units of the fixed expansion on (1), the rest off."""
+        driven units of the fixed expansion on (1), the rest off. With gene ``mixed_balance``
+        each field enters at unit length, so the question heard moves the code as much as the
+        thing seen (the glimpse's length is about 5, the trace's about 1)."""
+        if int(self.genome.get("mixed_balance", 0)):
+            glimpse = glimpse / max(float(np.linalg.norm(glimpse)), 1e-9)
+            trace = trace / max(float(np.linalg.norm(trace)), 1e-9)
         drive = np.concatenate([glimpse, trace]) @ self.mixed_w
         out = np.zeros(self.mixed)
         out[np.argpartition(drive, -self.mixed_on)[-self.mixed_on:]] = 1.0
@@ -1063,7 +1068,8 @@ def export_spec(p: Parrot, path: str | Path) -> None:
     }
     if p.mixed:  # the sparse mixed code's fixed expansion
         spec["mixed"] = {"w": p.mixed_w.tolist(), "on": p.mixed_on,
-                         "decay": float(p.genome.get("mixed_decay", 0.7))}
+                         "decay": float(p.genome.get("mixed_decay", 0.7)),
+                         "balance": bool(int(p.genome.get("mixed_balance", 0)))}
     if p.records is not None:  # the word records' settings; their arrays lie beside the brain
         spec["records"] = {"settings": {k: (v.item() if hasattr(v, "item") else v)
                                         for k, v in p.records.to_dict().items()},

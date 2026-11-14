@@ -102,10 +102,11 @@ def test_a_nights_sleep_scales_every_efficacy_down():
     assert np.allclose(np.asarray(p.brain.learner.brain.efficacy), before * 0.5)
 
 
-def test_the_page_host_reads_the_mixed_code_as_the_chamber_does(tmp_path):
+@pytest.mark.parametrize("balance", [0, 1])
+def test_the_page_host_reads_the_mixed_code_as_the_chamber_does(tmp_path, balance):
     from cadence.meaning.host import MeaningParrot
 
-    p = nt.Parrot(9, {"mixed_code": 64}, streams=1)
+    p = nt.Parrot(9, {"mixed_code": 64, "mixed_balance": balance}, streams=1)
     nt.export_spec(p, tmp_path / "spec.json")
     p.brain.save(tmp_path / "brain.npz")
     m = MeaningParrot(tmp_path / "brain.npz", tmp_path / "spec.json")
@@ -118,3 +119,5 @@ def test_the_page_host_reads_the_mixed_code_as_the_chamber_does(tmp_path):
     assert x.shape == (1, p.inputs)
     code = x[0, p.inputs - p.ear - p.mixed: p.inputs - p.ear]
     assert code.sum() == p.mixed_on  # the sparse code: a tenth of its units on
+    trace = m.trace.copy()  # the chamber's code of the same glimpse and trace
+    assert np.array_equal(code, p.mixed_code(x[0, : p.eyes.slot_width], trace))
