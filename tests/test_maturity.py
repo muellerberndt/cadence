@@ -45,10 +45,10 @@ def test_off_is_the_founder_to_the_bit():
     off = life(cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=False, recall=False))
     assert founder.basal_ganglia.maturity is None and off.hippocampus.gate_noise is None
     with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
-        left, right = np.load(checkpoint(founder, a)), np.load(checkpoint(off, b))
-        assert sorted(left.files) == sorted(right.files)
-        for name in left.files:
-            assert np.array_equal(left[name], right[name]), name
+        with np.load(checkpoint(founder, a)) as left, np.load(checkpoint(off, b)) as right:
+            assert sorted(left.files) == sorted(right.files)
+            for name in left.files:
+                assert np.array_equal(left[name], right[name]), name
     assert "maturity" not in founder.describe()["genes"]
 
 
