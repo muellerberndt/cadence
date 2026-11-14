@@ -226,6 +226,142 @@ def question_gating(p: nt.Parrot, rng: np.random.Generator, held: set[tuple[str,
     return out
 
 
+FACETS = ("kind", "colour", "round", "material", "edible", "direction", "distance")
+
+
+def facet(t: nt.Thing, heading: float, name: str) -> str:
+    """A thing's value of one facet, as a class label."""
+    if name == "kind":
+        return t.kind
+    if name == "colour":
+        return t.colour
+    if name == "round":
+        return str(t.kind in nt.ROUND)
+    if name == "material":
+        return t.material
+    if name == "edible":
+        return str(t.material in nt.EDIBLE)
+    if name == "direction":
+        return nt.direction_of(heading, t.place)
+    if name == "distance":
+        return "far" if float(np.linalg.norm(t.place)) > nt.FAR else "near"
+    raise ValueError(name)
+
+
+def fit_classes(x: np.ndarray, labels: list[str], l2: float = 1.0) -> tuple[Any, ...]:
+    """A linear read of a class label (ridge onto one-hot), standardized on the fit's codes."""
+    classes = sorted(set(labels))
+    mu, sd = x.mean(0), x.std(0) + 1e-6
+    z = (x - mu) / sd
+    y = np.zeros((len(labels), len(classes)))
+    y[np.arange(len(labels)), [classes.index(v) for v in labels]] = 1.0
+    w = np.linalg.solve(z.T @ z + l2 * len(z) * np.eye(z.shape[1]), z.T @ y)
+    return classes, mu, sd, w
+
+
+def read_classes(fit: tuple[Any, ...], x: np.ndarray) -> list[str]:
+    classes, mu, sd, w = fit
+    return [classes[int(i)] for i in np.argmax(((x - mu) / sd) @ w, axis=1)]
+
+
+def focus_codes(p: nt.Parrot, pairs: list[tuple[nt.Room, nt.Thing]], rng: np.random.Generator,
+                moments: int = 2) -> dict[str, np.ndarray]:
+    """The settled state, per region, with a thing in focus and nothing heard (no question)."""
+    brain = frozen(p)
+    out: dict[str, list[np.ndarray]] = {}
+    for i in range(0, len(pairs), p.streams):
+        chunk = pairs[i:i + p.streams]
+        rooms = [r for r, _ in chunk] + [chunk[-1][0]] * (p.streams - len(chunk))
+        got, _ = settle(p, brain, rooms, [[None] * moments] * p.streams, rng)
+        for r in got:
+            out.setdefault(r, []).append(got[r][:len(chunk)])
+        brain.reset()
+    return {r: np.concatenate(v) for r, v in out.items()}
+
+
+def state_completeness(p: nt.Parrot, rng: np.random.Generator, held: set[tuple[str, str]],
+                       count: int = 768) -> dict[str, Any]:
+    """With a thing in focus and no question: each facet (kind, colour, shape, material, edible,
+    direction, distance) read linearly from the one settled state, per region, fitted on
+    training scenes and read on held-out ones, beside the base rate (the commonest value)."""
+    train = scenes(p, rng, count, held, test=False)
+    test = scenes(p, rng, count // 2, held, test=True)
+    xa, xb = focus_codes(p, train, rng), focus_codes(p, test, rng)
+    out: dict[str, Any] = {"base": {}, "read": {}, "fits": {}}
+    for name in FACETS:
+        ya = [facet(t, r.heading, name) for r, t in train]
+        yb = [facet(t, r.heading, name) for r, t in test]
+        out["base"][name] = max(yb.count(v) for v in set(yb)) / len(yb)
+        for region in xa:
+            fit = fit_classes(xa[region], ya)
+            out["read"].setdefault(region, {})[name] = float(
+                np.mean([a == b for a, b in zip(read_classes(fit, xb[region]), yb,
+                                                strict=True)]))
+            if region == "association":
+                out["fits"][name] = fit
+    return out
+
+
+def completion(p: nt.Parrot, rng: np.random.Generator, held: set[tuple[str, str]],
+               fits: dict[str, Any], per: int = 16) -> dict[str, Any]:
+    """Cue one facet alone and read every other facet from the association with the focus
+    probes (``state_completeness``'s fits): a kind's word heard with nothing in view, and a
+    colour word heard alone (which things are that colour). Each cell is the share of reads that
+    give the facet the cue implies (a kind's shape, material class and edibility; a colour)."""
+    empty = nt.Room([], 0.0)
+    out: dict[str, Any] = {}
+    brain = frozen(p)
+    for word in nt.KIND_NAMES:
+        got, _ = settle(p, brain, [empty] * p.streams, [[word, None]] * p.streams, rng)
+        brain.reset()
+        x = got["association"][:per]
+        row: dict[str, Any] = {}
+        spec = nt.KINDS[word]
+        truth = {"kind": word, "round": str(word in nt.ROUND),
+                 "edible": str("fruit" in spec[2])}
+        for name in ("kind", "round", "edible", "colour", "material"):
+            said = read_classes(fits[name], x)
+            if name in truth:
+                row[name] = float(np.mean([v == truth[name] for v in said]))
+            else:
+                row[name] = max(set(said), key=said.count)  # the value the word evokes most
+        out[f"word {word}"] = row
+    for colour in nt.COLOURS:
+        got, _ = settle(p, brain, [empty] * p.streams, [[colour, None]] * p.streams, rng)
+        brain.reset()
+        said = read_classes(fits["colour"], got["association"][:per])
+        kinds = read_classes(fits["kind"], got["association"][:per])
+        out[f"word {colour}"] = {"colour": float(np.mean([v == colour for v in said])),
+                                 "kind": max(set(kinds), key=kinds.count)}
+    return out
+
+
+def sound_in_state(p: nt.Parrot, rng: np.random.Generator, held: set[tuple[str, str]],
+                   count: int = 128) -> dict[str, float]:
+    """On focus alone (no question): how often the state's pattern recalls a word from the word
+    records (the three nearest agree), and how often that word is the thing's name."""
+    if p.records is None or not p.records.count:
+        return {"records": 0.0, "recalled": 0.0, "right": 0.0}
+    pairs = scenes(p, rng, count, held, test=False)
+    codes = focus_codes(p, pairs, rng)["association"]
+    names = {w: p.forms(w) for w in nt.WORDS}
+    recalled, right = 0, 0
+    for (_, t), cue in zip(pairs, codes, strict=True):
+        heads = min(3, int(p.records.count))
+        got = p.records.read(cue, heads=heads, credit=False)
+        if got.first() < 0:
+            continue
+        value = p.records.value(got)
+        if any(got.first(h) < 0 or not np.array_equal(p.records.value(got, h), value)
+               for h in range(1, heads)):
+            continue
+        recalled += 1
+        word = next((w for w, c in names.items() if np.array_equal(c, value)), None)
+        right += int(word == t.kind)
+    return {"records": float(p.records.count), "recalled": recalled / len(pairs),
+            "right": right / len(pairs)}
+
+
 def neighbours(p: nt.Parrot, rng: np.random.Generator, held: set[tuple[str, str]],
                per: int = 32) -> dict[str, Any]:
     """Each kind's mean code (the lemon's too, never shown) and its cosine to the others."""
@@ -356,34 +492,36 @@ def lemon_room(rng: np.random.Generator, held: set[tuple[str, str]]) -> nt.Room:
 def new_word(p: nt.Parrot, rng: np.random.Generator, held: set[tuple[str, str]], *,
              namings: int = 3, trials: int = 80, check: int = 16) -> dict[str, Any]:
     """A new association by pistachios alone, on a copy of the parrot, one exchange at a time:
-    a visitor names the lemon ``namings`` times with the nonce word (a pistachio when the parrot
-    says it back), then asks "what is this?" with the focus on a lemon, a pistachio when the
-    parrot says the new word. No correction and no teacher's answer. Every 4 trials a frozen
-    copy is read on ``check`` fresh lemons; the gate's count is the trials (and pistachios)
-    until it says the word at .9."""
+    a visitor names the lemon ``namings`` times ("what is this?" and the nonce word, with the
+    lemon in focus; the parrot's turn after it, a pistachio when it says the word back), then
+    asks "what is this?" with the focus on a lemon, a pistachio when the parrot says the new
+    word. No correction and no teacher's answer after the namings. Every 4 trials a frozen copy
+    is read on ``check`` fresh lemons; the gate's count is the trials (and pistachios) until it
+    says the word at .9. The turn opens in the gap after the visitor stops, as in the chamber."""
     q = copy.copy(p)
     q.brain = copy.deepcopy(p.brain)
     q.brain.reset()
     q.streams = 1
     word = nt.NEW_WORD
     log: list[dict[str, Any]] = []
-    for _ in range(namings):
-        ex = nt.Exchange(lemon_room(rng, held), [word], 0, nt.Question([word], [word], "naming"))
-        nt.live(q, [ex], rng)
+    words = ["what", "is", "this"]
+
+    def asked(mode: str) -> nt.Exchange:
+        r = lemon_room(rng, held)
+        return nt.make_exchange(r, nt.Question(list(words), [word], "new_name",
+                                               focus=r.things[0]), mode, rng)
+
+    for _ in range(namings):  # the visitor's naming: the word heard with the lemon in focus
+        nt.live(q, [asked("model")], rng)
     paid = 0
     learned_at = None
     for trial in range(1, trials + 1):
-        words = ["what", "is", "this"]
-        ex = nt.Exchange(lemon_room(rng, held), list(words), 2,
-                         nt.Question(list(words), [word], "new_name"))
-        got = nt.live(q, [ex], rng)
+        got = nt.live(q, [asked("turn")], rng)
         paid += int(got["right"][0])
         if trial % 4 == 0:
             ok = []
             for _ in range(check):
-                fx = nt.Exchange(lemon_room(rng, held), list(words), 2,
-                                 nt.Question(list(words), [word], "new_name"))
-                ok += nt.live(q, [fx], rng, learn=False)["right"]
+                ok += nt.live(q, [asked("turn")], rng, learn=False)["right"]
             log.append({"trial": trial, "pistachios": paid, "read": float(np.mean(ok))})
             if np.mean(ok) >= 0.9 and learned_at is None:
                 learned_at = (trial, paid)

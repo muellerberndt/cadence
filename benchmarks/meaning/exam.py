@@ -140,6 +140,14 @@ def main(argv: list[str]) -> None:
     print("probes_by_region", json.dumps(out["probes_by_region"]), flush=True)
     out["question_gating"] = ii.question_gating(p, rng, held)
     print("question_gating", json.dumps(out["question_gating"]), flush=True)
+    sc = ii.state_completeness(p, rng, held)  # the owner's one state: every facet from it
+    fits = sc.pop("fits")
+    out["state_completeness"] = sc
+    print("state_completeness", json.dumps(sc), flush=True)
+    out["completion"] = ii.completion(p, rng, held, fits)
+    print("completion", json.dumps(out["completion"]), flush=True)
+    out["sound_in_state"] = ii.sound_in_state(p, rng, held)
+    print("sound_in_state", json.dumps(out["sound_in_state"]), flush=True)
     nb = ii.neighbours(p, rng, held, per=48)
     out["neighbours"] = {"nearest": nb["nearest"], "kinds": nb["kinds"], "cosine": nb["cosine"]}
     print("neighbours", json.dumps(nb["nearest"]), flush=True)
