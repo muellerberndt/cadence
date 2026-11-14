@@ -476,6 +476,8 @@ def page_gate(policy: Arm, layout: tc.Layout, seed: int) -> dict[str, Any]:
 # --- a life --------------------------------------------------------------------------------
 
 def life(seed: int, arm: str, out_dir: Path, blocks: int = 1000, every: int = 50) -> None:
+    if (out_dir / f"skip_{arm}").exists():  # the arm runs on another box
+        return
     spec = ARMS[arm]
     if spec.get("colours"):
         tw.use_colours(tuple(spec["colours"]))
@@ -533,6 +535,8 @@ def control(seed: int, model: str, out_dir: Path, blocks: int = 1000, every: int
     same moments: one Adam step a block."""
     import textcontrols as tcl
 
+    if (out_dir / f"skip_{model}").exists():  # the control runs on another box
+        return
     out_dir.mkdir(parents=True, exist_ok=True)
     layout = tc.Layout.founder(seed)
     rng = np.random.default_rng([seed, 338, 1])
