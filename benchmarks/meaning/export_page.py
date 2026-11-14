@@ -58,6 +58,32 @@ def ask(m: MeaningParrot, things: list[dict[str, Any]], words: list[str], scan: 
     return said
 
 
+REHEARSED = ("name", "colour_of", "where", "material", "can_eat")
+
+
+def rehearsal_items(seed: int, per: int = 40) -> list[dict[str, Any]]:
+    """The night's exchanges a page revisits after a paid lesson (``MeaningParrot.
+    rehearse_one``): rooms of the founder's training world, the trainer's words, the right
+    answer, ``per`` of each form a turn answers in the gap (no scan)."""
+    import numpy as np
+
+    rng = np.random.default_rng(np.random.SeedSequence([seed, 334, 55]))
+    p = nt.Parrot(seed, streams=1)
+    held = nt.founder_held(seed)
+    out = []
+    for form in REHEARSED:
+        for _ in range(per):
+            ex = nt.exchange(p, rng, form, "turn", held)
+            q = ex.question
+            assert q is not None
+            out.append({"form": form, "words": list(q.words), "answer": list(q.answer),
+                        "things": [{"kind": t.kind, "colour": t.colour, "material": t.material,
+                                    "direction": nt.bearing(ex.room.heading, t.place),
+                                    "distance": float(math.hypot(*t.place)),
+                                    "focus": bool(t.focus)} for t in ex.room.things]})
+    return out
+
+
 def main(argv: list[str]) -> None:
     brain, seed, out = argv[1], int(argv[2]), Path(argv[3])
     genome = json.loads(argv[4]) if len(argv) > 4 else None
@@ -80,6 +106,7 @@ def main(argv: list[str]) -> None:
         said = ask(m, things, list(words), scan)
         check.append({"question": " ".join(words), "answer": answer, "said": said})
     (out / "page_check.json").write_text(json.dumps(check, indent=1))
+    (out / "rehearsal.json").write_text(json.dumps(rehearsal_items(seed)))
     import exam as ex
     import numpy as np
 

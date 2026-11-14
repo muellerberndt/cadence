@@ -543,6 +543,8 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
                 p.records.write(assoc_at[0][i], p.forms(word))
 
     for t in range(moments):
+        if p.records is not None and learn:
+            p.records.moment()  # a moment of the store: unused, shallow records fade first
         if p.records is not None:
             p.recalled_kept = p.recalled if t > 0 else np.zeros((n, p.forms.width))
             p.recalled = np.zeros((n, p.forms.width))

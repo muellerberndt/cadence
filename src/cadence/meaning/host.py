@@ -59,6 +59,7 @@ class MeaningParrot:
         self.heard: str | None = None
         self.own: str | None = None
         self.reply: list[tuple[np.ndarray, int]] = []
+        self.rehearsal: list[dict[str, Any]] = []
         self.brain.reset()
         # the word records: kept under the association's pattern, replayed to the ear at the turn
         self.records: Any = None
@@ -121,6 +122,8 @@ class MeaningParrot:
         key = np.asarray(self.records.keys[slot], dtype=np.float64)
         cos = float(key @ cue) / (np.linalg.norm(key) * np.linalg.norm(cue) + 1e-12)
         value = self.records.value(got)
+        if cos >= float(self.spec["records"].get("exact", 0.95)):
+            return value  # the situation itself, recognised: its record alone is enough
         for h in range(1, heads):
             if got.first(h) < 0 or not np.array_equal(self.records.value(got, h), value):
                 return np.zeros(self.width)
@@ -137,6 +140,7 @@ class MeaningParrot:
     def moment(self, *, more: bool = False, greedy: bool = True) -> str | None:
         """One moment: settle on what is seen and heard, act; the word said, or None."""
         if self.records is not None:
+            self.records.moment()  # a moment of the store: unused, shallow records fade first
             if self.heard is not None:  # the trainer speaks: no turn, nothing recalled
                 self.in_turn, self.recalled = False, np.zeros(self.width)
             elif not more and not self.in_turn and self.cue is not None:
@@ -155,15 +159,47 @@ class MeaningParrot:
         self.own, self.heard = said, None
         return said
 
-    def pistachio(self, amount: float = 1.0) -> int:
+    def pistachio(self, amount: float = 1.0, *, first: bool = False,
+                  rehearse: int = 0) -> int:
         """A pistachio for the last reply: its moments taught with its own words. Returns the
-        lessons taken."""
+        lessons taken. ``first`` teaches each word of the reply once (its first moment), and
+        ``rehearse`` replays that many of the night's exchanges (``rehearsal.json`` beside the
+        brain, ``load_rehearsal``) after the lesson, so a paid answer does not overwrite the
+        other answers the same focus gives: the training's revisits, on the page."""
         taken = 0
+        seen: set[int] = set()
         for x, unit in self.reply:
+            if first and unit in seen:
+                continue
+            seen.add(unit)
             self.brain.lesson(x[None], np.array([[unit, 0]]), weights=np.array([amount]))
             taken += 1
         self.reply = []
+        for _ in range(int(rehearse) if self.rehearsal else 0):
+            self.rehearse_one(amount)
         return taken
+
+    def load_rehearsal(self, path: str | Path) -> int:
+        """The night's exchanges to revisit after a paid lesson: a list of {things, words,
+        answer}, each a room as ``see`` takes it, the trainer's words and the right answer."""
+        self.rehearsal = json.loads(Path(path).read_text())
+        return len(self.rehearsal)
+
+    def rehearse_one(self, amount: float = 1.0) -> None:
+        """One revisit: the exchange's words heard (the voice held), then the right answer's
+        first word taught on the moment the turn opens (the gap)."""
+        item = self.rehearsal[int(self.rng.integers(len(self.rehearsal)))]
+        held_reply, held_own = self.reply, self.own
+        self.brain.reset()
+        self.own, self.reply = None, []
+        self.see(item["things"])
+        for w in item["words"]:
+            self.hear(w)
+            self.moment(more=True)
+        unit = self.voice.index(item["answer"][0])
+        self.brain.lesson(self.observation(), np.array([[unit, 0]]), weights=np.array([amount]))
+        self.brain.reset()
+        self.reply, self.own = held_reply, held_own
 
     def turn_over(self) -> None:
         """The exchange ends: the reply's moments are forgotten (no pistachio came)."""
