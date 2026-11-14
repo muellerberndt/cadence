@@ -57,12 +57,21 @@ def free_state(p: nt.Parrot, x: np.ndarray) -> object:
 MOMENTS = ("velocity", "velocity_bias", "second_moment", "second_moment_bias")
 
 
+OWN: dict[str, np.ndarray] = {}  # the binding lesson's own optimizer moments (review E4)
+
+
 def pull(p: nt.Parrot, x: np.ndarray, target: np.ndarray, beta: float,
-         masked: bool = False) -> dict[str, float]:
+         masked: bool | str = False, own: bool = False) -> dict[str, float]:
     """One lesson of the brain's own rule with the association pulled toward ``target``. With
     ``masked`` the step (and the optimizer's moments) is kept only on the synapses into the
     association (its inputs and its own) and on the association's biases."""
     learner = p.brain.learner
+    if own:  # the binding learner's moments in place of the brain's, for this lesson alone
+        held_moments = {k: np.array(getattr(learner, k), copy=True) for k in MOMENTS}
+        held_count = learner.contrast_updates
+        for k in MOMENTS:
+            setattr(learner, k, OWN.get(k, np.zeros_like(held_moments[k])))
+        learner.contrast_updates = int(OWN.get("count", np.array(0)))
     if masked:
         graph = learner.brain
         before = (np.array(graph.efficacy, copy=True), np.array(graph.bias, copy=True))
@@ -84,6 +93,10 @@ def pull(p: nt.Parrot, x: np.ndarray, target: np.ndarray, beta: float,
         neurons = np.zeros(c.n, dtype=bool)
         neurons[assoc] = True
         keep = neurons[np.asarray(c.post)]  # the synapses into the association
+        if masked == "ear":  # the word's synapses alone: from the ear into the association
+            ear = np.zeros(c.n, dtype=bool)
+            ear[np.asarray(list(c.populations["sensory/ear"]))] = True
+            keep = keep & ear[np.asarray(c.pre)]
         graph = learner.brain
         eff = np.where(keep, np.asarray(graph.efficacy), before[0])
         bias = np.where(neurons, np.asarray(graph.bias), before[1])
@@ -91,6 +104,12 @@ def pull(p: nt.Parrot, x: np.ndarray, target: np.ndarray, beta: float,
         for k in MOMENTS:  # the moments of the synapses held still stay as they were
             mask = keep if k in ("velocity", "second_moment") else neurons
             setattr(learner, k, np.where(mask, np.asarray(getattr(learner, k)), moments[k]))
+    if own:
+        for k in MOMENTS:
+            OWN[k] = np.array(getattr(learner, k), copy=True)
+            setattr(learner, k, held_moments[k])
+        OWN["count"] = np.array(learner.contrast_updates)
+        learner.contrast_updates = held_count
     p.brain.reset()
     return report
 
@@ -99,7 +118,9 @@ def main(argv: list[str]) -> None:
     path, seed, genome, arm = argv[1], int(argv[2]), json.loads(argv[3]), argv[4]
     rounds, out = int(argv[5]), Path(argv[6])
     beta = float(genome.pop("state_beta", 0.1))
-    masked = bool(genome.pop("state_masked", False))
+    masked = genome.pop("state_masked", False)
+    own = bool(genome.pop("state_own", False))
+    from_glimpse = bool(genome.pop("state_from_glimpse", False))
     p = ex.load(path, seed, genome, streams=32)
     rng = np.random.default_rng(np.random.SeedSequence([seed, 334, 98]))
     held = nt.founder_held(seed)
@@ -131,10 +152,19 @@ def main(argv: list[str]) -> None:
             pairs = ii.scenes(p, rng, p.streams, held, test=False)
             rooms = [r for r, _ in pairs]
             words = [t.kind for _, t in pairs]
-            _, both = free_state(p, observation(p, rooms, words, rng))
-            target = np.asarray(both.activation, dtype=np.float64)[:, assoc].copy()
-            pull(p, observation(p, [empty] * len(rooms), words, rng), target, beta, masked)
-            pull(p, observation(p, rooms, [None] * len(rooms), rng), target, beta, masked)
+            if from_glimpse:  # the review's form: the word alone pulled toward what the
+                # thing in view settles with no word (the other sense alone)
+                _, seen = free_state(p, observation(p, rooms, [None] * len(rooms), rng))
+                target = np.asarray(seen.activation, dtype=np.float64)[:, assoc].copy()
+                pull(p, observation(p, [empty] * len(rooms), words, rng), target, beta, masked,
+                     own)
+            else:
+                _, both = free_state(p, observation(p, rooms, words, rng))
+                target = np.asarray(both.activation, dtype=np.float64)[:, assoc].copy()
+                pull(p, observation(p, [empty] * len(rooms), words, rng), target, beta, masked,
+                     own)
+                pull(p, observation(p, rooms, [None] * len(rooms), rng), target, beta, masked,
+                     own)
         nt.live(p, nt.block(p, rng, "name", "dagger", held), rng)
         if k % 3 == 0:
             nt.live(p, nt.blocks_of(p, rng, "imitate", "turn", held), rng)
