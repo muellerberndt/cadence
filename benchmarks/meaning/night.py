@@ -674,10 +674,15 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
                 replies[i] = reply_of(said[i], scan=bool(ex.scan))
                 assert ex.question is not None
                 oks[i] = right(ex.question, replies[i])
-                if p.records is not None and learn and int(g.get("reconsolidate", 0)) and \
-                        i in read_slots and ex.turn - 1 in assoc_at:
-                    reconsolidate(i, assoc_at[ex.turn - 1][i],
-                                  None if oks[i] else ex.question.answer[0])
+                mode_r = int(g.get("reconsolidate", 0))
+                if p.records is not None and learn and mode_r and i in read_slots and \
+                        ex.turn - 1 in assoc_at:
+                    if oks[i] or mode_r == 1:  # 2: a paid record is kept under the present
+                        # pattern; a corrected one is left (the correction keeps its own record)
+                        reconsolidate(i, assoc_at[ex.turn - 1][i],
+                                      None if oks[i] else ex.question.answer[0])
+                    else:
+                        read_slots.pop(i, None)
                 pay = oks[i] if pistachio == "earned" else (
                     False if pistachio == "withheld" else bool(rng.random() < 0.3))
                 if learn and pay:
