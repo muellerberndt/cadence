@@ -1034,6 +1034,9 @@ def export_spec(p: Parrot, path: str | Path) -> None:
         "materials": {m: list(v) for m, v in MATERIALS.items()},
         "moment_ms": 300, "turn_moments": TURN, "catch_moments": CATCH,
     }
+    if p.mixed:  # the sparse mixed code's fixed expansion
+        spec["mixed"] = {"w": p.mixed_w.tolist(), "on": p.mixed_on,
+                         "decay": float(p.genome.get("mixed_decay", 0.7))}
     if p.records is not None:  # the word records' settings; their arrays lie beside the brain
         spec["records"] = {"settings": {k: (v.item() if hasattr(v, "item") else v)
                                         for k, v in p.records.to_dict().items()},

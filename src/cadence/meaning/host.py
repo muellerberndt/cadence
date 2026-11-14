@@ -60,6 +60,12 @@ class MeaningParrot:
         self.own: str | None = None
         self.reply: list[tuple[np.ndarray, int]] = []
         self.rehearsal: list[dict[str, Any]] = []
+        # the sparse mixed code of the glimpse and the words heard (``mixed`` in the spec)
+        mixed = self.spec.get("mixed")
+        self.mixed_w = None if mixed is None else np.asarray(mixed["w"], dtype=np.float64)
+        self.mixed_on = 0 if mixed is None else int(mixed["on"])
+        self.mixed_decay = 0.0 if mixed is None else float(mixed["decay"])
+        self.trace = np.zeros(self.width)
         self.brain.reset()
         # the word records: kept under the association's pattern, replayed to the ear at the turn
         self.records: Any = None
@@ -106,7 +112,13 @@ class MeaningParrot:
             (t for t in self.things if t.salient), None)
         glimpse = [self.eyes.slot(focus)] if self.spec.get("glimpse") else []
         ear = self.code(self.heard) + self.code(self.own) + self.recalled
-        return np.concatenate(glimpse + [scene, ear])[None]
+        parts = glimpse + [scene]
+        if self.mixed_w is not None:  # the glimpse and the heard trace, expanded and sparse
+            drive = np.concatenate([self.eyes.slot(focus), self.trace]) @ self.mixed_w
+            code = np.zeros(self.mixed_w.shape[1])
+            code[np.argpartition(drive, -self.mixed_on)[-self.mixed_on:]] = 1.0
+            parts.append(code)
+        return np.concatenate(parts + [ear])[None]
 
     def recall(self, cue: np.ndarray) -> np.ndarray:
         """The word the records hold for ``cue``: the nearest records' value where the
@@ -147,6 +159,8 @@ class MeaningParrot:
                 self.in_turn = True  # the turn opens in the gap: the records are read once
                 self.recalled = self.recall(self.cue)
         heard_now = self.heard is not None
+        if self.mixed_w is not None:  # the trace of the words heard in this exchange
+            self.trace = self.mixed_decay * self.trace + self.code(self.heard)
         x = self.observation()
         action = np.asarray(self.brain.act(x, greedy=greedy)).reshape(1, -1)
         if self.records is not None and heard_now:
@@ -175,6 +189,7 @@ class MeaningParrot:
             self.brain.lesson(x[None], np.array([[unit, 0]]), weights=np.array([amount]))
             taken += 1
         self.reply = []
+        self.trace = np.zeros(self.width)
         for _ in range(int(rehearse) if self.rehearsal else 0):
             self.rehearse_one(amount)
         return taken
@@ -204,4 +219,5 @@ class MeaningParrot:
     def turn_over(self) -> None:
         """The exchange ends: the reply's moments are forgotten (no pistachio came)."""
         self.reply = []
+        self.trace = np.zeros(self.width)
         self.in_turn, self.recalled = False, np.zeros(self.width)
