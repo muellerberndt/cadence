@@ -71,11 +71,11 @@ def mixed_block(p: nt.Parrot, rng: np.random.Generator, held: set[tuple[str, str
                                    extra={"dagger": mode == "dagger"}))
         else:
             exs.append(nt.exchange(p, rng, form, mode, held))
-    width = max(ex.turn for ex in exs) + int(p.genome.get("focus_records", 0))
-    for ex in exs:
-        pad = width - ex.turn
-        ex.heard = [None] * pad + ex.heard
-        ex.turn += pad
+    width = max(e.turn for e in exs) + int(p.genome.get("focus_records", 0))
+    for e in exs:
+        pad = width - e.turn
+        e.heard = [None] * pad + e.heard
+        e.turn += pad
     return exs
 
 
