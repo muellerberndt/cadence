@@ -118,8 +118,28 @@ def gaze(seed: int, genome: dict) -> None:
                               "held_right": right_hold}), flush=True)
 
 
+def form(name: str, seed: int, genome: dict, blocks: int = 400) -> None:
+    """The words stage (120 blocks), then ``name`` alone: read free, with the trainer pointing
+    (the focus given) and the searches that held the named thing, every 50 blocks."""
+    layout = tc.Layout.founder(seed)
+    p = tp.BrainPolicy(layout, genome, seed)
+    rng = np.random.default_rng(seed)
+    t = time.time()
+    for b in range(1, 121):
+        tc.run(p, layout, tp.batch(rng, dict(tp.STAGES)["words"], 64), mode(b, rng))
+    for b in range(1, blocks + 1):
+        tc.run(p, layout, tp.batch(rng, (name,), 64), mode(b, rng))
+        if b % 50 == 0:
+            free = tp.read(p, layout, rng, (name,), 128)[name]
+            pointed = tp.read(p, layout, rng, (name,), 128, mode="dagger")[name]
+            print(json.dumps({"block": b, "s": round(time.time() - t), "free": free["right"],
+                              "pointed": pointed["right"], "held": free["held"]}), flush=True)
+
+
 if __name__ == "__main__":
-    if sys.argv[1] == "gaze":
+    if sys.argv[1] == "form":
+        form(sys.argv[2], int(sys.argv[3]), json.loads(sys.argv[4]))
+    elif sys.argv[1] == "gaze":
         gaze(int(sys.argv[2]), json.loads(sys.argv[3]))
     elif sys.argv[1] == "rates":
         rates(float(sys.argv[2]), sys.argv[3], int(sys.argv[4]), sys.argv[5],

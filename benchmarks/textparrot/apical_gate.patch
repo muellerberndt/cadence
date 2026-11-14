@@ -1,0 +1,384 @@
+# The gated apical compartment: a diagnostic arm of the text parrot chamber (cadence#338), not
+# a library option. Apply to a copy of src/ for the diagnostic runs:
+#   git apply benchmarks/textparrot/apical_gate.patch      (from the repository root)
+# Brain.compose(..., apical=f, apical_gate=g[, apical_gate_keep=True]): a neuron of an apical pool
+# receives basal * (1 + g * tanh(t)), t its normalized top-down drive over its bound (gain only),
+# or that plus the additive drive (keep). apical_gate=0 is the additive compartment to the bit.
+diff --git a/src/cadence/brain.py b/src/cadence/brain.py
+index d33b6ab6..c211f5f7 100644
+--- a/src/cadence/brain.py
++++ b/src/cadence/brain.py
+@@ -360,12 +360,20 @@ class Apical:
+     (``-1``: no pool, so it may receive no apical synapse). ``fraction`` bounds the apical
+     drive's RMS over a pool to that share of the pool's basal RMS; ``floor`` is the
+     normalization's semi-saturation constant in units of the basal RMS.
++
++    ``gate`` (opt-in, in ``[0, 1]``; 0 is the additive compartment, to the bit) makes the
++    top-down input multiply the basal input it meets: a neuron's drive is ``basal * (1 + gate
++    * tanh(t))``, ``t`` its normalized top-down input (the additive drive over its bound,
++    ``fraction * rms(basal)``), so what arrives from above gates what arrives from below, as
++    apical depolarization gates a layer 5 pyramidal cell's basal drive.
+     """
+ 
+     synapses: np.ndarray
+     groups: np.ndarray
+     fraction: float
+     floor: float = APICAL_FLOOR
++    gate: float = 0.0
++    keep: bool = False  # with ``gate``: the additive drive stays beside the gain
+     members: tuple[Any, ...] = field(init=False, repr=False)
+ 
+     def __post_init__(self) -> None:
+@@ -380,7 +388,7 @@ class Apical:
+             or (groups > np.iinfo(np.int64).max).any()
+         ):
+             raise ValueError("apical groups must be an integer per neuron, -1 for none")
+-        for name in ("fraction", "floor"):
++        for name in ("fraction", "floor", "gate"):
+             value = getattr(self, name)
+             if isinstance(value, (bool, np.bool_)) or not isinstance(
+                 value, (int, float, np.integer, np.floating)
+@@ -390,6 +398,8 @@ class Apical:
+             raise ValueError("apical fraction must be finite and positive")
+         if not np.isfinite(self.floor) or self.floor <= 0:
+             raise ValueError("apical floor must be finite and positive")
++        if not np.isfinite(self.gate) or not 0 <= self.gate <= 1:
++            raise ValueError("apical gate must lie in [0, 1]")
+         synapses = synapses.copy()
+         groups = groups.astype(np.int64, copy=True)
+         synapses.setflags(write=False)
+@@ -398,6 +408,7 @@ class Apical:
+         object.__setattr__(self, "groups", groups)
+         object.__setattr__(self, "fraction", float(self.fraction))
+         object.__setattr__(self, "floor", float(self.floor))
++        object.__setattr__(self, "gate", float(self.gate))
+         members: list[Any] = []
+         for pool in np.unique(groups[groups >= 0]):
+             index = np.flatnonzero(groups == pool)
+@@ -431,22 +442,36 @@ class Apical:
+         self, basal: np.ndarray, raw: np.ndarray, held: np.ndarray | None = None
+     ) -> np.ndarray:
+         """The apical drive ``(batch, n)``: the raw apical input at the normalization's gain,
+-        or at the ``held`` gain ``(batch, pools)`` of a nudged settle."""
++        or at the ``held`` gain ``(batch, pools)`` of a nudged settle. With ``gate`` the drive
++        the compartment adds is ``gate * tanh(t) * basal``, ``t`` that additive drive over its
++        bound ``fraction * rms(basal)`` of the pool: the basal input times
++        ``1 + gate * tanh(t)``."""
+         if held is not None and np.shape(held) != (len(raw), len(self.members)):
+             raise ValueError("a nudge's apical_gain needs one entry per row and pool")
+         gain = self.gain(basal, raw) if held is None else held
+         out = np.zeros_like(raw)
++        if not self.gate:
++            for k, members in enumerate(self.members):
++                out[:, members] = gain[:, k : k + 1] * raw[:, members]
++            return out
+         for k, members in enumerate(self.members):
+-            out[:, members] = gain[:, k : k + 1] * raw[:, members]
++            b = basal[:, members]
++            bound = self.fraction * np.sqrt(np.mean(b * b, axis=1, keepdims=True))
++            d = gain[:, k : k + 1] * raw[:, members]
++            t = d / (bound + _APICAL_TINY)
++            out[:, members] = self.gate * np.tanh(t) * b + (d if self.keep else 0.0)
+         return out
+ 
+     def to_dict(self) -> dict[str, Any]:
+-        return {
++        out: dict[str, Any] = {
+             "synapses": int(self.synapses.sum()),
+             "pools": len(self.members),
+             "fraction": self.fraction,
+             "floor": self.floor,
+         }
++        if self.gate:
++            out["gate"] = self.gate
++        return out
+ 
+ 
+ # the blocks that hold basal and apical synapses, per compartment: fixed by the compartment and
+@@ -719,6 +744,9 @@ class Brain:
+             if not isinstance(apical, Apical):
+                 raise ValueError("apical must be an Apical or None")
+             apical.check(connectome.synapses, connectome.n, connectome.post)
++            if apical.gate and backend != "cpu":
++                raise ValueError("a gated apical compartment (apical_gate) settles on the CPU "
++                                 "backend alone")
+         self.apical = apical
+         self.dense_limit = dense_limit
+         self.precision = precision  # torch only: "float64" or "float32"; float32 on a device
+@@ -1792,7 +1820,7 @@ class Brain:
+         if self.apical is None:
+             flat = self._blocks
+             return None if flat is None else (flat, None)
+-        if not self._blocked:
++        if not self._blocked or self.apical.gate:  # a gated compartment settles in NumPy
+             return None
+         _, flat_basal, flat_apical, basal_pairs, apical_pairs, _, _ = self._apical_parts()
+         return flat_basal, (self.apical, basal_pairs, flat_apical, apical_pairs)
+diff --git a/src/cadence/checkpoint.py b/src/cadence/checkpoint.py
+index c096d5d8..3a6074d9 100644
+--- a/src/cadence/checkpoint.py
++++ b/src/cadence/checkpoint.py
+@@ -67,7 +67,10 @@ def _learner_data(learner: Learner) -> dict[str, np.ndarray]:
+         meta["format"] = APICAL_FORMAT
+     if brain.apical is not None:
+         meta["format"] = APICAL_FORMAT
+-        meta["apical"] = {"fraction": brain.apical.fraction, "floor": brain.apical.floor}
++        spec: dict[str, float] = {"fraction": brain.apical.fraction, "floor": brain.apical.floor}
++        if brain.apical.gate:  # opt-in (``apical_gate``); a brain without one saves as before
++            spec["gate"] = brain.apical.gate
++        meta["apical"] = spec
+         compartment = {
+             "apical_synapses": brain.apical.synapses,
+             "apical_groups": brain.apical.groups,
+@@ -212,13 +215,16 @@ def load(
+         apical = None
+         if "apical" in meta:
+             spec = meta["apical"]
+-            if not isinstance(spec, dict) or set(spec) != {"fraction", "floor"}:
++            if not isinstance(spec, dict) or set(spec) not in (
++                {"fraction", "floor"}, {"fraction", "floor", "gate"}
++            ):
+                 raise ValueError("invalid checkpoint apical compartment")
+             apical = Apical(
+                 np.asarray(data["apical_synapses"]),
+                 np.asarray(data["apical_groups"]),
+                 spec["fraction"],
+                 spec["floor"],
++                spec.get("gate", 0.0),
+             )
+         brain = Brain(
+             connectome,
+diff --git a/src/cadence/generic.py b/src/cadence/generic.py
+index 6b644826..efaa6a24 100644
+--- a/src/cadence/generic.py
++++ b/src/cadence/generic.py
+@@ -283,7 +283,14 @@ def _learning() -> LearnerConfig:
+ _APICAL_STEP = 0.5
+ 
+ 
+-def _apical(connectome: Connectome, fraction: float) -> Apical:
++def _where_backend_unset(options: Mapping[str, Any]) -> bool:
++    """Whether ``compose`` would choose the backend (none named, no device, no run's choice)."""
++    return (options.get("backend", "auto") == "auto" and options.get("device") is None
++            and _backend_of_the_run() is None)
++
++
++def _apical(connectome: Connectome, fraction: float, gate: float = 0.0,
++            keep: bool = False) -> Apical:
+     """The top-down half of every reciprocal pair between two regions, as an apical
+     compartment of ``fraction``.
+ 
+@@ -293,7 +300,8 @@ def _apical(connectome: Connectome, fraction: float) -> Apical:
+     module above it, the association's from the motor region, any region's from an observer.
+     The one-way projections (the sensory input, the working trace, the efference copy, the
+     history and the recall memory) and the synapses within a region stay basal. Each region
+-    that receives apical synapses is one pool."""
++    that receives apical synapses is one pool. ``gate`` (``apical_gate``) makes the top-down
++    input multiply the basal input (``Apical``)."""
+     n = connectome.n
+     region = np.full(n, -1, dtype=np.int64)
+     named = [
+@@ -312,7 +320,7 @@ def _apical(connectome: Connectome, fraction: float) -> Apical:
+     groups = np.full(n, -1, dtype=np.int64)
+     for rank in np.unique(region[post[synapses]]):
+         groups[region == rank] = rank
+-    return Apical(synapses, groups, fraction)
++    return Apical(synapses, groups, fraction, gate=gate, keep=keep)
+ 
+ 
+ def _reward() -> ActorCriticConfig:
+@@ -743,7 +751,7 @@ _CONSTRUCTION = frozenset({
+     *_EPISODIC_SETTINGS, "recall", *(f"recall_{name}" for name in Recall.CONSTRUCTION),
+     *(f"recall_{name}" for name in Recall.CONSTRUCTION_OPTIONS), "code",
+     "learned_code", *(f"learned_code_{name}" for name in LearnedCode.GENES),
+-    "attention", "apical", "maturity", "tied", "trained",
++    "attention", "apical", "apical_gate", "apical_gate_keep", "maturity", "tied", "trained",
+ })
+ 
+ 
+@@ -929,7 +937,7 @@ def _load_composition(value: Any, learner: Learner) -> dict[str, Any] | None:
+                 "sensory_scale", "working_memory_scale", "seed"}
+     if not isinstance(value, dict) or set(value) - {
+         "history_scale", "recall_scale", "image", "code", "learned_code", "attention", "apical",
+-        "learned_fields", "ports", "tied", "fields_motor",
++        "apical_gate", "learned_fields", "ports", "tied", "fields_motor",
+     } != expected:
+         raise ValueError("invalid saved composition provenance")
+     if "tied" in value and not _saved_tied(value["tied"]):
+@@ -940,6 +948,11 @@ def _load_composition(value: Any, learner: Learner) -> dict[str, Any] | None:
+         != compartment.fraction
+     ):
+         raise ValueError("a composed apical compartment is saved with its graph, and only then")
++    gated = 0.0 if compartment is None else compartment.gate
++    if ("apical_gate" in value) != bool(gated) or (
++        gated and real("saved apical_gate", value["apical_gate"], low=0) != gated
++    ):
++        raise ValueError("a composed apical gate is saved with its compartment, and only then")
+     if "attention" in value and value["attention"] is not True:
+         raise ValueError("invalid saved composition attention")
+     for name in ("inputs", "actions", "seed"):
+@@ -2488,6 +2501,8 @@ class Brain:
+         code: int | None = None,
+         learned_code: int | None = None,
+         apical: float = 0.0,
++        apical_gate: float = 0.0,
++        apical_gate_keep: bool = False,
+         dense_limit: int | None = None,
+         learned_fields: int | None = None,
+         image: Sequence[int] | None = None,
+@@ -2662,7 +2677,12 @@ class Brain:
+         # the apical compartment (opt-in): the top-down half of every reciprocal pair between
+         # regions, normalized to the bottom-up input of the region it lands on
+         fraction = real("apical", apical, low=0)
+-        compartment = _apical(connectome, fraction) if fraction else None
++        # opt-in: the top-down input multiplies the basal input it meets (``Apical.gate``)
++        gate = real("apical_gate", apical_gate, low=0)
++        if gate and not fraction:
++            raise ValueError("apical_gate gates an apical compartment: set apical as well")
++        compartment = (_apical(connectome, fraction, gate, bool(apical_gate_keep)) if fraction
++                       else None)
+         if compartment is not None and not compartment.synapses.any():
+             raise ValueError("apical needs reciprocal pairs between regions; this anatomy has none")
+         layout = make_layout(connectome)
+@@ -3460,6 +3480,8 @@ class Brain:
+                     f"{motor} neurons, where these inputs need {needed} and these actions "
+                     f"{layout['actions']}"
+                 )
++        if options.get("apical_gate") and _where_backend_unset(options):
++            options["backend"] = "cpu"  # a gated apical compartment settles on the CPU alone
+         where = {name: options.pop(name) for name in ("backend", "device", "precision")
+                  if name in options}
+ 
+@@ -3550,6 +3572,8 @@ class Brain:
+             result._composition["attention"] = True
+         if result.brain.apical is not None:
+             result._composition["apical"] = result.brain.apical.fraction
++            if result.brain.apical.gate:
++                result._composition["apical_gate"] = result.brain.apical.gate
+         return result
+ 
+     def retune(self, **genes: Any) -> Brain:
+@@ -3903,6 +3927,8 @@ class Brain:
+         )
+         if self.brain.apical is not None:  # described where it differs from its founder, 0
+             genes["apical"] = self.brain.apical.fraction
++            if self.brain.apical.gate:
++                genes["apical_gate"] = self.brain.apical.gate
+         genes.update(
+             {f"actor_{name}": value for name, value in actor.items()
+              if moved("actor", name, value)}
+@@ -7497,6 +7523,7 @@ _GROW_LOOP = frozenset(
+         "learned_code",
+         "attention",
+         "apical",
++        "apical_gate",
+         "seed",
+         "connectome",
+         "backend",
+@@ -7765,7 +7792,8 @@ def _composed_again(brain: Brain) -> tuple[Any, int, dict[str, Any]]:
+         name: value
+         for name, value in genes.items()
+         if not name.startswith(("learning_", "actor_", "arousal_"))
+-        and name not in ("teaching", "learning", "temperature", "apical", "attention")
++        and name not in ("teaching", "learning", "temperature", "apical", "apical_gate",
++                         "attention")
+     }
+     settings.update(
+         modules=tuple(composition["modules"]),
+@@ -7819,7 +7847,7 @@ def _composed_again(brain: Brain) -> tuple[Any, int, dict[str, Any]]:
+         settings["code"] = composition["code"]
+     elif brain.sparse_code is not None:  # an image brain's memories key on the code alone
+         settings["code"] = int(brain.sparse_code.expansion)
+-    for name in ("learned_code", "apical"):
++    for name in ("learned_code", "apical", "apical_gate"):
+         if name in composition:
+             settings[name] = composition[name]
+     if "tied" in composition:
+diff --git a/tests/test_apical_gate.py b/tests/test_apical_gate.py
+new file mode 100644
+index 00000000..e5b0b78b
+--- /dev/null
++++ b/tests/test_apical_gate.py
+@@ -0,0 +1,82 @@
++"""The gated apical compartment (``apical_gate``, opt-in): top-down input multiplies basal input."""
++
++from __future__ import annotations
++
++import hashlib
++
++import numpy as np
++import pytest
++
++from cadence import Brain
++from cadence.brain import Apical
++
++
++def _deep(**extra: object) -> Brain:
++    return Brain.compose(6, 4, modules=(12, 10, 8), apical=0.25, teaching="deep", seed=3,
++                         backend="cpu", recall=False, **extra)
++
++
++def _lived(brain: Brain) -> str:
++    """A short life's every output and parameter, hashed."""
++    rng = np.random.default_rng(0)
++    x = rng.random((5, 6))
++    out = []
++    for _ in range(4):
++        brain.lesson(x, rng.integers(0, 4, size=5))
++        out.append(np.asarray(brain.act(x, greedy=True)))
++        out.append(np.asarray(brain.basal_ganglia.state.activation))
++    out.append(np.asarray(brain.learner.brain.efficacy))
++    return hashlib.sha256(np.concatenate([np.ravel(o).astype(float) for o in out])
++                          .tobytes()).hexdigest()
++
++
++def test_gate_zero_is_the_additive_compartment_to_the_bit() -> None:
++    assert _lived(_deep()) == _lived(_deep(apical_gate=0.0))
++    assert "apical_gate" not in _deep().describe()["genes"]
++
++
++def test_the_gated_drive_multiplies_the_basal_input_within_its_bound() -> None:
++    rng = np.random.default_rng(1)
++    synapses = np.zeros(4, dtype=bool)
++    groups = np.array([0, 0, 0, -1])
++    plain = Apical(synapses, groups, 0.25)
++    gated = Apical(synapses, groups, 0.25, gate=0.5)
++    basal, raw = rng.normal(size=(3, 4)), rng.normal(size=(3, 4))
++    raw[:, 3] = 0.0
++    additive = plain.drive(basal, raw)
++    assert np.allclose(additive[:, :3], plain.gain(basal, raw)[:, :1] * raw[:, :3])
++    drive = gated.drive(basal, raw)
++    bound = 0.25 * np.sqrt(np.mean(basal[:, :3] ** 2, axis=1, keepdims=True))
++    assert np.allclose(drive[:, :3], 0.5 * np.tanh(additive[:, :3] / bound) * basal[:, :3])
++    factor = (basal[:, :3] + drive[:, :3]) / basal[:, :3]  # the basal input times 1 + g tanh
++    assert (factor > 0.5).all() and (factor < 1.5).all()
++    held = rng.random((3, 1))  # a nudged settle's held gain reaches the gate too
++    assert np.allclose(gated.drive(basal, raw, held)[:, :3],
++                       0.5 * np.tanh(held * raw[:, :3] / bound) * basal[:, :3])
++    with pytest.raises(ValueError, match="gate"):
++        Apical(synapses, groups, 0.25, gate=1.5)
++
++
++def test_a_gated_brain_learns_saves_and_loads(tmp_path) -> None:  # type: ignore[no-untyped-def]
++    brain = _deep(apical_gate=0.5)
++    assert brain.brain.backend == "cpu" and brain.brain.apical.gate == 0.5
++    assert brain.describe()["genes"]["apical_gate"] == 0.5
++    assert _lived(_deep(apical_gate=0.5)) != _lived(_deep())  # the gate acts
++    _lived(brain)
++    path = brain.save(tmp_path / "gated.npz")
++    again = Brain.load(path)
++    assert again.brain.apical.gate == 0.5
++    x = np.random.default_rng(2).random((5, 6))
++    brain.reset()
++    again.reset()
++    assert np.array_equal(brain.act(x, greedy=True), again.act(x, greedy=True))
++    assert np.allclose(brain.basal_ganglia.state.activation, again.basal_ganglia.state.activation)
++
++
++def test_the_gate_is_refused_without_a_compartment_or_off_the_cpu() -> None:
++    with pytest.raises(ValueError, match="apical_gate"):
++        Brain.compose(6, 4, modules=(12, 10), seed=0, backend="cpu", recall=False,
++                      apical_gate=0.5)
++    with pytest.raises(ValueError, match="CPU"):
++        Brain.compose(6, 4, modules=(12, 10), apical=0.25, seed=0, backend="torch",
++                      recall=False, apical_gate=0.5)

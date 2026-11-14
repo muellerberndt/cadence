@@ -174,6 +174,10 @@ class BrainPolicy:
         modules = tuple(int(m) for m in g["modules"])
         if float(g["apical"]) > 0 and len(modules) > 1:
             options["apical"] = float(g["apical"])
+            if float(g.get("apical_gate", 0.0)) > 0:  # the diagnostic arm (apical_gate.patch)
+                options["apical_gate"] = float(g["apical_gate"])
+                if g.get("apical_gate_keep"):
+                    options["apical_gate_keep"] = True
         if str(g["ear_entry"]) != "module_0" or str(g["message_entry"]) != "association":
             from cadence.genome import develop
 
