@@ -6,6 +6,10 @@ imitation, read every ``every`` blocks on held-out rooms and in the page's own r
 
 The brain sleeps (efficacies x .5) before the stage. Each block is one of the stage's mix (or,
 with ``interleave`` in the genome, every block draws its exchanges from the mix one a stream).
+Other genome keys of the stage: ``slept`` (a stage brain: no second sleep), ``mix`` (its own
+mix), ``anneal`` ([[lesson weight, blocks], ...] in place of ``blocks``), ``check_every`` (the
+room's check alone, between the held-out reads; a room with all five right is read at once) and
+``tag`` (the export's folder suffix).
 Every ``every`` blocks:
 - held-out reads (32 a form): shape_of, shape_not, direction, name, colour_of, imitate, and
   shape_of_other (how often "round" is said of a thing that is not round);
@@ -25,6 +29,7 @@ from __future__ import annotations
 
 import json
 import math
+import shutil
 import subprocess
 import sys
 import time
@@ -122,6 +127,10 @@ def main(argv: list[str]) -> None:
     interleave = bool(genome.pop("interleave", 0))  # the forms mixed within each block
     mix = genome.pop("mix", None) or MIX  # the stage's mix, where a fork changes it
     slept = bool(genome.pop("slept", 0))  # a fork of a stage brain: it slept before the stage
+    # an anneal: [[lesson weight, blocks], ...] in place of ``blocks`` at the genome's weights
+    anneal = genome.pop("anneal", None)
+    check = int(genome.pop("check_every", every))  # the room's check (seconds) this often
+    tag = str(genome.pop("tag", ""))  # the export's folder: code_<founder>_demo[_<tag>]
     out.mkdir(parents=True, exist_ok=True)
     p = ex.load(path, seed, genome, streams=32)
     held = nt.founder_held(seed)
@@ -130,43 +139,53 @@ def main(argv: list[str]) -> None:
         nt.sleep(p, 0.5)  # a night's sleep before the stage
     keys, weights = list(mix), np.array(list(mix.values()), dtype=float)
     began, exported = time.time(), False
+    phases = [(float(w), int(n)) for w, n in anneal] if anneal else [(None, blocks)]
 
-    def reading(at: int) -> None:
+    def reading(at: int, full: bool) -> None:
+        """The room's five through the page's host; the held-out reads at every ``every``
+        blocks and wherever the room answers all five."""
         nonlocal exported
-        forms = nt.read(p, rng, READS, held, 32)
         tmp = out / f"brain_{seed}_demo_{at}"
         tmp.mkdir(exist_ok=True)
         p.brain.save(tmp / "brain.npz")
         nt.save_records(p, tmp / "brain.records.npz")
         nt.export_spec(p, tmp / "spec.json")
-        check = demo_check(tmp, seed)
+        room = demo_check(tmp, seed)
+        right = sum(c["right"] for c in room)
+        forms = nt.read(p, rng, READS, held, 32) if full or right == len(DEMO) else None
         row = {"block": at, "seconds": round(time.time() - began), "forms": forms,
-               "room": [" ".join(c["said"]) for c in check],
-               "room_right": sum(c["right"] for c in check)}
+               "room": [" ".join(c["said"]) for c in room], "room_right": right,
+               "lesson": float(p.genome["gated_lesson"])}
         print(json.dumps(row), flush=True)
-        if row["room_right"] == len(DEMO) and forms["shape_of_other"] <= OTHER_MAX \
+        if forms is not None and right == len(DEMO) and forms["shape_of_other"] <= OTHER_MAX \
                 and not exported:
             exported = True
-            dest = page / f"code_{seed}_demo"
+            dest = page / (f"code_{seed}_demo" + (f"_{tag}" if tag else ""))
             subprocess.run([sys.executable, str(HERE / "export_page.py"), str(tmp / "brain.npz"),
                             str(seed), str(dest), json.dumps(genome)], check=True)
             (dest / "demo_check.json").write_text(json.dumps(
-                {"block": at, "forms": forms, "room": check}, indent=1))
+                {"block": at, "forms": forms, "room": room}, indent=1))
             subprocess.run([sys.executable, str(HERE / "page_test.py"), str(dest), "0.05",
                             "first"], check=True, stdout=subprocess.DEVNULL)
             print(json.dumps({"exported": str(dest), "block": at}), flush=True)
+        elif forms is None:
+            shutil.rmtree(tmp)  # a room check alone keeps no brain
 
-    reading(0)
-    for b in range(1, blocks + 1):
-        if interleave:
-            nt.live(p, mixed_block(p, rng, held, keys, weights), rng)
-        else:
-            key = keys[int(rng.choice(len(keys), p=weights / weights.sum()))]
-            form, mode = key.split(":")
-            nt.live(p, nt.blocks_of(p, rng, form, mode, held), rng)
-        if b % every == 0:
-            reading(b)
-
+    reading(0, True)
+    b = 0
+    for weight, count in phases:
+        if weight is not None:
+            p.genome["gated_lesson"] = p.genome["correction_lesson"] = weight
+        for _ in range(count):
+            b += 1
+            if interleave:
+                nt.live(p, mixed_block(p, rng, held, keys, weights), rng)
+            else:
+                key = keys[int(rng.choice(len(keys), p=weights / weights.sum()))]
+                form, mode = key.split(":")
+                nt.live(p, nt.blocks_of(p, rng, form, mode, held), rng)
+            if b % every == 0 or b % check == 0:
+                reading(b, b % every == 0)
 
 if __name__ == "__main__":
     main(sys.argv)
