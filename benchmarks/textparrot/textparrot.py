@@ -167,6 +167,10 @@ class BrainPolicy:
                 options[name] = value
         if g.get("code"):  # a fixed random sparse code of the observation (born expansion)
             options["code"] = int(g["code"])
+        if g.get("learned_code"):  # a learned sparse code, in fields of the observation
+            options["learned_code"] = int(g["learned_code"])
+            if g.get("learned_code_fields"):
+                options["learned_code_fields"] = tuple(int(w) for w in g["learned_code_fields"])
         if g.get("message"):
             options.update(message=int(g["message"]), message_phases=int(g["message_phases"]),
                            message_winners=int(g["message_winners"]),

@@ -87,6 +87,20 @@ HELD_PAIRS = frozenset({("apple", "yellow"), ("ball", "green"), ("cup", "red"),
 HELD_RELATIONS = frozenset({("left of", "cup"), ("behind", "apple"), ("next to", "ball"),
                             ("opposite", "key"), ("right of", "book"), ("in front of", "box")})
 
+def use_colours(names: tuple[str, ...]) -> None:
+    """A world of fewer colours (round 2's three-colour arm): every kind keeps the colours it
+    comes in among ``names`` (the first of ``names`` where it keeps none), and the held-out
+    pairs keep those still possible. The vocabulary is unchanged."""
+    global HELD_PAIRS
+    for name in [c for c in COLOURS if c not in names]:
+        del COLOURS[name]
+    for kind, spec in list(KINDS.items()):
+        kept = tuple(c for c in spec[3] if c in names) or (names[0],)
+        KINDS[kind] = (spec[0], spec[1], spec[2], kept, spec[4], spec[5])
+    HELD_PAIRS = frozenset((k, c) for k, c in HELD_PAIRS
+                           if c in KINDS[k][3] and len(KINDS[k][3]) > 1)
+
+
 GLIMPSE = 6 + 2 + 3 + 1 + 4 + 4 + 8 + 3  # what the eyes report of one thing: 31 values
 ASKS_PRESENT = 0.8  # the share of questions about a value or relation the scene holds
 
