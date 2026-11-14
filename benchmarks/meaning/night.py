@@ -908,7 +908,10 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
         for b in range(first, int(budget[name])):
             if b > first and b % 250 == 0:
                 checkpoint(index, b)
-            if earlier and rng.random() < float(p.genome.get("rehearsal", REHEARSAL)):
+            share = float(p.genome.get("rehearsal", REHEARSAL))
+            if "rehearsal_per_form" in p.genome:  # each earlier form its share, up to rehearsal
+                share = min(share, float(p.genome["rehearsal_per_form"]) * len(set(earlier)))
+            if earlier and rng.random() < share:
                 # the trainer revisits earlier words
                 old = str(rng.choice(earlier))
                 key = f"{old}:dagger" if old != "imitate" or int(
