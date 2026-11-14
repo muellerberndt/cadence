@@ -100,5 +100,17 @@ for word in ("what", "is", "this"):
     m.hear(word)
     m.moment(more=True)          # the voice is held while the trainer speaks
 reply = [m.moment() for _ in range(3)]   # the parrot's turn, in the gap
-m.pistachio()                    # a right reply made lasting
+m.pistachio(0.05, first=True)    # a right reply made lasting: one small lesson a word
 ```
+
+A page's folder holds `brain.npz`, `spec.json` and, where the brain kept them,
+`brain.records.npz` (the word records, found beside the brain), `probes.json` (the association's
+linear read of each facet of the thing in focus: kind, colour, round, material, edible,
+direction, distance) and `rehearsal.json` (the night's exchanges, for `load_rehearsal`). After a
+wrong reply, `m.correct(word)` keeps the trainer's word as a record under the question's state.
+
+A paid lesson moves the one readout every question about the focused thing shares. One pistachio
+at the training's step turns "what colour has the apple?" from "red" into "apple";
+`pistachio(0.05, first=True)` keeps the colour answer through 5 to 7 paid namings
+(`benchmarks/meaning/page_test.py`). With `mixed_code` the question and the thing meet in a
+sparse code (the spec's fixed expansion), which the host reads as the chamber does.

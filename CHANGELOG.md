@@ -14,14 +14,22 @@
   genome of named genes (the regions, the apical compartment, where the ear enters, the recall
   memory, the voice and a second motor slot, the actor-critic's rates and hold), each gene
   declared for `cadence.genes`.
+- **`cadence.meaning.compose` routes**: `ear_entry` (the lowest region, the association or
+  both), `ear_motor` (the ear straight to the voice, beside the association's route) and
+  `eyes_entry` (the eyes into the association too); `learning_*` genes pass to `Brain.compose`.
 - **`cadence.meaning.host.MeaningParrot`**: a trained brain on a page, one moment at a time:
-  `see`, `hear`, `moment`, `pistachio`.
+  `see`, `hear`, `moment`, `pistachio` (with `first` and an amount), `correct`, the word records
+  beside the brain, `load_rehearsal`, and the sparse mixed code of a brain that has one.
 - **`benchmarks/meaning`**: the night's chamber (`night.py`: the world, every question form, the
   self-hearing lesson, the pistachio-gated lesson on the parrot's own reply taken on the brain as
   it was when it replied, the correction on the parrot's own states, the glimpse and the scan,
-  checkpoints), the controls in the brain's place (`meaning_controls.py`), the exam and
-  introspection (`exam.py`, `introspect.py`), the page's files (`export_page.py`) and the tables
-  (`report.py`).
+  checkpoints, sleep between steps, word records with reconsolidation or stable keys, the
+  sparse mixed code), the controls in the brain's place (`meaning_controls.py`), the exam and
+  introspection (`exam.py`, `introspect.py`: probes per region, the question's gating, state
+  completeness, the completion matrix, the sound in the state), the page's files
+  (`export_page.py`: probes and rehearsal beside the brain), the page's interference test
+  (`page_test.py`), demos (`demo.py`, `imitation_demo.py`), the binding arms for review
+  (`binding_arm.py`, `state_target_arm.py`) and the tables (`report.py`).
 
 ### Words for things (#326)
 
