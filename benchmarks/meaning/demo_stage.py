@@ -120,12 +120,15 @@ def main(argv: list[str]) -> None:
     every = int(argv[6]) if len(argv) > 6 else 25
     page = Path(genome.pop("page_dir", "/data/meaning334/night/page"))
     interleave = bool(genome.pop("interleave", 0))  # the forms mixed within each block
+    mix = genome.pop("mix", None) or MIX  # the stage's mix, where a fork changes it
+    slept = bool(genome.pop("slept", 0))  # a fork of a stage brain: it slept before the stage
     out.mkdir(parents=True, exist_ok=True)
     p = ex.load(path, seed, genome, streams=32)
     held = nt.founder_held(seed)
     rng = np.random.default_rng(np.random.SeedSequence([seed, 334, 120]))
-    nt.sleep(p, 0.5)  # a night's sleep before the stage
-    keys, weights = list(MIX), np.array(list(MIX.values()))
+    if not slept:
+        nt.sleep(p, 0.5)  # a night's sleep before the stage
+    keys, weights = list(mix), np.array(list(mix.values()), dtype=float)
     began, exported = time.time(), False
 
     def reading(at: int) -> None:
