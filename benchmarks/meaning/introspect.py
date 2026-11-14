@@ -362,6 +362,57 @@ def sound_in_state(p: nt.Parrot, rng: np.random.Generator, held: set[tuple[str, 
             "right": right / len(pairs)}
 
 
+def match_probe(p: nt.Parrot, rng: np.random.Generator, held: set[tuple[str, str]],
+                blocks: int = 8) -> dict[str, Any]:
+    """The lesson-free probe of match (review-topdown, section 2.3): at each scan stop of "what
+    is <colour>?", whether the glimpsed thing has the question's colour, read linearly from the
+    raw observation, from the sparse mixed code (where the brain has one) and from the
+    association's settled state, fitted on half the stops and read on the other half, with the
+    hit and false-alarm rates and d'."""
+    from statistics import NormalDist
+
+    brain = frozen(p)
+    rows: dict[str, list[np.ndarray]] = {"observation": [], "association": []}
+    if p.mixed:
+        rows["mixed code"] = []
+    labels: list[float] = []
+    assoc = np.asarray(list(p.brain.connectome.populations["association"]))
+    for _ in range(blocks):
+        exs = nt.block(p, rng, "by_colour", "turn", held)
+        brain.reset()
+        n = len(exs)
+        for t in range(max(ex.turn + len(ex.scan) for ex in exs)):
+            x = p.observe(exs, t, [None] * n, np.zeros(n, dtype=bool), rng)
+            brain.act(x, greedy=True)
+            a = np.asarray(brain.basal_ganglia.state.activation, dtype=np.float64)
+            for i, ex in enumerate(exs):
+                k = t - ex.turn
+                if not 0 <= k < len(ex.scan) or ex.question is None:
+                    continue
+                labels.append(float(ex.scan[k].colour == ex.question.words[-1]))
+                rows["observation"].append(x[i].copy())
+                rows["association"].append(a[i, assoc].copy())
+                if p.mixed:
+                    lo = p.inputs - p.ear - p.mixed
+                    rows["mixed code"].append(x[i, lo:lo + p.mixed].copy())
+        brain.reset()
+    y = np.asarray(labels)
+    half = len(y) // 2
+    out: dict[str, Any] = {"stops": len(y), "match share": float(y.mean())}
+    nd = NormalDist()
+    for name, xs in rows.items():
+        x = np.asarray(xs)
+        pr = fit_probe(x[:half], y[:half])
+        said = probe_read(pr, x[half:]) > 0.5
+        truth = y[half:] > 0.5
+        hit = float(np.mean(said[truth])) if truth.any() else float("nan")
+        fa = float(np.mean(said[~truth])) if (~truth).any() else float("nan")
+        clip = lambda v: min(max(v, 0.01), 0.99)  # noqa: E731
+        out[name] = {"accuracy": float(np.mean(said == truth)), "hit": hit, "false alarm": fa,
+                     "d'": nd.inv_cdf(clip(hit)) - nd.inv_cdf(clip(fa))}
+    return out
+
+
 def neighbours(p: nt.Parrot, rng: np.random.Generator, held: set[tuple[str, str]],
                per: int = 32) -> dict[str, Any]:
     """Each kind's mean code (the lemon's too, never shown) and its cosine to the others."""

@@ -148,6 +148,8 @@ def main(argv: list[str]) -> None:
     print("completion", json.dumps(out["completion"]), flush=True)
     out["sound_in_state"] = ii.sound_in_state(p, rng, held)
     print("sound_in_state", json.dumps(out["sound_in_state"]), flush=True)
+    out["match_probe"] = ii.match_probe(p, rng, held)
+    print("match_probe", json.dumps(out["match_probe"]), flush=True)
     nb = ii.neighbours(p, rng, held, per=48)
     out["neighbours"] = {"nearest": nb["nearest"], "kinds": nb["kinds"], "cosine": nb["cosine"]}
     print("neighbours", json.dumps(nb["nearest"]), flush=True)
