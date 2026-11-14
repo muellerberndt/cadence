@@ -19,7 +19,8 @@
   `eyes_entry` (the eyes into the association too); `learning_*` genes pass to `Brain.compose`.
 - **`cadence.meaning.host.MeaningParrot`**: a trained brain on a page, one moment at a time:
   `see`, `hear`, `moment`, `pistachio` (with `first` and an amount), `correct`, the word records
-  beside the brain, `load_rehearsal`, and the sparse mixed code of a brain that has one.
+  beside the brain (keyed on the association's pattern or on the input, as `spec.json` says),
+  `load_rehearsal`, and the sparse mixed code of a brain that has one.
 - **`benchmarks/meaning`**: the night's chamber (`night.py`: the world, every question form, the
   self-hearing lesson, the pistachio-gated lesson on the parrot's own reply taken on the brain as
   it was when it replied, the correction on the parrot's own states, the glimpse and the scan,

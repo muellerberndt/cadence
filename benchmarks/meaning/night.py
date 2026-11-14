@@ -960,7 +960,9 @@ def life(seed: int, genome: dict[str, Any] | None = None, *, blocks: dict[str, i
                 log(f"{name} {b} {key} right={np.mean(got['right']):.2f} "
                     f"t={time.time() - began:.0f}s")
             if peek and log is not None and b > first and b % peek == 0:  # a development read
-                log(f"{name} read at block {b}: {read(p, rng, tests, held, 32)}")
+                # of every form taught so far, so a step's lessons show what they cost the others
+                log(f"{name} read at block {b}: "
+                    f"{read(p, rng, sorted(set(seen) | set(tests)), held, 32)}")
             if master and b >= 100 and b % 100 == 0 and len(paid) >= 40 and float(
                     np.mean(paid[-40:])) >= SAMPLED_GATE:
                 check = read(p, rng, tests, held, 32)  # the step's forms, greedy, frozen
@@ -1041,5 +1043,6 @@ def export_spec(p: Parrot, path: str | Path) -> None:
         spec["records"] = {"settings": {k: (v.item() if hasattr(v, "item") else v)
                                         for k, v in p.records.to_dict().items()},
                            "agree": int(p.genome.get("records_agree", 1)),
-                           "match": float(p.genome.get("records_match", 0.85))}
+                           "match": float(p.genome.get("records_match", 0.85)),
+                           "key": str(p.genome.get("records_key", "association"))}
     Path(path).write_text(json.dumps(spec))

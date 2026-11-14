@@ -343,7 +343,19 @@ def sound_in_state(p: nt.Parrot, rng: np.random.Generator, held: set[tuple[str, 
     if p.records is None or not p.records.count:
         return {"records": 0.0, "recalled": 0.0, "right": 0.0}
     pairs = scenes(p, rng, count, held, test=False)
-    codes = focus_codes(p, pairs, rng)["association"]
+    if str(p.genome.get("records_key", "association")) == "input":
+        # the records' own key: the glimpse in focus and the ear, at a moment nothing is heard
+        codes = []
+        for i in range(0, len(pairs), p.streams):
+            chunk = pairs[i:i + p.streams]
+            rooms = [r for r, _ in chunk] + [chunk[-1][0]] * (p.streams - len(chunk))
+            exs = [nt.Exchange(r, [None], 0, None) for r in rooms]
+            x = p.observe(exs, 0, [None] * p.streams, np.zeros(p.streams, dtype=bool), rng)
+            codes.append(np.concatenate([x[:, : p.eyes.slot_width], x[:, -p.ear:]],
+                                        axis=1)[:len(chunk)])
+        codes = np.concatenate(codes)
+    else:
+        codes = focus_codes(p, pairs, rng)["association"]
     names = {w: p.forms(w) for w in nt.WORDS}
     recalled, right = 0, 0
     for (_, t), cue in zip(pairs, codes, strict=True):

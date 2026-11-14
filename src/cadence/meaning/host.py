@@ -20,7 +20,8 @@ Every moment (about 300 ms):
    moments of the reply with the parrot's own words as the labels.
 5. ``correct(word)``: after a wrong reply the trainer says the right word: where the brain keeps
    word records (a ``records`` file beside the brain), the word is kept under the association
-   region's pattern of the moment the question ended. At the parrot's turn the records its
+   region's pattern of the moment the question ended (with ``key`` "input" in the spec's
+   records: the glimpse in focus and the ear that moment). At the parrot's turn the records its
    pattern then recalls (the nearest records, where they agree) are replayed to its ear.
 
 The voice says a word by replaying the take of the trainer's word its memory keeps (the page's
@@ -81,6 +82,9 @@ class MeaningParrot:
             with np.load(path) as f:
                 self.records.restore({k: f[k] for k in f.files})
             self.association = np.asarray(list(self.brain.connectome.populations["association"]))
+            # the records' key: the association's pattern, or (``key`` "input") what is seen in
+            # focus and heard that moment, keys that do not drift as the brain learns
+            self.records_key = str(given.get("key", "association"))
 
     def code(self, word: str | None) -> np.ndarray:
         if word is None:
@@ -164,8 +168,11 @@ class MeaningParrot:
         x = self.observation()
         action = np.asarray(self.brain.act(x, greedy=greedy)).reshape(1, -1)
         if self.records is not None and heard_now:
-            self.cue = np.asarray(self.brain.basal_ganglia.state.activation, dtype=np.float64)[
-                0, self.association].copy()
+            if self.records_key == "input":  # the glimpse in focus and the ear this moment
+                self.cue = np.concatenate([x[0, : self.eyes.slot_width], x[0, -self.width:]])
+            else:
+                self.cue = np.asarray(self.brain.basal_ganglia.state.activation,
+                                      dtype=np.float64)[0, self.association].copy()
         unit = int(action[0, 0])
         said = None if unit >= self.silence or more else self.voice[unit]
         if said is not None:

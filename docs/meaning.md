@@ -59,9 +59,11 @@ Every rule is the brain's own; only the world and the teacher are designed.
   parrot's mirror of a heard word. The lesson is taken on the brain as it was at the reply, and
   it takes the living brain's optimizer step.
 - **The word records:** a word the trainer gives as an answer is kept under the association's
-  pattern of the moment the question ended. At the parrot's turn, the records its pattern recalls
-  (where the three nearest agree) are replayed to its ear. A recalled record is rewritten under
-  the present pattern once its reply is judged (reconsolidation).
+  pattern of the moment the question ended, or (`records_key` "input", the night's choice) under
+  what is seen in focus and heard that moment, a key that does not drift as the brain learns.
+  The page host reads the key from `spec.json`. At the parrot's turn, the records its pattern
+  recalls (where the three nearest agree) are replayed to its ear. A recalled record is
+  rewritten under the present pattern once its reply is judged (reconsolidation).
 - **Sleep:** between steps every efficacy is scaled down by half, so the brain can learn again.
 - **The actor-critic:** the pistachio is the reward, its delay bridged by the eligibility
   (`actor_hold`).

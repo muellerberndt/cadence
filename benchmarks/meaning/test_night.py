@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
@@ -72,10 +73,11 @@ def test_the_word_records_are_kept_with_the_checkpoint_and_the_brain(tmp_path):
     assert nt.load_records(p, kept) and p.records.count > 0
 
 
-def test_the_page_host_keeps_a_correction_and_recalls_it_at_the_turn(tmp_path):
+@pytest.mark.parametrize("key", ["association", "input"])
+def test_the_page_host_keeps_a_correction_and_recalls_it_at_the_turn(tmp_path, key):
     from cadence.meaning.host import MeaningParrot
 
-    p = nt.Parrot(7, {"word_records": 1}, streams=1)
+    p = nt.Parrot(7, {"word_records": 1, "records_key": key}, streams=1)
     nt.export_spec(p, tmp_path / "spec.json")
     p.brain.save(tmp_path / "brain.npz")
     nt.save_records(p, tmp_path / "brain.records.npz")
