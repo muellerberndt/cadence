@@ -71,6 +71,11 @@ ARMS: dict[str, dict[str, Any]] = {
     "G": {"genome": {**EVERY, "apical_gate": 0.5}},
     "B": {"genome": EVERY, "bind": True},
     "BC": {"genome": EVERY, "page": True, "field": "code", "bind": True},
+    # added development arm (not of the declared protocol): L on the learned code's fix (the
+    # first of several modules reads the code at unit length), a nursery of 1,024 moments of
+    # the forms (acts alone, no lesson) before the first block, the code's rate divided by four
+    "L2": {"genome": {**EVERY, "message": 0}, "page": True, "field": "learned", "nursery": 1024,
+           "code_rate": 0.25},
 }
 CODE_UNITS, CODE_ON = 1024, 102
 LEARNED_UNITS = 256
@@ -486,6 +491,13 @@ def life(seed: int, arm: str, out_dir: Path, blocks: int = 1000, every: int = 50
     policy, layout = compose_arm(arm, seed)
     binder = Binder(policy, layout) if spec.get("bind") else None
     rng = np.random.default_rng([seed, 338, 1])
+    if spec.get("code_rate"):
+        policy.brain.learned_code.rate *= float(spec["code_rate"])
+    if spec.get("nursery"):  # the code region learns from the forms' moments before any lesson
+        moments = 0
+        while moments < int(spec["nursery"]):
+            eps = tc.run(policy, layout, tp.batch(rng, FORMS, 64), "free", learn=False)
+            moments += max(e.moments for e in eps)
     record: dict[str, Any] = {"arm": arm, "seed": seed, "parameters": policy.parameters(),
                               "synapses": int(len(policy.brain.connectome.pre)), "reads": [],
                               "completion": []}
