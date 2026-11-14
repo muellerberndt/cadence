@@ -682,9 +682,92 @@ def regate(out_dir: Path, arm: str, seed: int) -> None:
     Path(f"{stem}.json").write_text(json.dumps(record, indent=1, default=float))
 
 
+def criteria(out_dir: Path) -> dict[str, Any]:
+    """The declared criteria, per founder (d' on "what is red ?", shown pairs)."""
+    recs: dict[str, dict[int, dict[str, Any]]] = {}
+    for p in sorted(out_dir.glob("*.json")):
+        try:
+            r = json.loads(p.read_text())
+        except json.JSONDecodeError:
+            continue
+        recs.setdefault(r["arm"], {})[int(r["seed"])] = r
+
+    def first(r: dict[str, Any]) -> float:
+        for row in r["reads"]:
+            if row["detection"]["which_colour"]["shown"]["d"] >= 2:
+                return float(row["block"])
+        return math.inf
+
+    def curve(arm: str) -> dict[int, float]:
+        rows: dict[int, list[float]] = {}
+        for r in recs.get(arm, {}).values():
+            for row in r["reads"]:
+                rows.setdefault(row["block"], []).append(
+                    row["detection"]["which_colour"]["shown"]["d"])
+        return {b: float(np.mean(v)) for b, v in sorted(rows.items())}
+
+    out: dict[str, Any] = {}
+    a1 = recs.get("A1", {})
+    for arm in ("C", "L", "Cw", "A1c", "BC", "F", "G", "B", "A0"):
+        got = recs.get(arm, {})
+        both = [f for f in got if f in a1]
+        half = sum(first(got[f]) <= first(a1[f]) / 2 for f in both)
+        out[f"{arm}_at_half_A1"] = f"{half} of {len(both)}"
+        out[f"{arm}_first_median"] = float(np.median([first(got[f]) for f in got])) if got else None
+    out["A1_first_median"] = float(np.median([first(r) for r in a1.values()])) if a1 else None
+    c, f_, g, a = curve("C"), curve("F"), curve("G"), curve("A1")
+    out["F_minus_C_max_abs"] = max((abs(f_[b] - c[b]) for b in f_ if b in c), default=None)
+    out["G_above_A1_reads"] = [b for b in g if b in a and g[b] > a[b]]
+    out["G_minus_A1_max"] = max((g[b] - a[b] for b in g if b in a), default=None)
+    refute = 0
+    for f in recs.get("G", {}):
+        for row in recs["G"][f]["reads"]:
+            b = row["block"]
+            if row["detection"]["which_colour"]["shown"]["d"] < 2:
+                continue
+            others = []
+            for arm in ("A1", "C", "L"):
+                r = recs.get(arm, {}).get(f)
+                if r:
+                    others += [x["detection"]["which_colour"]["shown"]["d"] for x in r["reads"]
+                               if x["block"] == b]
+            if others and max(others) < 1:
+                refute += 1
+                break
+    out["G_refute_founders"] = refute
+
+    def gate(r: dict[str, Any]) -> tuple[float, float] | None:
+        g = r.get("page_gate_first")
+        return (g["before"], g["10"]) if g else None
+    for arm in ("C", "A1", "BC", "B", "A0", "Cw", "F", "G", "A1c"):
+        rows = [gate(r) for r in recs.get(arm, {}).values()]
+        rows = [x for x in rows if x is not None]
+        if rows:
+            out[f"page_{arm}"] = {"before": float(np.mean([x[0] for x in rows])),
+                                  "after_10": float(np.mean([x[1] for x in rows])),
+                                  "holds": sum(x[1] >= 0.75 for x in rows),
+                                  "flips": sum(x[1] < 0.5 for x in rows), "n": len(rows)}
+    for arm in ("A1", "B", "C", "BC"):
+        comp = [r["completion"] for r in recs.get(arm, {}).values() if r.get("completion")]
+        if comp:
+            out[f"completion_{arm}"] = {
+                str(b): float(np.mean([row["kind"] for c_ in comp for row in c_
+                                       if row["block"] == b])) for b in (50, 100, 200)}
+        names_ = [r.get("names_first") for r in recs.get(arm, {}).values()
+                  if r.get("names_first") is not None]
+        if names_:
+            out[f"names_{arm}"] = float(np.mean(names_))
+    for arm in recs:
+        probes = [r["probe_trained"] for r in recs[arm].values() if r.get("probe_trained")]
+        if probes:
+            out[f"probe_{arm}"] = {k: round(float(np.mean([p[k] for p in probes])), 3)
+                                   for k in probes[0]}
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("what", choices=["life", "control", "read", "regate"])
+    ap.add_argument("what", choices=["life", "control", "read", "regate", "criteria"])
     ap.add_argument("args", nargs="*")
     ap.add_argument("--blocks", type=int, default=1000)
     ap.add_argument("--every", type=int, default=50)
@@ -693,6 +776,8 @@ def main() -> None:
         life(int(a.args[0]), a.args[1], Path(a.args[2]), a.blocks, a.every)
     elif a.what == "control":
         control(int(a.args[0]), a.args[1], Path(a.args[2]), a.blocks, a.every)
+    elif a.what == "criteria":
+        print(json.dumps(criteria(Path(a.args[0])), indent=1, default=str))
     elif a.what == "regate":
         regate(Path(a.args[0]), a.args[1], int(a.args[2]))
     else:
