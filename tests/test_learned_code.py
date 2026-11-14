@@ -1210,6 +1210,43 @@ def test_the_module_reads_the_code_at_unit_length():
     np.testing.assert_allclose(read, expected, atol=1e-3)
 
 
+@pytest.mark.parametrize("modules, first", [
+    ((24, 16), "module_0"), ((24, 16, 12), "module_0"), ((24,), "association"),
+], ids=["two", "three", "one"])
+def test_the_first_module_reads_the_code_at_unit_length_at_any_depth(modules, first):
+    """The code projects to the first module, and that module's neurons read the code at unit
+    length whether it is the brain's one module (the association region) or the first of
+    several: the code's synaptic input plus the term the moment's drive carries. Through
+    0.99.0 the term was carried on the association region, which no code unit reaches in a
+    brain of several modules, and the first module read the units' activations as they are."""
+    brain = cd.Brain.compose(INPUTS, ACTIONS, modules=modules, learned_code=UNITS, seed=6,
+                             recall=False)
+    connectome, graph = brain.connectome, brain.brain
+    readers = np.asarray(connectome.populations[first], dtype=np.int64)
+    synapses, _, _ = brain._code_forward
+    assert len(synapses) == UNITS * modules[0]  # every synapse from the code to its reader
+    np.testing.assert_array_equal(np.unique(connectome.post[synapses]), readers)
+    x = tokens(3, 8, 20)
+    brain._prepare(x, context=False)
+    activity = np.atleast_2d(brain._coded_moment[2].activation)
+    code = brain.learned_code.code_of(activity)
+    np.testing.assert_allclose(np.linalg.norm(code, axis=1), 1.0, rtol=0, atol=1e-12)
+    # the units' own activations are far from unit length: the two reads differ
+    assert (np.linalg.norm(np.maximum(activity, 0.0), axis=1) < 0.5).all()
+    drive = np.random.default_rng(45).normal(size=(len(x), connectome.n))
+    corrected = brain._unit_read(x, drive, memory=False)
+    dense = np.zeros((connectome.n, connectome.n))
+    np.add.at(dense, (connectome.pre, connectome.post), graph.weights)
+    source = np.zeros_like(drive)
+    source[:, brain.code_index] = activity
+    forward = dense[np.ix_(brain.code_index, readers)]
+    assert forward.any()
+    actual = (source @ dense + corrected - drive)[:, readers]
+    np.testing.assert_allclose(actual, code @ forward, rtol=1e-12, atol=1e-13)
+    elsewhere = np.setdiff1d(np.arange(connectome.n), np.r_[readers, brain.code_index])
+    np.testing.assert_array_equal(corrected[:, elsewhere], drive[:, elsewhere])
+
+
 @pytest.mark.parametrize("contacts, log_gains", [
     (False, False), (True, False), (False, True), (True, True),
 ], ids=["unit", "contacts", "log_gain", "combined"])

@@ -31,6 +31,22 @@ tracking what is where.
   map's file with whether it is still learning.
 - No default changes: with physics unset the map is as on 0.99.0, to the bit.
 
+### Fixed
+
+- **A learned code under several modules is read at unit length.** With `learned_code=units`
+  the first module reads the rectified code at unit length (`LearnedCode.code_of`), the
+  region's output gain. The term that carries it was held on the association region, which is
+  the first module only in a brain of one module. With `modules=(a, b, ...)` the code projects
+  to `module_0`, no code unit reaches the association region, and the first module read the
+  code units' activations as they are: the read the readings had retired
+  (`learned_code_output`). In a brain of 32 inputs, a code of 32 and modules of 32 the first
+  module's input from the code read .32 after 50 acts where the unit-length read gives 1.05.
+  The term is now carried on the neurons the code projects to, at any depth. A brain of one
+  module is unchanged to the bit, and so is every brain without `learned_code`. A brain with
+  `learned_code` and several modules settles and learns otherwise than on 0.99.0; a checkpoint
+  of such a brain loads, and its first module, trained under the weaker read, then receives
+  the code at unit length.
+
 ## 0.99.0 - 2026-11-13
 
 A map of what is where, held in the brain's own carried activity (`cadence.space.map.Map`,
