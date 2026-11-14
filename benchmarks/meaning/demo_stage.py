@@ -4,7 +4,8 @@ imitation, read every ``every`` blocks on held-out rooms and in the page's own r
 
     python demo_stage.py <brain.npz> <founder> '<genome>' <out dir> [blocks] [every]
 
-The brain sleeps (efficacies x .5) before the stage. Each block is one of the stage's mix.
+The brain sleeps (efficacies x .5) before the stage. Each block is one of the stage's mix (or,
+with ``interleave`` in the genome, every block draws its exchanges from the mix one a stream).
 Every ``every`` blocks:
 - held-out reads (32 a form): shape_of, shape_not, direction, name, colour_of, imitate, and
   shape_of_other (how often "round" is said of a thing that is not round);
@@ -56,6 +57,28 @@ DEMO = [  # the owner's four and the contrast, the answer, the thing in focus
 ]
 
 
+def mixed_block(p: nt.Parrot, rng: np.random.Generator, held: set[tuple[str, str]],
+                keys: list[str], weights: np.ndarray) -> list[nt.Exchange]:
+    """One block whose exchanges are drawn from the mix one a stream (the forms interleaved
+    within the block), lockstep as ``night.block`` aligns them."""
+    exs = []
+    for _ in range(p.streams):
+        form, mode = keys[int(rng.choice(len(keys), p=weights / weights.sum()))].split(":")
+        if form == "imitate":
+            r = nt.room(rng, int(rng.integers(2, 5)), held)
+            w = nt.WORDS[int(rng.integers(len(nt.WORDS)))]
+            exs.append(nt.Exchange(r, [w], 0, nt.Question([w], [w], "imitate"),
+                                   extra={"dagger": mode == "dagger"}))
+        else:
+            exs.append(nt.exchange(p, rng, form, mode, held))
+    width = max(ex.turn for ex in exs) + int(p.genome.get("focus_records", 0))
+    for ex in exs:
+        pad = width - ex.turn
+        ex.heard = [None] * pad + ex.heard
+        ex.turn += pad
+    return exs
+
+
 def demo_room() -> nt.Room:
     """The owner's room (a red apple left and far, a blue block, a white cup behind, a yellow
     key in front) with a green ball to the parrot's right."""
@@ -96,6 +119,7 @@ def main(argv: list[str]) -> None:
     blocks = int(argv[5]) if len(argv) > 5 else 600
     every = int(argv[6]) if len(argv) > 6 else 25
     page = Path(genome.pop("page_dir", "/data/meaning334/night/page"))
+    interleave = bool(genome.pop("interleave", 0))  # the forms mixed within each block
     out.mkdir(parents=True, exist_ok=True)
     p = ex.load(path, seed, genome, streams=32)
     held = nt.founder_held(seed)
@@ -131,9 +155,12 @@ def main(argv: list[str]) -> None:
 
     reading(0)
     for b in range(1, blocks + 1):
-        key = keys[int(rng.choice(len(keys), p=weights / weights.sum()))]
-        form, mode = key.split(":")
-        nt.live(p, nt.blocks_of(p, rng, form, mode, held), rng)
+        if interleave:
+            nt.live(p, mixed_block(p, rng, held, keys, weights), rng)
+        else:
+            key = keys[int(rng.choice(len(keys), p=weights / weights.sum()))]
+            form, mode = key.split(":")
+            nt.live(p, nt.blocks_of(p, rng, form, mode, held), rng)
         if b % every == 0:
             reading(b)
 
