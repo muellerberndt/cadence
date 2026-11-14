@@ -367,6 +367,12 @@ the sparse state that reconstructs the sensory activation, as read, through the 
 as far as the thresholds allow, drawn toward what the context predicts. The sensory neurons
 project to the code region alone, and nothing leads back into it.
 
+The code units project to the first module alone (`module_0`, or the association region in a
+brain of one module). That module reads the rectified code at unit length
+(`LearnedCode.code_of`, the code part of the memories' key), whatever the number of modules:
+the settled activations of the units that are on are a fraction of a sensory neuron's, and
+the unit-length read is the region's output gain, one per stream.
+
 ### How a moment settles
 
 A moment's settle has a code phase first: the region's sub-network (its units, its lateral
