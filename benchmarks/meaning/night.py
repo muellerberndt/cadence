@@ -1086,6 +1086,7 @@ def export_spec(p: Parrot, path: str | Path) -> None:
         "colours": {c: list(v) for c, v in COLOURS.items()},
         "materials": {m: list(v) for m, v in MATERIALS.items()},
         "moment_ms": 300, "turn_moments": TURN, "catch_moments": CATCH,
+        "looks": int(p.genome.get("focus_records", 0)),  # look moments opening an exchange
     }
     if p.mixed:  # the sparse mixed code's fixed expansion
         spec["mixed"] = {"w": p.mixed_w.tolist(), "on": p.mixed_on,

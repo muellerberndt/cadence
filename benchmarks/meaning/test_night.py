@@ -121,3 +121,30 @@ def test_the_page_host_reads_the_mixed_code_as_the_chamber_does(tmp_path, balanc
     assert code.sum() == p.mixed_on  # the sparse code: a tenth of its units on
     trace = m.trace.copy()  # the chamber's code of the same glimpse and trace
     assert np.array_equal(code, p.mixed_code(x[0, : p.eyes.slot_width], trace))
+
+
+def test_the_page_host_begins_each_exchange_clear(tmp_path):
+    from cadence.meaning.host import MeaningParrot
+
+    p = nt.Parrot(9, {"mixed_code": 64, "focus_records": 1}, streams=1)
+    nt.export_spec(p, tmp_path / "spec.json")
+    p.brain.save(tmp_path / "brain.npz")
+    apple = {"kind": "apple", "colour": "red", "material": "fruit", "direction": 1.0,
+             "distance": 1.4, "focus": True}
+
+    def ask(m, words):
+        m.see([apple])
+        for w in words:
+            m.hear(w)
+            m.moment(more=True)
+        trace = m.trace.copy()
+        for _ in range(3):
+            m.moment()
+        return trace
+
+    fresh = MeaningParrot(tmp_path / "brain.npz", tmp_path / "spec.json")
+    alone = ask(fresh, ["where", "is", "the", "apple"])
+    m = MeaningParrot(tmp_path / "brain.npz", tmp_path / "spec.json")
+    ask(m, ["what", "colour", "has", "the", "apple"])
+    after = ask(m, ["where", "is", "the", "apple"])  # back to back: nothing carried over
+    assert m.looks == 1 and np.allclose(after, alone)

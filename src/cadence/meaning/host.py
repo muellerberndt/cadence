@@ -74,6 +74,12 @@ class MeaningParrot:
         self.cue: np.ndarray | None = None  # the pattern of the last moment a word was heard
         self.recalled = np.zeros(self.width)
         self.in_turn = False
+        # an exchange begins at the first word heard after the parrot's turn (or a look): what
+        # the last exchange left (the ear's trace of its words, the voice's own word, the reply,
+        # the brain's state) is cleared, and the brain takes ``looks`` moments of looking first,
+        # as every exchange of the training chamber begins
+        self.looks = int(self.spec.get("looks", 0))
+        self.turned = True
         given = self.spec.get("records")
         path = Path(records) if records is not None else Path(brain).with_suffix(".records.npz")
         if given is not None and path.exists():
@@ -158,8 +164,26 @@ class MeaningParrot:
         self.records.write(self.cue, self.code(word))
         return True
 
+    def new_exchange(self) -> None:
+        """An exchange begins: the brain's state, the ear's trace of the last exchange's words,
+        the voice's own last word, the reply and the turn are cleared, then ``looks`` moments of
+        looking at what is in focus with nothing heard. ``moment`` calls it at the first word
+        heard after the parrot's turn or a look, so the answers do not depend on how soon the
+        next question comes."""
+        heard = self.heard
+        self.brain.reset()
+        self.trace = np.zeros(self.width)
+        self.own, self.heard, self.reply = None, None, []
+        self.in_turn, self.recalled, self.cue = False, np.zeros(self.width), None
+        self.turned = False
+        for _ in range(self.looks):
+            self.moment(more=True)
+        self.heard = heard
+
     def moment(self, *, more: bool = False, greedy: bool = True) -> str | None:
         """One moment: settle on what is seen and heard, act; the word said, or None."""
+        if self.heard is not None and self.turned:
+            self.new_exchange()
         if self.records is not None:
             self.records.moment()  # a moment of the store: unused, shallow records fade first
             if self.heard is not None:  # the trainer speaks: no turn, nothing recalled
@@ -183,6 +207,8 @@ class MeaningParrot:
         if said is not None:
             self.reply.append((x[0].copy(), unit))
         self.own, self.heard = said, None
+        if not heard_now and not more:
+            self.turned = True  # the parrot's turn, or a look: the next word heard begins anew
         return said
 
     def pistachio(self, amount: float = 1.0, *, first: bool = False,
@@ -226,10 +252,13 @@ class MeaningParrot:
         unit = self.voice.index(item["answer"][0])
         self.brain.lesson(self.observation(), np.array([[unit, 0]]), weights=np.array([amount]))
         self.brain.reset()
+        self.trace = np.zeros(self.width)
+        self.turned = True  # the next word heard begins an exchange of its own
         self.reply, self.own = held_reply, held_own
 
     def turn_over(self) -> None:
         """The exchange ends: the reply's moments are forgotten (no pistachio came)."""
+        self.turned = True
         self.reply = []
         self.trace = np.zeros(self.width)
         self.in_turn, self.recalled = False, np.zeros(self.width)
