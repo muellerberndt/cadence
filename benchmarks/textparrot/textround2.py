@@ -408,10 +408,44 @@ def _balanced(xa: np.ndarray, ya: np.ndarray, xb: np.ndarray, yb: np.ndarray) ->
         float("nan")
 
 
+def first_word(policy: Any, layout: tc.Layout, items: list[tuple[tw.Scene, tw.Question]]
+               ) -> float:
+    """The share of exchanges whose first word at the named thing (the answer sweep's first
+    moment there, teacher forced) is the teacher's."""
+    eps = [tc.Episode(layout, s, q, "teacher") for s, q in items]
+    policy.begin(len(eps))
+    right: list[int] = []
+    for _ in range(160):
+        mask = np.array([not e.done for e in eps])
+        if not mask.any():
+            break
+        x = np.stack([e.observe() for e in eps])
+        a = policy.moment(x, None, mask, False)
+        for k, e in enumerate(eps):
+            if e.done:
+                continue
+            w, g = e.expert()
+            if e.phase == "answer" and not e.at and e.target_words():
+                right.append(int(layout.say(int(a[k, 0])) == e.target_words()[0]))
+            e.advance(w, g)
+    return float(np.mean(right)) if right else float("nan")
+
+
+def names(policy: Arm, layout: tc.Layout, seed: int, n: int = 128) -> float:
+    """The name said for a thing alone in view, nothing asked (the naming lesson's moment)."""
+    things = alone(layout, np.random.default_rng([seed, 338, 29]), n)
+    policy.begin(n)
+    a = np.asarray(policy.brain.act(policy.field(seen(layout, things)), greedy=True))
+    policy.brain.reset()
+    return float(np.mean([layout.say(int(v)) == t.kind for v, t in
+                          zip(a.reshape(n, -1)[:, 0], things, strict=True)]))
+
+
 def page_gate(policy: Arm, layout: tc.Layout, seed: int) -> dict[str, Any]:
     """After the last block: 1, 2, 5 and 10 naming lessons on one focus (one thing, its name
-    taught with it alone in view), then that focus's colour answer ("what colour has the X ?",
-    the thing alone in view, the trainer pointing): does it hold?"""
+    taught with it alone in view), then that focus's colour answer ("what colour has the X ?"
+    with the focus among two other things, the first word said at it, teacher forced): does it
+    hold?"""
     rng = np.random.default_rng([seed, 338, 17])
     focus = alone(layout, rng, 1)[0]
     q = copy.copy(policy)
@@ -419,15 +453,15 @@ def page_gate(policy: Arm, layout: tc.Layout, seed: int) -> dict[str, Any]:
 
     def colour_answer() -> float:
         r = np.random.default_rng([seed, 338, 19])
-        items = []
-        for _ in range(16):
-            place = tw.PLACES[int(r.integers(len(tw.PLACES)))]
-            t = tw.Thing(focus.kind, focus.colour, place,
-                         tw.look(focus.kind, focus.colour, place, r))
-            sc = tw.Scene([t])
-            items.append((sc, tw.question("colour", sc, r, depth=1)))
-        eps = tc.run(q, layout, items, "dagger", learn=False)
-        return float(np.mean([e.reply() == e.q.reply(e.scene) for e in eps]))
+        items: list[tuple[tw.Scene, tw.Question]] = []
+        while len(items) < 16:  # the focus among two other things, as the form is taught
+            sc = tw.scene(r, 3, include=((focus.kind, focus.colour),))
+            if len(sc.find(focus.kind)) != 1:
+                continue
+            ref = sc.things[0]
+            items.append((sc, tw.Question("colour", ["what", "colour", "has", "the", ref.kind,
+                                                     "?"], ref, {0: [ref.colour]}, [])))
+        return first_word(q, layout, items)
 
     out = {"focus": [focus.kind, focus.colour], "before": colour_answer()}
     done = 0
@@ -483,7 +517,7 @@ def life(seed: int, arm: str, out_dir: Path, blocks: int = 1000, every: int = 50
                          "held": {k: v["right"] for k, v in
                                   tp.read(policy, layout, rr, ("which_colour", "colour"), 128,
                                           split="pairs").items()},
-                         "names": tp.read(policy, layout, rr, ("it",), 64)["it"]["right"]}
+                         "names": names(policy, layout, seed)}
     record["probe_trained"] = match_probe(policy, layout, seed)
     record["page_gate"] = page_gate(policy, layout, seed)
     policy.brain.save(f"{stem}.npz")
@@ -614,9 +648,27 @@ def table(out_dir: Path) -> str:
     return "\n".join(lines)
 
 
+def regate(out_dir: Path, arm: str, seed: int) -> None:
+    """The end readings read from the saved brain: names, the page's gate (first words) and the
+    completion, written into the record."""
+    from cadence import Brain
+
+    spec = ARMS[arm]
+    if spec.get("colours"):
+        tw.use_colours(tuple(spec["colours"]))
+    stem = out_dir / f"{arm}_{seed}"
+    policy, layout = compose_arm(arm, seed)
+    policy.brain = Brain.load(f"{stem}.npz", backend="cpu")
+    record = json.loads(Path(f"{stem}.json").read_text())
+    record["names_first"] = names(policy, layout, seed)
+    record["page_gate_first"] = page_gate(policy, layout, seed)
+    record["completion_end"] = completion(policy, layout, seed)
+    Path(f"{stem}.json").write_text(json.dumps(record, indent=1, default=float))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("what", choices=["life", "control", "read"])
+    ap.add_argument("what", choices=["life", "control", "read", "regate"])
     ap.add_argument("args", nargs="*")
     ap.add_argument("--blocks", type=int, default=1000)
     ap.add_argument("--every", type=int, default=50)
@@ -625,6 +677,8 @@ def main() -> None:
         life(int(a.args[0]), a.args[1], Path(a.args[2]), a.blocks, a.every)
     elif a.what == "control":
         control(int(a.args[0]), a.args[1], Path(a.args[2]), a.blocks, a.every)
+    elif a.what == "regate":
+        regate(Path(a.args[0]), a.args[1], int(a.args[2]))
     else:
         print(table(Path(a.args[0])))
 
