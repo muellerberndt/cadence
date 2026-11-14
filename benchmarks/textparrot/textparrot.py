@@ -238,6 +238,12 @@ class BrainPolicy:
             hold = float(self.genome.get("hold_weight", 1.0))
             if hold != 1.0:  # the gaze's rare act (a hold) weighs more in its lesson
                 w = w * np.where(labels[:, 1] == tc.HOLD, hold, 1.0)
+            if self.genome.get("balance"):  # silence and words each half of the lesson's pull
+                quiet = (labels[:, 0] == self.layout.voice - 1) & mask
+                spoken = ~quiet & mask
+                if quiet.any() and spoken.any():
+                    n = mask.sum()
+                    w = w * np.where(quiet, 0.5 * n / quiet.sum(), 0.5 * n / spoken.sum())
             try:
                 self.brain.lesson(x, labels, weights=None if np.all(w == 1.0) else w)
             except RuntimeError:  # a settle that does not converge: the lesson is refused
