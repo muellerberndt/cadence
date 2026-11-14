@@ -345,6 +345,18 @@ class Parrot:
         # the glimpse: what the eyes report of the thing in focus, in a place of its own (the
         # tectum's winner looked at, its features gated in: born attention), then the scene
         self.inputs = self.eyes.slot_width + self.eyes.width + self.ear
+        # the meeting point of question and thing as a sparse mixed code (gene ``mixed_code``,
+        # the review's repair): the glimpse and the trace of the words heard in the exchange,
+        # through a fixed random expansion, the most driven share of its units on (as granule
+        # cells and Kenyon cells code), seen beside the scene
+        self.mixed = int(self.genome.get("mixed_code", 0))
+        self.heard_trace = np.zeros((streams, self.ear))
+        if self.mixed:
+            rng = np.random.default_rng(np.random.SeedSequence([self.seed, 334, 61]))
+            self.mixed_w = rng.standard_normal((self.eyes.slot_width + self.ear, self.mixed))
+            self.mixed_on = max(1, int(round(float(self.genome.get("mixed_on", 0.1))
+                                             * self.mixed)))
+            self.inputs += self.mixed
         self.brain = compose(self.genome, self.inputs, len(self.voice), ear=self.ear, gaze=2,
                              seed=self.seed, backend=backend)
         self.synapses = int(self.brain.connectome.synapses)
@@ -370,9 +382,24 @@ class Parrot:
     def said(self, unit: int) -> str | None:
         return None if int(unit) >= self.silence else self.voice[int(unit)]
 
+    def mixed_code(self, glimpse: np.ndarray, trace: np.ndarray) -> np.ndarray:
+        """The sparse mixed code of the glimpse and the heard trace: the ``mixed_on`` most
+        driven units of the fixed expansion on (1), the rest off."""
+        drive = np.concatenate([glimpse, trace]) @ self.mixed_w
+        out = np.zeros(self.mixed)
+        out[np.argpartition(drive, -self.mixed_on)[-self.mixed_on:]] = 1.0
+        return out
+
     def observe(self, exs: list[Exchange], t: int, own: list[str | None],
                 praise: np.ndarray, rng: np.random.Generator) -> np.ndarray:
         rows = []
+        if self.mixed:
+            if t == 0 or len(self.heard_trace) != len(exs):  # an exchange begins
+                self.heard_trace = np.zeros((len(exs), self.ear))
+            decay = float(self.genome.get("mixed_decay", 0.7))
+            for i, ex in enumerate(exs):
+                word = ex.heard[t] if t < len(ex.heard) else None
+                self.heard_trace[i] = decay * self.heard_trace[i] + self.forms(word)
         for i, ex in enumerate(exs):
             word = ex.heard[t] if t < len(ex.heard) else None
             code = self.forms(word) + self.forms(own[i])
@@ -384,7 +411,11 @@ class Parrot:
             focus = next((x for x in seen if x.salient), None)
             if ex.scan and 0 <= t - ex.turn < len(ex.scan):  # the focus visits each thing
                 focus = ex.room.seen_of(ex.scan[t - ex.turn])
-            rows.append(np.concatenate([self.eyes.slot(focus), self.eyes.scene(seen), code]))
+            glimpse = self.eyes.slot(focus)
+            parts = [glimpse, self.eyes.scene(seen)]
+            if self.mixed:
+                parts.append(self.mixed_code(glimpse, self.heard_trace[i]))
+            rows.append(np.concatenate(parts + [code]))
         return np.asarray(rows)
 
 
