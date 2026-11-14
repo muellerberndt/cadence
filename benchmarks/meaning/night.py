@@ -536,6 +536,11 @@ def live(p: Parrot, exs: list[Exchange], rng: np.random.Generator, *, learn: boo
         if p.records is not None and learn and at in assoc_at:
             p.records.write(assoc_at[at][i], p.forms(word))
             p.work["records"] = p.work.get("records", 0) + 1
+            q = exs[i].question
+            if int(g.get("focus_records", 0)) and q is not None and q.form == "name" and \
+                    0 in assoc_at and exs[i].heard and exs[i].heard[0] is None:
+                # the thing's word kept under the state of looking at it, nothing heard
+                p.records.write(assoc_at[0][i], p.forms(word))
 
     for t in range(moments):
         if p.records is not None:
@@ -735,7 +740,8 @@ def exchange(p: Parrot, rng: np.random.Generator, form: str, mode: str,
 def block(p: Parrot, rng: np.random.Generator, form: str, mode: str,
           held: set[tuple[str, str]], *, test: bool = False) -> list[Exchange]:
     exs = [exchange(p, rng, form, mode, held, test=test) for _ in range(p.streams)]
-    width = max(ex.turn for ex in exs)
+    # with focus records, every exchange opens with a moment of looking before a word is heard
+    width = max(ex.turn for ex in exs) + int(p.genome.get("focus_records", 0))
     for ex in exs:  # lockstep: the trainer starts later where a question is shorter
         pad = width - ex.turn
         ex.heard = [None] * pad + ex.heard

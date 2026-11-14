@@ -3,7 +3,13 @@
     python export_page.py <brain.npz> <founder> <out_dir> [genome json]
 
 Writes ``brain.npz`` and ``spec.json`` (and ``brain.records.npz``, the word records saved beside
-the brain, where it keeps them), then loads them with ``cadence.meaning.host`` and asks
+the brain, where it keeps them) and ``probes.json``: the association's linear read of each facet
+of the thing in focus (kind, colour, round, material, edible, direction, distance), fitted on the
+settled state with a thing in focus and nothing heard (``introspect.state_completeness``): for
+each facet its classes, the standardization (mean, sd per association neuron) and the weights
+(neurons x classes), with the held-out accuracy and base rate; the page shows "In its mind" as
+``argmax(((a - mean) / sd) @ weights)`` on the association's activity ``a``. Then loads them
+with ``cadence.meaning.host`` and asks
 the owner's five questions in the owner's room as a page would (the thing asked about clicked,
 the words one a moment with the voice held, then the parrot's turn in the gap: three moments, or
 one a thing for a question about the scene), and writes the replies to ``page_check.json``.
@@ -74,6 +80,18 @@ def main(argv: list[str]) -> None:
         said = ask(m, things, list(words), scan)
         check.append({"question": " ".join(words), "answer": answer, "said": said})
     (out / "page_check.json").write_text(json.dumps(check, indent=1))
+    import exam as ex
+    import numpy as np
+
+    q = ex.load(brain, seed, genome, streams=16)  # the trained brain, read on a frozen copy
+    sc = ii.state_completeness(q, np.random.default_rng(seed), nt.founder_held(seed), count=512)
+    probes = {name: {"classes": list(fit[0]), "mean": fit[1].tolist(), "sd": fit[2].tolist(),
+                     "weights": fit[3].tolist(),
+                     "accuracy": sc["read"]["association"][name], "base_rate": sc["base"][name]}
+              for name, fit in sc["fits"].items()}
+    population = [int(i) for i in q.brain.connectome.populations["association"]]
+    (out / "probes.json").write_text(json.dumps({"population": "association",
+                                                 "neurons": population, "facets": probes}))
     print(json.dumps(check))
 
 
