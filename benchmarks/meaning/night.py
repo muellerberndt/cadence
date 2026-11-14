@@ -103,6 +103,9 @@ ANSWER_WORDS = ("far", "yes", "no")
 WORDS = (KIND_NAMES + tuple(COLOURS) + tuple(MATERIALS) + DIRECTIONS + ("round",)
          + tuple(w for w in QUESTION_WORDS if w not in ("left", "right"))
          + ANSWER_WORDS + ("zabu",))
+# words the ear hears beyond the voice's repertoire, their codes drawn after the click's (so every
+# earlier code is unchanged): the demo stage's question word
+EXTRA_FORMS = ("shape",)
 # the trainer's bridge signal: a click heard at once after a right reply, a sound the voice cannot
 # make (an animal trainer's clicker); a praise word would be imitated (the parrot said it in the
 # silent turn)
@@ -259,6 +262,26 @@ def ask(form: str, r: Room, rng: np.random.Generator) -> Question | None:
         kinds = sorted(t.kind for t in things if t.kind in ROUND)
         return Question(["what", "objects", "are", "round"], kinds, form, several=True,
                         scan=True) if kinds else None
+    if form == "shape_of":  # the voice's one shape word is "round": asked of round things
+        if x.kind not in ROUND:
+            return None
+        x.focus = True
+        return Question(["what", "shape", "has", "the", x.kind], ["round"], form, focus=x)
+    if form == "shape_not":  # a thing that is not round: the voice has no word for its shape,
+        # and the answer is "no" (so "round" means round, not any shape question)
+        if x.kind in ROUND:
+            return None
+        x.focus = True
+        return Question(["what", "shape", "has", "the", x.kind], ["no"], form, focus=x)
+    if form == "shape_of_other":  # read only: "round" said of a thing that is not round
+        if x.kind in ROUND:
+            return None
+        x.focus = True
+        return Question(["what", "shape", "has", "the", x.kind], ["round"], form, focus=x)
+    if form == "direction":  # where, the direction alone
+        x.focus = True
+        return Question(["where", "is", "the", x.kind], [direction_of(r.heading, x.place)],
+                        form, focus=x)
     if form == "where":
         x.focus = True
         words = [direction_of(r.heading, x.place)]
@@ -341,6 +364,8 @@ class Parrot:
         for w in WORDS:
             self.forms(w)
         self.forms(PRAISE)  # the click's code, drawn after the words'
+        for w in EXTRA_FORMS:
+            self.forms(w)
         self.ear = self.forms.width
         # the glimpse: what the eyes report of the thing in focus, in a place of its own (the
         # tectum's winner looked at, its features gated in: born attention), then the scene
@@ -1027,7 +1052,7 @@ def export_spec(p: Parrot, path: str | Path) -> None:
                  "per_shape": e.per_shape, "sizes": e.sizes, "directions": e.directions,
                  "distances": e.distances, "surfaces": e.surfaces, "per_surface": e.per_surface},
         "ear_width": p.forms.width,
-        "codes": {w: p.forms(w).tolist() for w in (*WORDS, PRAISE)},
+        "codes": {w: p.forms(w).tolist() for w in (*WORDS, PRAISE, *EXTRA_FORMS)},
         "voice": list(p.voice),
         "praise": PRAISE,
         "kinds": {k: {"shape": list(v[0]), "width": v[1], "materials": list(v[2])}
