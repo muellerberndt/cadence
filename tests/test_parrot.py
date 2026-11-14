@@ -252,3 +252,51 @@ def test_the_host_viz_block():
     assert {"tectum", "ncl"} <= set(viz["settle"]["regions"])
     assert all(len(v) == 16 for v in viz["settle"]["regions"].values())
     assert host.step({}, {})["viz"] is None
+
+
+def test_a_still_room_draws_no_surprise_a_push_and_a_new_thing_do():
+    """The owner's rule: a surprise is a change the brain did not cause and could not predict."""
+    from cadence.parrot.world import NAMES
+
+    things = [Thing("apple", "apple", 0.05, 0.33, stand=0.1),
+              Thing("cup", "cup", 0.35, 0.1, stand=0.05),
+              Thing("ball", "ball", -0.3, 0.25, stand=0.15),
+              Thing("pear", "pear", -0.35, -0.2, stand=0.0),
+              Thing("duck", "duck", 0.2, -0.35, stand=0.1)]
+    scene = Scene(things)
+    parrot = Parrot(seed=0)
+    events, turns = [], 0
+    yaw = NAMES.index("head_yaw")
+    for m in range(300):  # a still room; the head makes its own saccades
+        parrot.moment(render(scene, parrot.body.eyes()).images)
+        turns += abs(parrot.body.velocity[yaw]) > 10.0
+        if m >= 10:
+            events += [(m, "moved") for c in parrot.focus.candidates if c.moved == parrot.moments - 1]
+            events += [(m, "appeared") for c in parrot.focus.candidates
+                       if c.entered == parrot.moments - 1]
+    assert turns > 20 and events == []
+    # a thing pushed from rest: the visitor points at the apple, the head settles on it, the
+    # apple is pushed aside
+    apple = things[0]
+    for k in range(40):  # the head turns to it, then holds still past the efference window
+        e = parrot.body.eyes()
+        parrot.point(math.degrees(math.atan2(apple.x - e.pivot[0], apple.z - e.pivot[2]))
+                     - parrot.body.joint("head_yaw"))
+        parrot.moment(render(scene, parrot.body.eyes()).images, act=k < 8)
+        if k >= 8 and parrot.moments - 1 - parrot.focus.turned_at > parrot.focus.after_turn:
+            break
+    assert any(np.linalg.norm(c.place - [apple.x, apple.z]) < 0.15 for c in parrot.focus.candidates)
+    before = parrot.moments
+    apple.x += 0.06
+    flagged = []
+    for _ in range(2):
+        parrot.moment(render(scene, parrot.body.eyes()).images)
+        flagged += [c for c in parrot.focus.candidates if c.moved >= before]
+    assert flagged
+    # a thing added where none of its kind is
+    scene.things.append(Thing("block", "block", 0.45, 0.35, stand=0.05))  # in view, apart
+    added = []
+    for _ in range(40):
+        parrot.moment(render(scene, parrot.body.eyes()).images)
+        added += [c for c in parrot.focus.candidates if c.entered >= before]
+    assert added

@@ -45,7 +45,7 @@ from .eyes import directions
 from .focus import Choice, Focus
 from .kinds import Kinds, look
 from .vision import Figure, Vision
-from .world import EYE_AXIS, EYE_FIELD, HIGH, LOW, NAMES, Body, Eyes
+from .world import EYE_AXIS, EYE_FIELD, HIGH, LOW, MOMENT, NAMES, Body, Eyes
 
 # The founder's genes: the hand-set wiring and settings each part is built with. Names follow
 # the parrot's wiring guide (docs/parrot-brain.md, "The gene space"); a gene this brain does not
@@ -199,6 +199,7 @@ class Parrot:
         self.focused: Choice | None = None
         self.cue: dict[int, float] | None = None  # a heard thing's kind and weight (later)
         self._pointed: tuple[np.ndarray, np.ndarray] | None = None  # a visitor's pointing
+        self._pointed_now: tuple[np.ndarray, np.ndarray] | None = None
         self.body = Body()
         self.sightings: deque[list[Sighting]] = deque(maxlen=int(g["agreement_window"]))
         self.moments = 0
@@ -416,6 +417,14 @@ class Parrot:
         vocalized = False
         if self.voice is not None:
             vocalized = bool(self.voice.moment(frames, reward=reward, done=done))
+        # the focus, every moment (perception, whether the head acts or not): one winner
+        # among the things on the map; how far the head moved in the moment before is the
+        # brain's own command, known to it (the efference copy)
+        self._pointed_now, self._pointed = self._pointed, None
+        moving = [NAMES.index(n) for n in ("head_yaw", "head_pitch", "head_roll", "neck_pitch")]
+        turned = float(np.abs(self.body.velocity[moving]).sum()) * MOMENT
+        self.focused = self.focus.choose(self.map.things(), self.moments, self.cue,
+                                         pointed=self._pointed_now, turned=turned)
         # where to look next
         if act:
             targets = self._look()
@@ -556,9 +565,7 @@ class Parrot:
             phase = 2.0 * math.pi * self.moments / max(int(g["peer_period"]), 2)
             lean = float(g["peer_amplitude"]) * HIGH[n] * 0.5 * (1.0 + math.sin(phase))
             targets[n] = 2.0 * (lean - LOW[n]) / (HIGH[n] - LOW[n]) - 1.0
-        pointed, self._pointed = self._pointed, None
-        self.focused = self.focus.choose(self.map.things(), self.moments, self.cue,
-                                         pointed=pointed)
+        pointed = self._pointed_now
         if self.moments < self._next_look and pointed is None:
             return targets
         if self.focused is not None and self.rng.random() >= float(g["focus_explore"]):

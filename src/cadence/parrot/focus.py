@@ -8,10 +8,12 @@ much it stands out:
 - **it is in view**: a thing the eyes report at this moment;
 - **it is pointed at**: the visitor points (clicks) toward a thing, and the focus goes to the
   thing nearest that direction at once (joint attention);
-- **it appeared**: a thing that entered the map in the last moments;
+- **it appeared**: a thing that entered the map in the last moments where none of its kind was
+  held for a while (a thing out of the map for a few moments keeps its identity);
 - **it moved**: how far its place moved this moment against its own usual move (the surprise
   rule of #337: a thing at rest that starts to move draws the eye; one that keeps moving
-  habituates);
+  habituates); a change across the brain's own head movement is no surprise (the efference
+  copy, as saccades are not seen as the world moving);
 - **it is new to the eyes**: the longer since it was last in focus, the more it draws the eye
   (the tectum's return inhibited);
 - **it holds**: the thing in focus keeps a share of drive while nothing changes, which falls
@@ -48,6 +50,7 @@ class Candidate:
     usual: float = 0.0  # the thing's usual move a moment, learned (metres)
     surprise: float = 0.0  # this moment's move against its usual move
     seen: bool = False
+    seen_at: int = 0  # the last moment the map held it
     held: int = 0  # moments in focus in a row
     heard: float = 0.0
 
@@ -72,7 +75,9 @@ class Focus:
                  recent: int = 4, return_time: float = 30.0, heard: float = 1.5,
                  inhibition: float = 2.0, floor: float = 0.05, same: float = 0.10,
                  view: float = 0.5, point: float = 3.0, point_angle: float = 12.0,
-                 noise: float = 0.005, usual_rate: float = 0.1, backend: Any = "cpu"):
+                 noise: float = 0.01, usual_rate: float = 0.3, absence: int = 30,
+                 return_reach: float = 0.25, still_turn: float = 1.0, after_turn: int = 3,
+                 backend: Any = "cpu"):
         from ..brain import Brain as Graph
         from ..connectome import Connectome
         from ..learning import learning_neuron_model
@@ -86,6 +91,9 @@ class Focus:
         self.view, self.point = float(view), float(point)
         self.point_angle = math.radians(float(point_angle))
         self.noise, self.usual_rate = float(noise), float(usual_rate)
+        self.absence, self.return_reach = int(absence), float(return_reach)
+        self.still_turn, self.after_turn = float(still_turn), int(after_turn)
+        self.turned_at = -1_000_000
         n = self.slots
         pre, post = np.nonzero(~np.eye(n, dtype=bool))
         self.connectome = Connectome.from_synapses(n, label="focus", pre=pre, post=post,
@@ -95,7 +103,8 @@ class Focus:
                            efficacy=np.full(len(pre), -self.inhibition / max(n - 1, 1)),
                            backend=backend)
         self.steps = 24
-        self.candidates: list[Candidate] = []
+        self.candidates: list[Candidate] = []  # the things the map holds at this moment
+        self.remembered: list[Candidate] = []  # things out of the map for a short while
         self.current: Candidate | None = None
         self.mask = np.ones(n)  # neurons held at rest inside the settle
         self.drive = np.zeros((1, n))
@@ -103,47 +112,78 @@ class Focus:
 
     def reset(self) -> None:
         self.candidates = []
+        self.remembered = []
         self.current = None
+        self.turned_at = -1_000_000
 
-    def _match(self, things: list[dict[str, Any]], moment: int) -> list[Candidate]:
+    def _match(self, things: list[dict[str, Any]], moment: int,
+               turned: float = 0.0) -> list[Candidate]:
         """The map's things as candidates, each matched with the one remembered of its kind
-        nearest it (within ``same``), or entered new."""
+        nearest it, or entered new. A surprise is a change the brain did not cause and could
+        not predict:
+
+        - the nearest remembered thing of its kind within ``return_reach`` is the same thing,
+          also through an absence of up to ``absence`` moments, so only a thing never held
+          near there appears;
+        - a move measured across the brain's own head movement (``turned``, degrees in the
+          moment before: the efference copy) or in the ``after_turn`` moments after it, while
+          the eyes' estimate settles on the new view, is no surprise, nor is a return after an
+          absence;
+        - any other move is read against the thing's usual move, which learns its own jitter
+          (``usual_rate``) above a born floor (``noise``)."""
         out: list[Candidate] = []
-        free = list(self.candidates)
+        known = list(self.candidates) + list(self.remembered)
+        free = list(known)
+        if abs(float(turned)) > self.still_turn:
+            self.turned_at = moment
+        # the brain's own movement, and the few moments after it while the eyes' estimate of a
+        # place settles on the new view (the efference copy)
+        own = moment - self.turned_at <= self.after_turn
         for t in things:
             if t["place"] is None or t["kind"] is None:
                 continue
             place = np.asarray(t["place"], dtype=np.float64)
-            best, gap = None, self.same
+            seen = t.get("state") == "seen"
+            best, gap = None, math.inf
             for c in free:
                 if c.kind != t["kind"]:
                     continue
                 d = float(np.linalg.norm(c.place - place))
-                if d <= gap:
+                # the nearest of its kind within ``return_reach`` is the same thing: it may have
+                # moved, or the map may hold it a little elsewhere after an absence or a turn
+                if d <= self.return_reach and d < gap:
                     best, gap = c, d
             if best is None:
-                out.append(Candidate(int(t["kind"]), place, moment,
-                                     seen=t.get("state") == "seen"))
+                # a place beside a thing of its kind the brain knows is no new thing
+                beside = any(c.kind == t["kind"] and float(np.linalg.norm(c.place - place))
+                             <= self.return_reach for c in known)
+                out.append(Candidate(int(t["kind"]), place, -1_000_000 if beside else moment,
+                                     seen=seen, seen_at=moment))
                 continue
             free.remove(best)
-            # the move against the thing's usual move (#337's surprise rule)
-            best.surprise = gap / (best.usual + self.noise)
-            best.usual += self.usual_rate * (gap - best.usual)
-            if best.surprise > 3.0 and gap > 0.5 * self.same:
-                best.moved = moment
-            best.place = place
-            best.seen = t.get("state") == "seen"
+            if own or best.seen_at < moment - 1:
+                best.surprise = 0.0
+            else:
+                # the move against the thing's usual move (#337's surprise rule)
+                best.surprise = gap / (best.usual + self.noise)
+                best.usual += self.usual_rate * (gap - best.usual)
+                if best.surprise > 3.0 and gap > 0.5 * self.same:
+                    best.moved = moment
+            best.place, best.seen, best.seen_at = place, seen, moment
             out.append(best)
+        self.remembered = [c for c in free if moment - c.seen_at <= self.absence]
         return out
 
     def choose(self, things: list[dict[str, Any]], moment: int,
                heard: dict[int, float] | None = None,
-               pointed: tuple[np.ndarray, np.ndarray] | None = None) -> Choice | None:
+               pointed: tuple[np.ndarray, np.ndarray] | None = None,
+               turned: float = 0.0) -> Choice | None:
         """The focus among the map's ``things`` (``Map.things()``); ``heard`` gives a cue's
         weight by kind (a heard word's thing); ``pointed`` is a ray on the table (an origin
         and a direction) the visitor points along: the thing nearest it, within
-        ``point_angle``, is drawn at once."""
-        self.candidates = self._match(things, moment)
+        ``point_angle``, is drawn at once; ``turned`` is how far the head turned in the moment
+        before (degrees, the brain's own movement)."""
+        self.candidates = self._match(things, moment, turned)
         if self.current is not None and self.current not in self.candidates:
             self.current = None
         if not self.candidates:
@@ -207,7 +247,9 @@ class Focus:
                 "heard": self.heard_weight, "inhibition": self.inhibition, "floor": self.floor,
                 "same": self.same, "view": self.view, "point": self.point,
                 "point_angle": math.degrees(self.point_angle), "noise": self.noise,
-                "usual_rate": self.usual_rate}
+                "usual_rate": self.usual_rate, "absence": self.absence,
+                "return_reach": self.return_reach, "still_turn": self.still_turn,
+                "after_turn": self.after_turn}
 
 
 __all__ = ["Candidate", "Choice", "Focus"]
