@@ -86,7 +86,8 @@ def life(seed: int, arm: str, out_dir: Path, *, pistachio: bool = True) -> dict[
     stem = out_dir / f"{arm}_{seed}"
     log = open(f"{stem}.log", "a")
     genome = ARMS[arm]
-    policy, layout, record = tp.life(seed, genome=genome, caps=CAPS, log=log)
+    policy, layout, record = tp.life(seed, genome=genome, caps=CAPS, log=log,
+                                     checkpoint=stem)
     record.update(arm=arm, genome=genome, parameters=policy.parameters(),
                   synapses=int(len(policy.brain.connectome.pre)),
                   macs=policy.macs(), lessons=policy.lessons, refused=policy.refused)

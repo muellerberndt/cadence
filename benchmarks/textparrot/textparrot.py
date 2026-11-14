@@ -336,8 +336,11 @@ def policy_gaze(policy: Any) -> bool:
 def life(seed: int, *, genome: dict[str, Any] | None = None, streams: int = 64,
          caps: dict[str, int] | None = None, dagger: float = 0.3, rehearsal: float = 0.3,
          check_every: int = 20, per: int = 64, backend: str = "cpu", log: Any = None,
-         policy: Any = None) -> tuple[Any, tc.Layout, dict[str, Any]]:
-    """Pretraining through the curriculum; returns the policy, the layout and the record."""
+         policy: Any = None, checkpoint: Path | None = None
+         ) -> tuple[Any, tc.Layout, dict[str, Any]]:
+    """Pretraining through the curriculum; returns the policy, the layout and the record. With
+    ``checkpoint`` (a path stem) every stage's end is saved (the brain, the record, the random
+    state), and a life that finds one resumes after the last stage it saved."""
     layout = tc.Layout.founder(seed, page=bool((genome or {}).get("page", False)))
     rng = np.random.default_rng([seed, 1])
     if policy is None:
@@ -347,8 +350,29 @@ def life(seed: int, *, genome: dict[str, Any] | None = None, streams: int = 64,
     seen: tuple[str, ...] = ()
     start = time.time()
     blocks = 0
-    for stage, forms in STAGES:
+    done = 0
+    state = None if checkpoint is None else Path(f"{checkpoint}.stage.json")
+    if state is not None and state.exists():
+        from cadence import Brain
+
+        saved = json.loads(state.read_text())
+        done = int(saved["done"])
+        record = saved["record"]
+        blocks = int(record.get("blocks", 0))
+        rng.bit_generator.state = saved["rng"]
+        g = {**HAND_SET, **(genome or {})}
+        policy = BrainPolicy.from_brain(Brain.load(f"{checkpoint}.stage.npz", backend=backend),
+                                        layout)
+        policy.genome = g
+        policy.sweeps = float(saved.get("sweeps", 0.0))
+        policy.lessons = int(saved.get("lessons", 0))
+        tc.STATS.update(saved.get("stats", {}))
+        if log is not None:
+            print(json.dumps({"resumed_after": STAGES[done - 1][0]}), file=log, flush=True)
+    for index, (stage, forms) in enumerate(STAGES):
         seen = tuple(dict.fromkeys(seen + forms))
+        if index < done:
+            continue
         cap = int(caps.get(stage, caps.get("default", 400)))
         mastered = None
         curve = []
@@ -387,6 +411,14 @@ def life(seed: int, *, genome: dict[str, Any] | None = None, streams: int = 64,
             print(json.dumps({"stage_end": stage, **{k: v for k, v in entry.items()
                                                      if k != "curve"}}), file=log, flush=True)
         record["stages"].append(entry)
+        if checkpoint is not None:
+            record["blocks"] = blocks
+            policy.brain.save(f"{checkpoint}.stage.part.npz")
+            Path(f"{checkpoint}.stage.part.npz").replace(f"{checkpoint}.stage.npz")
+            Path(f"{checkpoint}.stage.json").write_text(json.dumps(
+                {"done": index + 1, "record": record, "rng": rng.bit_generator.state,
+                 "sweeps": policy.sweeps, "lessons": policy.lessons, "stats": dict(tc.STATS)},
+                default=float))
     record["blocks"] = blocks
     record["seconds"] = round(time.time() - start, 1)
     return policy, layout, record
