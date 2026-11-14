@@ -13,6 +13,9 @@ word's code). Commands:
     show                      what is where
     put <kind> <colour> <direction> [far]   put a thing there (replaces what stands there)
     word <kind>               what that word alone brings up
+    point on|off              the trainer points at the thing a question names (the focus
+                              given, as the secondary reading of cadence#338); off: the parrot's
+                              own gaze finds it
     quit
     anything else             a question, e.g. "what objects are round ?"
 """
@@ -63,10 +66,24 @@ def evoked(policy: Any, pr: dict[str, Any], word: str) -> dict[str, float]:
             for prop in ("round", "red", "food")}
 
 
-def answer(policy: Any, scene: tw.Scene, words: list[str]) -> tuple[list[str], np.ndarray]:
+def named(scene: tw.Scene, words: list[str]) -> tw.Thing | None:
+    """The thing a question names (the last kind word, with a colour word before it), where the
+    trainer points."""
+    for i in range(len(words) - 1, -1, -1):
+        if words[i] in tw.KINDS:
+            colour = words[i - 1] if i > 0 and words[i - 1] in tw.COLOURS else None
+            found = scene.find(words[i], colour)
+            return found[0] if found else None
+    return None
+
+
+def answer(policy: Any, scene: tw.Scene, words: list[str], point: bool = False
+           ) -> tuple[list[str], np.ndarray]:
     rec = ti.Recorder(policy)
-    q = tw.Question("ask", list(words), None, {}, [])
-    eps = tc.run(rec, policy.layout, [(scene, q)], "free", learn=False)
+    ref = named(scene, words) if point else None
+    q = tw.Question("ask", list(words), ref, {}, [])
+    eps = tc.run(rec, policy.layout, [(scene, q)], "dagger" if ref is not None else "free",
+                 learn=False)
     codes = np.stack([c[0] for c in rec.codes[len(words):]]) if len(rec.codes) > len(words) \
         else np.zeros((1, len(policy.association)))
     return eps[0].reply(), codes.mean(0)
@@ -85,6 +102,7 @@ def main() -> None:
     scene = ti.owner_room()
     print("the parrot sees:\n" + show(scene))
     known = set(tw.VOCABULARY)
+    point = False
     while True:
         try:
             line = input("you> ").strip()
@@ -118,6 +136,11 @@ def main() -> None:
             scene = tw.Scene(things)
             print(show(scene))
             continue
+        if cmd[0] == "point" and len(cmd) > 1:
+            point = cmd[1] == "on"
+            print("  the trainer points at the thing named" if point else
+                  "  the parrot's own gaze finds the thing named")
+            continue
         if cmd[0] == "word" and len(cmd) > 1:
             print("  evokes:", evoked(policy, pr, cmd[1]))
             continue
@@ -126,7 +149,7 @@ def main() -> None:
         if unknown:
             print(f"  (the parrot never read: {' '.join(unknown)})")
             continue
-        reply, code = answer(policy, scene, words)
+        reply, code = answer(policy, scene, words, point)
         print("parrot>", " ".join(w for w in reply if w != ".") or "(nothing)")
         top = np.argsort(-np.abs(code))[:8]
         print("  association units most active:",
