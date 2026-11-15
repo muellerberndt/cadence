@@ -329,6 +329,32 @@ def test_set_it_reads_the_settle_and_changes_nothing_else_to_the_bit(tmp_path):
     assert told["moments"] == held.surprise.moments and told["orienting"]["focus"] is None
 
 
+@pytest.mark.parametrize("inputs, actions, options", [
+    (6, 3, {"learned_code": 16}),
+    ((6, 6), 4, {}),
+    (6, 3, {"modules": (16, 16), "apical": 0.25}),
+    (6, 3, {"memory_choice": True}),
+    (6, 4, {"slots": 2, "observers": (8,)}),
+    (6, 3, {"recall": False, "efference_amplitude": 1.0}),
+], ids=["learned code", "image", "apical", "episodic vote", "slots and observers", "no recall"])
+def test_other_compositions_read_it_and_keep_the_plain_brain_s_bits(inputs, actions, options):
+    plain = cd.Brain.compose(inputs, actions, seed=3, backend="cpu", arousal=True, **options)
+    held = cd.Brain.compose(inputs, actions, seed=3, backend="cpu", arousal=True,
+                            surprise=True, **options)
+    width = inputs if isinstance(inputs, int) else int(np.prod(inputs))
+    rng = np.random.default_rng(0)
+    reward, read = None, []
+    for _ in range(10):
+        x = (rng.random((1, width)) < 0.3).astype(float)
+        a, b = plain.live(x, reward=reward), held.live(x, reward=reward)
+        assert np.array_equal(a, b)
+        reward = np.array([float(np.ravel(a)[0] == 0)])
+        read.append(float(held.surprise.moment[0]))
+    assert np.array_equal(plain.brain.efficacy, held.brain.efficacy)
+    assert held.surprise.size == held.connectome.n and held.surprise.moments == 10
+    assert read[0] == 0.0 and max(read) > 0.0 and np.isfinite(read).all()
+
+
 def test_a_repeated_input_reads_nothing_and_a_change_reads_at_the_neurons_it_drives():
     brain = cd.Brain.compose(6, 3, seed=0, backend="cpu", surprise=True)
     held = brain.surprise

@@ -217,6 +217,7 @@ settings and counts), `pending` (whether an issued action owns the next outcome)
 | `arousal` | off; `True` is `ArousalConfig()` | construction (switch), retune (fields) | [continuous](start.md#routine-and-repair-live) |
 | `arousal_threshold`, `arousal_decay`, `arousal_tolerance`, `arousal_floor`, `arousal_fast`, `arousal_slow` | `0.2`, `0.9`, `2.0`, `0.1`, `0.05`, `0.005` | retune | [continuous](start.md#routine-and-repair-live) |
 | `arousal_heat`, `arousal_youth`, `arousal_value_surprise`, `arousal_need` | `2.0`, `100`, `1.0`, `0.0` | retune | [continuous](start.md#routine-and-repair-live) |
+| `surprise` | off; `True` is the signal's `tolerance=2.0`, `floor=0.05`, `adapt=0.5`, `recover=0.01` and the focus's `hold=0.8`, `least=0.5`, `reach=0.1`, `inhibit=1.0`, `release=0.95`, `gain=1.0`; a mapping names any of them | construction | [surprise](start.md#surprise-and-the-focus-it-draws-opt-in) |
 | `working_memory_*` | amplitude `3.0`, decay `0.0` | retune | [memory](memory.md#working-trace) |
 | `carried_gain` | `0.0` (off), `0.01` in a new brain with the memory | construction | [memory](memory.md#how-strongly-a-carried-region-is-heard) |
 | `recall_drive_gain` | `False`, `True` in a new brain with the memory | construction | [memory](memory.md#the-reads-drive-as-a-route) |
