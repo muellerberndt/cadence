@@ -573,7 +573,7 @@ they would run on the host or MLX's CPU stream.
 naming the part: `memory_choice` and a store with a separator; a learned or fixed code and image inputs; an apical
 compartment; rehearsal and qualified teaching; the efference copy; a held message (`message`) and long-term
 records (`longterm`); tied projections (`tied`); `actor_entropy`; a recall memory with several heads, a
-window, the command, the read of when, tokens or the cortex at unit norm; MPS and MLX. A moment any life
+window, the command, the read of when, tokens, the cortex at unit norm or a slot's strength; MPS and MLX. A moment any life
 refuses is refused for every life. Each life holds its own synapses, their dense blocks, two optimizer moments and an eligibility, five arrays
 of one float per synapse, and in float32 a float64 copy of the blocks for the settles' checks.
 

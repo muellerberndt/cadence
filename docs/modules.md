@@ -1069,7 +1069,7 @@ Each row below was read from the library's own refusal.
 | `graft` | A brain with tied projections or rates set by hand, as host or as donor | Graft untied brains |
 | `graft` | A learned code's `code` region, or a joint that lands on it | Graft the regions above the code |
 | `graft` | Regions that share no synapse; regions of different sizes; a donor synapse the host lacks; another neuron model or apical compartment | Graft the regions a trained pathway runs through, into a host laid out alike |
-| `Lives` | `tied`, `memory_choice`, the efference copy, a held message, long-term records, a fixed or learned code, image inputs, an apical compartment, rehearsal, qualified teaching, `actor_entropy`, and a recall memory with several heads, a window, the command, the read of when, tokens or the cortex at unit norm | One brain's streams, or lone brains in a process pool |
+| `Lives` | `tied`, `memory_choice`, the efference copy, a held message, long-term records, a fixed or learned code, image inputs, an apical compartment, rehearsal, qualified teaching, `actor_entropy`, and a recall memory with several heads, a window, the command, the read of when, tokens, the cortex at unit norm or a slot's strength | One brain's streams, or lone brains in a process pool |
 | `Lives` | `trained=`, with a module or a map; `senses=` | Brains composed with them, one by one |
 | `Lives` | `backend="mlx"` and the MPS device | `backend="torch"` on CUDA or the torch CPU device, or `backend="cpu"` |
 | Learned fields | A vector brain; `code` or `learned_code` beside them; an image under 8 by 8 pixels; fewer than 2 fields | An image `inputs` with `learned_fields` alone |

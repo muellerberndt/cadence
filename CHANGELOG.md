@@ -95,6 +95,37 @@ bit. The guide is [docs/memory.md](docs/memory.md#a-records-strength-opt-in).
 - **A chamber**, `benchmarks/memory_strength/strength.py`: the dose curve, the one-shot write
   and the clean form beside the store without the settings.
 
+### A slot's strength on the recall memory (#336)
+
+A new brain holds no long-term records, so a record's strength reaches none of its memories. The
+same law is an option of the recall memory every new brain holds. It is off unless set, and
+unset a brain acts, learns and saves as before, to the bit. The guide is
+[docs/memory.md](docs/memory.md#a-slots-strength-opt-in).
+
+- **`Brain.compose(recall_strength=True)`** (`Recall(strength=True)`): every slot keeps a depth
+  (`brain.recall.depth`), and a full bank gives up its weakest slot among those older than its
+  protected newest half (`brain.recall.protected`) in place of its oldest, the oldest among
+  equals. A slot is written one telling deep; a moment whose key lies at cosine `recall_again`
+  (.95) or above to held slots deepens the deepest of them by one telling and is a slot of its
+  own all the same; a read renews the slots it attends toward one telling by their share of it;
+  a depth below `recall_kept` (8) fades over eight capacities of moments, and one at or past it
+  stays whole. The read is unchanged.
+- **The brain's surprise counts as tellings.** With `surprise=True` a slot is written at one
+  telling plus the moment's surprise (`Recall.witness(..., surprise=)`), the count the records
+  take: a moment nine times what its neuron tolerates is kept at once.
+- **Refused attempts and imagination leave the bank as it was.** `snapshot`, `restore` and
+  `branch` hold the depths, and a slot that leaves the middle of the order moves the bank into
+  new arrays. A read that writes nothing changes no depth.
+- **What it does not hold with, by name.** `recall_heads` above 1, `recall_window` above 1,
+  `recall_action`, `recall_when` and `Lives` are refused beside it. Its bank stays on the host:
+  the compiled moment takes its moments in turn, and a torch device runs the solve alone.
+- **The file.** A brain with the option saves `cadence-brain/5` with the feature
+  `recall_strength` and each slot's depth; every other brain keeps the format it had.
+- **A chamber**, `benchmarks/recall_strength/strength.py`: the dose, the one shot, the use, the
+  cost and a paid life under `live` beside the same brain without the option, with the readings
+  a change of the default needs. The cost is recent moments: a read renews the slots it attends,
+  so a fact told once and never read leaves a full bank sooner than without the option.
+
 ### Speech: the soft lesson (#304)
 
 No default changes: every existing call reads, learns and saves as before.
