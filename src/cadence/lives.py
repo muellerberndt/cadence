@@ -1889,9 +1889,13 @@ class Lives:
             raise ValueError("Lives takes a vector of inputs, its length")
         options = dict(options)  # the default composition, the store among it (``Brain.compose``)
         if options.get("trained"):
-            raise ValueError("Lives composes no brain around a trained module (trained=): its "
-                             "lives step one anatomy together and a module's regions are a "
-                             "brain of their own; compose each brain with Brain.compose")
+            raise ValueError("Lives composes no brain around a trained module or a map "
+                             "(trained=): its lives step one anatomy together, and a module's "
+                             "regions and a map belong to a lone brain; compose each brain "
+                             "with Brain.compose")
+        if options.get("senses") is not None:
+            raise ValueError("Lives takes one row of inputs per life: senses by name (senses=) "
+                             "belong to a lone brain; compose each brain with Brain.compose")
         self.inputs, self.actions, self.backend = int(inputs), int(actions), backend
         self._options = options
         with warnings.catch_warnings():

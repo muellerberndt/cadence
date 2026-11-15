@@ -210,7 +210,9 @@ def test_trained_is_refused_where_it_does_not_fit(written) -> None:
     with pytest.raises(ValueError, match="without code"):
         Brain.compose(inputs=5, actions=3, code=32, trained=[module])
     with pytest.raises(ValueError, match="list of trained modules"):
-        Brain.compose(inputs=5, actions=3, trained=["place"])
+        Brain.compose(inputs=5, actions=3, trained=[object()])
+    with pytest.raises(ValueError, match="ships no module 'kinds'"):
+        Brain.compose(inputs=5, actions=3, trained=["kinds"])      # a name the library ships
     with pytest.raises(ValueError, match="share one name"):
         Brain.compose(inputs=5, actions=3, trained=[module, module])
 

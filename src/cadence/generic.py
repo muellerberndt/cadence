@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import math
 import os
+import sys
 import warnings
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -651,6 +652,175 @@ def _unit_rows(code: np.ndarray) -> np.ndarray:
     """Each row scaled to unit length; a row without a positive unit stays zero."""
     norm = np.linalg.norm(code, axis=1, keepdims=True)
     return np.asarray(code / np.where(norm > 0.0, norm, 1.0))
+
+
+# -- senses by name (``Brain.compose(senses=...)``, a map in ``trained=``)
+#
+# The sensory region stays one population: a population per sense would cut the block layout at
+# each sense (``cadence.blocks.layout`` cuts at every contiguous population), and the settle
+# would sum the same messages in another order. The names are held beside the region, as
+# columns of the observation: ``{"named": {sense: [start, stop] or {field: [start, stop]}},
+# "declared": composed with senses=, "space": how many columns the brain reads from its map
+# (those of the sense ``space``)}``. The brain's own sensory region holds its declared senses
+# and then the map's read; a trained module's inputs follow in the module's own regions.
+
+_SPACE = "space"  # the sense a held map's read joins as
+
+
+def _is_map(part: Any) -> bool:
+    """Whether ``part`` is a map of things. ``cadence.space`` is imported only where a program
+    names it, and no map exists before that."""
+    module = sys.modules.get(f"{__package__}.space.map")
+    return module is not None and isinstance(part, module.Map)
+
+
+def _declared_senses(senses: Any) -> dict[str, Any]:
+    """``compose(senses=...)`` as declared: each sense's width, or its fields' widths, in the
+    declared order."""
+    if not isinstance(senses, Mapping) or not senses:
+        raise ValueError(
+            "senses maps each sense's name to its width, or to the widths of its fields: "
+            "senses={'touch': 8, 'eyes': {'hue': 12, 'shape': 30}}"
+        )
+    out: dict[str, Any] = {}
+    for name, spec in senses.items():
+        if not isinstance(name, str) or not name:
+            raise ValueError("a sense's name is a nonempty string")
+        if name == _SPACE:
+            raise ValueError(
+                f"{_SPACE!r} names the sense a map's read joins as (trained=[a map]): give the "
+                "declared sense another name"
+            )
+        if not isinstance(spec, Mapping):
+            out[name] = _count(f"the width of sense {name!r}", spec, low=1)
+            continue
+        if not spec:
+            raise ValueError(f"sense {name!r} declares no field")
+        fields = {}
+        for field, width in spec.items():
+            if not isinstance(field, str) or not field:
+                raise ValueError(f"sense {name!r}: a field's name is a nonempty string")
+            fields[field] = _count(f"the width of field {field!r} of sense {name!r}", width,
+                                   low=1)
+        out[name] = fields
+    return out
+
+
+def _sense_columns(widths: Mapping[str, Any], start: int) -> tuple[dict[str, Any], int]:
+    """The observation's columns of senses laid side by side from column ``start``: each
+    sense's ``[start, stop]``, or its fields' by name; and the column after the last."""
+    out: dict[str, Any] = {}
+    for name, spec in widths.items():
+        if isinstance(spec, Mapping):
+            fields = {}
+            for field, width in spec.items():
+                fields[field] = [start, start + int(width)]
+                start += int(width)
+            out[name] = fields
+        else:
+            out[name] = [start, start + int(spec)]
+            start += int(spec)
+    return out, start
+
+
+def _sense_span(columns: Any) -> tuple[int, int]:
+    """The columns a sense takes in the observation, from its first field to its last."""
+    if isinstance(columns, Mapping):
+        spans = [_sense_span(part) for part in columns.values()]
+        return spans[0][0], spans[-1][1]
+    return int(columns[0]), int(columns[1])
+
+
+def _sense_rows(what: str, value: Any, columns: Any) -> np.ndarray | None:
+    """The rows a caller gives for one sense: a batch of the sense's width, or for a sense with
+    fields a mapping of field to rows, a field left out silent; None where the mapping names no
+    field (the sense is silent). Refused by the sense's name."""
+    start, stop = _sense_span(columns)
+    width = stop - start
+    if isinstance(value, Mapping):
+        if not isinstance(columns, Mapping):
+            raise ValueError(f"{what} has no fields: it takes rows of {width} values")
+        parts: dict[str, np.ndarray] = {}
+        for field, given in value.items():
+            if field not in columns:
+                raise ValueError(
+                    f"{what} has no field {field!r}: its fields are "
+                    + ", ".join(repr(known) for known in columns)
+                )
+            rows = _sense_rows(f"field {field!r} of {what}", given, columns[field])
+            assert rows is not None  # a field has no fields of its own
+            parts[field] = rows
+        if not parts:
+            return None
+        counts = {len(rows) for rows in parts.values()}
+        if len(counts) > 1:
+            told = ", ".join(f"{field!r} {len(rows)}" for field, rows in parts.items())
+            raise ValueError(f"the fields of {what} give different numbers of rows: {told}")
+        out = np.zeros((counts.pop(), width))
+        for field, rows in parts.items():
+            first, last = _sense_span(columns[field])
+            out[:, first - start : last - start] = rows
+        return out
+    try:
+        rows = np.asarray(value, dtype=float)
+    except (TypeError, ValueError):
+        raise ValueError(f"{what} takes rows of {width} numbers") from None
+    if rows.ndim < 2 or not rows.shape[0] or not np.isfinite(rows).all():
+        raise ValueError(f"{what} takes a nonempty finite batch of rows; use [row] for one")
+    rows = rows.reshape(len(rows), -1)
+    if rows.shape[1] != width:
+        raise ValueError(f"{what} takes {width} values per row, got {rows.shape[1]}")
+    return rows
+
+
+def _load_senses(saved: Any, inputs: int, held: bool) -> dict[str, Any]:
+    """A checkpoint's senses, validated against the brain's inputs and put in the order of
+    their columns (a checkpoint's metadata keeps no order of its own): named columns side by
+    side up to the last input, the map's read among them, and the map itself in the file."""
+    refusal = ValueError("invalid saved senses")
+    if not isinstance(saved, dict) or set(saved) != {"named", "declared", "space"}:
+        raise refusal
+    named, declared, tail = saved["named"], saved["declared"], saved["space"]
+    if (
+        not isinstance(named, dict) or not named or not isinstance(declared, bool)
+        or isinstance(tail, bool) or not isinstance(tail, int) or not 0 <= tail < inputs
+    ):
+        raise refusal
+    for name, columns in named.items():
+        parts = list(columns.values()) if isinstance(columns, dict) else [columns]
+        if not isinstance(name, str) or not parts:
+            raise refusal
+        for part in parts:
+            if (
+                not isinstance(part, list) or len(part) != 2
+                or any(isinstance(end, bool) or not isinstance(end, int) for end in part)
+                or not 0 <= part[0] < part[1] <= inputs
+            ):
+                raise refusal
+    named = {
+        name: dict(sorted(columns.items(), key=lambda field: field[1][0]))
+        if isinstance(columns, dict) else columns
+        for name, columns in named.items()
+    }
+    named = dict(sorted(named.items(), key=lambda sense: _sense_span(sense[1])[0]))
+    column = None
+    for columns in named.values():
+        for first, last in columns.values() if isinstance(columns, dict) else [columns]:
+            if column is not None and first != column:
+                raise refusal
+            column = last
+    first = _sense_span(next(iter(named.values())))[0]
+    if column != inputs or (declared and first != 0):
+        raise refusal
+    if tail:
+        first, last = _sense_span(named.get(_SPACE, [0, 0]))
+        if last - first != tail:
+            raise refusal
+        if not held:
+            raise ValueError(
+                "the saved senses read a map of things the checkpoint does not hold"
+            )
+    return {"named": named, "declared": declared, "space": tail}
 
 
 # The arrays of a settled state, as a checkpoint keeps each state it holds (the free phase, a
@@ -2964,6 +3134,10 @@ class Brain:
         # a map of things this brain holds (``cadence.space.map.Map``, opt-in): a graph of its
         # own inside the brain object, saved and loaded with it
         self.space: Any = None
+        # the senses by name (``compose(senses=...)``, a map in ``trained=``): the columns of
+        # the observation each takes, and how many of them the brain reads from its map
+        # itself; None for a brain whose observation is one row of numbers
+        self._senses: dict[str, Any] | None = None
 
     @property
     def brain(self) -> NeuralGraph:
@@ -2988,6 +3162,22 @@ class Brain:
                 "episodic": self._episodic,
             }
         )
+
+    @property
+    def senses(self) -> dict[str, Any]:
+        """The brain's senses by name, in the order of the observation's columns: each sense's
+        columns as a ``slice``, or for a sense with fields a dict of field to ``slice``. The
+        senses declared with ``compose(senses=...)``, then ``space`` (``where`` and
+        ``what``), which the brain reads from ``brain.space`` itself, then a hosted module's
+        inputs under the module's name. Empty for a brain composed with ``inputs=`` alone."""
+        held = self._senses
+        if held is None:
+            return {}
+        return {
+            name: {field: slice(*span) for field, span in columns.items()}
+            if isinstance(columns, Mapping) else slice(*columns)
+            for name, columns in held["named"].items()
+        }
 
     @property
     def context_memory(self) -> SynapticMemory | None:
@@ -3270,9 +3460,10 @@ class Brain:
     @classmethod
     def compose(
         cls,
-        inputs: int | Sequence[int],
-        actions: int,
+        inputs: int | Sequence[int] | None = None,
+        actions: int | None = None,
         *,
+        senses: Mapping[str, Any] | None = None,
         connectome: Connectome | None = None,
         modules: Sequence[int] = (64,),
         observers: Sequence[int] = (),
@@ -3290,17 +3481,33 @@ class Brain:
         ports: int = 0,
         tied: Mapping[tuple[str, str], Sequence[int]] | None = None,
         fields_motor: float = 0.0,
-        trained: Sequence[Any] | None = None,
+        trained: Any = None,
         **options: Any,
     ) -> Brain:
         """Compose one continuing brain: senses, reciprocal processing regions, a motor choice and
         its memories, settling together.
 
+        ``senses={name: width, ...}`` (opt-in, in place of ``inputs``) declares the brain's
+        senses by name: a sense is a width, or a mapping of field to width
+        (``{"eyes": {"hue": 12, "shape": 30}, "ear": 64}``). The inputs are their sum in the
+        declared order and ``brain.senses`` holds each sense's columns. Every operation that
+        takes observations then also takes a mapping of sense to rows, a sense left out
+        silent; rows of the summed width are taken as before. The brain is the brain of
+        ``inputs=<the sum>`` with the names beside it; with ``code=units`` every field of
+        every sense enters the fixed sparse code at unit length (docs/senses.md, senses by
+        name).
+
         ``trained=[module, ...]`` (opt-in; ``cadence.modules``) builds the brain around trained
         modules: each module's regions stand beside the brain's own under the module's name
         (``name/region``), its inputs follow the brain's own in the observation, the first
         module region reads what it publishes through one-way synapses that start at zero, and
-        its trained synapses are grafted in and held (``graft``, ``freeze=True``).
+        its trained synapses are grafted in and held (``graft``, ``freeze=True``). A name in
+        ``trained`` loads the module the library ships by it (``cadence.modules.load``). A
+        map of things (``cadence.space.map.Map``, by name or as an object) becomes
+        ``brain.space``, and its read (``where`` and ``what``) joins the brain's senses as
+        the sense ``space``, after the brain's own inputs: the caller's observations do not
+        carry it, and the brain reads its map itself at every operation that takes
+        observations.
 
         ``inputs`` is a vector length or an image shape ``(height, width[, channels])``, whose
         sensory region is a ``visual_cortex`` of ``features`` maps of ``field`` by ``field``
@@ -3359,10 +3566,28 @@ class Brain:
         refusal.
         """
 
+        parts: list[Any] = []
         if trained:
+            lone = hasattr(trained, "record") or isinstance(trained, str) or _is_map(trained)
+            parts = [trained] if lone else list(trained)
+        if senses is not None or any(isinstance(m, str) or _is_map(m) for m in parts):
+            # senses by name, a module by its name, a map whose read joins the senses
+            return _compose_named(
+                cls, inputs, actions, senses, parts,
+                connectome=connectome, modules=modules,
+                observers=observers, lateral=lateral, teaching=teaching, scales=scales,
+                features=features, field=field, code=code, learned_code=learned_code,
+                attention=attention, seed=seed, slots=slots, learned_fields=learned_fields,
+                ports=ports, tied=tied, fields_motor=fields_motor, options=options,
+            )
+        if inputs is None or actions is None:
+            raise TypeError(
+                "Brain.compose() needs inputs (or senses=) and actions: "
+                "Brain.compose(inputs=4, actions=2)"
+            )
+        if parts:
             return _compose_trained(
-                cls, inputs, actions,
-                [trained] if hasattr(trained, "record") else list(trained),
+                cls, inputs, actions, parts,
                 connectome=connectome, modules=modules,
                 observers=observers, lateral=lateral, teaching=teaching, scales=scales,
                 features=features, field=field, code=code, learned_code=learned_code,
@@ -4034,6 +4259,8 @@ class Brain:
                 **({} if self.fields is None else {"learned_fields": self.fields.to_dict()}),
                 **({"ports": int(self.ports)} if self.ports else {}),
                 **({"tied": self._tied_description()} if self.tied else {}),
+                # the senses by name: each one's columns of the observation, or its fields'
+                **({} if self._senses is None else {"senses": self._senses["named"]}),
                 "composition": self._composition,
                 **(
                     {} if self.learner.synapse_rate is None else {
@@ -4074,6 +4301,8 @@ class Brain:
     # -- stimulus
 
     def _observations(self, observations: Any) -> np.ndarray:
+        if self._senses is not None:
+            observations = self._sensed_rows(observations)
         x = np.asarray(observations, dtype=float)
         if x.ndim < 2 or not x.shape[0] or not np.isfinite(x).all():
             raise ValueError(
@@ -4083,6 +4312,84 @@ class Brain:
         if x.shape[1] != self.inputs:
             raise ValueError(f"observations need {self.inputs} values per row, got {x.shape[1]}")
         return x
+
+    def _sensed_rows(self, observations: Any) -> Any:
+        """What a brain with named senses is given, as rows of its whole width. A mapping of
+        sense to rows (a brain composed with ``senses=``): each sense's rows in its columns,
+        a sense left out silent, and no sense at all one silent row. The map's read
+        (``brain.space.observation()``) takes the columns of ``space`` in rows given
+        without them; rows of the whole width are taken as they are, the map's part as
+        given. An unknown sense, a wrong width and senses whose rows disagree are refused by
+        name; anything else is returned for ``_observations`` to refuse."""
+        held = self._senses
+        assert held is not None
+        named, tail = held["named"], int(held["space"])
+        given = self.inputs - tail
+        start = _sense_span(named[_SPACE])[0] if tail else given  # where the map's read lies
+        if isinstance(observations, Mapping):
+            if not held["declared"]:
+                raise ValueError(
+                    "this brain declares no senses by name (compose(senses=...)): it takes "
+                    f"rows of {given} values"
+                )
+            parts: dict[str, np.ndarray] = {}
+            for name, value in observations.items():
+                if name not in named:
+                    raise ValueError(
+                        f"this brain has no sense {name!r}: its senses are "
+                        + ", ".join(repr(known) for known in named)
+                    )
+                if tail and name == _SPACE:
+                    raise ValueError(
+                        f"the brain reads its sense {_SPACE!r} from its map itself "
+                        "(brain.space): leave it out of the observation"
+                    )
+                rows = _sense_rows(f"sense {name!r}", value, named[name])
+                if rows is not None:
+                    parts[name] = rows
+            counts = {len(rows) for rows in parts.values()}
+            if len(counts) > 1:
+                told = ", ".join(f"{name!r} {len(rows)}" for name, rows in parts.items())
+                raise ValueError(f"the senses give different numbers of rows: {told}")
+            whole = np.zeros((counts.pop() if counts else 1, self.inputs))
+            for name, rows in parts.items():
+                first, last = _sense_span(named[name])
+                whole[:, first:last] = rows
+            if tail:
+                whole[:, start : start + tail] = self._map_read(tail)
+            return whole
+        if not tail:
+            return observations
+        try:
+            x = np.asarray(observations, dtype=float)
+        except (TypeError, ValueError):
+            return observations
+        if x.ndim < 2 or not x.shape[0]:
+            return observations
+        x = x.reshape(len(x), -1)
+        if x.shape[1] == self.inputs:
+            return x  # whole rows: the map's part as given
+        if x.shape[1] != given:
+            raise ValueError(
+                f"observations need {given} values per row, got {x.shape[1]} (the brain reads "
+                f"the {tail} of {_SPACE!r} from its map; a row of all {self.inputs} is taken "
+                "as it is)"
+            )
+        read = np.broadcast_to(self._map_read(tail), (len(x), tail))
+        return np.concatenate([x[:, :start], read, x[:, start:]], axis=1)
+
+    def _map_read(self, width: int) -> np.ndarray:
+        """What the brain reads of its map this moment (``brain.space.observation()``: ``where``
+        and ``what``), ``width`` values; refused by name where ``brain.space`` holds no map of
+        that read."""
+        space = self.space
+        read = None if space is None else np.asarray(space.observation(), dtype=float).ravel()
+        if read is None or len(read) != width:
+            raise ValueError(
+                f"this brain reads its sense {_SPACE!r}, {width} values, from brain.space, "
+                + ("which holds no map" if read is None else f"whose map reads {len(read)}")
+            )
+        return read
 
     def observation_code(self, observations: Any) -> np.ndarray:
         """The code the memories key on, ``(batch, code_width)``: the observations themselves
@@ -4102,9 +4409,26 @@ class Brain:
                 return pools
             return np.concatenate([pools, x[:, self.fields.inputs :]], axis=1)
         if self.learned_code is None:
-            return x if self.sparse_code is None else _unit_rows(self.sparse_code.code(x))
+            if self.sparse_code is None:
+                return x
+            return _unit_rows(self.sparse_code.code(self._equal_senses(x)))
         phase = self._settle_code(x, context=False)
         return self._moment_key(x, self.learned_code.code_of(phase.state.activation))
+
+    def _equal_senses(self, x: np.ndarray) -> np.ndarray:
+        """What the fixed sparse code expands. A brain composed with ``senses=`` gives it
+        every field of every sense at unit length (a sense without fields is one field; a
+        field with nothing in it stays zero), so each field moves the code alike whatever its
+        width and the size of its values. Any other brain gives it the observations, the
+        same array."""
+        held = self._senses
+        if held is None or not held["declared"]:
+            return x
+        out = np.array(x, dtype=float)
+        for columns in held["named"].values():
+            for first, last in columns.values() if isinstance(columns, Mapping) else [columns]:
+                out[:, first:last] = _unit_rows(out[:, first:last])
+        return out
 
     def _prepare(
         self, x: np.ndarray, *, context: bool = True, trace: Trace | None = None
@@ -4605,8 +4929,12 @@ class Brain:
             except Exception as error:  # a device that refuses the brain is not its failure
                 refused.append(f"{candidate.backend}: {error}")
                 continue
+            # a map the brain reads as a sense stays the object its caller holds
+            space = self.space if self._senses is not None and self._senses["space"] else None
             self.__dict__.clear()
             self.__dict__.update(placed.__dict__)
+            if space is not None:
+                self.space = space
             self._placement = {**held, "why": candidate.why, "refused": refused}
             return
 
@@ -6430,7 +6758,10 @@ class Brain:
         """The place key a fading store's records are cued by this moment (``memory_fade``):
         the observation code where the store keys on it, else the observations."""
         try:
-            raw = np.atleast_2d(np.asarray(_on_host(x), dtype=float))
+            x = _on_host(x)
+            if self._senses is not None:  # the moment's rows, as the moment itself read them
+                x = self._sensed_rows(x)
+            raw = np.atleast_2d(np.asarray(x, dtype=float))
             return np.atleast_2d(np.asarray(self._code(raw))) if self._coded_keys else raw
         except (TypeError, ValueError):  # no key of this moment: it cues no record
             return None
@@ -6954,6 +7285,8 @@ class Brain:
             record, arrays = self.space.parts()
             metadata["space"] = record
             data.update({f"space/{name}": value for name, value in arrays.items()})
+        if self._senses is not None:  # the senses by name; a brain without them saves none
+            metadata["senses"] = plain(self._senses)
         data["brain"] = np.array(canonical_json(metadata))
         return _write(data, path, compressed=compressed)
 
@@ -7512,6 +7845,10 @@ class Brain:
                 result.space = Map.from_parts(meta["space"], {
                     name[len("space/"):]: data[name] for name in data
                     if name.startswith("space/")})
+            if "senses" in meta:  # the senses by name, and the map's read among them
+                result._senses = _load_senses(
+                    meta["senses"], int(result.inputs), result.space is not None
+                )
         return result
 
 
@@ -8070,6 +8407,92 @@ def _grown_array(
 # -- grafting trained regions of one brain into another (``Brain.graft``)
 
 
+def _compose_named(
+    cls: type[Brain], inputs: Any, actions: Any, senses: Any, trained: list[Any], *,
+    connectome: Connectome | None, options: dict[str, Any], seed: int, **layout: Any,
+) -> Brain:
+    """``Brain.compose(senses={...})`` and ``trained=`` with a module's name or a map: the brain
+    of the summed width, composed as ``inputs=`` composes it, with the senses' names beside it.
+    The observation's columns: the brain's own inputs (the declared senses in their order),
+    the read of a map (``space``: ``where`` and ``what``), which the brain reads from
+    ``brain.space`` itself and its own sensory region holds, and each trained module's inputs
+    under the module's name."""
+    from . import modules as shipped
+
+    declared = None if senses is None else _declared_senses(senses)
+    if declared is not None and inputs is not None:
+        raise ValueError(
+            "senses= declares the brain's inputs by name and inputs= counts them: pass one of "
+            "the two"
+        )
+    if (declared is None and inputs is None) or actions is None:
+        raise TypeError(
+            "Brain.compose() needs inputs (or senses=) and actions: "
+            "Brain.compose(senses={'touch': 8}, actions=2)"
+        )
+    parts = [shipped.load(part) if isinstance(part, str) else part for part in trained]
+    maps = [part for part in parts if _is_map(part)]
+    hosted = [part for part in parts if not _is_map(part)]
+    if len(maps) > 1:
+        raise ValueError(
+            f"a brain holds one map of things (brain.space): trained= names {len(maps)}"
+        )
+    held = maps[0] if maps else None
+    if declared is None and held is None:  # trained modules by name: the brain around them
+        return _compose_trained(
+            cls, inputs, actions, hosted, connectome=connectome, options=options, seed=seed,
+            **layout,
+        )
+    for name in ("learned_fields", "ports"):
+        if layout.get(name):
+            raise ValueError(
+                f"named senses and a map's read are vector inputs: {name} reads an image "
+                "(inputs=(height, width[, channels])) in this version"
+            )
+    if declared is not None:
+        own = int(sum(
+            width for spec in declared.values()
+            for width in (spec.values() if isinstance(spec, Mapping) else [spec])
+        ))
+    elif isinstance(inputs, (int, np.integer)):
+        own = _count("inputs", inputs, low=1)
+    else:
+        raise ValueError(
+            "a map's read joins the senses of a vector brain in this version: inputs is a "
+            "count (or senses=), not an image shape"
+        )
+    tail = 0 if held is None else int(held.count) + int(held.units)
+    named: dict[str, Any] = {} if declared is None else _sense_columns(declared, 0)[0]
+    if held is not None:
+        named.update(_sense_columns(
+            {_SPACE: {"where": int(held.count), "what": int(held.units)}}, own
+        )[0])
+    for module in hosted:  # refused before anything is composed
+        if getattr(module, "name", None) in named:
+            raise ValueError(f"a sense and the module {module.name!r} share one name")
+    if hosted:
+        brain = _compose_trained(
+            cls, own + tail, actions, hosted, connectome=connectome, options=options,
+            seed=seed, **layout,
+        )
+    else:
+        brain = cls.compose(
+            own + tail, actions, connectome=connectome, seed=seed, **layout, **options
+        )
+    column = own + tail
+    for module in hosted:  # a hosted module's inputs, a sense under the module's name
+        sizes = module.regions
+        regions = {region: sizes[region] for region in module.inputs}
+        spec = next(iter(regions.values())) if len(regions) == 1 else regions
+        columns, column = _sense_columns({module.name: spec}, column)
+        named.update(columns)
+    assert column == brain.inputs
+    if held is not None:
+        brain.space = held
+    brain._senses = {"named": named, "declared": declared is not None, "space": tail}
+    return brain
+
+
 def _compose_trained(
     cls: type[Brain], inputs: Any, actions: int, trained: list[Any], *,
     connectome: Connectome | None, options: dict[str, Any], seed: int, **layout: Any,
@@ -8090,12 +8513,10 @@ def _compose_trained(
         raise ValueError("trained modules take a vector brain in this version: inputs is a count")
     if inputs < 1:
         raise ValueError("a brain around a module holds one input of its own or more")
-    if any(type(m).__name__ == "Map" for m in trained or ()):
-        raise ValueError("a map of things (cadence.space.map.Map) joins a brain as brain.space; "
-                         "trained= takes trained modules, brains saved with save_module")
     if not trained or any(not isinstance(m, Module) for m in trained):
         raise ValueError("trained is a list of trained modules (cadence.load_module of a file "
-                         "save_module wrote)")
+                         "save_module wrote), maps of things (cadence.space.map.Map) and names "
+                         "of modules the library ships (cadence.modules.names)")
     held = [m.name for m in trained]
     if len(set(held)) != len(held):
         raise ValueError("two trained modules share one name")
