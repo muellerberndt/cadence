@@ -31,7 +31,7 @@ The pieces are opt-in: a program that does not import `cadence.space` gets a lib
 | Tell it what the senses report | `moment(seen=, heard=, felt=, lit=)` | [how a position travels](#how-a-position-travels) |
 | Ask where a thing is, or what is at a place | `where_is`, `what_is_at` | [questions](#questions-answered-by-settling) |
 | Read every thing it holds | `things`, `sheet` | [the inventory](#the-inventory) |
-| What each thing is like: its colour | `Map(values=)`, `values_at`, `where_is_value` | [values carried with a thing](#values-carried-with-a-thing) |
+| What each thing is like: its colour | `Map(values=)`, `values_at`, `where_is_value`, `thing_at` | [values carried with a thing](#values-carried-with-a-thing) |
 | A thing that leaves view | `empty`, `reach` | [a place seen empty](#a-place-seen-empty) |
 | Keep the map | `save`, `Map.load`, `reset` | [the carried state](#the-carried-state) |
 | Hold it in a brain, or load the built-in one | `Brain.space`, `cadence.modules.load("place")` | [a brain that holds a map](#a-brain-that-holds-a-map) |
@@ -253,6 +253,37 @@ assert paint.values_at([0.7, 0.6]) == {"colour": RED}
 | `things()` | Each entry gains `values` |
 
 With `values` unset the map is as it was, to the bit.
+
+**A value as a code.** A value is a number, written as a one on its unit, or a code: one amount
+in 0 to 1 for each unit of its group, as a sense's tuned cells report a hue or a size. A code
+rides on the thing's place as a number does, carried and moved with the thing, and
+`values_at` reads its most active unit.
+
+**One thing, read whole.** `thing_at(place, within=, cells=, body=, heading=)` is the read a
+brain takes of the thing it attends: the settle of `what_is_at`, with `what` read on every unit
+and `where` on the cells kept.
+
+| Key | Value |
+| --- | --- |
+| `kind` | The kind's number |
+| `values` | Each group's amounts on its units, as shares of the kind's own activity: a one on the unit of a value given as a number, a code as it was reported |
+| `place` | The mean of `where`, `(x, y)` in metres |
+| `bearing` | The angle in radians of the place from `heading`, where a body at `body` points; positive to the left |
+| `distance` | Metres from `body` |
+
+It gives None where the cells hold no thing. Cells that hold two things are read together, so
+`within` stays under what lies between them. With `cells=sheet(kind).ravel() > 0` the question is
+the kind itself: the thing wherever the map holds it, in view or out of it.
+
+```python
+hues = np.exp(-0.5 * (np.arange(6) - 1.4) ** 2)                # six tuned cells, a hue between two
+shade = Map((-1.0, 1.0, -1.0, 1.0), (24, 24), units=8, values={"colour": 6})
+shade.moment(seen=[(APPLE, [0.5, 0.5], {"colour": hues})])
+shade.moment(heard=[(APPLE, [0.7, 0.6])])                       # moved unseen: the code goes too
+apple = shade.thing_at(None, cells=shade.sheet(APPLE).ravel() > 0, heading=np.pi / 2)
+assert apple["kind"] == APPLE and np.allclose(apple["values"]["colour"], hues, atol=1e-3)
+assert np.allclose(apple["place"], [0.7, 0.6], atol=1e-3) and apple["bearing"] < 0   # to the right
+```
 
 ## A place seen empty
 
