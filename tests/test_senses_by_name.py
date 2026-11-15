@@ -504,6 +504,9 @@ def test_a_copy_and_a_grown_brain_keep_the_senses():
     grown = brain.grow(efference_amplitude=1.0)
     assert grown.senses == brain.senses and grown.efference is not None
     assert np.array_equal(grown.act(by_field(x), greedy=True), brain.act(x, greedy=True))
+    donor = Brain.compose(inputs=12, actions=3, seed=3, backend="cpu")
+    grafted = brain.graft(donor, ["association", "motor"])        # the host's senses stay
+    assert grafted.senses == brain.senses and grafted.act(named(x), greedy=True).shape == (1,)
     assert brain.retune(teaching="normalized").senses == twin.senses
 
 
@@ -593,25 +596,39 @@ def test_every_sense_field_enters_the_fixed_code_at_unit_length():
 
 
 def test_a_small_sense_moves_the_code_beside_a_large_one():
-    equal = Brain.compose(senses={"glimpse": 40, "word": 24}, actions=3, code=64, seed=0,
-                          backend="cpu")
-    control = Brain.compose(inputs=64, actions=3, code=64, seed=0, backend="cpu")
-    rng = np.random.default_rng(0)
-    moved = {"equal": [], "control": []}
-    for _ in range(40):
-        glimpse = np.zeros(40)
-        glimpse[rng.choice(40, 26, replace=False)] = 1.0          # length 5.1
-        first, second = rng.choice(24, 2, replace=False)
-        rows = np.zeros((2, 64))
-        rows[:, :40] = glimpse
-        rows[0, 40 + first] = rows[1, 40 + second] = 1.0          # two words, each of length 1
-        for name, brain in (("equal", equal), ("control", control)):
-            a, b = brain.observation_code(rows)
-            moved[name].append(int(((a > 0) != (b > 0)).sum()))
-    # of 24 active units, the word changes about 17 where the senses are equal and about 5
-    # where the glimpse enters at its own length
-    assert np.mean(moved["equal"]) > 2 * np.mean(moved["control"])
-    assert np.mean(moved["equal"]) > 12 and np.mean(moved["control"]) < 8
+    """The reading of the senses guide: twelve seeds, 40 glimpses of 26 lit inputs (length
+    5.1) each with two words of one lit input (length 1). A change of word changes 16.5 of the
+    24 active units where the senses are equal and 5.1 where the row is read as it is, and
+    the two codes lie at cosine .62 against .92."""
+    moved: dict[str, list[float]] = {"equal": [], "control": []}
+    cosine: dict[str, list[float]] = {"equal": [], "control": []}
+    for seed in range(12):
+        brains = {
+            "equal": Brain.compose(senses={"glimpse": 40, "word": 24}, actions=3, code=64,
+                                   seed=seed, backend="cpu"),
+            "control": Brain.compose(inputs=64, actions=3, code=64, seed=seed, backend="cpu"),
+        }
+        rng = np.random.default_rng(seed)
+        units: dict[str, list[int]] = {"equal": [], "control": []}
+        near: dict[str, list[float]] = {"equal": [], "control": []}
+        for _ in range(40):
+            glimpse = np.zeros(40)
+            glimpse[rng.choice(40, 26, replace=False)] = 1.0
+            first, second = rng.choice(24, 2, replace=False)
+            rows = np.zeros((2, 64))
+            rows[:, :40] = glimpse
+            rows[0, 40 + first] = rows[1, 40 + second] = 1.0
+            for name, brain in brains.items():
+                a, b = brain.observation_code(rows)
+                units[name].append(int(((a > 0) != (b > 0)).sum()))
+                near[name].append(float(a @ b))
+        for name in brains:
+            moved[name].append(float(np.mean(units[name])))
+            cosine[name].append(float(np.mean(near[name])))
+    assert abs(np.mean(moved["equal"]) - 16.5) < 0.5 and min(moved["equal"]) > 14.5
+    assert abs(np.mean(moved["control"]) - 5.1) < 0.5 and max(moved["control"]) < 6.5
+    assert abs(np.mean(cosine["equal"]) - 0.62) < 0.02
+    assert abs(np.mean(cosine["control"]) - 0.92) < 0.02
 
 
 def test_fields_of_one_sense_are_each_at_unit_length(tmp_path):

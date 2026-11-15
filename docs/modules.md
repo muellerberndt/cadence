@@ -860,19 +860,25 @@ Both forms compose one brain: `senses={"touch": 8}` with the map in `trained=` i
 touch in every row, to the bit.
 
 **The map's read is small.** A thing held on the built-in map reads `where` at length .010
-and `what` at length .019, beside a touch at length 1. In the brain above an apple on the map
-moves the association's settled state by .020 to .025 of its length (three seeds), and the
-memories' key by cosine .9998. With `code=units` the brain's senses are equal
+and `what` at length .019, beside a touch at length 1: the row the brain reads with an apple on
+the map lies at cosine .9998 from the row with the map empty, and a brain without a code
+settles on that row and keys its memories on it. With `code=units` the brain's senses are equal
 ([equal senses](senses.md#equal-senses-in-the-fixed-code)): `where` and `what` enter the code
-at unit length beside the touch, the same apple moves the settled state by .86 to .97 of its
-length, and the key lies at cosine .48 to .67 from the key of the empty map.
+at unit length beside the touch, and the code with the apple on the map lies at cosine .56 from
+the code of the empty map.
 
 ```python
 coded = Brain.compose(senses={"touch": 8}, actions=2, seed=0, code=256, trained=["place"])
 empty = coded.observation_code({"touch": touch})         # the map holds no thing
+bare = np.hstack([touch, np.zeros((1, 848))])            # the row of the empty map
 coded.space.moment(seen=[(APPLE, [0.3, 0.6])], lit=ahead)
+map_read = coded.space.observation()
+assert np.isclose(np.linalg.norm(map_read[:832]), 0.010, atol=0.001)   # where
+assert np.isclose(np.linalg.norm(map_read[832:]), 0.019, atol=0.001)   # what
+row = np.hstack([touch, map_read[None]])                 # the row with the apple on the map
+assert float(bare[0] @ row[0]) / np.linalg.norm(row) > 0.9997
 apple = coded.observation_code({"touch": touch})
-assert float(empty[0] @ apple[0]) < 0.8                  # the apple on the map moves the code
+assert abs(float(empty[0] @ apple[0]) - 0.56) < 0.02     # at unit length the map moves the code
 ```
 
 ## Modules: parts that arrive as files

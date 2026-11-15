@@ -4109,7 +4109,9 @@ class Brain:
 
         - ``layout``: the inputs, actions, regions, slots, neurons, synapses and populations;
           ``code``, what the memories key on; ``learned_code``, a learned code's settings and
-          counts; ``composition``, the construction choices of a composed brain (None for a
+          counts; ``senses``, where the brain has senses by name, each one's columns of the
+          observation ``[start, stop]`` or its fields';
+          ``composition``, the construction choices of a composed brain (None for a
           custom anatomy), provenance rather than a description of learned weights; and
           ``projection_rates``, each projection's step other than 1 where the brain holds
           per-synapse rates.
@@ -4301,6 +4303,9 @@ class Brain:
     # -- stimulus
 
     def _observations(self, observations: Any) -> np.ndarray:
+        """Observations as a nonempty finite batch of the brain's width, ``(rows, inputs)``.
+        A brain with senses by name also takes them by name, and reads its map's part itself
+        (``_sensed_rows``)."""
         if self._senses is not None:
             observations = self._sensed_rows(observations)
         x = np.asarray(observations, dtype=float)
@@ -7147,8 +7152,9 @@ class Brain:
         under ``memories`` in the metadata; with ``learning_rehearsal`` the reservoir of lessons
         with their episodes and the streams' episodes (``rehearsal/...``, the counts under
         ``rehearsal``); with a map of things (``space``, a ``cadence.space.map.Map``) its record
-        under ``space`` and its codes and carried state under ``space/``. ``Learner.save`` saves
-        the slow learned response alone.
+        under ``space`` and its codes and carried state under ``space/``; with senses by name
+        (``compose(senses=...)``, a map in ``trained=``) their columns under ``senses`` in the
+        metadata. ``Learner.save`` saves the slow learned response alone.
         ``compressed=False`` writes a plain archive, as ``cadence.checkpoint.save`` does: larger
         on disk, and a large brain's is written in a small part of the time deflating takes.
         """
