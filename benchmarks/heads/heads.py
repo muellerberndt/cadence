@@ -67,9 +67,25 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 
 
+def _same(module: Any, path: Path) -> bool:
+    """Whether ``module`` was loaded from the file ``path``."""
+    found = getattr(module, "__file__", None)
+    return found is not None and Path(found).resolve() == path
+
+
 def _module(name: str, path: Path) -> Any:
-    if name in sys.modules:
-        return sys.modules[name]
+    """The module of the file ``path``, loaded once: the module held under ``name`` where it
+    is that file; where another chamber's module of that name is held (several chambers hold a
+    ``controls.py``), the file under a name of this chamber's own."""
+    path = Path(path).resolve()
+    held = sys.modules.get(name)
+    if held is not None:
+        if _same(held, path):
+            return held
+        name = f"heads_chamber_{name}"
+        held = sys.modules.get(name)
+        if held is not None and _same(held, path):
+            return held
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

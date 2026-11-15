@@ -19,6 +19,32 @@
   against 1.55, 42 development founders), and three hops, whose third `near` no lesson reaches,
   fall with the louder trace.
 
+### Several heads into the brain's records (#325)
+
+- **`longterm_attention=rate`** (opt-in, with `longterm_distinct`): in one answer each of the
+  `longterm_heads` heads reads a record of its own. A head takes the question's next telling
+  word as its focus and reads the record about it whose key holds the most of the question's
+  context, each context word at the gate of the head's learned map; a head with no record
+  holds nothing; a head with no telling word left follows the head before it, a chain laid on
+  the regions from its end. `Brain.lesson` steps the maps (`heads_moved` in its report): each
+  choice a head could have made is scored, with the heads after it read again, against the
+  movement the lesson made. `cadence.record_heads.RecordHeads` holds the maps as
+  `brain.longterm.attended`. A head reads only the records that hold some of the question's
+  context, so a subject that lacks the one relation asked of it holds nothing.
+- **`RecordHeads.fetch(focus, context=(), row=0)`**: the heads' read with a cue from the brain's
+  own state (what it attends, as a moment or a codebook entry) in place of a heard question;
+  each head's record comes back with its content and its context, and nothing changes.
+- **`longterm_motor=scale`** (opt-in): a plastic projection from each head's region to the motor
+  region, so a motor slot learns to say what one region holds.
+- **`benchmarks/several`**: the chamber of questions whose one answer needs several of the
+  brain's own records (parts of 1 to 8 subjects, chains of 2 and 3 hops, parts and chains no
+  record answers), with a transformer and an LSTM that hold the records in their context.
+  On twelve fresh founders at 100,000 records the heads deliver the records of two, four and
+  eight parts at .995 to 1.000, say them at .996 to 1.000, .996 to 1.000 and .904 to .981, say
+  chains of two and three hops at .980 to 1.000 and .750 to 1.000, and stay silent where no
+  record answers at .997 to 1.000; every declared gate passes.
+- With both options unset a brain is composed, reads, learns and saves as it did.
+
 ## 0.99.1 - 2026-11-15
 
 A fix release. A learned code under several modules is read at unit length by the first module

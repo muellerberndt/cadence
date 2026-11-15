@@ -1,0 +1,7 @@
+{"founders": [3250, 3251, 3252, 3253, 3254, 3255],
+ "module": 128, "lessons": 20000, "lesson_subjects": 600, "sizes": [1000, 10000, 100000], "questions": 200,
+ "arms": [
+  {"arm": "handed", "longterm": {"attention": 0.0, "motor": 0.05, "match": 0.6}, "oracle": true},
+  {"arm": "rest", "longterm": {"rest": true}},
+  {"arm": "none", "records": false}
+ ]}
