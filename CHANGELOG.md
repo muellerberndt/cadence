@@ -1,6 +1,75 @@
 # Changelog
 
-## Unreleased
+## 0.100.0 - 2026-11-16
+
+The composite brain. Senses are declared once, by name; the map of things joins a brain as a
+module named in `trained=`, and the brain reads it itself; a thing carries its values on the map
+and is read whole from it; one surprise signal is read from the settle; several learned heads
+read the brain's records; and a memory's strength (repetition and surprise deepen a record, the
+unused fades) is a law of the long-term records and of the recall memory. No default changes:
+with every new option unset a brain is composed, acts, learns and saves as on 0.99.1, to the bit.
+
+The strength of the recall memory every new brain holds (#336) is an option and not the
+default. Composed by default it would save every new brain in `cadence-brain/5`, which 0.99.1
+refuses; `Lives`, the compiled write and a device's recall memory do not hold it, so every
+batched life of a new brain would be refused; and its read's renewal costs recent moments: a
+fact told once and asked for after seven eighths of the bank's capacity is answered at .33 and
+.25 against .93 and .96 without it (the recall-strength chamber, three seeds). It holds a fact
+past the bank where an answer needs one: in a paid `live` life whose question comes two
+capacities after its fact it answers .95, .79 and .51 against .48, .45 and .49. No recorded life
+the tests pin fills a bank, so none of them changes under it.
+
+### Senses by name, equal senses in the fixed code, and a name or a map in `trained=` (#342)
+
+A brain of several senses was composed as one row of inputs whose columns its caller kept
+track of, and a brain with the map of things was sized by hand (`inputs=place.count +
+place.units`), given its map by assignment and passed the map's read at every moment. These
+opt-in additions let a composite brain be declared in a few lines. A brain composed
+without `senses=` and without a name or a map in `trained=` is the brain of 0.99.1 to the bit:
+its parameters, its description, the acts of a short life and the contents of its checkpoint
+are pinned on that release's source for a default brain, a brain with `code=`, a brain around a
+trained module and a brain with a map assigned by hand.
+
+- **`Brain.compose(senses={name: width, ...})`** declares the senses by name, in place of
+  `inputs=`. A sense is a width, or a mapping of field to width (`{"eyes": {"hue": 12, "shape":
+  30}, "ear": 64}`); the inputs are their sum in the declared order. Every operation that takes
+  observations (`live`, `wait`, `step`, `act`, `lesson`, `learn`, `value`, `imagine`, `predict`,
+  `accuracy`, `fit`, `observation_code`, `stimulus`) also takes a dict of sense to rows; a sense
+  left out is silent, and rows of the summed width are taken as before. An unknown sense, a
+  wrong width and senses whose rows disagree are refused by name, before anything changes.
+  `brain.senses` gives each sense's columns, `describe()` names them under `layout`, and a
+  checkpoint keeps them under `senses` in its metadata, which 0.99.1 reads as the brain of the
+  summed width. A brain composed with `senses=` and no code is the brain composed with
+  `inputs=<the sum>` and the same seed: the same weights, acts and saved arrays. The sensory
+  region stays one population and the names are held beside it, since a population a sense
+  would cut the block layout and change the order the settle sums in. The guide is
+  [senses by name](docs/senses.md#senses-by-name).
+- **Equal senses.** With `code=units`, a brain composed with `senses=` gives every field of
+  every sense to the fixed sparse code at unit length (a field with nothing in it stays zero),
+  so each field moves the code alike whatever its width and the size of its values. In a code
+  of 64 units read from the row as it is, a word of length 1 beside a glimpse of length 5.1
+  changes 5.1 of the 24 active units; with equal senses it changes 16.5 (twelve seeds, a
+  reading of the code alone). A brain composed with `inputs=` keeps its code, and a learned code
+  takes the senses as they are given: its sensory region holds the observation itself and it
+  learns its own thresholds and fields
+  ([equal senses](docs/senses.md#equal-senses-in-the-fixed-code)).
+- **`trained=` takes a name and a map.** `trained=["place"]` loads the module the library ships
+  by that name. A map of things in `trained=`, by name or as an object, becomes `brain.space`,
+  and its read (`where` and `what`) joins the brain's senses as the sense `space`, after the
+  brain's own inputs: observations do not carry it, and the brain reads its map itself at every
+  operation that takes observations. `Brain.compose(senses={"touch": 8}, actions=2,
+  trained=["place"])` is the brain of `inputs=8 + place.count + place.units` with the map
+  assigned and its read passed by hand, to the bit, and that long form stays valid. A trained
+  module's inputs are a sense under the module's name in a brain composed with `senses=`. A
+  brain the default backend places at its first moment keeps the map object its caller holds.
+  Refused by name: two maps, a name the library ships no module by, image inputs beside a map,
+  and `senses=` or a map in `Lives`
+  ([a brain that knows where things are](docs/modules.md#a-brain-that-knows-where-things-are)).
+- **The refusals of a map and of a name in `trained=` are retired.** `Brain.compose(...,
+  trained=[a map])` and `trained=["place"]` were refused on 0.99.1 (a map joined a brain as `brain.space` alone, and
+  a name was no module); both compose a brain. `Brain.compose` takes `inputs` and `actions` as
+  optional in its signature and raises `TypeError` where neither `inputs` nor `senses`, or no
+  `actions`, is given.
 
 ### Values carried with a thing on the map (#326)
 
@@ -12,23 +81,51 @@
   `what_is_at(None, cells=flags)` and the `values` of `things()` entries. Which report is which
   thing reads the kinds' units alone. With `values` unset the map is as on 0.99.1, to the bit.
   The guide is [values carried with a thing](docs/space.md#values-carried-with-a-thing).
+- **A value as a code.** A report's value is a number (a one on its unit) or a code: one amount
+  in 0 to 1 for each unit of its group, as a sense's tuned cells report a hue or a size. A code
+  is carried and moved with the thing, and what a thing holds on every value unit is read as
+  shares of its kind's own activity.
+- **`Map.thing_at(place, within=, cells=, body=, heading=)`**: the one thing at a place, read
+  whole for a brain that attends it: its kind, each group's amounts as reported, its place, and
+  that place from the body (`bearing` from the heading, `distance`). A brain whose attended thing
+  is read from the map in place of the eyes' report answers about a thing behind a screen as
+  about a thing in view (#342, one founder of the parrot's research chamber, development
+  readings: the thing's name .98 behind a screen against .00 through the eyes).
 
-### A lesson can leave a motor slot open (#302)
+### One surprise signal, read from the settle's own residual (#337)
 
-- **`brain.lesson(observations, labels)` and `step(teacher=labels)`** take a label of `-1`
-  (`cadence.learning.OPEN`) in a brain of several motor slots: the lesson leaves that slot open at
-  that row. The slot is not judged (under `learning_surprise` a row is taught where a labelled
-  slot differs) and not pulled (its target in the nudged phases is what it says in the lesson's
-  own free phase, so the pull on it is zero there). A row labels at least one slot. A brain with
-  `recall_tokens` or `memory_choice=True` refuses open slots, and `accuracy`, `fit` and the
-  batched lives take a label for every slot. A lesson that labels every slot keeps its bits; the
-  guide is [a slot the lesson leaves open](docs/teach.md#a-slot-the-lesson-leaves-open).
-- **The grammar chamber's motor of parts** (`benchmarks/grammar/meaning.py`, `"parts": "open"`)
-  leaves the form of a word without a number open. Protocol 7 taught that form as a third class,
-  `none`, on every such word; the lessons of that class raise the learned gains of the carried
-  routes (the trace's .18 against .10 for a motor of whole words, the heard history's 2.18
-  against 1.55, 42 development founders), and three hops, whose third `near` no lesson reaches,
-  fall with the louder trace.
+- **`Brain.compose(surprise=True)`** (opt-in; a mapping names the genes) gives a brain one
+  surprise signal, `brain.surprise`: each neuron's residual at the start of the moment's settle
+  (the potential equation's error at the state the stream carried in, under the moment's drive),
+  against the residual that neuron is used to, under the law of `Arousal.outcome` per neuron.
+  `last` holds it per stream and neuron and `moment` one finite number of zero or more per
+  stream, for whatever reads a moment's surprise. `act`, `step`, `live` and `wait` read it once,
+  at the moment's first settle; a stream that begins from rest reads none; `imagine`, lessons,
+  `predict`, `value` and a rehearsal's replays leave it as it was. It is saved and loaded with
+  the brain, named in `describe()`, kept by `grow` and `graft`, and reset with its streams, the
+  usual residuals staying. The option reads the settle and changes no action, weight or record:
+  with it unset a brain is as on 0.99.1 to the bit, and with it set the brain's actions, weights
+  and saved arrays are the same beside the signal's own. It runs on the CPU backend; another
+  backend and `Lives` refuse it by name. Why: attention, the strength of a memory and the rate
+  of learning are to read one signal, and the settle's first check measures what a moment brings
+  that the carried equilibrium does not hold. The strength of the long-term records and of the
+  recall memory reads it ([a record's strength](docs/memory.md#a-records-strength-opt-in)); the
+  arousal law and the learning gate do not.
+- **The focus** (`cadence.surprise.Orienting`, `Focus`; `brain.orienting`, `brain.focus`,
+  `brain.places`): one competition among the places of the sensory neurons and the cells of a
+  held map, with a hold and an inhibition of return; it offers a bearing and a gain and applies
+  neither.
+- **`Map(surprise=True)`** reads each thing's move from where the map carried it into the
+  moment, on the thing's cells, under the same law; with learned physics that has taken lessons
+  the carried place is the map's own `forecast(1)`. A map without the option keeps its bits.
+- **`NeuralGraph.residual(per_unit=True)`** gives each neuron's signed error of the potential
+  equation, on the float64 CPU reference.
+- **The surprise chamber** ([`benchmarks/surprise`](benchmarks/surprise/README.md)) reads the
+  residual beside a second measure, how far the moment moved each neuron's activity, on the same
+  brains and streams. The two read the same moments wherever a thing is new to the senses; the
+  residual reads no new arrangement of known inputs and costs one more evaluation a moment, and
+  neither reads a broken order. The guide is
+  [surprise, and the focus it draws](docs/start.md#surprise-and-the-focus-it-draws-opt-in).
 
 ### Several heads into the brain's records (#325)
 
@@ -126,6 +223,23 @@ unset a brain acts, learns and saves as before, to the bit. The guide is
   a change of the default needs. The cost is recent moments: a read renews the slots it attends,
   so a fact told once and never read leaves a full bank sooner than without the option.
 
+### A lesson can leave a motor slot open (#302)
+
+- **`brain.lesson(observations, labels)` and `step(teacher=labels)`** take a label of `-1`
+  (`cadence.learning.OPEN`) in a brain of several motor slots: the lesson leaves that slot open at
+  that row. The slot is not judged (under `learning_surprise` a row is taught where a labelled
+  slot differs) and not pulled (its target in the nudged phases is what it says in the lesson's
+  own free phase, so the pull on it is zero there). A row labels at least one slot. A brain with
+  `recall_tokens` or `memory_choice=True` refuses open slots, and `accuracy`, `fit` and the
+  batched lives take a label for every slot. A lesson that labels every slot keeps its bits; the
+  guide is [a slot the lesson leaves open](docs/teach.md#a-slot-the-lesson-leaves-open).
+- **The grammar chamber's motor of parts** (`benchmarks/grammar/meaning.py`, `"parts": "open"`)
+  leaves the form of a word without a number open. Protocol 7 taught that form as a third class,
+  `none`, on every such word; the lessons of that class raise the learned gains of the carried
+  routes (the trace's .18 against .10 for a motor of whole words, the heard history's 2.18
+  against 1.55, 42 development founders), and three hops, whose third `near` no lesson reaches,
+  fall with the louder trace.
+
 ### Speech: the soft lesson (#304)
 
 No default changes: every existing call reads, learns and saves as before.
@@ -155,91 +269,6 @@ No default changes: every existing call reads, learns and saves as before.
   offline transformer holds at -.08 from pass 3 on: the letter from the sound is the term. On
   7.1 hours heard once it reads as on 2.5 hours heard three times. A life continues from its
   brain saved at every re-alignment, and a control from its last pass.
-
-### Senses by name, equal senses in the fixed code, and a name or a map in `trained=` (#342)
-
-A brain of several senses was composed as one row of inputs whose columns its caller kept
-track of, and a brain with the map of things was sized by hand (`inputs=place.count +
-place.units`), given its map by assignment and passed the map's read at every moment. These
-opt-in additions let a composite brain be declared in a few lines. A brain composed
-without `senses=` and without a name or a map in `trained=` is the brain of 0.99.1 to the bit:
-its parameters, its description, the acts of a short life and the contents of its checkpoint
-are pinned on that release's source for a default brain, a brain with `code=`, a brain around a
-trained module and a brain with a map assigned by hand.
-
-- **`Brain.compose(senses={name: width, ...})`** declares the senses by name, in place of
-  `inputs=`. A sense is a width, or a mapping of field to width (`{"eyes": {"hue": 12, "shape":
-  30}, "ear": 64}`); the inputs are their sum in the declared order. Every operation that takes
-  observations (`live`, `wait`, `step`, `act`, `lesson`, `learn`, `value`, `imagine`, `predict`,
-  `accuracy`, `fit`, `observation_code`, `stimulus`) also takes a dict of sense to rows; a sense
-  left out is silent, and rows of the summed width are taken as before. An unknown sense, a
-  wrong width and senses whose rows disagree are refused by name, before anything changes.
-  `brain.senses` gives each sense's columns, `describe()` names them under `layout`, and a
-  checkpoint keeps them under `senses` in its metadata, which 0.99.1 reads as the brain of the
-  summed width. A brain composed with `senses=` and no code is the brain composed with
-  `inputs=<the sum>` and the same seed: the same weights, acts and saved arrays. The sensory
-  region stays one population and the names are held beside it, since a population a sense
-  would cut the block layout and change the order the settle sums in. The guide is
-  [senses by name](docs/senses.md#senses-by-name).
-- **Equal senses.** With `code=units`, a brain composed with `senses=` gives every field of
-  every sense to the fixed sparse code at unit length (a field with nothing in it stays zero),
-  so each field moves the code alike whatever its width and the size of its values. In a code
-  of 64 units read from the row as it is, a word of length 1 beside a glimpse of length 5.1
-  changes 5.1 of the 24 active units; with equal senses it changes 16.5 (twelve seeds, a
-  reading of the code alone). A brain composed with `inputs=` keeps its code, and a learned code
-  takes the senses as they are given: its sensory region holds the observation itself and it
-  learns its own thresholds and fields
-  ([equal senses](docs/senses.md#equal-senses-in-the-fixed-code)).
-- **`trained=` takes a name and a map.** `trained=["place"]` loads the module the library ships
-  by that name. A map of things in `trained=`, by name or as an object, becomes `brain.space`,
-  and its read (`where` and `what`) joins the brain's senses as the sense `space`, after the
-  brain's own inputs: observations do not carry it, and the brain reads its map itself at every
-  operation that takes observations. `Brain.compose(senses={"touch": 8}, actions=2,
-  trained=["place"])` is the brain of `inputs=8 + place.count + place.units` with the map
-  assigned and its read passed by hand, to the bit, and that long form stays valid. A trained
-  module's inputs are a sense under the module's name in a brain composed with `senses=`. A
-  brain the default backend places at its first moment keeps the map object its caller holds.
-  Refused by name: two maps, a name the library ships no module by, image inputs beside a map,
-  and `senses=` or a map in `Lives`
-  ([a brain that knows where things are](docs/modules.md#a-brain-that-knows-where-things-are)).
-- **The refusals of a map and of a name in `trained=` are retired.** `Brain.compose(...,
-  trained=[a map])` and `trained=["place"]` were refused on 0.99.1 (a map joined a brain as `brain.space` alone, and
-  a name was no module); both compose a brain. `Brain.compose` takes `inputs` and `actions` as
-  optional in its signature and raises `TypeError` where neither `inputs` nor `senses`, or no
-  `actions`, is given.
-
-### One surprise signal, read from the settle's own residual (#337)
-
-- **`Brain.compose(surprise=True)`** (opt-in; a mapping names the genes) gives a brain one
-  surprise signal, `brain.surprise`: each neuron's residual at the start of the moment's settle
-  (the potential equation's error at the state the stream carried in, under the moment's drive),
-  against the residual that neuron is used to, under the law of `Arousal.outcome` per neuron.
-  `last` holds it per stream and neuron and `moment` one finite number of zero or more per
-  stream, for whatever reads a moment's surprise. `act`, `step`, `live` and `wait` read it once,
-  at the moment's first settle; a stream that begins from rest reads none; `imagine`, lessons,
-  `predict`, `value` and a rehearsal's replays leave it as it was. It is saved and loaded with
-  the brain, named in `describe()`, kept by `grow` and `graft`, and reset with its streams, the
-  usual residuals staying. The option reads the settle and changes no action, weight or record:
-  with it unset a brain is as on 0.99.1 to the bit, and with it set the brain's actions, weights
-  and saved arrays are the same beside the signal's own. It runs on the CPU backend; another
-  backend and `Lives` refuse it by name. Why: attention, the strength of a memory and the rate
-  of learning are to read one signal, and the settle's first check measures what a moment brings
-  that the carried equilibrium does not hold. Nothing in the library reads it in this change.
-- **The focus** (`cadence.surprise.Orienting`, `Focus`; `brain.orienting`, `brain.focus`,
-  `brain.places`): one competition among the places of the sensory neurons and the cells of a
-  held map, with a hold and an inhibition of return; it offers a bearing and a gain and applies
-  neither.
-- **`Map(surprise=True)`** reads each thing's move from where the map carried it into the
-  moment, on the thing's cells, under the same law; with learned physics that has taken lessons
-  the carried place is the map's own `forecast(1)`. A map without the option keeps its bits.
-- **`NeuralGraph.residual(per_unit=True)`** gives each neuron's signed error of the potential
-  equation, on the float64 CPU reference.
-- **The surprise chamber** ([`benchmarks/surprise`](benchmarks/surprise/README.md)) reads the
-  residual beside a second measure, how far the moment moved each neuron's activity, on the same
-  brains and streams. The two read the same moments wherever a thing is new to the senses; the
-  residual reads no new arrangement of known inputs and costs one more evaluation a moment, and
-  neither reads a broken order. The guide is
-  [surprise, and the focus it draws](docs/start.md#surprise-and-the-focus-it-draws-opt-in).
 
 ## 0.99.1 - 2026-11-15
 
