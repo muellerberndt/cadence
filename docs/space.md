@@ -257,7 +257,10 @@ With `values` unset the map is as it was, to the bit.
 **A value as a code.** A value is a number, written as a one on its unit, or a code: one amount
 in 0 to 1 for each unit of its group, as a sense's tuned cells report a hue or a size. A code
 rides on the thing's place as a number does, carried and moved with the thing, and
-`values_at` reads its most active unit.
+`values_at` reads its most active unit. What a thing carries when a report names no value of a
+group, or when its place is seen empty, is read on its cells as shares of its kind's own
+activity: a one for a value written with it, a code as it was written. Where its cells also hold
+another thing's value units, that share is carried with it as well.
 
 **One thing, read whole.** `thing_at(place, within=, cells=, body=, heading=)` is the read a
 brain takes of the thing it attends: the settle of `what_is_at`, with `what` read on every unit
