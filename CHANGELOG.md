@@ -167,6 +167,39 @@ trained module and a brain with a map assigned by hand.
   optional in its signature and raises `TypeError` where neither `inputs` nor `senses`, or no
   `actions`, is given.
 
+### One surprise signal, read from the settle's own residual (#337)
+
+- **`Brain.compose(surprise=True)`** (opt-in; a mapping names the genes) gives a brain one
+  surprise signal, `brain.surprise`: each neuron's residual at the start of the moment's settle
+  (the potential equation's error at the state the stream carried in, under the moment's drive),
+  against the residual that neuron is used to, under the law of `Arousal.outcome` per neuron.
+  `last` holds it per stream and neuron and `moment` one finite number of zero or more per
+  stream, for whatever reads a moment's surprise. `act`, `step`, `live` and `wait` read it once,
+  at the moment's first settle; a stream that begins from rest reads none; `imagine`, lessons,
+  `predict`, `value` and a rehearsal's replays leave it as it was. It is saved and loaded with
+  the brain, named in `describe()`, kept by `grow` and `graft`, and reset with its streams, the
+  usual residuals staying. The option reads the settle and changes no action, weight or record:
+  with it unset a brain is as on 0.99.1 to the bit, and with it set the brain's actions, weights
+  and saved arrays are the same beside the signal's own. It runs on the CPU backend; another
+  backend and `Lives` refuse it by name. Why: attention, the strength of a memory and the rate
+  of learning are to read one signal, and the settle's first check measures what a moment brings
+  that the carried equilibrium does not hold. Nothing in the library reads it in this change.
+- **The focus** (`cadence.surprise.Orienting`, `Focus`; `brain.orienting`, `brain.focus`,
+  `brain.places`): one competition among the places of the sensory neurons and the cells of a
+  held map, with a hold and an inhibition of return; it offers a bearing and a gain and applies
+  neither.
+- **`Map(surprise=True)`** reads each thing's move from where the map carried it into the
+  moment, on the thing's cells, under the same law; with learned physics that has taken lessons
+  the carried place is the map's own `forecast(1)`. A map without the option keeps its bits.
+- **`NeuralGraph.residual(per_unit=True)`** gives each neuron's signed error of the potential
+  equation, on the float64 CPU reference.
+- **The surprise chamber** ([`benchmarks/surprise`](benchmarks/surprise/README.md)) reads the
+  residual beside a second measure, how far the moment moved each neuron's activity, on the same
+  brains and streams. The two read the same moments wherever a thing is new to the senses; the
+  residual reads no new arrangement of known inputs and costs one more evaluation a moment, and
+  neither reads a broken order. The guide is
+  [surprise, and the focus it draws](docs/start.md#surprise-and-the-focus-it-draws-opt-in).
+
 ## 0.99.1 - 2026-11-15
 
 A fix release. A learned code under several modules is read at unit length by the first module

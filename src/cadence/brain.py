@@ -1592,6 +1592,7 @@ class Brain:
         mask: np.ndarray | None = None,
         on_device: bool = True,
         own_precision: bool = False,
+        per_unit: bool = False,
     ) -> np.ndarray:
         """Maximum absolute fixed-point equation residual per row, without settling.
 
@@ -1617,6 +1618,11 @@ class Brain:
         A state an MLX launch made under this drive, nudge and these parameters reads the launch's
         own check, in float32, with no launch of its own. A single state returns a length-one array;
         nonfinite errors return infinity.
+
+        ``per_unit`` gives each neuron's own signed error of the potential equation instead,
+        ``(rows, neurons)``, on the float64 CPU reference whatever the backend: what a settle
+        from this state under this drive repairs, neuron by neuron (``cadence.surprise``). Its
+        largest size over a row is the row's residual where the neuron model has no adaptation.
         """
         d = drive if _resident(drive) else np.asarray(drive, dtype=float)
         if d.ndim == 1:
@@ -1629,6 +1635,7 @@ class Brain:
         ):
             raise ValueError("mask must have one entry per neuron, optionally per batch row")
         handle, kernel = state.device, self._torch
+        on_device = on_device and not per_unit
         if on_device and keep is None and isinstance(handle, _MlxState):
             checked = handle.get("checked")  # the launch that made the state read its equations
             held = handle.get("drive")  # a copy of a host's drive, which a caller may write since
@@ -1661,7 +1668,7 @@ class Brain:
         a = np.atleast_2d(state.adaptation)
         if v.shape != d.shape or a.shape != d.shape:
             raise ValueError("state batch does not match the drive batch")
-        if _FUSED and (compiled := self._fused_blocks()) is not None:
+        if not per_unit and _FUSED and (compiled := self._fused_blocks()) is not None:
             # the same equations in one compiled pass: a checked settle on the CPU then costs
             # the products of the ranges that moved since the state's were made, not one NumPy
             # operation per term
@@ -1698,6 +1705,8 @@ class Brain:
             error -= v
         # (projected_next_v - v) / dt, written without cancellation for keep=1.
         error = keep * error + (keep - 1.0) * v / self.neuron_model.dt
+        if per_unit:
+            return np.asarray(error)
         result = np.max(np.abs(error), axis=1, initial=0.0)
         if adapt is not None:
             result = np.maximum(result, np.max(np.abs(s - a), axis=1, initial=0.0))

@@ -350,6 +350,46 @@ assert again.space.what_is_at([0.2, 0.5]) == APPLE
 `cadence.modules.load("place")` gives the built-in map, and `cadence.load_module(path)` a map
 file from outside the library; both are a `Map`.
 
+## Surprise on the map (opt-in)
+
+`Map(plane, surprise=True)` reads, at every moment, how far the moment moved each thing from
+where the map carried it into the moment: the distance between the middles of the thing's
+activity before and after, in units of `step`, on the cells the thing held and holds. A thing
+that appears or is gone moves 1. `map.surprise` is a
+[`Surprise`](api.md#surprise-and-the-focus-cadencesurprise) over the cells, the law a brain's
+own surprise follows: a cell's move against the move that cell is used to, which it learns.
+With [learned physics](#learned-physics-on-the-map) that has taken lessons, the place the map
+carries a thing to is its own `forecast(1)`, so a thing that goes on along its line out of view
+moves nothing, and the report that finds it there moves it little. The map's activity is the
+same with and without the option.
+
+```python
+from cadence.space.map import Map
+from cadence.surprise import Orienting
+
+watched = Map((-1.0, 1.0, -0.2, 1.4), (16, 16), units=4, surprise=True)
+watched.moment(seen=[(0, [0.0, 0.6])])       # a thing appears: it moves 1
+assert watched.surprise.moment[0] > 2.9
+watched.moment(seen=[(0, [0.0, 0.6])])       # at rest where the map carried it
+assert watched.surprise.moment[0] == 0.0
+watched.moment(seen=[(0, [0.45, 0.6])])      # three steps from where the map held it
+focus = Orienting().attend(watched.surprise.last[0], watched.centers)
+assert focus is not None and np.linalg.norm(focus.place - [0.45, 0.6]) < 0.2
+```
+
+A brain composed with `surprise=True` that holds such a map (`brain.space`) draws its focus
+among the map's cells and its own sensory neurons in one competition
+([the focus](start.md#surprise-and-the-focus-it-draws-opt-in)). `surprise={...}` takes the genes
+of `Surprise` by name. A map file and a brain's file keep what each cell is used to; `reset()`
+empties the latest reading and keeps it; a `forecast` reads and teaches no cell. With a taught
+physics every moment runs one forecast of one moment more, to know where the map carries each
+thing.
+
+On one line of 70 moments (a thing at 1.5 cm a moment with 1 cm of camera noise, seen left of
+the middle and found again right of it; one seed, the test's own scene), the thing going out of
+view reads no surprise on the map with a taught physics and 2.7 on the map without, and the
+report that finds it again moves it 0.11 steps with the physics and 1.01 without.
+
 ## Other senses
 
 A sound's direction and distance, and the arm's own joint readings, name a place; the caller
