@@ -16,6 +16,9 @@ The parts are the two other instruments' (``completion.py``, ``mapped.py``):
 3. **Attention moves there.** From that moment on (the moment the name is heard) the glimpse is
    the map's read of that thing, in view or behind a screen. The brain's settle binds it and
    its voice answers.
+4. **A thing the map does not hold comes to mind.** Where no thing on the map matches, the
+   recalled thing itself returns to the senses where the eyes attend nothing: to the glimpse
+   and to an empty slot of the scene (``completion.py``'s return of the thing).
 
 Steps 1 to 3 are a born rule of this instrument (which read holds to the ear, and that a
 recalled form moves the focus); nothing in them is taught. The readings, in rooms of three
@@ -25,7 +28,11 @@ things of three kinds, three colours and three directions:
   thing's, or another, with the rule off and on, the trainers' focus on the asked thing, on
   another thing or on nothing, and the asked thing in view or behind a screen;
 - every focus form of the meaning chamber with the rule off and on, the focus on the thing
-  asked about: what the rule costs where no attention has to move.
+  asked about: what the rule costs where no attention has to move;
+- "what shape has the X" of a kind that is nowhere in the room, the focus on nothing: the
+  voice's answer from the thing the name brought to mind ("round", or "no" for a kind that is
+  not round), with the rule off, on, and on with the recall of another kind's name in its
+  place (the control: the answer then follows the other kind).
 """
 
 from __future__ import annotations
@@ -56,6 +63,8 @@ class Named(cp.Chamber):
         p = self.p
         self.heads, self.draw = heads, False
         self.drawn: list[str | None] = []
+        self.minded: list[np.ndarray | None] = []  # the thing a name brought to mind
+        self.swap: dict[str, str] = {}  # the control: a name recalls another kind's records
         named = [(r, w) for r, t in it.scenes(p, rng, things, self.held, test=False)
                  for w in cp.names(r, t)]
         self.stores = {"code": LongTermMemory(
@@ -77,28 +86,40 @@ class Named(cp.Chamber):
                 return x
             if t == 0 or len(me.drawn) != len(exs):
                 me.drawn = [None] * len(exs)
+                me.minded = [None] * len(exs)
+            e = me.eyes
             for i, ex in enumerate(exs):
                 word = ex.heard[t] if t < len(ex.heard) else None
                 if word is not None:  # the ear's read of the records, by this word alone
-                    cue = self_.mixed_code(np.zeros(me.w), self_.forms(word))
-                    heard = np.concatenate([np.zeros(me.w), self_.forms(word)])
-                    found = me.find(self_.mapped[i], me.recall("code", cue, me.heads, heard))
-                    if found is not None:
-                        me.drawn[i] = found
+                    said = self_.forms(me.swap.get(word, word))
+                    back = me.recall("code", self_.mixed_code(np.zeros(me.w), said), me.heads,
+                                     np.concatenate([np.zeros(me.w), said]))
+                    if back[me.lines["word"]].any() and all(
+                            back[me.lines[n]].any() for n in me.form):  # a thing of that name
+                        found = me.find(self_.mapped[i], back)
+                        if found is not None:
+                            me.drawn[i], me.minded[i] = found, None
+                        else:
+                            me.minded[i] = back[: me.w]
                 if me.drawn[i] is not None:  # the focus the name drew: the map's read of it
                     g = self_.mapped[i].glimpse(me.drawn[i], ex.room.heading, True)
-                    x[i, : me.w] = g
-                    x[i, me.code] = self_.mixed_code(g, self_.heard_trace[i])
+                elif me.minded[i] is not None and not x[i, : me.w].any():
+                    g = me.minded[i]  # brought to mind: in the glimpse and a slot of the scene
+                    scene = x[i, me.w: me.w + e.width].reshape(e.slots, me.w)
+                    free = np.flatnonzero(~scene.any(axis=1))
+                    if len(free):
+                        scene[free[0]] = g
+                else:
+                    continue
+                x[i, : me.w] = g
+                x[i, me.code] = self_.mixed_code(g, self_.heard_trace[i])
             return x
 
         nt.Parrot.observe = observe
 
     def find(self, eyes: mapped.MapEyes, back: np.ndarray) -> str | None:
-        """The kind of the thing on the map most like the recalled one, where the recall holds
-        a form and a thing matches it at ``MATCH`` or above."""
-        if not back[self.lines["word"]].any() or not all(
-                back[self.lines[n]].any() for n in self.form):
-            return None
+        """The kind of the thing on the map most like the recalled one, where a thing matches
+        it at ``MATCH`` or above."""
         held = eyes.mine()
         on = np.zeros(self.w, dtype=bool)
         for n in self.like:
@@ -182,6 +203,28 @@ def asked(ch: Named, rng: np.random.Generator, n: int, question: str, focus: str
     return out
 
 
+def absent(ch: Named, rng: np.random.Generator, n: int) -> dict[str, float]:
+    """"What shape has the X" of a kind that is nowhere in the room, the focus on nothing:
+    the share of right replies, for round kinds ("round") and for the others ("no")."""
+    p = ch.p
+    right: dict[str, list[bool]] = {"round kinds": [], "other kinds": []}
+    cues = [nt.KIND_NAMES[i % len(nt.KIND_NAMES)] for i in range(n)]
+    for chunk, m in cp.batches(cues):
+        exs = []
+        for kind in chunk:
+            while True:
+                r = nt.room(rng, 3, ch.held)
+                if kind not in [t.kind for t in r.things]:
+                    break
+            q = nt.Question(["what", "shape", "has", "the", kind],
+                            ["round" if kind in nt.ROUND else "no"], "shape_of")
+            exs.append(nt.make_exchange(r, q, "turn", rng))
+        got = nt.live(p, exs, rng, learn=False)
+        for kind, ok in list(zip(chunk, got["right"], strict=True))[:m]:
+            right["round kinds" if kind in nt.ROUND else "other kinds"].append(bool(ok))
+    return {k: round(float(np.mean(v)), 3) for k, v in right.items()}
+
+
 def main(argv: list[str]) -> None:
     folder, out = Path(argv[1]), Path(argv[2])
     n = int(argv[3]) if len(argv) > 3 else 96
@@ -190,7 +233,21 @@ def main(argv: list[str]) -> None:
     ch = Named(folder, things, heads, np.random.default_rng(7))
     res: dict[str, Any] = {"brain": folder.name, "questions": n, "things": things,
                            "heads": heads, "match": MATCH,
-                           "records": int(ch.stores["code"].count), "asked": {}, "forms": {}}
+                           "records": int(ch.stores["code"].count), "asked": {}, "forms": {},
+                           "a kind that is nowhere": {}}
+    # the control of the last reading: each kind's name recalls the next kind of the other
+    # shape class (a round kind's name a kind that is not round, and the reverse)
+    kinds = list(nt.KIND_NAMES)
+    other = {k: next(j for j in kinds[i + 1:] + kinds[: i] if (j in nt.ROUND) != (k in nt.ROUND))
+             for i, k in enumerate(kinds)}
+    for label, rule, swap in (("rule off", False, {}), ("rule on", True, {}),
+                              ("rule on, another kind's records recalled", True, other)):
+        ch.draw, ch.swap = rule, swap
+        res["a kind that is nowhere"][label] = absent(ch, np.random.default_rng(31), n)
+        print("a kind that is nowhere,", label, json.dumps(res["a kind that is nowhere"][label]),
+              flush=True)
+        out.write_text(json.dumps(res, indent=1))
+    ch.swap = {}
     for question in ("colour", "where"):
         for focus in ("asked", "another", "nothing"):
             for screen in (False, True):

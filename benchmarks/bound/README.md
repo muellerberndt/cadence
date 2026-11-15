@@ -71,7 +71,8 @@ heads agree on a form and the word that comes back is the word heard, the recall
 looked for among the things the map holds, and the focus moves to the thing that matches: from
 that moment the glimpse is the map's read of it. The rule is born in the instrument: which read
 holds to the ear, and that a recalled form moves the focus, are set by hand. A learned gaze is
-the open step.
+the open step. Where the map holds no matching thing, the recalled thing returns to the senses
+as `completion.py` returns it, and the brain answers about a thing that is nowhere in view.
 
 ## Readings
 
@@ -186,6 +187,20 @@ With the rule on, the name draws the focus to the asked thing in every exchange 
 thing. The forms that say no name read the same with the rule on as off (the focus is drawn in
 none of their exchanges). The focus moves at the moment the name is heard, one moment before
 the brain's turn, so the brain has looked at the named thing once when it answers.
+
+**A named kind that is nowhere in the room.** Where the map holds no thing that matches, the
+recalled thing itself returns to the glimpse and to a slot of the scene, and the voice answers
+from it. "What shape has the X" of a kind no thing in the room is of, the focus on nothing, 96
+questions (the right answer is "round" for a round kind and "no" for another):
+
+| Arm | round kinds | other kinds |
+| --- | --- | --- |
+| rule off | .00 | .05 |
+| rule on | .97 | .98 |
+| rule on, another kind's records recalled in its place | .03 | .24 |
+
+The answer follows the thing the name recalls: with the records of a kind of the other shape
+class recalled, the voice answers for that kind.
 
 ## Run
 
