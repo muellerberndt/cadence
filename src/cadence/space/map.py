@@ -92,7 +92,9 @@ class Map:
     (``(kind, place, {"colour": 2})``); they are written on the report's cells with its kind's
     weights, carried with the thing and moved with it, and ``values_at``,
     ``where_is_value`` and ``things`` read them. Which report is which thing is read on the
-    kinds' units alone.
+    kinds' units alone. A value is a number (a one on its unit) or a code: one amount in 0 to 1
+    for each unit of its group, as a sense's tuned cells report a hue or a size. ``thing_at``
+    reads one thing whole, its codes as they were reported and its place in the body's frame.
 
     With ``trace`` every settle begins with the sheet at rest, runs two sweeps and is kept
     by sweep in ``trajectory``: ``asked`` (``"moment"``, ``"where_is"`` or ``"what_is_at"``),
@@ -661,7 +663,8 @@ class Map:
                     if wide.any():  # onto the cells out of sight around where it was held
                         length = float(np.linalg.norm(before[piece][:, units].max(axis=1)))
                         write[:, units] += (length * wide / np.linalg.norm(wide))[:, None]
-                        write[:, moved] += (length * wide / np.linalg.norm(wide))[:, None]
+                        write[:, self._valued] += (length * wide / np.linalg.norm(wide)
+                                                   )[:, None] * moved[None, :]
                         clock = np.where(wide > 0, float(self.clock[piece].max()), clock)
                         doubt = np.where(wide > 0, 1.0, doubt)
                         continue
@@ -952,18 +955,30 @@ class Map:
         self.motion[(self.motion[:, :, IDENT] > 0) & (self.potential <= 0)] = 0.0
     # -- values carried with a thing (``values``)
 
-    def _said(self, report: Any) -> dict[str, int]:
-        """The values a report names: ``{group: value}`` from its third part, or none."""
+    def _said(self, report: Any) -> dict[str, np.ndarray]:
+        """The values a report names, each as amounts on its group's units, from its third
+        part, or none: a value's number is a one on its unit, a code is its own amounts."""
         if len(report) < 3:
             return {}
         if not self.values:
             raise ValueError("a report is a kind and a place; values take a map with values=")
-        named = dict(report[2] or {})
-        for group, value in named.items():
-            if group not in self.values or not (
-                    0 <= int(value) < self.values[group].stop - self.values[group].start):
-                raise ValueError(f"no value {value!r} of a group {group!r} on this map")
-        return {group: int(value) for group, value in named.items()}
+        out: dict[str, np.ndarray] = {}
+        for group, value in dict(report[2] or {}).items():
+            many = self.values[group].stop - self.values[group].start if (
+                group in self.values) else 0
+            if np.ndim(value) == 0:
+                if not 0 <= int(value) < many:
+                    raise ValueError(f"no value {value!r} of a group {group!r} on this map")
+                amounts = np.zeros(many)
+                amounts[int(value)] = 1.0
+            else:
+                amounts = np.asarray(value, dtype=np.float64)
+                if not many or amounts.shape != (many,) or not np.isfinite(amounts).all() or (
+                        amounts.min() < 0.0 or amounts.max() > 1.0):
+                    raise ValueError(f"a code of a group {group!r} on this map is {many} "
+                                     "amounts in 0 to 1, one for each of its units")
+            out[group] = amounts
+        return out
 
     def _values_of(self, cells: np.ndarray, activity: np.ndarray) -> np.ndarray:
         """The value units ``cells`` hold: in each group, the unit of most activity over them,
@@ -975,11 +990,22 @@ class Map:
                 out.append(units.start + int(np.argmax(summed)))
         return np.asarray(out, dtype=np.intp)
 
+    def _amounts_of(self, kind: int, cells: np.ndarray, activity: np.ndarray) -> np.ndarray:
+        """What a thing of ``kind`` on ``cells`` holds on every value unit, as amounts of its
+        kind's own activity there, ``(value units,)``: a one for a value written with the
+        thing, a code as it was reported, zero for a group it holds nothing of."""
+        cells = np.asarray(cells, dtype=np.intp)
+        held = np.column_stack([self._of_kind(kind, activity)[cells],
+                                activity[cells][:, self._valued]]).sum(axis=0)
+        if not held[0] > self._floor:
+            return np.zeros(len(self._valued))
+        return np.asarray(np.clip(held[1:] / held[0], 0.0, 1.0))
+
     def _write_values(self, kind: int, near: list[np.ndarray], weights: np.ndarray,
-                      named: dict[str, int], activity: np.ndarray, claimed: np.ndarray,
+                      named: dict[str, np.ndarray], activity: np.ndarray, claimed: np.ndarray,
                       write: np.ndarray) -> None:
         """A report's values on its cells, at its kind's weights: those it names, and for a
-        group it names none, the value the pieces it takes held. The value units of its cells
+        group it names none, what the pieces it takes held. The value units of its cells
         and of those pieces (where no other kind is) are claimed: the value replaces theirs."""
         units = np.flatnonzero(self.codes[kind])
         taken = [np.union1d(piece, around[(activity[around][:, units] > 0).any(axis=1)])
@@ -987,22 +1013,23 @@ class Map:
         cells = np.flatnonzero(weights > 0)
         held = np.setdiff1d(np.concatenate([cells, *taken]),
                             self._other_kinds(kind, activity)).astype(np.intp)
-        carried = self._values_of(np.concatenate(taken), activity) if taken else (
-            np.zeros(0, dtype=np.intp))
-        on = [self.values[group].start + value for group, value in named.items()]
-        on += [int(u) for u in carried if not any(
-            self.values[group].start <= u < self.values[group].stop for group in named)]
+        amounts = self._amounts_of(kind, np.concatenate(taken), activity) if taken else (
+            np.zeros(len(self._valued)))
+        for group, code in named.items():
+            run = self.values[group]
+            amounts[run.start - self.units:run.stop - self.units] = code
         claimed[np.ix_(np.union1d(held, cells), self._valued)] = True
-        if on:
-            write[:, on] += (self.level * weights / np.linalg.norm(weights))[:, None]
+        if amounts.any():
+            write[:, self._valued] += (self.level * weights / np.linalg.norm(weights)
+                                       )[:, None] * amounts[None, :]
 
     def _lift(self, kind: int, cells: np.ndarray, activity: np.ndarray,
               carried: np.ndarray) -> np.ndarray:
-        """A thing's values leave ``cells`` with it (where no other kind is): the value units
-        it held there, which go wherever its kind's units go."""
+        """A thing's values leave ``cells`` with it (where no other kind is): the amounts it
+        held there on every value unit, which go wherever its kind's units go."""
         if not self.values:
-            return self._valued
-        moved = self._values_of(cells, activity)
+            return np.zeros(0)
+        moved = self._amounts_of(kind, cells, activity)
         off = np.setdiff1d(cells, self._other_kinds(kind, activity)).astype(np.intp)
         carried[np.ix_(off, self._valued)] = False
         return moved
@@ -1096,6 +1123,43 @@ class Map:
         code = self._what(place, within, cells)
         return {group: (int(np.argmax(code[units])) if code[units].max() > self._floor
                         else None) for group, units in self.values.items()}
+
+    def thing_at(self, place: np.ndarray | None, within: float | None = None, *,
+                 cells: np.ndarray | None = None, body: Any = (0.0, 0.0),
+                 heading: float = 0.0) -> dict[str, Any] | None:
+        """The one thing at a place, read whole for a brain that attends it: the settle of
+        ``what_is_at`` on the cells ``within`` metres of the place (or the cells ``cells``
+        flags), ``what`` read on every unit and ``where`` on the cells kept. The answer holds
+        ``kind``; ``values``, each group's amounts on its units as shares of the kind's own
+        activity (a value written with the thing reads one on its unit, a code reads as it was
+        reported); ``place``, the mean of ``where``; and that place in the body's frame:
+        ``bearing``, the angle in radians from ``heading`` (where a body at ``body`` points),
+        positive to the left, and ``distance`` in metres. None where the cells hold no thing.
+        Cells that hold two things read both together: keep ``within`` under what lies between
+        them."""
+        if cells is not None:
+            near = np.asarray(cells, dtype=bool).reshape(self.count)
+        else:
+            reach = 1.5 * float(self.size.max()) if within is None else float(within)
+            near = np.linalg.norm(self.centers - np.asarray(place, dtype=np.float64),
+                                  axis=1) <= reach
+        v = self._settle(kept=near, asked="what_is_at")
+        self.work["questions"] += 1
+        run = self._runs
+        what = np.asarray(np.maximum(np.tanh(v[run["what"]] / 2.0), 0.0))
+        where = np.asarray(np.maximum(np.tanh(v[run["where"]] / 2.0), 0.0))
+        if not what[: self.units].max() > self._floor:
+            return None
+        kind = self.kind_of(what[: self.units])
+        assert kind is not None
+        own = float(what[np.flatnonzero(self.codes[kind])].min())
+        at = (where @ self.centers) / where.sum()
+        offset = at - np.asarray(body, dtype=np.float64).reshape(2)
+        bearing = float(np.angle(np.exp(1j * (np.arctan2(offset[1], offset[0]) - heading))))
+        return {"kind": kind,
+                "values": {group: np.asarray(np.clip(what[units] / own, 0.0, 1.0))
+                           for group, units in self.values.items()},
+                "place": at, "bearing": bearing, "distance": float(np.linalg.norm(offset))}
 
     def where_is_value(self, group: str, value: int) -> np.ndarray:
         """Where the things with a value are, ``(things, 2)`` (``"what is red?"``): the value's

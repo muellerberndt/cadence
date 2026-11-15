@@ -102,3 +102,66 @@ def test_a_moving_thing_keeps_its_colour_out_of_sight() -> None:
     core = min(ahead.where_is(BALL), key=lambda p: np.linalg.norm(p - (truth[-1] + [0.15, 0.0])))
     assert ahead.values_at(core) == {"colour": RED} and ahead.what_is_at(core) == BALL
     assert np.allclose(room.where_is_value("colour", RED), [ball["place"]], atol=0.03)
+
+
+def _tuned(value: float, many: int) -> np.ndarray:
+    """A sense's tuned cells for a value in 0 to 1: a code of ``many`` amounts."""
+    return np.exp(-0.5 * ((value - np.linspace(0.0, 1.0, many)) * (many - 1)) ** 2)
+
+
+def test_a_code_is_read_back_whole_with_the_place_in_the_bodys_frame() -> None:
+    """A value given as a code (a sense's tuned cells) rides on the thing's place and comes back
+    as it was reported; ``thing_at`` reads the thing whole, its place from where the body
+    points."""
+    room = Map((-2.0, 2.0, -2.0, 2.0), (32, 32), units=8, values={"hue": 12, "size": 4})
+    hue, other = _tuned(0.3, 12), 0.05 * _tuned(0.8, 12)  # a pale thing: a weak code
+    room.moment(seen=[(BALL, [0.7, -0.4], {"hue": hue, "size": 2}),
+                      (CUP, [0.7, 0.1], {"hue": other})])
+    for _ in range(10):
+        room.moment()
+    ball = room.thing_at([0.7, -0.4], heading=np.pi / 2)
+    assert ball is not None and ball["kind"] == BALL
+    assert np.allclose(ball["values"]["hue"], hue, atol=1e-3)
+    assert np.allclose(ball["values"]["size"], [0, 0, 1, 0], atol=1e-3)
+    assert np.allclose(ball["place"], [0.7, -0.4], atol=1e-3)
+    assert np.isclose(ball["distance"], np.hypot(0.7, 0.4), atol=1e-3)
+    assert np.isclose(ball["bearing"], np.arctan2(-0.4, 0.7) - np.pi / 2, atol=1e-3)  # right
+    cup = room.thing_at([0.7, 0.1], body=(0.7, -0.9))
+    assert cup is not None and cup["kind"] == CUP
+    assert np.allclose(cup["values"]["hue"], other, atol=1e-3)
+    assert not cup["values"]["size"].any()  # a group the report named none of
+    assert np.isclose(cup["bearing"], np.pi / 2, atol=1e-3) and np.isclose(cup["distance"], 1.0,
+                                                                         atol=1e-3)
+    assert room.thing_at([-1.5, 1.5]) is None
+    assert room.values_at([0.7, -0.4]) == {"hue": int(np.argmax(hue)), "size": 2}
+    # the cells of a kind as the question: the thing wherever the map holds it
+    again = room.thing_at(None, cells=room.sheet(BALL).ravel() > 0)
+    assert again is not None and np.allclose(again["values"]["hue"], hue, atol=1e-3)
+
+
+def test_a_code_goes_with_its_thing_unseen() -> None:
+    hue = _tuned(0.6, 12)
+    room = Map((-2.0, 2.0, -2.0, 2.0), (32, 32), units=8, values={"hue": 12})
+    room.moment(seen=[(BALL, [0.5, 0.5], {"hue": hue})])
+    room.moment(heard=[(BALL, [0.8, 0.3])])  # moved unseen: a sound names its place alone
+    moved = room.thing_at([0.8, 0.3])
+    assert moved is not None and np.allclose(moved["values"]["hue"], hue, atol=1e-3)
+    assert room.thing_at([0.5, 0.5]) is None
+    # a place seen empty: the code goes onto the cells out of sight with the thing
+    lit = lambda points: np.asarray(points)[:, 0] < 0.85  # noqa: E731
+    room = Map((-2.0, 2.0, -2.0, 2.0), (32, 32), units=8, values={"hue": 12})
+    room.moment(seen=[(BALL, [0.8, 0.0], {"hue": hue})], lit=lit)
+    room.moment(lit=lit)
+    (ball,) = room.things()
+    assert ball["state"] == "near"
+    near = room.thing_at(None, cells=np.isin(np.arange(room.count), ball["cells"]))
+    assert near is not None and np.allclose(near["values"]["hue"], hue, atol=1e-3)
+
+
+def test_a_code_is_refused_by_what_is_wrong_with_it() -> None:
+    room = Map((-1.0, 1.0, -1.0, 1.0), (24, 24), units=8, values={"hue": 12})
+    for bad in (np.ones(11), 2.0 * np.ones(12), -np.ones(12), np.full(12, np.nan)):
+        with pytest.raises(ValueError, match="amounts in 0 to 1"):
+            room.moment(seen=[(BALL, [0.0, 0.0], {"hue": bad})])
+    with pytest.raises(ValueError, match="amounts in 0 to 1"):
+        room.moment(seen=[(BALL, [0.0, 0.0], {"shade": np.ones(3)})])
