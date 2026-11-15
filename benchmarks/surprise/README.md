@@ -160,7 +160,7 @@ its saved file, without the surprise's own arrays and record.
 - At the senses the two read the same moments on every row of (a) and (c): their areas lie
   within 0.02 of each other and their shares are equal.
 
-**They differ** in five ways:
+**They differ:**
 
 - **Where it reads.** The residual reads the neurons a drive enters: the senses and the regions
   the memories drive (the working trace's, the heard history's, the recall memory's ports, and
@@ -201,8 +201,8 @@ its saved file, without the surprise's own arrays and record.
 
 ## What is designed, by name
 
-The law and its four genes; the potential equation as the residual read; the largest over the
+The law and its genes; the potential equation as the residual read; the largest over the
 neurons as `moment`; this chamber's streams. Learned: each neuron's usual size, and whatever the
-brain's weights and memories bring into the drive. The readings are three seeds of one brain
-size on patterns of zeros and ones, lived by greedy acts but for two rows of (a) and the taught
-brain of (c); the times are one shared machine's.
+brain's weights and memories bring into the drive. The readings are seeds 0, 1 and 2 of one
+brain size on patterns of zeros and ones, lived by greedy acts but for the rows of (a) lived by
+`live` and the taught brain of (c); the times are one shared machine's.

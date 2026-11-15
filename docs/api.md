@@ -432,7 +432,7 @@ memory's write of that moment read the moment's own surprise. `lesson`, `predict
 | `last` | The latest moment's surprise, `(streams, units)`, zero or more |
 | `moment` | One finite number of zero or more per stream, `(streams,)`: the largest of the stream's units. Zero: no unit's size exceeded its tolerated size (`tolerance * usual + floor`), which a stream that begins from rest reads as well. `k`: the most surprised unit's size was `exp(k)` times its tolerated size (`log(1 / floor)`, about 3.0, for a first size of 1) |
 | `usual`, `moments`, `size` | Each unit's learned size; the moments observed; the units |
-| `settings()`, `reset(streams=1)` | The four genes by name; `last` emptied for streams that begin afresh, the usual kept |
+| `settings()`, `reset(streams=1)` | The genes by name; `last` emptied for streams that begin afresh, the usual kept |
 | `to_dict()`, `arrays()`, `Surprise.from_dict(values, arrays)` | The genes and the moments; `usual` and `last`; a surprise read back from them |
 
 In a brain: a stream that begins from rest (its first moment, the moment after `reset`, a row
@@ -459,7 +459,7 @@ there is no competition.
 | `focus` | The `Focus`, or `None`: its `place`, the `sense` and `index` of the place that won, its `salience`, the moments `held` (1 when taken) and whether it was taken at this moment (`turned`) |
 | `gains(places) -> (n,)` | The top-down gain at each place: `1 + gain` at the focus, falling off as a Gaussian of width `reach`; ones with no focus. The library applies it nowhere |
 | `bearing(origin) -> float or None` | The direction from `origin` to the focus, radians |
-| `settings()`, `reset()`, `parts()`, `Orienting.from_parts(record, arrays)` | The six genes; no focus and nothing inhibited; the competition as a record and arrays, and read back |
+| `settings()`, `reset()`, `parts()`, `Orienting.from_parts(record, arrays)` | The genes by name; no focus and nothing inhibited; the competition as a record and arrays, and read back |
 
 Refusals (`ValueError`): a gene outside its range (`adapt`, `recover`, `hold`, `inhibit` and
 `release` in `[0, 1]`, the others zero or more, `floor` above zero), no unit, sizes that are not
