@@ -2692,6 +2692,8 @@ class Brain:
         # dopamine leave them alone.
         self.learned_code: LearnedCode | None = None
         self._code_synapses: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+        # the neurons that read a learned code at unit length (``_learned_code_forward``)
+        self._code_readers: np.ndarray = self.association_index
         plastic_synapses = plastic_neurons = None
         if learned:
             self.learned_code = LearnedCode(
@@ -3139,25 +3141,43 @@ class Brain:
         return out
 
     def _learned_code_forward(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """The synapses from the code units to the association neurons: the synapse
-        indices and the local coordinates of their ends (code ``j``, association ``m``)."""
+        """The synapses from the code units to the neurons that read them (``_code_readers``:
+        the first module, which in a brain of one module is the association region): the
+        synapse indices and the local coordinates of their ends (code ``j``, reader ``m``)."""
         connectome = self.connectome
         pre, post = np.asarray(connectome.pre), np.asarray(connectome.post)
         codes = -np.ones(connectome.n, dtype=np.int64)
         codes[self.code_index] = np.arange(len(self.code_index))
+        forward = (codes[pre] >= 0) & (codes[post] < 0)  # every synapse leaving the region
+        self._code_readers = self._code_reader_index(post[forward])
         targets = -np.ones(connectome.n, dtype=np.int64)
-        targets[self.association_index] = np.arange(len(self.association_index))
-        synapses = np.flatnonzero((codes[pre] >= 0) & (targets[post] >= 0))
+        targets[self._code_readers] = np.arange(len(self._code_readers))
+        synapses = np.flatnonzero(forward)
         return synapses, codes[pre[synapses]], targets[post[synapses]]
+
+    def _code_reader_index(self, reached: np.ndarray) -> np.ndarray:
+        """The neurons that read the code: the region the code units' forward synapses land
+        in, whole and in its own order (``Brain.compose`` projects the code to the first
+        module alone), the smallest such region where several hold them; the neurons reached
+        where no one region holds them all, and the association region where none is."""
+        reached = np.unique(np.asarray(reached, dtype=np.int64))
+        if not len(reached):
+            return self.association_index
+        holding = [
+            np.asarray(members, dtype=np.int64)
+            for name, members in self.connectome.populations.items()
+            if "/" not in name and len(members) and np.isin(reached, members).all()
+        ]
+        return min(holding, key=len) if holding else reached
 
     def _unit_read(self, x: np.ndarray, drive: np.ndarray, *, memory: bool) -> np.ndarray:
         """The drive with the code's terms from the moment's phase. The code units' drive is
         the phase's potential less their bias: nothing leads into them in the whole graph,
         so they sit at the phase's fixed
         point through the settle, a source to the cortex as the sensory neurons are. And
-        the association neurons' term that makes them read the code as
-        ``LearnedCode.code_of`` gives it, at unit length, in place of the code units'
-        activations: the region's output gain per stream."""
+        the term on the neurons that read the code (``_code_readers``, the first module)
+        that makes them read it as ``LearnedCode.code_of`` gives it, at unit length, in
+        place of the code units' activations: the region's output gain per stream."""
         code = self.learned_code
         assert code is not None
         coded = self._coded_moment
@@ -3173,14 +3193,15 @@ class Brain:
         out[:, self.code_index] = v - self.brain.bias[self.code_index]
         unit = code.code_of(s)
         synapses, j, m = self._code_forward
-        shape = (len(self.association_index), code.units)
+        readers = self._code_readers
+        shape = (len(readers), code.units)
         if self.brain.layout.parallel_synapses:
             weights = np.zeros(shape)
             np.add.at(weights, (m, j), self.brain.weights[synapses])
         else:  # one synapse per entry: the sum with zero that np.add.at would make, in one pass
             weights = _route_matrix(self.brain, synapses, m * shape[1] + j, shape)
             weights += 0.0
-        out[:, self.association_index] += (unit - s) @ weights.T
+        out[:, readers] += (unit - s) @ weights.T
         return out
 
     def _installed(self, graph: NeuralGraph) -> NeuralGraph:
