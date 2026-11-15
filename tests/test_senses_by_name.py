@@ -842,6 +842,35 @@ def test_a_trained_module_stands_beside_named_senses_and_a_map(tmp_path):
         lambda: Brain.compose(senses={"kinds": 3}, actions=2, trained=[module]))
 
 
+def test_a_module_of_several_input_regions_is_a_sense_with_a_field_a_region(tmp_path):
+    from cadence.space import Interface, Space
+    from cadence.space.place import INPUTS, OUTPUTS
+
+    small = dict(place=8, moved=5, motion=9, counted=3, unseen=4, heard=(6, 4), felt=4,
+                 hidden=16, shift=12, spread=6, found=8, keep=4)
+    donor = Space(Interface(plane=PLANE, **small), seed=0, backend="cpu").brain
+    shuffled = (*INPUTS[3:], *INPUTS[:3])                         # named in another order
+    module = cd.load_module(donor.save_module(
+        tmp_path / "place.npz", name="tracker", inputs=shuffled, published=("place", *OUTPUTS),
+        regions=(*INPUTS, "hidden", *OUTPUTS)))
+    with pytest.warns(RuntimeWarning, match="not ascending"):     # the library's own notice
+        host = Brain.compose(senses={"own": 5}, actions=3, seed=1, backend="cpu",
+                             trained=[module])
+    fields = host.senses["tracker"]
+    assert set(fields) == set(INPUTS) and host.senses["own"] == slice(0, 5)
+    spans = sorted((part.start, part.stop) for part in fields.values())
+    assert spans[0][0] == 5 and spans[-1][1] == host.inputs       # side by side to the end
+    assert all(a[1] == b[0] for a, b in zip(spans, spans[1:], strict=False))
+    by_region = np.concatenate([np.arange(fields[r].start, fields[r].stop) for r in shuffled])
+    assert np.array_equal(by_region, module.columns(host))        # the module's own account
+    rows = frames(host.inputs, 1, rows=2)[0]
+    given = {"own": rows[:, :5],
+             "tracker": {region: rows[:, part] for region, part in fields.items()}}
+    assert np.array_equal(host.observation_code(given), rows)
+    again = Brain.load(host.save(tmp_path / "host.npz"))
+    assert again.senses == host.senses and list(again.senses["tracker"]) == list(fields)
+
+
 def test_a_trained_module_by_name_is_the_brain_around_the_module(tmp_path, monkeypatch):
     module = kinds_module(tmp_path)
     monkeypatch.setattr(cd.modules, "load", lambda name: module)  # as a module the library ships

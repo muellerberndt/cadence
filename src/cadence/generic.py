@@ -8485,14 +8485,25 @@ def _compose_named(
         brain = cls.compose(
             own + tail, actions, connectome=connectome, seed=seed, **layout, **options
         )
-    column = own + tail
-    for module in hosted:  # a hosted module's inputs, a sense under the module's name
-        sizes = module.regions
-        regions = {region: sizes[region] for region in module.inputs}
-        spec = next(iter(regions.values())) if len(regions) == 1 else regions
-        columns, column = _sense_columns({module.name: spec}, column)
-        named.update(columns)
-    assert column == brain.inputs
+    # a hosted module's inputs, a sense under the module's name: the columns its input regions
+    # take (a brain's k-th input is the k-th of its sensory neurons, ascending), a field a
+    # region where it has several
+    populations = brain.connectome.populations
+    column = {int(neuron): k for k, neuron in enumerate(np.asarray(brain.sensory_index))}
+    for module in hosted:
+        spans = {}
+        for region in module.inputs:
+            taken = sorted(column[int(n)] for n in populations[f"{module.name}/{region}"])
+            if taken != list(range(taken[0], taken[0] + len(taken))):
+                raise ValueError(
+                    f"the inputs {region!r} of the module {module.name!r} are not one run of "
+                    "the observation's columns, so they take no name: compose the brain with "
+                    "inputs= and without a map, and give them by module.columns(brain)"
+                )
+            spans[region] = [taken[0], taken[-1] + 1]
+        spans = dict(sorted(spans.items(), key=lambda span: span[1][0]))
+        named[module.name] = next(iter(spans.values())) if len(spans) == 1 else spans
+    assert _sense_span(list(named.values())[-1])[1] == brain.inputs
     if held is not None:
         brain.space = held
     brain._senses = {"named": named, "declared": declared is not None, "space": tail}

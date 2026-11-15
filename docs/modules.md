@@ -984,7 +984,8 @@ What a hosted module does, and what it does not:
   show does not travel.
 - **Its inputs are a sense under its name.** In a brain composed with `senses=` the module's
   inputs are the sense `name` (`brain.senses["kinds"]`), given by name as the brain's own
-  senses are ([senses by name](senses.md#senses-by-name)).
+  senses are; a module of several input regions is a sense with a field a region
+  ([senses by name](senses.md#senses-by-name)).
 - **Into a brain that holds its regions.** `brain.graft(module)` grafts it into the populations
   `name/region`, or into populations of the regions' own names in a brain laid out as the donor.
   With `joints="kept"` a host keeps what it learned to read from an older file of the module.
