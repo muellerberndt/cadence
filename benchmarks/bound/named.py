@@ -8,12 +8,14 @@ The parts are the two other instruments' (``completion.py``, ``mapped.py``):
 1. **The heard name recalls the thing.** At every heard word the records of whole bound things
    are read by the ear alone: the cue is the brain's sparse mixed code of that word with
    nothing attended, the key under which a named thing's record lies. ``heads`` heads read, and
-   a population of the bound thing comes back where they agree.
+   a population of the bound thing comes back where they agree. The read counts where the word
+   that comes back is the word heard.
 2. **The map gives where it is.** Where the heads agree on a form (every shape line and the
    size), the recalled thing is looked for among the things the map holds: each is read with
    ``Map.thing_at`` and compared with the recalled populations (cosine, ``MATCH`` or above).
-3. **Attention moves there.** From the next moment the glimpse is the map's read of that thing,
-   in view or behind a screen. The brain's settle binds it and its voice answers.
+3. **Attention moves there.** From that moment on (the moment the name is heard) the glimpse is
+   the map's read of that thing, in view or behind a screen. The brain's settle binds it and
+   its voice answers.
 
 Steps 1 to 3 are a born rule of this instrument (which read holds to the ear, and that a
 recalled form moves the focus); nothing in them is taught. The readings, in rooms of three
@@ -54,7 +56,6 @@ class Named(cp.Chamber):
         p = self.p
         self.heads, self.draw = heads, False
         self.drawn: list[str | None] = []
-        self.moved = 0
         named = [(r, w) for r, t in it.scenes(p, rng, things, self.held, test=False)
                  for w in cp.names(r, t)]
         self.stores = {"code": LongTermMemory(
@@ -77,17 +78,17 @@ class Named(cp.Chamber):
             if t == 0 or len(me.drawn) != len(exs):
                 me.drawn = [None] * len(exs)
             for i, ex in enumerate(exs):
+                word = ex.heard[t] if t < len(ex.heard) else None
+                if word is not None:  # the ear's read of the records, by this word alone
+                    cue = self_.mixed_code(np.zeros(me.w), self_.forms(word))
+                    heard = np.concatenate([np.zeros(me.w), self_.forms(word)])
+                    found = me.find(self_.mapped[i], me.recall("code", cue, me.heads, heard))
+                    if found is not None:
+                        me.drawn[i] = found
                 if me.drawn[i] is not None:  # the focus the name drew: the map's read of it
                     g = self_.mapped[i].glimpse(me.drawn[i], ex.room.heading, True)
                     x[i, : me.w] = g
                     x[i, me.code] = self_.mixed_code(g, self_.heard_trace[i])
-                word = ex.heard[t] if t < len(ex.heard) else None
-                if word is not None:  # the ear's read of the records, by this word alone
-                    cue = self_.mixed_code(np.zeros(me.w), self_.forms(word))
-                    found = me.find(self_.mapped[i], me.recall("code", cue, me.heads))
-                    if found is not None and found != me.drawn[i]:
-                        me.drawn[i] = found
-                        me.moved += 1
             return x
 
         nt.Parrot.observe = observe
@@ -95,7 +96,8 @@ class Named(cp.Chamber):
     def find(self, eyes: mapped.MapEyes, back: np.ndarray) -> str | None:
         """The kind of the thing on the map most like the recalled one, where the recall holds
         a form and a thing matches it at ``MATCH`` or above."""
-        if not all(back[self.lines[n]].any() for n in self.form):
+        if not back[self.lines["word"]].any() or not all(
+                back[self.lines[n]].any() for n in self.form):
             return None
         held = eyes.mine()
         on = np.zeros(self.w, dtype=bool)
@@ -135,7 +137,7 @@ def asked(ch: Named, rng: np.random.Generator, n: int, question: str, focus: str
     """One row: where the reply falls. ``focus``: "asked", "another" or "nothing"."""
     p = ch.p
     tally = {"the asked thing's": 0, "the focus thing's": 0, "other": 0}
-    ch.moved = 0
+    drawn = {"to the asked thing": 0, "to another thing": 0}
     rooms = rooms_of_three(rng, ch.held, n)
     for chunk, m in cp.batches(rooms):
         exs, truth = [], []
@@ -165,13 +167,18 @@ def asked(ch: Named, rng: np.random.Generator, n: int, question: str, focus: str
             e.heard = [None] * pad + e.heard
             e.turn += pad
         got = nt.live(p, exs, rng, learn=False)
+        if ch.draw:  # where the focus stood at the end of each exchange
+            for ex, to in list(zip(exs, ch.drawn, strict=True))[:m]:
+                if to is not None:
+                    drawn["to the asked thing" if to == ex.question.words[-1]
+                          else "to another thing"] += 1
         for reply, (own, other) in list(zip(got["replies"], truth, strict=True))[:m]:
             said = reply[0] if reply else None
             tally["the asked thing's" if said == own else
                   "the focus thing's" if other is not None and said == other else "other"] += 1
     out = {k: round(v / n, 3) for k, v in tally.items()}
     if ch.draw:
-        out["exchanges in which the focus moved"] = round(min(ch.moved, n) / n, 3)
+        out["the focus drawn"] = {k: round(v / n, 3) for k, v in drawn.items()}
     return out
 
 
@@ -201,14 +208,18 @@ def main(argv: list[str]) -> None:
     held = ch.held
     for rule in (False, True):  # what the rule costs where no attention has to move
         ch.draw = rule
-        row = {}
+        row: dict[str, Any] = {}
         for f in FORMS:
             rng = np.random.default_rng(11)
             ok: list[bool] = []
+            drawn: list[bool] = []
             while len(ok) < n:
                 ok += nt.live(ch.p, nt.blocks_of(ch.p, rng, f, "turn", held), rng,
                               learn=False)["right"]
+                drawn += [to is not None for to in ch.drawn] if rule else []
             row[f] = round(float(np.mean(ok[:n])), 3)
+            if rule:
+                row.setdefault("the focus drawn", {})[f] = round(float(np.mean(drawn[:n])), 3)
         res["forms"][f"rule {'on' if rule else 'off'}"] = row
         print("forms, rule", "on" if rule else "off", json.dumps(row), flush=True)
         out.write_text(json.dumps(res, indent=1))

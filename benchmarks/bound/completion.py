@@ -20,7 +20,10 @@ moment, in one of three reads (``KEYS``):
 store (``LongTermMemory.read``), one record a head. The bound thing is compared population by
 population (``LINES``: each sense's tuned cells, the word): a population comes back where every
 head's record holds it alike (cosine ``AGREE`` to the first head's), as the mean of the heads;
-one they hold otherwise stays silent. With one head the nearest record comes back whole.
+one they hold otherwise stays silent. With one head the nearest record comes back whole. A read
+whose records hold a population otherwise than the cue itself holds it (another word than the
+one heard, another colour than the one glimpsed) returns nothing: the records are of something
+else.
 
 **Back into the brain.** At the next moments what was read enters the senses as a thing in
 focus and a heard word do: the word to the ear (the chamber's own recall), and the thing's
@@ -192,7 +195,8 @@ class Chamber:
                                 store.write(keys[name][i], value[i])
                 if key is not None:
                     self.told = []
-                    self.back = np.stack([self.recall(key, keys[key][i], heads)
+                    held = np.concatenate([x[:, : self.w], x[:, -self.ear:]], axis=1)
+                    self.back = np.stack([self.recall(key, keys[key][i], heads, held[i])
                                           for i in range(n)])
                     self.returned = self.back
             elif t > last:
@@ -200,9 +204,12 @@ class Chamber:
         self.back = None
         return keys, states
 
-    def recall(self, key: str, cue: np.ndarray, heads: int) -> np.ndarray:
+    def recall(self, key: str, cue: np.ndarray, heads: int, holds: np.ndarray | None = None
+               ) -> np.ndarray:
         """What the store of ``key`` returns for ``cue``: each population of the bound thing
-        where the heads' records hold it alike, the mean of the heads; zeros elsewhere."""
+        where the heads' records hold it alike, the mean of the heads; zeros elsewhere.
+        ``holds`` is what the senses hold at the cue's moment (the glimpse, then the ear): a
+        read that returns a population otherwise than the senses hold it returns nothing."""
         store = self.stores[key]
         out = np.zeros(self.w + self.ear)
         self.told.append([])
@@ -220,6 +227,9 @@ class Chamber:
             first = unit(parts[0])
             if parts[0].any() and all(float(unit(q) @ first) >= AGREE for q in parts[1:]):
                 out[run] = parts.mean(axis=0)
+                if holds is not None and holds[run].any() and float(
+                        unit(out[run]) @ unit(holds[run])) < AGREE:
+                    return np.zeros(self.w + self.ear)  # records of something else
         return out
 
 
