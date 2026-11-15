@@ -668,6 +668,21 @@ def test_compose_names_the_genes_and_refuses_what_it_does_not_know():
 def test_the_paths_that_do_not_read_the_residual_refuse_surprise_by_name(tmp_path):
     with pytest.raises(ValueError, match="no surprise"):
         cd.Lives(6, 3, lives=2, surprise=True)
+    # with no backend named, a device the rule offers is refused by name and the CPU takes it
+    unnamed = cd.Brain.compose(6, 3, seed=0, surprise=True)
+    offered = unnamed._backends_at
+
+    def with_a_device(rows):
+        cpu = [found for found in offered(rows) if found.backend == "cpu"][0]
+        return [cpu._replace(backend="torch", why="offered by the test"), cpu]
+
+    unnamed._backends_at, unnamed._unplaced = with_a_device, True
+    unnamed.act(one_hot(0), greedy=True)
+    unnamed.act(one_hot(1), greedy=True)
+    placed = unnamed.placement
+    assert placed["backend"] == "cpu" and not placed["pending"]
+    assert len(placed["refused"]) == 1 and "backend='cpu'" in placed["refused"][0]
+    assert unnamed.surprise.moment[0] > FIRST
     pytest.importorskip("torch")
     with pytest.raises(ValueError, match="backend='cpu'"):
         cd.Brain.compose(6, 3, backend="torch", device="cpu", surprise=True)
