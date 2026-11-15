@@ -945,7 +945,8 @@ class Map:
                     # the record goes with every unit the report's thing holds there, so all of
                     # its pattern (its values too) moves with it
                     if len(extra):
-                        held = (self.potential[np.ix_(cells, extra)] > 0).any(axis=0)
+                        held = np.asarray(
+                            (self.potential[np.ix_(cells, extra)] > 0).any(axis=0))
                         units = np.concatenate([units, extra[held]])
                     self.motion[np.ix_(cells, units)] = rec
         self.motion[(self.motion[:, :, IDENT] > 0) & (self.potential <= 0)] = 0.0
