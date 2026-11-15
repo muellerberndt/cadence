@@ -134,11 +134,12 @@ LONGTERM_FORMAT = "cadence-brain/4"
 # features the file needs (``features``, sorted names), and a reader refuses a file that names a
 # feature it does not hold. A later option adds a name to ``FEATURES`` and no format name; the
 # four names above stay for the files those readers do continue. The features: ``strength``
-# (memories that grow strong: ``longterm_strength`` or ``memory_keep``, #336) and ``heads`` (the
+# (memories that grow strong: ``longterm_strength`` or ``memory_keep``, #336), ``heads`` (the
 # learned heads into the brain's records and their route to the motor: ``longterm_attention``,
-# ``longterm_motor``, #325).
+# ``longterm_motor``, #325) and ``recall_strength`` (the recall memory's slots keep a depth and
+# a full bank gives up its weakest: ``recall_strength``, #336).
 FEATURES_FORMAT = "cadence-brain/5"
-FEATURES = frozenset({"strength", "heads"})
+FEATURES = frozenset({"strength", "heads", "recall_strength"})
 # A memory's group in BRAIN_FORMAT and the prefix the reader validates its arrays under; the
 # episodic memory's arrays are the context store's and the stream's (``_flat_layout``).
 _MEMORY_PREFIXES = {
@@ -1979,6 +1980,12 @@ def _validate_recall_state(
         maps["gains"] = (len(regions),)
     elif "recall/gains" in data:
         raise ValueError("saved recall gains belong to a recall memory with gain")
+    if settings.get("strength", False):  # each slot's depth, with the option
+        maps["depth"] = (batch, slots)
+        if (array("depth", (batch, slots)) < 0).any():
+            raise ValueError("invalid saved recall state: depth")
+    elif "recall/depth" in data:
+        raise ValueError("saved recall depths belong to a recall memory with strength")
     for name, shape in maps.items():
         array(name, shape)
     if window > 1:  # the window's previous events per stream: a window of another length
@@ -2041,16 +2048,19 @@ def _actor_config(values: Any) -> ActorCriticConfig:
 
 def _saved_features(saved: Mapping[str, Any]) -> list[str]:
     """The features a checkpoint's metadata holds that belong to ``FEATURES_FORMAT``, sorted:
-    ``strength`` (``longterm_strength``, ``memory_keep``) and ``heads`` (``longterm_attention``,
-    ``longterm_motor``)."""
+    ``strength`` (``longterm_strength``, ``memory_keep``), ``heads`` (``longterm_attention``,
+    ``longterm_motor``) and ``recall_strength`` (the recall memory's ``strength``)."""
     memories = saved.get("memories")
     if not isinstance(memories, dict):
         return []
     records, store = memories.get("longterm"), memories.get("hippocampus")
+    recalled = memories.get("recall")
     out = []
     if isinstance(records, dict) and (
             records.get("attention") is not None or records.get("motor")):
         out.append("heads")
+    if isinstance(recalled, dict) and bool(recalled.get("strength")):
+        out.append("recall_strength")
     if (isinstance(records, dict) and bool(records.get("strength"))) or (
             isinstance(store, dict) and bool(store.get("fade_keep"))):
         out.append("strength")
@@ -4017,6 +4027,10 @@ class Brain:
                 self.recall.position,
                 retuned.get("position_rate", self.recall.position_rate),
             )
+            Recall._law(
+                self.recall.strength, retuned.get("again", self.recall.again),
+                retuned.get("kept", self.recall.kept),
+            )
 
         learning_genes, actor_genes, arousal_genes = split_genes(options)
         learning = configured(learning, {**pointed, **learning_genes}, "learning")
@@ -4720,16 +4734,17 @@ class Brain:
             return np.asarray(part / np.where(norm > 0.0, norm, 1.0)[:, None])
         return code if self.coded_cortex else x
 
-    def _moment_surprise(self, rows: int) -> np.ndarray | None:
-        """This moment's surprise per stream in tellings, for the records' writes
-        (``longterm_strength``, #336), from the brain's one surprise signal
+    def _moment_surprise(self, rows: int, memory: Any) -> np.ndarray | None:
+        """This moment's surprise per stream in tellings, for the writes of ``memory``, the
+        brain's records (``longterm_strength``) or its recall memory (``recall_strength``,
+        both #336), from the brain's one surprise signal
         (``brain.surprise.moment``, #337: the log of how many times its tolerated size the most
         surprised neuron's residual was): that ratio less one. A moment within what every
         neuron is used to adds nothing; one nine times the tolerated size counts as eight
-        tellings more, which keeps its record at once. None without records that grow strong,
-        without ``surprise``, or where the signal holds other streams than the moment's (a
-        moment that began from rest reads none)."""
-        if self.longterm is None or not self.longterm.strength or self.surprise is None:
+        tellings more, which keeps its record or its slot at once. None for a memory without
+        strength, without ``surprise``, or where the signal holds other streams than the
+        moment's (a moment that began from rest reads none)."""
+        if memory is None or not memory.strength or self.surprise is None:
             return None
         told = np.asarray(self.surprise.moment, dtype=float)
         if told.shape != (rows,) or not np.isfinite(told).all():
@@ -4991,8 +5006,8 @@ class Brain:
 
     def _memories_stay_on_host(self) -> bool:
         """Whether an option keeps the moment's memories on the host at every size: several heads,
-        a window, the read of the command or of when, the gains, tokens, a separator, a surprise
-        gate, a fade, an episodic vote or a learned code."""
+        a window, the read of the command or of when, the gains, tokens, a slot's strength, a
+        separator, a surprise gate, a fade, an episodic vote or a learned code."""
         recall, store = self.recall, self.hippocampus
         return bool(
             self._episodic is not None or self.learned_code is not None
@@ -6551,9 +6566,14 @@ class Brain:
                 None if self.working_memory is None else self.working_memory.last,
             )
         if self.longterm is not None:  # a turn held, a statement written
-            self.longterm.hear(self._heard(x, code), surprise=self._moment_surprise(len(x)))
+            self.longterm.hear(
+                self._heard(x, code), surprise=self._moment_surprise(len(x), self.longterm)
+            )
         if self.recall is not None:
-            self.recall.witness(code, state)  # the sensed moment joins the stream's slots
+            # the sensed moment joins the stream's slots
+            self.recall.witness(
+                code, state, surprise=self._moment_surprise(len(x), self.recall)
+            )
         self._hear_episode(x)
         if self._episodic is not None:
             self._episodic.sense(code)  # what was sensed enters the temporal context
@@ -6979,7 +6999,8 @@ class Brain:
                 self.working_memory.update(free)
             if self.recall is not None:
                 self.recall.witness(
-                    code, free, self._command(action) if self.recall.action else None
+                    code, free, self._command(action) if self.recall.action else None,
+                    surprise=self._moment_surprise(len(x), self.recall),
                 )
         if self.history is not None:
             # the observation acted on joins the heard past, as ``_choose`` hears it
@@ -7103,12 +7124,15 @@ class Brain:
         if self.longterm is not None:
             # after the message: a turn it holds from this moment, or the moment after a turn
             # written where it says more than the record its key finds
-            self.longterm.hear(self._heard(x, code), surprise=self._moment_surprise(len(x)))
+            self.longterm.hear(
+                self._heard(x, code), surprise=self._moment_surprise(len(x), self.longterm)
+            )
         if self.recall is not None:
             # the moment acted on joins the stream's slots, with ``recall_action`` with the
             # command executed on it; its settled cortex enters the next moment's address
             self.recall.witness(
-                code, free, self._command(action) if self.recall.action else None
+                code, free, self._command(action) if self.recall.action else None,
+                surprise=self._moment_surprise(len(x), self.recall),
             )
         self._hear_episode(x)  # with ``learning_rehearsal``, the moment joins its episode
         if episodic is not None:
@@ -7467,6 +7491,8 @@ class Brain:
         if self.longterm is not None and (
                 self.longterm.attention is not None or self.longterm.motor):
             features.append("heads")
+        if self.recall is not None and self.recall.strength:
+            features.append("recall_strength")
         if (self.longterm is not None and self.longterm.strength) or (
                 isinstance(store, SynapticMemory) and bool(store.fade_keep)):
             features.append("strength")
@@ -7942,6 +7968,8 @@ class Brain:
                             setattr(recall, read, data["recall/" + read].astype(np.int64))
                 if recall.gain:  # the gains (validated above)
                     recall.gains = data["recall/gains"].astype(float)
+                if recall.strength:  # each slot's depth (validated above)
+                    recall.depth = data["recall/depth"].astype(float)
                 if recall.window > 1:  # validated above: saved with the window
                     recall.past = data["recall/past"].astype(float)
                 if recall.action:  # validated above: saved with the command

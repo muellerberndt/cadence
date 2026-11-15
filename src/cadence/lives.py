@@ -1807,7 +1807,7 @@ def _supported(brain: Any) -> None:
     if recall is not None and not recall.resides:
         raise refuse(
             "a recall memory of one head, without a window, the command, the read of when, "
-            "tokens, their gain or the cortex at unit norm"
+            "tokens, their gain, the cortex at unit norm or a slot's strength (recall_strength)"
         )
     learner, graph = brain.learner, brain.brain
     cfg = learner.config
