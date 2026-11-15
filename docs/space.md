@@ -31,6 +31,7 @@ The pieces are opt-in: a program that does not import `cadence.space` gets a lib
 | Tell it what the senses report | `moment(seen=, heard=, felt=, lit=)` | [how a position travels](#how-a-position-travels) |
 | Ask where a thing is, or what is at a place | `where_is`, `what_is_at` | [questions](#questions-answered-by-settling) |
 | Read every thing it holds | `things`, `sheet` | [the inventory](#the-inventory) |
+| What each thing is like: its colour | `Map(values=)`, `values_at`, `where_is_value`, `thing_at` | [values carried with a thing](#values-carried-with-a-thing) |
 | A thing that leaves view | `empty`, `reach` | [a place seen empty](#a-place-seen-empty) |
 | Keep the map | `save`, `Map.load`, `reset` | [the carried state](#the-carried-state) |
 | Hold it in a brain, or load the built-in one | `Brain.space`, `cadence.modules.load("place")` | [a brain that holds a map](#a-brain-that-holds-a-map) |
@@ -212,6 +213,81 @@ activity at each sweep (`map`, `held`, `where`, `what`, `reference`, `clock`, `d
 watched settle begins with the sheet at rest and takes two sweeps: the first settles the sheet
 on its drive, the second the two regions that read it.
 
+## Values carried with a thing
+
+`Map(plane, values={"colour": 6})` gives every cell one more unit a value of each group, after the
+kinds' units: the sheet is `width` units wide (`units` plus every group's count). What a thing is
+like rides on its place, as in the visual cortex's maps of features: two red things of two kinds
+are two things, each red where it is.
+
+- **A report names its values.** `moment(seen=[(kind, place, {"colour": 2})])` writes the value's
+  unit on the report's four cells with the kind's weights. A report with no value of a group (a
+  sound, the arm's own readings) writes the value the thing it claims held, so the colour goes
+  with the thing.
+- **Carried and moved with the thing.** The value units carry as the kind's units do; a thing whose
+  place is seen empty takes its values onto the cells out of sight around where it was held, and a
+  thing kept with no place keeps none.
+- **Which report is which thing** is read on the kinds' units alone.
+- **With learned physics** a thing carried out of view takes its values with it: its motion
+  record goes on every unit it holds at its cells, the value units too, and the forecast keeps
+  them ([learned physics on the map](#learned-physics-on-the-map)).
+
+```python
+paint = Map((-1.0, 1.0, -1.0, 1.0), (24, 24), units=8, values={"colour": 6})
+RED, BLUE = 0, 1
+paint.moment(seen=[(APPLE, [0.5, 0.5], {"colour": RED}), (BREAD, [-0.5, 0.3], {"colour": RED}),
+                   (HAND, [0.0, -0.6], {"colour": BLUE})])
+assert paint.values_at([0.5, 0.5]) == {"colour": RED}         # "what colour is the apple?"
+assert len(paint.where_is_value("colour", RED)) == 2           # "what is red?": two things
+assert paint.what_is_at(None, cells=paint.centers[:, 1] < -0.3) == HAND   # a question by cells
+assert [t["values"] for t in paint.things()] == [{"colour": RED}] * 2 + [{"colour": BLUE}]
+paint.moment(heard=[(APPLE, [0.7, 0.6])])                       # moved unseen: its colour goes too
+assert paint.values_at([0.7, 0.6]) == {"colour": RED}
+```
+
+| Read | What it settles on |
+| --- | --- |
+| `values_at(place, within=, cells=)` | The settle of `what_is_at`, `what` read on each group's units: `{group: value}`, None for a group held nowhere there |
+| `where_is_value(group, value)` | The value's unit opens its pool's reference, the sheet settles on that unit alone, and `where` holds the places |
+| `what_is_at(None, cells=flags)` | The kind on the cells the flags keep, for a question by a region (a place around the body) |
+| `things()` | Each entry gains `values` |
+
+With `values` unset the map is as it was, to the bit.
+
+**A value as a code.** A value is a number, written as a one on its unit, or a code: one amount
+in 0 to 1 for each unit of its group, as a sense's tuned cells report a hue or a size. A code
+rides on the thing's place as a number does, carried and moved with the thing, and
+`values_at` reads its most active unit. What a thing carries when a report names no value of a
+group, or when its place is seen empty, is read on its cells as shares of its kind's own
+activity: a one for a value written with it, a code as it was written. Where its cells also hold
+another thing's value units, that share is carried with it as well.
+
+**One thing, read whole.** `thing_at(place, within=, cells=, body=, heading=)` is the read a
+brain takes of the thing it attends: the settle of `what_is_at`, with `what` read on every unit
+and `where` on the cells kept.
+
+| Key | Value |
+| --- | --- |
+| `kind` | The kind's number |
+| `values` | Each group's amounts on its units, as shares of the kind's own activity: a one on the unit of a value given as a number, a code as it was reported |
+| `place` | The mean of `where`, `(x, y)` in metres |
+| `bearing` | The angle in radians of the place from `heading`, where a body at `body` points; positive to the left |
+| `distance` | Metres from `body` |
+
+It gives None where the cells hold no thing. Cells that hold two things are read together, so
+`within` stays under what lies between them. With `cells=sheet(kind).ravel() > 0` the question is
+the kind itself: the thing wherever the map holds it, in view or out of it.
+
+```python
+hues = np.exp(-0.5 * (np.arange(6) - 1.4) ** 2)                # six tuned cells, a hue between two
+shade = Map((-1.0, 1.0, -1.0, 1.0), (24, 24), units=8, values={"colour": 6})
+shade.moment(seen=[(APPLE, [0.5, 0.5], {"colour": hues})])
+shade.moment(heard=[(APPLE, [0.7, 0.6])])                       # moved unseen: the code goes too
+apple = shade.thing_at(None, cells=shade.sheet(APPLE).ravel() > 0, heading=np.pi / 2)
+assert apple["kind"] == APPLE and np.allclose(apple["values"]["colour"], hues, atol=1e-3)
+assert np.allclose(apple["place"], [0.7, 0.6], atol=1e-3) and apple["bearing"] < 0   # to the right
+```
+
 ## A place seen empty
 
 A hand that goes into a shadow was last seen in a cell the camera sees, and at the next moment
@@ -287,6 +363,12 @@ graph of their own inside the brain object, beside the brain's connectome and ou
 brain reads the map through `observation()`: the activity of `where` (one value a cell) and of
 `what` (one a code unit) as the latest moment settled them.
 
+`Brain.compose(..., trained=["place"])`, or `trained=[Map(...)]`, composes a brain that holds the
+map and reads it itself: the read joins the brain's senses as the sense `space`, and an
+observation carries the brain's own senses alone
+([a brain that knows where things are](modules.md#a-brain-that-knows-where-things-are)). The
+form below, as on 0.99.1, sizes the inputs by hand and passes the read with each observation.
+
 ```python
 import cadence as cd
 
@@ -301,6 +383,46 @@ assert again.space.what_is_at([0.2, 0.5]) == APPLE
 
 `cadence.modules.load("place")` gives the built-in map, and `cadence.load_module(path)` a map
 file from outside the library; both are a `Map`.
+
+## Surprise on the map (opt-in)
+
+`Map(plane, surprise=True)` reads, at every moment, how far the moment moved each thing from
+where the map carried it into the moment: the distance between the middles of the thing's
+activity before and after, in units of `step`, on the cells the thing held and holds. A thing
+that appears or is gone moves 1. `map.surprise` is a
+[`Surprise`](api.md#surprise-and-the-focus-cadencesurprise) over the cells, the law a brain's
+own surprise follows: a cell's move against the move that cell is used to, which it learns.
+With [learned physics](#learned-physics-on-the-map) that has taken lessons, the place the map
+carries a thing to is its own `forecast(1)`, so a thing that goes on along its line out of view
+moves nothing, and the report that finds it there moves it little. The map's activity is the
+same with and without the option.
+
+```python
+from cadence.space.map import Map
+from cadence.surprise import Orienting
+
+watched = Map((-1.0, 1.0, -0.2, 1.4), (16, 16), units=4, surprise=True)
+watched.moment(seen=[(0, [0.0, 0.6])])       # a thing appears: it moves 1
+assert watched.surprise.moment[0] > 2.9
+watched.moment(seen=[(0, [0.0, 0.6])])       # at rest where the map carried it
+assert watched.surprise.moment[0] == 0.0
+watched.moment(seen=[(0, [0.45, 0.6])])      # three steps from where the map held it
+focus = Orienting().attend(watched.surprise.last[0], watched.centers)
+assert focus is not None and np.linalg.norm(focus.place - [0.45, 0.6]) < 0.2
+```
+
+A brain composed with `surprise=True` that holds such a map (`brain.space`) draws its focus
+among the map's cells and its own sensory neurons in one competition
+([the focus](start.md#surprise-and-the-focus-it-draws-opt-in)). `surprise={...}` takes the genes
+of `Surprise` by name. A map file and a brain's file keep what each cell is used to; `reset()`
+empties the latest reading and keeps it; a `forecast` reads and teaches no cell. With a taught
+physics every moment runs one forecast of one moment more, to know where the map carries each
+thing.
+
+On one line of 70 moments (a thing at 1.5 cm a moment with 1 cm of camera noise, seen left of
+the middle and found again right of it; one seed, the test's own scene), the thing going out of
+view reads no surprise on the map with a taught physics and 2.7 on the map without, and the
+report that finds it again moves it 0.11 steps with the physics and 1.01 without.
 
 ## Other senses
 

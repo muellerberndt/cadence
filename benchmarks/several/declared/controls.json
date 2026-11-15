@@ -1,0 +1,4 @@
+{"founders": [3250, 3251, 3252, 3253, 3254, 3255],
+ "lessons": 20000, "lesson_subjects": 600, "sizes": [100000], "questions": 200, "window": 64,
+ "target": 1460612, "threads": 2,
+ "models": [{"kind": "transformer", "schedule": "online"}, {"kind": "lstm", "schedule": "online"}]}

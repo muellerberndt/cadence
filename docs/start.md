@@ -43,6 +43,7 @@ brain ([observers](#add-optional-observers)). `arousal=True` gives the brain the
 | Setting | What it sets |
 | --- | --- |
 | `inputs` | the observation's width, or an image shape ([wide inputs](senses.md#image-inputs)) |
+| `senses` | in place of `inputs`: several senses by name, each a width, given by name at every moment ([senses by name](senses.md#senses-by-name)) |
 | `actions` | the number of actions to choose from |
 | `arousal` | `True` for a brain that `live` drives |
 | `seed` | the random draw of the newborn brain; the same seed gives the same brain |
@@ -463,6 +464,107 @@ for trial in range(24):  # arm 0 pays for twelve trials, then arm 1; failures pa
     arm = int(bandit.live(cue, reward=[reward])[0])
 assert bandit.last_arousal is not None
 ```
+
+### Surprise, and the focus it draws (opt-in)
+
+`Brain.compose(surprise=True)` gives a brain one surprise signal, read from the settle it runs
+at every moment. A stream carries its settled state from one moment into the next, and the
+moment's settle starts from it. Under the moment's drive that carried state is off its equations
+by a residual, which the settle then repairs. A neuron's surprise is the size of its residual at
+the start of the settle, against the size that neuron is used to:
+
+```text
+r         = |synaptic input + drive + bias - v|     of the carried state, a neuron
+surprise  = log(r / (tolerance * usual + floor))    where that is positive, else 0
+usual    += adapt * (r - usual)  where r > usual,   else  recover * (r - usual)
+```
+
+`r` is the residual of the potential equation, the one a settle's qualification checks; the
+largest `r` over the neurons is the residual the settle starts from.
+
+```python
+import numpy as np
+from cadence import Brain
+
+watcher = Brain.compose(4, 2, seed=0, backend="cpu", surprise=True)
+light = np.array([[1.0, 0.0, 0.0, 0.0]])
+for _ in range(8):
+    watcher.act(light, greedy=True)
+assert watcher.surprise.moment[0] == 0.0     # an input held: the settle has nothing to repair
+watcher.act(np.array([[0.0, 0.0, 1.0, 0.0]]), greedy=True)
+assert watcher.surprise.moment[0] > 2.9      # a change: the carried state is off its equations
+senses = watcher.surprise.last[0, watcher.sensory_index]
+# the light that went out and the light that came on
+assert (senses > 0).tolist() == [True, False, True, False]
+```
+
+| Read | What it holds |
+| --- | --- |
+| `brain.surprise.last` | Each neuron's surprise at the latest moment, `(streams, neurons)` |
+| `brain.surprise.moment` | One number per stream, `(streams,)`: the largest of its neurons'. 0: every neuron's residual lies within what it is used to. `k`: the most surprised neuron's residual was `exp(k)` times its tolerated size (`tolerance * usual + floor`) |
+| `brain.surprise.usual` | Each neuron's learned usual residual. It is saved with the brain and kept by `reset()` |
+
+**What the residual reads.** For a state that settled within the tolerance, under synapses
+unchanged since, a neuron's residual is the change of its drive since that settle: at a sensory
+neuron the change of its input, at a neuron a memory drives the change of what the memory reads.
+A neuron that no drive enters carries no residual at the start of a settle and reads no
+surprise: the association region, and the motor region wherever no record of the place store
+reads into it.
+So an input held reads nothing at the senses, and nothing anywhere once the memories' own
+traces have come to rest with it (the working trace and the heard history are part of the drive
+and take a few moments). A change reads at the neurons whose drive changed, and at the
+neurons the memories drive one moment later, as the traces take the change in. A change that
+recurs becomes usual within a few comings (`adapt`), and after a long rest it surprises again
+(`recover`). A lesson taught between two moments adds what the changed synapses move; an outcome
+is learned inside its own moment, whose act settles again under the new synapses. `moment` is
+the largest over every neuron; `last[:, brain.sensory_index]` is the part the senses bring.
+
+The brain forecasts no next input: what it carries into a moment is its last equilibrium. A
+known element in an unknown order therefore reads little, and so does a new arrangement of
+inputs whose changes are usual. The [surprise chamber](../benchmarks/surprise/README.md) gives
+the readings, beside a second measure (how far the settle moved each neuron's activity).
+
+**Which moments read it.** `act`, `step`, `live` and `wait` are a stream's moments: each reads
+the residual once, at its first settle from the carried state (under `step` and an aroused
+`live` that is the settle of the outcome, before the outcome moves the synapses), and observes
+it before the moment's lesson and its memories' writes. A stream that begins from rest carries
+no equilibrium, so its first moment, the moment after `reset()` and a row whose episode ended
+read no surprise and teach the usual nothing. `lesson`, `predict`, `value`, `imagine` and a
+rehearsal's replays leave the signal as it was, and so does a moment whose settle is refused.
+
+**The focus.** `brain.places` gives each sensory neuron a place in one frame, such as a map's
+plane: an array `(sensory neurons, d)` the program sets as its body moves, in the frame of a
+held map's cells (places of another frame are refused when set beside a map; give the brain its
+map before its places). Every moment then
+draws one focus among those places, and among the cells of a held map with surprise
+([surprise on the map](space.md#surprise-on-the-map-opt-in)). The place of the largest
+surprise wins, the winner keeps `hold` of its salience from moment to moment, and a place the
+focus leaves is inhibited for a while before it can win again. `brain.focus` is the `Focus`
+(`place`, `sense`, `index`, `salience`, `held`, `turned`) or `None`;
+`brain.orienting.bearing(origin)` is the direction to turn to and
+`brain.orienting.gains(places)` a gain around the attended place. The library applies neither:
+turning the body and weighting a sense are the program's.
+
+```python
+watcher.places = np.array([[-1.0, 0.0], [-0.3, 0.0], [0.3, 0.0], [1.0, 0.0]])
+watcher.act(np.array([[0.0, 0.0, 0.0, 1.0]]), greedy=True)
+focus = watcher.focus
+assert focus is not None and focus.sense == "senses" and focus.turned
+assert focus.index == 3                      # the light that came on, for the first time
+assert watcher.orienting.bearing([0.0, 0.0]) == 0.0
+```
+
+`surprise` also takes the genes by name, such as `surprise={"tolerance": 3.0, "hold": 0.5}`.
+The founders: `tolerance=2.0`, `floor=0.05`, `adapt=0.5` and `recover=0.01` for the signal;
+`hold=0.8`, `least=0.5`, `reach=0.1`, `inhibit=1.0`, `release=0.95` and `gain=1.0` for the
+focus ([the reference](api.md#surprise-and-the-focus-cadencesurprise)).
+
+**What it changes and costs.** The option reads the settle and changes no action, weight or
+record: a brain with it chooses, learns and saves as the brain without it, to the bit, beside
+the signal's own arrays. Nothing in the library reads the signal: the strength of a memory and
+the rate of learning take none of it. Each moment costs one more evaluation of the residual, one
+product of the weights with the carried activity; the chamber's table gives the milliseconds.
+It runs on `backend="cpu"`: another backend, and `Lives`, refuse the option by name.
 
 ### Private imagination
 

@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import math
 import os
+import sys
 import warnings
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -109,6 +110,7 @@ from .stream import (
     Trace,
     _route_matrix,
 )
+from .surprise import Focus, Orienting, Surprise
 
 __all__ = ["Brain"]
 
@@ -128,6 +130,18 @@ FADE_FORMAT = "cadence-brain/3"
 # own, which 0.96.0 and earlier refuse, whatever else the brain holds: its file carries a maturity
 # and a fading store as the files named for them do. Every other brain keeps its name.
 LONGTERM_FORMAT = "cadence-brain/4"
+# One format for every brain a reader of 0.99.1 or earlier cannot continue: its record names the
+# features the file needs (``features``, sorted names), and a reader refuses a file that names a
+# feature it does not hold. A later option adds a name to ``FEATURES`` and no format name; the
+# four names above stay for the files those readers do continue. The features: ``strength``
+# (memories that grow strong: ``longterm_strength`` or ``memory_keep``, #336), ``heads`` (the
+# learned heads into the brain's records and their route to the motor: ``longterm_attention``,
+# ``longterm_motor``, #325), ``recall_strength`` (the recall memory's slots keep a depth and
+# a full bank gives up its weakest: ``recall_strength``, #336), ``surprise`` (the brain's
+# surprise and the focus it draws, #337) and ``map`` (a held map of things whose sheet carries
+# values or reads surprise, which a reader of 0.99.1 cannot build).
+FEATURES_FORMAT = "cadence-brain/5"
+FEATURES = frozenset({"strength", "heads", "recall_strength", "surprise", "map"})
 # A memory's group in BRAIN_FORMAT and the prefix the reader validates its arrays under; the
 # episodic memory's arrays are the context store's and the stream's (``_flat_layout``).
 _MEMORY_PREFIXES = {
@@ -653,6 +667,175 @@ def _unit_rows(code: np.ndarray) -> np.ndarray:
     return np.asarray(code / np.where(norm > 0.0, norm, 1.0))
 
 
+# -- senses by name (``Brain.compose(senses=...)``, a map in ``trained=``)
+#
+# The sensory region stays one population: a population per sense would cut the block layout at
+# each sense (``cadence.blocks.layout`` cuts at every contiguous population), and the settle
+# would sum the same messages in another order. The names are held beside the region, as
+# columns of the observation: ``{"named": {sense: [start, stop] or {field: [start, stop]}},
+# "declared": composed with senses=, "space": how many columns the brain reads from its map
+# (those of the sense ``space``)}``. The brain's own sensory region holds its declared senses
+# and then the map's read; a trained module's inputs follow in the module's own regions.
+
+_SPACE = "space"  # the sense a held map's read joins as
+
+
+def _is_map(part: Any) -> bool:
+    """Whether ``part`` is a map of things. ``cadence.space`` is imported only where a program
+    names it, and no map exists before that."""
+    module = sys.modules.get(f"{__package__}.space.map")
+    return module is not None and isinstance(part, module.Map)
+
+
+def _declared_senses(senses: Any) -> dict[str, Any]:
+    """``compose(senses=...)`` as declared: each sense's width, or its fields' widths, in the
+    declared order."""
+    if not isinstance(senses, Mapping) or not senses:
+        raise ValueError(
+            "senses maps each sense's name to its width, or to the widths of its fields: "
+            "senses={'touch': 8, 'eyes': {'hue': 12, 'shape': 30}}"
+        )
+    out: dict[str, Any] = {}
+    for name, spec in senses.items():
+        if not isinstance(name, str) or not name:
+            raise ValueError("a sense's name is a nonempty string")
+        if name == _SPACE:
+            raise ValueError(
+                f"{_SPACE!r} names the sense a map's read joins as (trained=[a map]): give the "
+                "declared sense another name"
+            )
+        if not isinstance(spec, Mapping):
+            out[name] = _count(f"the width of sense {name!r}", spec, low=1)
+            continue
+        if not spec:
+            raise ValueError(f"sense {name!r} declares no field")
+        fields = {}
+        for field, width in spec.items():
+            if not isinstance(field, str) or not field:
+                raise ValueError(f"sense {name!r}: a field's name is a nonempty string")
+            fields[field] = _count(f"the width of field {field!r} of sense {name!r}", width,
+                                   low=1)
+        out[name] = fields
+    return out
+
+
+def _sense_columns(widths: Mapping[str, Any], start: int) -> tuple[dict[str, Any], int]:
+    """The observation's columns of senses laid side by side from column ``start``: each
+    sense's ``[start, stop]``, or its fields' by name; and the column after the last."""
+    out: dict[str, Any] = {}
+    for name, spec in widths.items():
+        if isinstance(spec, Mapping):
+            fields = {}
+            for field, width in spec.items():
+                fields[field] = [start, start + int(width)]
+                start += int(width)
+            out[name] = fields
+        else:
+            out[name] = [start, start + int(spec)]
+            start += int(spec)
+    return out, start
+
+
+def _sense_span(columns: Any) -> tuple[int, int]:
+    """The columns a sense takes in the observation, from its first field to its last."""
+    if isinstance(columns, Mapping):
+        spans = [_sense_span(part) for part in columns.values()]
+        return spans[0][0], spans[-1][1]
+    return int(columns[0]), int(columns[1])
+
+
+def _sense_rows(what: str, value: Any, columns: Any) -> np.ndarray | None:
+    """The rows a caller gives for one sense: a batch of the sense's width, or for a sense with
+    fields a mapping of field to rows, a field left out silent; None where the mapping names no
+    field (the sense is silent). Refused by the sense's name."""
+    start, stop = _sense_span(columns)
+    width = stop - start
+    if isinstance(value, Mapping):
+        if not isinstance(columns, Mapping):
+            raise ValueError(f"{what} has no fields: it takes rows of {width} values")
+        parts: dict[str, np.ndarray] = {}
+        for field, given in value.items():
+            if field not in columns:
+                raise ValueError(
+                    f"{what} has no field {field!r}: its fields are "
+                    + ", ".join(repr(known) for known in columns)
+                )
+            rows = _sense_rows(f"field {field!r} of {what}", given, columns[field])
+            assert rows is not None  # a field has no fields of its own
+            parts[field] = rows
+        if not parts:
+            return None
+        counts = {len(rows) for rows in parts.values()}
+        if len(counts) > 1:
+            told = ", ".join(f"{field!r} {len(rows)}" for field, rows in parts.items())
+            raise ValueError(f"the fields of {what} give different numbers of rows: {told}")
+        out = np.zeros((counts.pop(), width))
+        for field, rows in parts.items():
+            first, last = _sense_span(columns[field])
+            out[:, first - start : last - start] = rows
+        return out
+    try:
+        rows = np.asarray(value, dtype=float)
+    except (TypeError, ValueError):
+        raise ValueError(f"{what} takes rows of {width} numbers") from None
+    if rows.ndim < 2 or not rows.shape[0] or not np.isfinite(rows).all():
+        raise ValueError(f"{what} takes a nonempty finite batch of rows; use [row] for one")
+    rows = rows.reshape(len(rows), -1)
+    if rows.shape[1] != width:
+        raise ValueError(f"{what} takes {width} values per row, got {rows.shape[1]}")
+    return rows
+
+
+def _load_senses(saved: Any, inputs: int, held: bool) -> dict[str, Any]:
+    """A checkpoint's senses, validated against the brain's inputs and put in the order of
+    their columns (a checkpoint's metadata keeps no order of its own): named columns side by
+    side up to the last input, the map's read among them, and the map itself in the file."""
+    refusal = ValueError("invalid saved senses")
+    if not isinstance(saved, dict) or set(saved) != {"named", "declared", "space"}:
+        raise refusal
+    named, declared, tail = saved["named"], saved["declared"], saved["space"]
+    if (
+        not isinstance(named, dict) or not named or not isinstance(declared, bool)
+        or isinstance(tail, bool) or not isinstance(tail, int) or not 0 <= tail < inputs
+    ):
+        raise refusal
+    for name, columns in named.items():
+        parts = list(columns.values()) if isinstance(columns, dict) else [columns]
+        if not isinstance(name, str) or not parts:
+            raise refusal
+        for part in parts:
+            if (
+                not isinstance(part, list) or len(part) != 2
+                or any(isinstance(end, bool) or not isinstance(end, int) for end in part)
+                or not 0 <= part[0] < part[1] <= inputs
+            ):
+                raise refusal
+    named = {
+        name: dict(sorted(columns.items(), key=lambda field: field[1][0]))
+        if isinstance(columns, dict) else columns
+        for name, columns in named.items()
+    }
+    named = dict(sorted(named.items(), key=lambda sense: _sense_span(sense[1])[0]))
+    column = None
+    for columns in named.values():
+        for first, last in columns.values() if isinstance(columns, dict) else [columns]:
+            if column is not None and first != column:
+                raise refusal
+            column = last
+    first = _sense_span(next(iter(named.values())))[0]
+    if column != inputs or (declared and first != 0):
+        raise refusal
+    if tail:
+        first, last = _sense_span(named.get(_SPACE, [0, 0]))
+        if last - first != tail:
+            raise refusal
+        if not held:
+            raise ValueError(
+                "the saved senses read a map of things the checkpoint does not hold"
+            )
+    return {"named": named, "declared": declared, "space": tail}
+
+
 # The arrays of a settled state, as a checkpoint keeps each state it holds (the free phase, a
 # pending action's two nudged phases, the state sensed while an outcome is awaited).
 _STATE_ARRAYS = ("v", "activation", "adaptation")
@@ -686,6 +869,7 @@ _EPISODIC_FOUNDERS: dict[str, Any] = {
 }
 _EPISODIC_SETTINGS = (
     "memory_choice", "memory_context", "memory_extinction", "memory_context_hold", "memory_fade",
+    "memory_keep",
 )
 # The constants of the stores the brain builds, the founders every reading used (``RETIRED``):
 # the share of a stream's record each later write keeps (``memory_decay``) and the cells of the
@@ -728,6 +912,10 @@ _LONGTERM_FOUNDERS: dict[str, Any] = {
     "heads": 1, "amplitude": 3.0, "match": 0.75, "revise": 0.999, "turn": None, "rare": 0.03,
     "distinct": None, "best": False, "rest": False,
     "pairs": 0, "expansion": None, "winners": None, "candidates": None, "fade": True,
+    "attention": None, "motor": 0.0,
+    # a record's strength (#336): kept past LongTermRecords.KEEP tellings, the rest forgotten in
+    # time, the brain's surprise at a write counted as tellings
+    "strength": False,
 }
 # The settings a brain is composed with and keeps for its life: ``retune`` refuses each of them
 # as a construction setting, and ``grow`` names those it does not add as construction choices.
@@ -743,8 +931,13 @@ _CONSTRUCTION = frozenset({
     *_EPISODIC_SETTINGS, "recall", *(f"recall_{name}" for name in Recall.CONSTRUCTION),
     *(f"recall_{name}" for name in Recall.CONSTRUCTION_OPTIONS), "code",
     "learned_code", *(f"learned_code_{name}" for name in LearnedCode.GENES),
-    "attention", "apical", "maturity", "tied", "trained",
+    "attention", "apical", "maturity", "tied", "trained", "surprise",
 })
+# surprise reads each neuron's residual in float64 on the host (``NeuralGraph.residual``)
+_SURPRISE_HOST = (
+    "surprise reads each neuron's residual on the host in float64: compose the brain with "
+    "backend='cpu'"
+)
 
 
 def _longterm_genes(longterm: Any, genes: Mapping[str, Any]) -> dict[str, Any]:
@@ -795,6 +988,19 @@ def _longterm_genes(longterm: Any, genes: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(out["fade"], (bool, np.bool_)):
         raise ValueError("longterm_fade must be boolean")
     out["fade"] = bool(out["fade"])
+    # the scale of a plastic projection from each head's region to the motor region (#325)
+    out["motor"] = real("longterm_motor", out["motor"], low=0)
+    if out["attention"] is not None:
+        # the rate of the heads' lesson (``RecordHeads``, #325)
+        out["attention"] = real("longterm_attention", out["attention"], low=0)
+        if out["distinct"] is None:
+            raise ValueError("longterm_attention teaches each head where to look among records "
+                             "read by what tells them apart: it needs longterm_distinct")
+    if not isinstance(out["strength"], (bool, np.bool_)):
+        raise ValueError("longterm_strength must be boolean")
+    out["strength"] = bool(out["strength"])
+    if out["strength"] and not out["fade"]:
+        raise ValueError("longterm_strength reads the records' fade: it needs longterm_fade")
     return out
 
 
@@ -1183,8 +1389,12 @@ def _load_memory(
                 if (depth < 0).any() or (recent < 0).any():
                     raise ValueError("saved fade depths and traces must be nonnegative")
                 memory.fade_depth, memory.fade_recent = depth.astype(float), recent.astype(float)
+                memory.fade_keep = real("saved memory fade_keep", metadata.get("fade_keep", 0.0),
+                                        low=0)
             elif prefix + "fade_depth" in data or prefix + "fade_recent" in data:
                 raise ValueError("saved fade depths require the fade's metadata")
+            elif metadata.get("fade_keep"):
+                raise ValueError("a saved memory_keep needs the fade's metadata")
             if (
                 metadata.get("persistent_parameters", memory.consolidated.size)
                 != memory.consolidated.size
@@ -1772,6 +1982,12 @@ def _validate_recall_state(
         maps["gains"] = (len(regions),)
     elif "recall/gains" in data:
         raise ValueError("saved recall gains belong to a recall memory with gain")
+    if settings.get("strength", False):  # each slot's depth, with the option
+        maps["depth"] = (batch, slots)
+        if (array("depth", (batch, slots)) < 0).any():
+            raise ValueError("invalid saved recall state: depth")
+    elif "recall/depth" in data:
+        raise ValueError("saved recall depths belong to a recall memory with strength")
     for name, shape in maps.items():
         array(name, shape)
     if window > 1:  # the window's previous events per stream: a window of another length
@@ -1830,6 +2046,33 @@ def _actor_config(values: Any) -> ActorCriticConfig:
         return ActorCriticConfig(**values)
     except TypeError as exc:
         raise ValueError("invalid saved actor config") from exc
+
+
+def _saved_features(saved: Mapping[str, Any]) -> list[str]:
+    """The features a checkpoint's metadata holds that belong to ``FEATURES_FORMAT``, sorted:
+    ``strength`` (``longterm_strength``, ``memory_keep``), ``heads`` (``longterm_attention``,
+    ``longterm_motor``), ``recall_strength`` (the recall memory's ``strength``), ``surprise``
+    (the brain's surprise) and ``map`` (a held map with ``values`` or ``surprise``)."""
+    out = []
+    held = saved.get("space")
+    if isinstance(held, dict) and (held.get("values") or held.get("surprise")):
+        out.append("map")
+    if "surprise" in saved:
+        out.append("surprise")
+    memories = saved.get("memories")
+    if not isinstance(memories, dict):
+        return sorted(out)
+    records, store = memories.get("longterm"), memories.get("hippocampus")
+    recalled = memories.get("recall")
+    if isinstance(records, dict) and (
+            records.get("attention") is not None or records.get("motor")):
+        out.append("heads")
+    if isinstance(recalled, dict) and bool(recalled.get("strength")):
+        out.append("recall_strength")
+    if (isinstance(records, dict) and bool(records.get("strength"))) or (
+            isinstance(store, dict) and bool(store.get("fade_keep"))):
+        out.append("strength")
+    return sorted(out)
 
 
 def _saved_fade(saved: Mapping[str, Any]) -> bool:
@@ -2317,6 +2560,13 @@ def _layout(
             projections.append(
                 Projection(name, "association", scale=_RECALL_SCALE, reciprocal=False)
             )
+        if longterm["motor"]:
+            # after every head's region: the brain with the pathway is the brain without it
+            # plus one plastic projection from each head's region to the motor region
+            for name in LongTermRecords.ports(longterm["heads"]):
+                projections.append(
+                    Projection(name, "motor", scale=longterm["motor"], reciprocal=False)
+                )
     shared = _tied_map(tied)
     for (pre, post), blocks in shared.items():
         # one set of synapses for every block of a projection of this layout
@@ -2463,6 +2713,7 @@ class Brain:
         memory_extinction: float = 0.0,
         memory_context_hold: str | None = None,
         memory_fade: float = 0.0,
+        memory_keep: float = 0.0,
         maturity: bool = False,
         maturity_scale: float = _MATURITY_FOUNDERS["maturity_scale"],
         maturity_recovery: float = _MATURITY_FOUNDERS["maturity_recovery"],
@@ -2493,6 +2744,7 @@ class Brain:
         image: Sequence[int] | None = None,
         ports: int = 0,
         tied: Mapping[tuple[str, str], Sequence[int]] | None = None,
+        surprise: bool | Mapping[str, Any] = False,
         **genes: Any,
     ) -> None:
         populations = connectome.populations
@@ -2651,6 +2903,9 @@ class Brain:
             raise ValueError("memory_fade must lie in [0, 1)")
         if memory_fade and not episodic:
             raise ValueError("memory_fade needs the episodic memory")
+        memory_keep = real("memory_keep", memory_keep, low=0)
+        if memory_keep and not memory_fade:
+            raise ValueError("memory_keep keeps place records from the fade: it needs memory_fade")
         working_memory_decay = real("working_memory_decay", working_memory_decay, low=0)
         efference_decay = real("efference_decay", efference_decay, low=0)
         if working_memory_decay >= 1 or efference_decay >= 1:
@@ -2822,7 +3077,8 @@ class Brain:
                 best=kept_records["best"], rest=kept_records["rest"],
                 pairs=kept_records["pairs"], expansion=kept_records["expansion"],
                 winners=kept_records["winners"], candidates=kept_records["candidates"],
-                fade=kept_records["fade"],
+                fade=kept_records["fade"], attention=kept_records["attention"],
+                motor=kept_records["motor"], strength=kept_records["strength"],
             )
         # The index memory of the stream's moments. Populations named ``recall`` and ``next``
         # without ``recall=True`` are ordinary ones: an instrument may name and drive its own.
@@ -2882,6 +3138,7 @@ class Brain:
                 records.fade = memory_fade
                 records.fade_depth = np.zeros(records.key_width)
                 records.fade_recent = np.zeros(records.key_width)
+                records.fade_keep = memory_keep  # used past this depth: kept for good (#336)
             if maturity:  # surprise-gated writes engaged by the same maturity, noise from zero
                 records.gate_noise = np.zeros(records.consolidated.shape)
                 records.maturity = self.basal_ganglia.maturity
@@ -2964,6 +3221,26 @@ class Brain:
         # a map of things this brain holds (``cadence.space.map.Map``, opt-in): a graph of its
         # own inside the brain object, saved and loaded with it
         self.space: Any = None
+        # the senses by name (``compose(senses=...)``, a map in ``trained=``): the columns of
+        # the observation each takes, and how many of them the brain reads from its map
+        # itself; None for a brain whose observation is one row of numbers
+        self._senses: dict[str, Any] | None = None
+        # surprise and the one focus it draws (``cadence.surprise``, #337; off unless given):
+        # each neuron's residual at the start of the moment's settle, against the neuron's usual
+        # residual. It reads the carried state under the moment's drive and changes nothing else.
+        self.surprise: Surprise | None = None
+        self.orienting: Orienting | None = None
+        self._places: np.ndarray | None = None  # the sensory neurons' places, for the focus
+        # the residual read at a moment's first settle, until the moment is certain (the
+        # observations, each neuron's size, the streams that carried a state); and the
+        # observations of a moment in progress whose surprise has been observed
+        self._surprise_read: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
+        self._surprise_seen: np.ndarray | None = None
+        self._surprise_private = False  # a replay's moments are not the streams' own
+        if surprise is not None and surprise is not False:
+            if brain.backend != "cpu":
+                raise ValueError(_SURPRISE_HOST)
+            self._surprise_genes(surprise)
 
     @property
     def brain(self) -> NeuralGraph:
@@ -2988,6 +3265,22 @@ class Brain:
                 "episodic": self._episodic,
             }
         )
+
+    @property
+    def senses(self) -> dict[str, Any]:
+        """The brain's senses by name, in the order of the observation's columns: each sense's
+        columns as a ``slice``, or for a sense with fields a dict of field to ``slice``. The
+        senses declared with ``compose(senses=...)``, then ``space`` (``where`` and
+        ``what``), which the brain reads from ``brain.space`` itself, then a hosted module's
+        inputs under the module's name. Empty for a brain composed with ``inputs=`` alone."""
+        held = self._senses
+        if held is None:
+            return {}
+        return {
+            name: {field: slice(*span) for field, span in columns.items()}
+            if isinstance(columns, Mapping) else slice(*columns)
+            for name, columns in held["named"].items()
+        }
 
     @property
     def context_memory(self) -> SynapticMemory | None:
@@ -3270,9 +3563,10 @@ class Brain:
     @classmethod
     def compose(
         cls,
-        inputs: int | Sequence[int],
-        actions: int,
+        inputs: int | Sequence[int] | None = None,
+        actions: int | None = None,
         *,
+        senses: Mapping[str, Any] | None = None,
         connectome: Connectome | None = None,
         modules: Sequence[int] = (64,),
         observers: Sequence[int] = (),
@@ -3290,17 +3584,33 @@ class Brain:
         ports: int = 0,
         tied: Mapping[tuple[str, str], Sequence[int]] | None = None,
         fields_motor: float = 0.0,
-        trained: Sequence[Any] | None = None,
+        trained: Any = None,
         **options: Any,
     ) -> Brain:
         """Compose one continuing brain: senses, reciprocal processing regions, a motor choice and
         its memories, settling together.
 
+        ``senses={name: width, ...}`` (opt-in, in place of ``inputs``) declares the brain's
+        senses by name: a sense is a width, or a mapping of field to width
+        (``{"eyes": {"hue": 12, "shape": 30}, "ear": 64}``). The inputs are their sum in the
+        declared order and ``brain.senses`` holds each sense's columns. Every operation that
+        takes observations then also takes a mapping of sense to rows, a sense left out
+        silent; rows of the summed width are taken as before. The brain is the brain of
+        ``inputs=<the sum>`` with the names beside it; with ``code=units`` every field of
+        every sense enters the fixed sparse code at unit length (docs/senses.md, senses by
+        name).
+
         ``trained=[module, ...]`` (opt-in; ``cadence.modules``) builds the brain around trained
         modules: each module's regions stand beside the brain's own under the module's name
         (``name/region``), its inputs follow the brain's own in the observation, the first
         module region reads what it publishes through one-way synapses that start at zero, and
-        its trained synapses are grafted in and held (``graft``, ``freeze=True``).
+        its trained synapses are grafted in and held (``graft``, ``freeze=True``). A name in
+        ``trained`` loads the module the library ships by it (``cadence.modules.load``). A
+        map of things (``cadence.space.map.Map``, by name or as an object) becomes
+        ``brain.space``, and its read (``where`` and ``what``) joins the brain's senses as
+        the sense ``space``, after the brain's own inputs: the caller's observations do not
+        carry it, and the brain reads its map itself at every operation that takes
+        observations.
 
         ``inputs`` is a vector length or an image shape ``(height, width[, channels])``, whose
         sensory region is a ``visual_cortex`` of ``features`` maps of ``field`` by ``field``
@@ -3359,10 +3669,28 @@ class Brain:
         refusal.
         """
 
+        parts: list[Any] = []
         if trained:
+            lone = hasattr(trained, "record") or isinstance(trained, str) or _is_map(trained)
+            parts = [trained] if lone else list(trained)
+        if senses is not None or any(isinstance(m, str) or _is_map(m) for m in parts):
+            # senses by name, a module by its name, a map whose read joins the senses
+            return _compose_named(
+                cls, inputs, actions, senses, parts,
+                connectome=connectome, modules=modules,
+                observers=observers, lateral=lateral, teaching=teaching, scales=scales,
+                features=features, field=field, code=code, learned_code=learned_code,
+                attention=attention, seed=seed, slots=slots, learned_fields=learned_fields,
+                ports=ports, tied=tied, fields_motor=fields_motor, options=options,
+            )
+        if inputs is None or actions is None:
+            raise TypeError(
+                "Brain.compose() needs inputs (or senses=) and actions: "
+                "Brain.compose(inputs=4, actions=2)"
+            )
+        if parts:
             return _compose_trained(
-                cls, inputs, actions,
-                [trained] if hasattr(trained, "record") else list(trained),
+                cls, inputs, actions, parts,
                 connectome=connectome, modules=modules,
                 observers=observers, lateral=lateral, teaching=teaching, scales=scales,
                 features=features, field=field, code=code, learned_code=learned_code,
@@ -3707,6 +4035,10 @@ class Brain:
                 self.recall.position,
                 retuned.get("position_rate", self.recall.position_rate),
             )
+            Recall._law(
+                self.recall.strength, retuned.get("again", self.recall.again),
+                retuned.get("kept", self.recall.kept),
+            )
 
         learning_genes, actor_genes, arousal_genes = split_genes(options)
         learning = configured(learning, {**pointed, **learning_genes}, "learning")
@@ -3884,7 +4216,9 @@ class Brain:
 
         - ``layout``: the inputs, actions, regions, slots, neurons, synapses and populations;
           ``code``, what the memories key on; ``learned_code``, a learned code's settings and
-          counts; ``composition``, the construction choices of a composed brain (None for a
+          counts; ``senses``, where the brain has senses by name, each one's columns of the
+          observation ``[start, stop]`` or its fields';
+          ``composition``, the construction choices of a composed brain (None for a
           custom anatomy), provenance rather than a description of learned weights; and
           ``projection_rates``, each projection's step other than 1 where the brain holds
           per-synapse rates.
@@ -3945,6 +4279,8 @@ class Brain:
             genes["consolidation"] = self.hippocampus.consolidation
             if self.hippocampus.fade:
                 genes["memory_fade"] = self.hippocampus.fade
+            if self.hippocampus.fade_keep:
+                genes["memory_keep"] = self.hippocampus.fade_keep
         if self.message is not None:
             held = self.message
             genes.update(
@@ -3978,6 +4314,10 @@ class Brain:
                 genes["longterm_best"] = True
             if kept.rest:
                 genes["longterm_rest"] = True
+            if kept.attention is not None:
+                genes["longterm_attention"] = kept.attention
+            if kept.motor:
+                genes["longterm_motor"] = kept.motor
             genes.update({f"longterm_{name}": value for name, value in kept.address().items()})
         maturity = self.basal_ganglia.maturity
         if maturity is not None:
@@ -4000,6 +4340,8 @@ class Brain:
             genes.update({f"learned_code_{name}": value for name, value in learned.genes().items()})
         if self.attention:
             genes["attention"] = True
+        if self.surprise is not None and self.orienting is not None:
+            genes["surprise"] = {**self.surprise.settings(), **self.orienting.settings()}
         populations = self.connectome.populations
         result = {
             "layout": {
@@ -4034,6 +4376,8 @@ class Brain:
                 **({} if self.fields is None else {"learned_fields": self.fields.to_dict()}),
                 **({"ports": int(self.ports)} if self.ports else {}),
                 **({"tied": self._tied_description()} if self.tied else {}),
+                # the senses by name: each one's columns of the observation, or its fields'
+                **({} if self._senses is None else {"senses": self._senses["named"]}),
                 "composition": self._composition,
                 **(
                     {} if self.learner.synapse_rate is None else {
@@ -4074,6 +4418,11 @@ class Brain:
     # -- stimulus
 
     def _observations(self, observations: Any) -> np.ndarray:
+        """Observations as a nonempty finite batch of the brain's width, ``(rows, inputs)``.
+        A brain with senses by name also takes them by name, and reads its map's part itself
+        (``_sensed_rows``)."""
+        if self._senses is not None:
+            observations = self._sensed_rows(observations)
         x = np.asarray(observations, dtype=float)
         if x.ndim < 2 or not x.shape[0] or not np.isfinite(x).all():
             raise ValueError(
@@ -4083,6 +4432,84 @@ class Brain:
         if x.shape[1] != self.inputs:
             raise ValueError(f"observations need {self.inputs} values per row, got {x.shape[1]}")
         return x
+
+    def _sensed_rows(self, observations: Any) -> Any:
+        """What a brain with named senses is given, as rows of its whole width. A mapping of
+        sense to rows (a brain composed with ``senses=``): each sense's rows in its columns,
+        a sense left out silent, and no sense at all one silent row. The map's read
+        (``brain.space.observation()``) takes the columns of ``space`` in rows given
+        without them; rows of the whole width are taken as they are, the map's part as
+        given. An unknown sense, a wrong width and senses whose rows disagree are refused by
+        name; anything else is returned for ``_observations`` to refuse."""
+        held = self._senses
+        assert held is not None
+        named, tail = held["named"], int(held["space"])
+        given = self.inputs - tail
+        start = _sense_span(named[_SPACE])[0] if tail else given  # where the map's read lies
+        if isinstance(observations, Mapping):
+            if not held["declared"]:
+                raise ValueError(
+                    "this brain declares no senses by name (compose(senses=...)): it takes "
+                    f"rows of {given} values"
+                )
+            parts: dict[str, np.ndarray] = {}
+            for name, value in observations.items():
+                if name not in named:
+                    raise ValueError(
+                        f"this brain has no sense {name!r}: its senses are "
+                        + ", ".join(repr(known) for known in named)
+                    )
+                if tail and name == _SPACE:
+                    raise ValueError(
+                        f"the brain reads its sense {_SPACE!r} from its map itself "
+                        "(brain.space): leave it out of the observation"
+                    )
+                rows = _sense_rows(f"sense {name!r}", value, named[name])
+                if rows is not None:
+                    parts[name] = rows
+            counts = {len(rows) for rows in parts.values()}
+            if len(counts) > 1:
+                told = ", ".join(f"{name!r} {len(rows)}" for name, rows in parts.items())
+                raise ValueError(f"the senses give different numbers of rows: {told}")
+            whole = np.zeros((counts.pop() if counts else 1, self.inputs))
+            for name, rows in parts.items():
+                first, last = _sense_span(named[name])
+                whole[:, first:last] = rows
+            if tail:
+                whole[:, start : start + tail] = self._map_read(tail)
+            return whole
+        if not tail:
+            return observations
+        try:
+            x = np.asarray(observations, dtype=float)
+        except (TypeError, ValueError):
+            return observations
+        if x.ndim < 2 or not x.shape[0]:
+            return observations
+        x = x.reshape(len(x), -1)
+        if x.shape[1] == self.inputs:
+            return x  # whole rows: the map's part as given
+        if x.shape[1] != given:
+            raise ValueError(
+                f"observations need {given} values per row, got {x.shape[1]} (the brain reads "
+                f"the {tail} of {_SPACE!r} from its map; a row of all {self.inputs} is taken "
+                "as it is)"
+            )
+        read = np.broadcast_to(self._map_read(tail), (len(x), tail))
+        return np.concatenate([x[:, :start], read, x[:, start:]], axis=1)
+
+    def _map_read(self, width: int) -> np.ndarray:
+        """What the brain reads of its map this moment (``brain.space.observation()``: ``where``
+        and ``what``), ``width`` values; refused by name where ``brain.space`` holds no map of
+        that read."""
+        space = self.space
+        read = None if space is None else np.asarray(space.observation(), dtype=float).ravel()
+        if read is None or len(read) != width:
+            raise ValueError(
+                f"this brain reads its sense {_SPACE!r}, {width} values, from brain.space, "
+                + ("which holds no map" if read is None else f"whose map reads {len(read)}")
+            )
+        return read
 
     def observation_code(self, observations: Any) -> np.ndarray:
         """The code the memories key on, ``(batch, code_width)``: the observations themselves
@@ -4102,9 +4529,26 @@ class Brain:
                 return pools
             return np.concatenate([pools, x[:, self.fields.inputs :]], axis=1)
         if self.learned_code is None:
-            return x if self.sparse_code is None else _unit_rows(self.sparse_code.code(x))
+            if self.sparse_code is None:
+                return x
+            return _unit_rows(self.sparse_code.code(self._equal_senses(x)))
         phase = self._settle_code(x, context=False)
         return self._moment_key(x, self.learned_code.code_of(phase.state.activation))
+
+    def _equal_senses(self, x: np.ndarray) -> np.ndarray:
+        """What the fixed sparse code expands. A brain composed with ``senses=`` gives it
+        every field of every sense at unit length (a sense without fields is one field; a
+        field with nothing in it stays zero), so each field moves the code alike whatever its
+        width and the size of its values. Any other brain gives it the observations, the
+        same array."""
+        held = self._senses
+        if held is None or not held["declared"]:
+            return x
+        out = np.array(x, dtype=float)
+        for columns in held["named"].values():
+            for first, last in columns.values() if isinstance(columns, Mapping) else [columns]:
+                out[:, first:last] = _unit_rows(out[:, first:last])
+        return out
 
     def _prepare(
         self, x: np.ndarray, *, context: bool = True, trace: Trace | None = None
@@ -4297,6 +4741,23 @@ class Brain:
             norm = np.linalg.norm(np.atleast_2d(np.asarray(x, dtype=float)), axis=1)
             return np.asarray(part / np.where(norm > 0.0, norm, 1.0)[:, None])
         return code if self.coded_cortex else x
+
+    def _moment_surprise(self, rows: int, memory: Any) -> np.ndarray | None:
+        """This moment's surprise per stream in tellings, for the writes of ``memory``, the
+        brain's records (``longterm_strength``) or its recall memory (``recall_strength``,
+        both #336), from the brain's one surprise signal
+        (``brain.surprise.moment``, #337: the log of how many times its tolerated size the most
+        surprised neuron's residual was): that ratio less one. A moment within what every
+        neuron is used to adds nothing; one nine times the tolerated size counts as eight
+        tellings more, which keeps its record or its slot at once. None for a memory without
+        strength, without ``surprise``, or where the signal holds other streams than the
+        moment's (a moment that began from rest reads none)."""
+        if memory is None or not memory.strength or self.surprise is None:
+            return None
+        told = np.asarray(self.surprise.moment, dtype=float)
+        if told.shape != (rows,) or not np.isfinite(told).all():
+            return None
+        return np.asarray(np.expm1(np.clip(told, 0.0, 50.0)))
 
     def stimulus(self, observations: Any, *, memory: bool = True) -> np.ndarray:
         """The drive of a batch of observations: the sensory neurons stimulated, plus the
@@ -4553,8 +5014,8 @@ class Brain:
 
     def _memories_stay_on_host(self) -> bool:
         """Whether an option keeps the moment's memories on the host at every size: several heads,
-        a window, the read of the command or of when, the gains, tokens, a separator, a surprise
-        gate, a fade, an episodic vote or a learned code."""
+        a window, the read of the command or of when, the gains, tokens, a slot's strength, a
+        separator, a surprise gate, a fade, an episodic vote or a learned code."""
         recall, store = self.recall, self.hippocampus
         return bool(
             self._episodic is not None or self.learned_code is not None
@@ -4598,6 +5059,9 @@ class Brain:
             if candidate.backend == "cpu":
                 held.update(why=candidate.why, refused=refused)
                 return
+            if self.surprise is not None:  # read on the host: no device takes this brain
+                refused.append(f"{candidate.backend}: {_SURPRISE_HOST}")
+                continue
             try:
                 with tempfile.TemporaryDirectory(prefix="cadence-place-") as folder:
                     path = self.save(Path(folder) / "brain.npz", compressed=False)
@@ -4605,8 +5069,12 @@ class Brain:
             except Exception as error:  # a device that refuses the brain is not its failure
                 refused.append(f"{candidate.backend}: {error}")
                 continue
+            # a map the brain reads as a sense stays the object its caller holds
+            space = self.space if self._senses is not None and self._senses["space"] else None
             self.__dict__.clear()
             self.__dict__.update(placed.__dict__)
+            if space is not None:
+                self.space = space
             self._placement = {**held, "why": candidate.why, "refused": refused}
             return
 
@@ -5199,9 +5667,11 @@ class Brain:
         importance = SynapticMemory.salience_vector(
             np.abs(r) if salience is None else salience, batch
         )
-        labels = None if teacher is None else self.learner._labels(np.asarray(teacher))
+        labels = None if teacher is None else self.learner._labels(np.asarray(teacher), open=True)
         if labels is not None and len(labels) != batch:
             raise ValueError("teacher must match the observation batch")
+        if labels is not None:
+            self._open_labels(labels)
         if bootstrap is not None:
             bootstrap = np.asarray(bootstrap, dtype=float)
             if bootstrap.shape != (batch,) or not np.isfinite(bootstrap).all():
@@ -5252,6 +5722,13 @@ class Brain:
         eligibility belongs to the parameters before the lesson: report the outcome first
         (``step`` or ``learn``).
 
+        With several motor slots a label of -1 (``cadence.learning.OPEN``) leaves that slot
+        open at that row: the lesson neither judges the slot nor pulls it (its target in the
+        nudged phases is what the slot says in the lesson's own free phase), so a row that has
+        no answer for a slot teaches the slot nothing. A row labels at least one slot; a brain
+        with ``recall_tokens`` or an episodic memory, which keep every slot of a shown action,
+        refuses open slots.
+
         ``targets``, in place of ``labels``, teaches a distribution over the actions per row,
         ``(rows, actions)`` (with several motor slots each slot's columns side by side, each
         slot's summing to one): the nudged phases pull the motor neurons toward it as they pull
@@ -5271,9 +5748,10 @@ class Brain:
             raise ValueError("a lesson takes labels or targets, one of the two")
         cfg = self.learner.config
         if labels is not None:
-            labels = self.learner._labels(np.asarray(labels))
+            labels = self.learner._labels(np.asarray(labels), open=True)
             if len(labels) != len(x):
                 raise ValueError("labels must match the observation batch")
+            self._open_labels(labels)
         else:
             targets = np.asarray(targets, dtype=float)
             self.learner.soft_targets(targets)  # refused before anything changes
@@ -5351,6 +5829,25 @@ class Brain:
         with self._code_attempt():
             return self._teach(x, labels, targets=targets, weights=weights)
 
+    def _open_labels(self, labels: np.ndarray) -> bool:
+        """Whether a lesson's labels leave a motor slot open (a label of -1, with several
+        slots): refused, before anything changes, where a memory keeps or judges every slot of
+        a shown action (``recall_tokens``, the episodic records' demonstrations)."""
+        if labels.ndim != 2 or not labels.size or labels.min() >= 0:
+            return False
+        if self.recall is not None and self.recall.tokens is not None:
+            raise ValueError(
+                "recall_tokens judges a lesson's rows by every slot's label; label every slot "
+                "of a brain with declared tokens"
+            )
+        episodic = self._episodic
+        if episodic is not None and episodic.demonstrations:
+            raise ValueError(
+                "the episodic records keep a shown action's every slot; label every slot of a "
+                "brain with an episodic memory"
+            )
+        return True
+
     def _token_rows(self, labels: np.ndarray) -> np.ndarray | None:
         """Per row, whether a label names an action that is a token (``recall_tokens``), or
         None for a brain without declared tokens. With several output slots a row is a token
@@ -5387,8 +5884,8 @@ class Brain:
             _moment.SHORTCUTS and self.learned_code is None and self.sparse_code is None
             and self.fields is None and self._compiled_moment()
         ):  # the compiled moment's read without the general path's layers (``_settled``)
-            if _moment.ONE_CALL and labels is not None:
-                # with the judging solve, in one call
+            if _moment.ONE_CALL and labels is not None and not (labels.size and labels.min() < 0):
+                # with the judging solve, in one call (the general path judges open slots)
                 judged = self._judge_compiled(
                     x, labels, _moment.ONE_LESSON and weights is None
                 )
@@ -5473,6 +5970,9 @@ class Brain:
         if self.message is not None and self.message.reads:
             # the read's lesson: the message's blocks scored against the lesson's movement
             teaching.update(self.message.learn(self.learner.brain, lesson))
+        if self.longterm is not None and self.longterm.attended is not None:
+            # the heads' lesson: each head's choice of record scored against the movement
+            teaching.update(self.longterm.attended.learn(self.learner.brain, lesson))
         # a row of several motor slots agrees only where every slot does, so beside the rows
         # the report counts the slots: zero where the lesson does not judge its rows
         teaching["agreed_slots"] = matched
@@ -5657,6 +6157,7 @@ class Brain:
         report = dict.fromkeys(("rows", "moments", *presentations), 0.0)
         lengths = [len(episode) for episode in moments]
         held = self._streams()
+        private, self._surprise_private = self._surprise_private, True  # no moment of the streams
         try:
             for length in dict.fromkeys(lengths):
                 rows = [row for row, count in enumerate(lengths) if count == length]
@@ -5673,6 +6174,7 @@ class Brain:
         except RuntimeError:  # a refused settle, or a refused lesson (LearningPhaseError)
             report["refused"] = 1.0
         finally:
+            self._surprise_private = private
             self._resume(held)
         return report
 
@@ -5720,11 +6222,15 @@ class Brain:
                 region.halvings, region.graph, region.last, dict(region.work)
             ),
             records,
+            self._surprise_streams(),
         )
 
     def _resume(self, held: tuple[Any, ...]) -> None:
         """Return every stream to the state ``_streams`` held."""
-        actor, traces, recalled, episode, phase, records = held
+        actor, traces, recalled, episode, phase, records, surprised = held
+        if surprised is not None and self.surprise is not None and self.orienting is not None:
+            self.surprise.last, self._surprise_read, self._surprise_seen, competition = surprised
+            self.orienting.resume(competition)
         for name, value in actor.items():
             setattr(self.basal_ganglia, name, value)
         _restore_traces(traces)
@@ -5876,9 +6382,12 @@ class Brain:
                         "feedback was accepted but arousal could not update; "
                         "retry live(observations) without reward or done or salience"
                     ) from exc
+                self._surprise_read = None  # the forecast's residual goes with the forecast
                 raise
             self._lived = None  # this outcome is taken, exactly once
             self._awaiting = None  # and the stream continues from where it settled
+            if routine and self.surprise is not None:
+                self._surprised(x)  # the moment is certain: what follows reads its surprise
             if routine:
                 if ended[0] and self.working_memory is not None:
                     self.working_memory.reset(1, rows=np.array([0]))
@@ -6044,6 +6553,10 @@ class Brain:
             self._prepare(x)
             drive = self._moment_drive(x)
             state = self._qualified(drive, self._activity(), operation="wait")
+        if self.surprise is not None:  # a sensed moment is the stream's own: read here, anew
+            self._surprise_read, self._surprise_seen = None, None
+            self._read_surprise(x, drive, self._activity())
+            self._surprised(x)
         code = self._coded(x)
         lived = self._lived
         routine = lived is not None and lived[4] is current and not lived[3]
@@ -6060,14 +6573,154 @@ class Brain:
                 self._heard(x, code),
                 None if self.working_memory is None else self.working_memory.last,
             )
-        if self.longterm is not None:
-            self.longterm.hear(self._heard(x, code))  # a turn held, a statement written
+        if self.longterm is not None:  # a turn held, a statement written
+            self.longterm.hear(
+                self._heard(x, code), surprise=self._moment_surprise(len(x), self.longterm)
+            )
         if self.recall is not None:
-            self.recall.witness(code, state)  # the sensed moment joins the stream's slots
+            # the sensed moment joins the stream's slots
+            self.recall.witness(
+                code, state, surprise=self._moment_surprise(len(x), self.recall)
+            )
         self._hear_episode(x)
         if self._episodic is not None:
             self._episodic.sense(code)  # what was sensed enters the temporal context
         self._awaiting = (current, state)
+        self._surprise_seen = None  # the stream has moved on
+
+    # -- surprise and the focus it draws (``cadence.surprise``)
+
+    @property
+    def places(self) -> np.ndarray | None:
+        """With ``surprise``: the place of each sensory neuron ``(sensory neurons, d)`` in the
+        frame of the focus (a map's plane), set by the caller as its body moves; None, the
+        default, leaves the senses out of the focus."""
+        return self._places
+
+    @places.setter
+    def places(self, value: Any) -> None:
+        if value is None:
+            self._places = None
+            return
+        if self.surprise is None:
+            raise ValueError("places are read by the focus: compose the brain with surprise=True")
+        try:
+            places = np.array(value, dtype=np.float64)
+        except (TypeError, ValueError):
+            places = np.zeros(0)
+        if places.ndim != 2 or len(places) != len(self.sensory_index) or not places.shape[1] or (
+            not np.isfinite(places).all()
+        ):
+            raise ValueError(
+                f"places holds one finite place a sensory neuron, {len(self.sensory_index)} rows"
+            )
+        held = self.space
+        frame = getattr(getattr(held, "surprise", None), "size", None) and np.shape(
+            getattr(held, "centers", np.zeros((0, places.shape[1]))))[1]
+        if frame and frame != places.shape[1]:
+            raise ValueError(
+                f"places share one frame with the map's cells: {frame} coordinates a place"
+            )
+        self._places = places
+
+    @property
+    def focus(self) -> Focus | None:
+        """With ``surprise``: the one place attended (``cadence.surprise.Focus``), drawn at each
+        moment among the sensory neurons that have ``places`` and the cells of a held map with
+        surprise (``space``), by the first stream's surprise; None with no focus."""
+        return None if self.orienting is None else self.orienting.focus
+
+    def _surprise_genes(self, surprise: Any) -> None:
+        """Build the brain's surprise and its orienting from ``surprise``: True, or the genes of
+        ``Surprise`` and ``Orienting`` by name."""
+        if surprise is True:
+            genes: dict[str, Any] = {}
+        elif isinstance(surprise, Mapping):
+            genes = dict(surprise)
+        else:
+            raise ValueError(
+                "surprise is True or a mapping of the genes of cadence.surprise.Surprise and "
+                "Orienting by name"
+            )
+        unknown = set(genes) - set(Surprise.GENES) - set(Orienting.GENES)
+        if unknown:
+            raise ValueError(f"unknown surprise gene: {sorted(map(str, unknown))[0]}")
+        self.surprise = Surprise(
+            self.connectome.n, **{k: v for k, v in genes.items() if k in Surprise.GENES}
+        )
+        self.orienting = Orienting(**{k: v for k, v in genes.items() if k in Orienting.GENES})
+
+    def _residual_read(
+        self, x: np.ndarray, drive: Any, carried: BrainState | None,
+        rows: np.ndarray | None = None,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """A moment's residual: each neuron's size of the potential equation's error at the
+        state the streams carried into the moment, under the moment's ``drive`` and the present
+        synapses, before a settle repairs it (``NeuralGraph.residual(per_unit=True)``), with
+        the observations and the streams that carried a state (``rows``; every stream unless
+        given, none with no carried state). Nothing is changed."""
+        held = self.surprise
+        assert held is not None
+        batch = len(x)
+        if carried is None or _batch_of(carried) != batch:
+            return x.copy(), np.zeros((batch, held.size)), np.zeros(batch, dtype=bool)
+        sizes = np.abs(self.brain.residual(drive, carried, per_unit=True))
+        if not np.isfinite(sizes).all():
+            sizes = np.nan_to_num(sizes, nan=0.0, posinf=np.finfo(np.float64).max)
+        return x.copy(), sizes, np.ones(batch, dtype=bool) if rows is None else rows.copy()
+
+    @staticmethod
+    def _same(held: np.ndarray | None, x: np.ndarray) -> bool:
+        return held is not None and held.shape == x.shape and bool(np.array_equal(held, x))
+
+    def _read_surprise(self, x: np.ndarray, drive: Any, carried: BrainState | None) -> None:
+        """Read the moment's residual (``_residual_read``) at a settle that qualified. It is
+        read once a moment, at the first settle from the carried state: a later settle of the
+        same observations before the stream moves on (the act after ``learn``, the settle
+        ``live`` repeats under a new record) starts from that settle's own answer and reads
+        nothing new. Kept until the moment is certain (``_surprised``)."""
+        if self.surprise is None or self._surprise_private or self._same(self._surprise_seen, x):
+            return
+        read = self._surprise_read
+        if read is None or not self._same(read[0], x):
+            self._surprise_read = self._residual_read(x, drive, carried)
+
+    def _surprised(self, x: np.ndarray) -> None:
+        """The moment of the observations ``x`` is certain (its outcome is learned or taken, or
+        its answer is being issued or sensed): its residual (``_read_surprise``) becomes the
+        streams' surprise against each neuron's usual residual, which learns from it, and draws
+        the focus among the sensory neurons that have ``places`` and the cells of a held map
+        with surprise (``space``). Once a moment: a later call for the same moment changes
+        nothing, so whatever the moment does next (a lesson, a memory's write) reads its
+        surprise. A moment with no residual read reads no surprise."""
+        held = self.surprise
+        if held is None or self.orienting is None or self._surprise_private:
+            return
+        read, self._surprise_read = self._surprise_read, None
+        if read is not None and self._same(read[0], x):
+            held.observe(read[1], carried=read[2])
+        elif self._same(self._surprise_seen, x):
+            return  # observed where the moment became certain
+        else:
+            held.observe(np.zeros((len(x), held.size)), carried=np.zeros(len(x), dtype=bool))
+        self._surprise_seen = x.copy()
+        sources: dict[str, Any] = {}
+        if self._places is not None:
+            sources["senses"] = (held.last[0][self.sensory_index], self._places)
+        mapped = getattr(self.space, "surprise", None)
+        if isinstance(mapped, Surprise):
+            sources["map"] = (mapped.last[0], self.space.centers)
+        if sources:
+            self.orienting.attend(sources)
+
+    def _surprise_streams(self) -> tuple[Any, ...] | None:
+        """The surprise's stream state, for ``_resume``: the latest surprise, the residual read
+        for a moment in progress and the competition's state. What each neuron is used to is
+        learned and stays."""
+        if self.surprise is None or self.orienting is None:
+            return None
+        return (self.surprise.last, self._surprise_read, self._surprise_seen,
+                self.orienting.streams())
 
     def _owned(self, decision_id: Any) -> None:
         """Refuse an outcome reported for an action other than the one awaiting it."""
@@ -6295,7 +6948,10 @@ class Brain:
             greedy and temperature is None and _moment.SHORTCUTS and self._compiled_moment()
         )
         action: np.ndarray | None = (
-            self._act_compiled(x) if compiled and _moment.ONE_CALL else None
+            # the one compiled call keeps no carried state apart from its solve: a brain with
+            # surprise takes the same calls in turn, where the residual is read
+            self._act_compiled(x) if compiled and _moment.ONE_CALL and self.surprise is None
+            else None
         )
         if action is None:
             drive, free = self._settled(x)
@@ -6328,6 +6984,8 @@ class Brain:
         agent._drive = drive.copy()
         self._prepared = None
         self._awaiting = None
+        if self.surprise is not None:
+            self._surprised(x)  # before the memories write: they read the moment's surprise
         code = self._coded(x)
         # the actor's greedy act on the free state it holds (``ActorCritic.act``)
         agent._pending = None
@@ -6356,7 +7014,8 @@ class Brain:
                 self.working_memory.update(free)
             if self.recall is not None:
                 self.recall.witness(
-                    code, free, self._command(action) if self.recall.action else None
+                    code, free, self._command(action) if self.recall.action else None,
+                    surprise=self._moment_surprise(len(x), self.recall),
                 )
         if self.history is not None:
             # the observation acted on joins the heard past, as ``_choose`` hears it
@@ -6365,6 +7024,8 @@ class Brain:
             self._episode_moments, self._episode_told = [], np.zeros(0, dtype=np.int64)
         self._moment = None
         self._moment_code = None
+        if not self._surprise_private:
+            self._surprise_seen = None  # the stream has moved on
         return cast(np.ndarray, action)
 
     def _settled(self, x: np.ndarray) -> tuple[np.ndarray, BrainState]:
@@ -6382,14 +7043,20 @@ class Brain:
             try:
                 drive = self._compiled_drive(x, x)
                 if drive is not None:
-                    return drive, self._qualified(drive, self._activity(), operation="act")
+                    free = self._qualified(drive, self._activity(), operation="act")
+                    if self.surprise is not None:
+                        self._read_surprise(x, drive, self._activity())
+                    return drive, free
             except BaseException:
                 self._coded_moment = held
                 raise
         with self._code_attempt():
             self._prepare(x)
             drive = self._moment_drive(x)
-            return drive, self._qualified(drive, self._activity(), operation="act")
+            free = self._qualified(drive, self._activity(), operation="act")
+            if self.surprise is not None:
+                self._read_surprise(x, drive, self._activity())
+            return drive, free
 
     def _coded(self, x: np.ndarray) -> np.ndarray:
         """The observation code of the moment being acted on, computed by ``_settled``; of any
@@ -6401,7 +7068,10 @@ class Brain:
         """The place key a fading store's records are cued by this moment (``memory_fade``):
         the observation code where the store keys on it, else the observations."""
         try:
-            raw = np.atleast_2d(np.asarray(_on_host(x), dtype=float))
+            x = _on_host(x)
+            if self._senses is not None:  # the moment's rows, as the moment itself read them
+                x = self._sensed_rows(x)
+            raw = np.atleast_2d(np.asarray(x, dtype=float))
             return np.atleast_2d(np.asarray(self._code(raw))) if self._coded_keys else raw
         except (TypeError, ValueError):  # no key of this moment: it cues no record
             return None
@@ -6435,6 +7105,8 @@ class Brain:
         self.basal_ganglia._drive = _held_drive(drive)
         self._prepared = None
         self._awaiting = None
+        if self.surprise is not None:
+            self._surprised(x)  # before the memories write: they read the moment's surprise
         code = self._coded(x)  # the memories key on the observation code
         place = self._placed(x)  # the place stores on the place key
         episodic = self._episodic
@@ -6467,12 +7139,15 @@ class Brain:
         if self.longterm is not None:
             # after the message: a turn it holds from this moment, or the moment after a turn
             # written where it says more than the record its key finds
-            self.longterm.hear(self._heard(x, code))
+            self.longterm.hear(
+                self._heard(x, code), surprise=self._moment_surprise(len(x), self.longterm)
+            )
         if self.recall is not None:
             # the moment acted on joins the stream's slots, with ``recall_action`` with the
             # command executed on it; its settled cortex enters the next moment's address
             self.recall.witness(
-                code, free, self._command(action) if self.recall.action else None
+                code, free, self._command(action) if self.recall.action else None,
+                surprise=self._moment_surprise(len(x), self.recall),
             )
         self._hear_episode(x)  # with ``learning_rehearsal``, the moment joins its episode
         if episodic is not None:
@@ -6499,6 +7174,8 @@ class Brain:
         self._moment_code = (
             None if greedy or self.learned_code is None else np.array(place, copy=True)
         )
+        if not self._surprise_private:
+            self._surprise_seen = None  # the stream has moved on
         return action
 
     def _greedy(self, state: BrainState, code: np.ndarray, key: np.ndarray | None) -> np.ndarray:
@@ -6602,6 +7279,7 @@ class Brain:
         recalled_state = None if recalled is None or not done.any() else recalled.snapshot()
         episodic = self._episodic  # its context records, temporal contexts and paths
         episode_values = None if episodic is None else episodic.snapshot()
+        read: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None  # with surprise
         try:
             if memory is not None and self._moment is not None:
                 keys, action = self._moment
@@ -6629,9 +7307,15 @@ class Brain:
                 recalled.reset(len(done), rows=np.flatnonzero(done))
             next_drive = self._moment_drive(following)
             warm = self._awaited()
+            # with surprise: the state the streams carry into this moment, whose first settle is
+            # the next state's; a stream whose episode ended begins from rest
+            carried = self.basal_ganglia.state if warm is None else warm
             if self.learned_code is not None:
                 # the next state settles warm from the stream's state with the code's phase
                 warm = self._warm(next_drive, self.basal_ganglia.state if warm is None else warm)
+            if self.surprise is not None and not self._surprise_private:
+                # under the synapses that settle starts from, before the outcome moves them
+                read = self._residual_read(following, next_drive, carried, ~done)
             report = self.basal_ganglia.learn(reward, done, next_drive, bootstrap, warm=warm)
         except Exception:
             if memory is not None:
@@ -6658,6 +7342,11 @@ class Brain:
         self._moment_code = None
         self._prepared = following.copy()
         self._awaiting = None
+        if read is not None:
+            # the outcome is learned and the stream is at this moment: its surprise is observed
+            # here, for the lesson and the act that follow
+            self._surprise_read, self._surprise_seen = read, None
+            self._surprised(following)
         self._begin_episodes(done)  # the streams whose attempt ended begin an episode
         return report
 
@@ -6726,6 +7415,14 @@ class Brain:
         self._acted = None
         self._awaiting = None
         self._episode_moments, self._episode_told = [], np.zeros(0, dtype=np.int64)
+        if self.surprise is not None and self.orienting is not None and (
+            not self._surprise_private
+        ):
+            # the streams begin afresh: no surprise read and no focus; each neuron's usual
+            # residual is learned and stays
+            self.surprise.reset()
+            self.orienting.reset()
+            self._surprise_read = self._surprise_seen = None
         if self.arousal is not None and "arousal" not in kept:
             self.arousal.reset()
 
@@ -6769,6 +7466,10 @@ class Brain:
                 0 if self.message is None
                 else sum(int(np.asarray(a).size) for maps in self.message.maps for a in maps)
             )
+            + (
+                0 if self.longterm is None or self.longterm.attended is None
+                else self.longterm.attended.parameters
+            )
         )
 
     def save(self, path: str | Path, *, compressed: bool = True) -> Path:
@@ -6787,21 +7488,44 @@ class Brain:
         under ``memories`` in the metadata; with ``learning_rehearsal`` the reservoir of lessons
         with their episodes and the streams' episodes (``rehearsal/...``, the counts under
         ``rehearsal``); with a map of things (``space``, a ``cadence.space.map.Map``) its record
-        under ``space`` and its codes and carried state under ``space/``. ``Learner.save`` saves
-        the slow learned response alone.
+        under ``space`` and its codes and carried state under ``space/``; with senses by name
+        (``compose(senses=...)``, a map in ``trained=``) their columns under ``senses`` in the
+        metadata. ``Learner.save`` saves the slow learned response alone.
         ``compressed=False`` writes a plain archive, as ``cadence.checkpoint.save`` does: larger
         on disk, and a large brain's is written in a small part of the time deflating takes.
         """
         from .checkpoint import _learner_data, _write
         from .receipts import canonical_json
 
+        if self._senses is not None and int(self._senses["space"]):
+            # a brain that reads its map itself is saved with that map: one that is gone, or
+            # reads another width, would write a file no load continues
+            self._map_read(int(self._senses["space"]))
         agent = self.basal_ganglia
         data = _learner_data(self.learner)
         memories: dict[str, Any] = {}
         store = self.hippocampus
         fading = isinstance(store, SynapticMemory) and bool(store.fade)
+        features = []  # what a reader must hold beyond 0.99.1's (``FEATURES_FORMAT``)
+        held_map = self.space
+        if held_map is not None and (
+                getattr(held_map, "values", None) or getattr(held_map, "surprise", None)
+                is not None):
+            features.append("map")
+        if self.surprise is not None:
+            features.append("surprise")
+        if self.longterm is not None and (
+                self.longterm.attention is not None or self.longterm.motor):
+            features.append("heads")
+        if self.recall is not None and self.recall.strength:
+            features.append("recall_strength")
+        if (self.longterm is not None and self.longterm.strength) or (
+                isinstance(store, SynapticMemory) and bool(store.fade_keep)):
+            features.append("strength")
+        features.sort()
         metadata: dict[str, Any] = {
-            "format": LONGTERM_FORMAT if self.longterm is not None
+            "format": FEATURES_FORMAT if features
+            else LONGTERM_FORMAT if self.longterm is not None
             else FADE_FORMAT if fading
             else BRAIN_FORMAT if agent.maturity is None else MATURITY_FORMAT,
             "actor": agent.config.to_dict(),
@@ -6815,6 +7539,8 @@ class Brain:
             "last_learning": self.last_learning,
             "memories": memories,
         }
+        if features:
+            metadata["features"] = features
         # what it ran on, where that is not the CPU by name: such a file keeps its bytes
         ran_on = self.placement
         if ran_on["backend"] != "cpu" or ran_on["chosen_by"] == "auto":
@@ -6925,6 +7651,22 @@ class Brain:
             record, arrays = self.space.parts()
             metadata["space"] = record
             data.update({f"space/{name}": value for name, value in arrays.items()})
+        if self._senses is not None:  # the senses by name; a brain without them saves none
+            metadata["senses"] = plain(self._senses)
+        if self.surprise is not None and self.orienting is not None:
+            # what each neuron is used to, the latest surprise, the focus and the observations
+            # of a moment in progress whose surprise is observed (#337)
+            competition, placed = self.orienting.parts()
+            metadata["surprise"] = {**self.surprise.to_dict(), "orienting": competition}
+            kept = self.surprise.arrays()
+            if agent.state is None:  # no stream lives: ``last`` is a fresh stream's
+                del kept["last"]
+            kept.update(placed)
+            if self._places is not None:
+                kept["places"] = self._places
+            if self._surprise_seen is not None:
+                kept["seen"] = self._surprise_seen
+            data.update({f"surprise/{name}": value for name, value in kept.items()})
         data["brain"] = np.array(canonical_json(metadata))
         return _write(data, path, compressed=compressed)
 
@@ -6979,22 +7721,37 @@ class Brain:
                 raise ValueError("not a Brain checkpoint; use Learner.load for a learner")
             saved = json.loads(str(archive["brain"]))
             if not isinstance(saved, dict) or saved.get("format") not in (
-                BRAIN_FORMAT, MATURITY_FORMAT, FADE_FORMAT, LONGTERM_FORMAT
+                BRAIN_FORMAT, MATURITY_FORMAT, FADE_FORMAT, LONGTERM_FORMAT, FEATURES_FORMAT
             ):
                 raise ValueError("unsupported Brain checkpoint format")
             saved_memories = saved.get("memories")
             with_records = isinstance(saved_memories, dict) and "longterm" in saved_memories
-            if (saved["format"] == LONGTERM_FORMAT) != with_records:
+            named = saved.get("features", [])
+            if not isinstance(named, list) or not all(isinstance(f, str) for f in named):
+                raise ValueError("a checkpoint's features are names")
+            unknown = sorted(set(named) - FEATURES)
+            if unknown:
+                raise ValueError(
+                    f"this checkpoint needs the feature {unknown[0]!r}, which this version of "
+                    "cadence does not hold"
+                )
+            strong = saved["format"] == FEATURES_FORMAT
+            if named != _saved_features(saved) or strong != bool(named):
+                raise ValueError(
+                    "memories that grow strong and the learned heads belong to checkpoint "
+                    f"format {FEATURES_FORMAT}, which names them as its features"
+                )
+            if not strong and (saved["format"] == LONGTERM_FORMAT) != with_records:
                 raise ValueError(
                     f"long-term records belong to checkpoint format {LONGTERM_FORMAT}"
                 )
             fading = _saved_fade(saved)
-            if not with_records and (saved["format"] == FADE_FORMAT) != fading:
+            if not strong and not with_records and (saved["format"] == FADE_FORMAT) != fading:
                 raise ValueError(f"a fading store belongs to checkpoint format {FADE_FORMAT}")
             # a file with records or a fading store holds a maturity or none; any other file is
             # named by it
             if (
-                not with_records and not fading
+                not strong and not with_records and not fading
                 and (saved["format"] == MATURITY_FORMAT) != ("maturity" in saved)
             ):
                 raise ValueError(
@@ -7238,6 +7995,8 @@ class Brain:
                             setattr(recall, read, data["recall/" + read].astype(np.int64))
                 if recall.gain:  # the gains (validated above)
                     recall.gains = data["recall/gains"].astype(float)
+                if recall.strength:  # each slot's depth (validated above)
+                    recall.depth = data["recall/depth"].astype(float)
                 if recall.window > 1:  # validated above: saved with the window
                     recall.past = data["recall/past"].astype(float)
                 if recall.action:  # validated above: saved with the command
@@ -7483,7 +8242,41 @@ class Brain:
                 result.space = Map.from_parts(meta["space"], {
                     name[len("space/"):]: data[name] for name in data
                     if name.startswith("space/")})
+            if "senses" in meta:  # the senses by name, and the map's read among them
+                result._senses = _load_senses(
+                    meta["senses"], int(result.inputs), result.space is not None
+                )
+            if "surprise" in meta:  # what each neuron is used to, and the focus (#337)
+                _load_surprise(result, meta["surprise"], {
+                    name[len("surprise/"):]: data[name] for name in data
+                    if name.startswith("surprise/")})
+            elif any(name.startswith("surprise/") for name in data):
+                raise ValueError("saved surprise arrays require the surprise's record")
         return result
+
+
+def _load_surprise(brain: Brain, told: Any, arrays: Mapping[str, Any]) -> None:
+    """Give a loaded ``brain`` its saved surprise: the genes and each neuron's usual residual,
+    the latest surprise, the competition with its focus, the sensory neurons' places and the
+    observations of a moment in progress whose surprise is observed."""
+    if brain.brain.backend != "cpu":
+        raise ValueError(_SURPRISE_HOST)
+    if not isinstance(told, dict) or not isinstance(told.get("orienting"), dict) or (
+        "usual" not in arrays
+    ):
+        raise ValueError("a saved surprise holds its genes, its orienting and its usual residuals")
+    held = Surprise.from_dict(told, arrays)
+    if held.size != brain.connectome.n:
+        raise ValueError("a saved surprise holds one usual residual a neuron")
+    state = brain.basal_ganglia.state
+    if state is not None and len(held.last) != _batch_of(state) and "last" in arrays:
+        raise ValueError("a saved surprise holds one row a stream")
+    brain.surprise = held
+    brain.orienting = Orienting.from_parts(told["orienting"], arrays)
+    if "places" in arrays:
+        brain.places = arrays["places"]
+    if "seen" in arrays:
+        brain._surprise_seen = brain._observations(arrays["seen"])
 
 
 # -- growing a trained brain (``Brain.grow``)
@@ -7957,6 +8750,10 @@ def _grown_checkpoint(
     life.pop("rehearsal", None)
     if "rehearsal" in life_new:
         life["rehearsal"] = life_new["rehearsal"]
+    # a feature the grown memories hold (a slot's strength added by grow) names the file's format
+    features = _saved_features(life)
+    if features:
+        life["format"], life["features"] = FEATURES_FORMAT, features
     data["brain"] = np.array(canonical_json(life))
     for name, value in old.items():
         if name in _GROW_NEURON + _GROW_SYNAPSE + _GROW_LAYOUT:
@@ -7965,6 +8762,16 @@ def _grown_checkpoint(
             continue  # the reservoir's labels may lack a new slot: the grown brain starts afresh
         if name.startswith("space/"):  # a map of things the brain holds goes with it as it is
             data[name] = value
+            continue
+        if name.startswith("surprise/"):
+            # each neuron's usual residual on the neuron it was (a new neuron's is zero); the
+            # sensory neurons' places as they are; the streams start afresh
+            if name == "surprise/usual":
+                usual = np.array(new[name])
+                usual[index] = value
+                data[name] = usual
+            elif name == "surprise/places":
+                data[name] = value
             continue
         if name not in new:
             raise RuntimeError(f"grow could not lay this brain out again: {name} is missing")
@@ -8041,6 +8848,106 @@ def _grown_array(
 # -- grafting trained regions of one brain into another (``Brain.graft``)
 
 
+def _compose_named(
+    cls: type[Brain], inputs: Any, actions: Any, senses: Any, trained: list[Any], *,
+    connectome: Connectome | None, options: dict[str, Any], seed: int, **layout: Any,
+) -> Brain:
+    """``Brain.compose(senses={...})`` and ``trained=`` with a module's name or a map: the brain
+    of the summed width, composed as ``inputs=`` composes it, with the senses' names beside it.
+    The observation's columns: the brain's own inputs (the declared senses in their order),
+    the read of a map (``space``: ``where`` and ``what``), which the brain reads from
+    ``brain.space`` itself and its own sensory region holds, and each trained module's inputs
+    under the module's name."""
+    from . import modules as shipped
+
+    declared = None if senses is None else _declared_senses(senses)
+    if declared is not None and inputs is not None:
+        raise ValueError(
+            "senses= declares the brain's inputs by name and inputs= counts them: pass one of "
+            "the two"
+        )
+    if (declared is None and inputs is None) or actions is None:
+        raise TypeError(
+            "Brain.compose() needs inputs (or senses=) and actions: "
+            "Brain.compose(senses={'touch': 8}, actions=2)"
+        )
+    parts = [shipped.load(part) if isinstance(part, str) else part for part in trained]
+    maps = [part for part in parts if _is_map(part)]
+    hosted = [part for part in parts if not _is_map(part)]
+    if len(maps) > 1:
+        raise ValueError(
+            f"a brain holds one map of things (brain.space): trained= names {len(maps)}"
+        )
+    held = maps[0] if maps else None
+    if declared is None and held is None:  # trained modules by name: the brain around them
+        return _compose_trained(
+            cls, inputs, actions, hosted, connectome=connectome, options=options, seed=seed,
+            **layout,
+        )
+    for name in ("learned_fields", "ports"):
+        if layout.get(name):
+            raise ValueError(
+                f"named senses and a map's read are vector inputs: {name} reads an image "
+                "(inputs=(height, width[, channels])) in this version"
+            )
+    if declared is not None:
+        own = int(sum(
+            width for spec in declared.values()
+            for width in (spec.values() if isinstance(spec, Mapping) else [spec])
+        ))
+    elif isinstance(inputs, (int, np.integer)):
+        own = _count("inputs", inputs, low=1)
+    else:
+        raise ValueError(
+            "a map's read joins the senses of a vector brain in this version: inputs is a "
+            "count (or senses=), not an image shape"
+        )
+    # the map's read: ``where``, one value a cell, and ``what``, one a unit of its sheet (the
+    # kinds' units and, with ``values``, the value units after them)
+    sheet = 0 if held is None else int(getattr(held, "width", held.units))
+    tail = 0 if held is None else int(held.count) + sheet
+    named: dict[str, Any] = {} if declared is None else _sense_columns(declared, 0)[0]
+    if held is not None:
+        named.update(_sense_columns(
+            {_SPACE: {"where": int(held.count), "what": sheet}}, own
+        )[0])
+    for module in hosted:  # refused before anything is composed
+        if getattr(module, "name", None) in named:
+            raise ValueError(f"a sense and the module {module.name!r} share one name")
+    if hosted:
+        brain = _compose_trained(
+            cls, own + tail, actions, hosted, connectome=connectome, options=options,
+            seed=seed, **layout,
+        )
+    else:
+        brain = cls.compose(
+            own + tail, actions, connectome=connectome, seed=seed, **layout, **options
+        )
+    # a hosted module's inputs, a sense under the module's name: the columns its input regions
+    # take (a brain's k-th input is the k-th of its sensory neurons, ascending), a field a
+    # region where it has several
+    populations = brain.connectome.populations
+    column = {int(neuron): k for k, neuron in enumerate(np.asarray(brain.sensory_index))}
+    for module in hosted:
+        spans = {}
+        for region in module.inputs:
+            taken = sorted(column[int(n)] for n in populations[f"{module.name}/{region}"])
+            if taken != list(range(taken[0], taken[0] + len(taken))):
+                raise ValueError(
+                    f"the inputs {region!r} of the module {module.name!r} are not one run of "
+                    "the observation's columns, so they take no name: compose the brain with "
+                    "inputs= and without a map, and give them by module.columns(brain)"
+                )
+            spans[region] = [taken[0], taken[-1] + 1]
+        spans = dict(sorted(spans.items(), key=lambda span: span[1][0]))
+        named[module.name] = next(iter(spans.values())) if len(spans) == 1 else spans
+    assert _sense_span(list(named.values())[-1])[1] == brain.inputs
+    if held is not None:
+        brain.space = held
+    brain._senses = {"named": named, "declared": declared is not None, "space": tail}
+    return brain
+
+
 def _compose_trained(
     cls: type[Brain], inputs: Any, actions: int, trained: list[Any], *,
     connectome: Connectome | None, options: dict[str, Any], seed: int, **layout: Any,
@@ -8061,12 +8968,10 @@ def _compose_trained(
         raise ValueError("trained modules take a vector brain in this version: inputs is a count")
     if inputs < 1:
         raise ValueError("a brain around a module holds one input of its own or more")
-    if any(type(m).__name__ == "Map" for m in trained or ()):
-        raise ValueError("a map of things (cadence.space.map.Map) joins a brain as brain.space; "
-                         "trained= takes trained modules, brains saved with save_module")
     if not trained or any(not isinstance(m, Module) for m in trained):
         raise ValueError("trained is a list of trained modules (cadence.load_module of a file "
-                         "save_module wrote)")
+                         "save_module wrote), maps of things (cadence.space.map.Map) and names "
+                         "of modules the library ships (cadence.modules.names)")
     held = [m.name for m in trained]
     if len(set(held)) != len(held):
         raise ValueError("two trained modules share one name")

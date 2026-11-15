@@ -11,6 +11,7 @@ reads them:
 | `learned_code=units` (opt-in) | a code that a region of the brain's own neurons learns while the brain lives | [the learned code](#the-learned-code) |
 | `attention=True` with `learned_code` | Recall selects a recent event and its successor by an ordered pair of learned codes | [single-head attention](memory.md#single-head-learned-code-attention-opt-in) |
 | `PopulationCode(ranges)` before the brain | a few continuous readings (an angle, a velocity, a distance), each spread over tuned inputs | [continuous readings](#continuous-readings-a-population-code) |
+| `senses={name: width}` in place of `inputs` (opt-in) | several senses declared by name, each given by name at every moment; with `code=units` every sense enters the code at unit length | [senses by name](#senses-by-name) |
 
 ```python
 import numpy as np
@@ -288,6 +289,95 @@ assert key.shape == (1, 1024) and (key > 0).sum() == 102 and np.isclose(np.linal
 assert Genome.observation_width(2048, 1024) == 1024     # the key width before building
 assert len(coded.connectome.populations["sensory"]) == 1024  # the cortex reads the code
 ```
+
+## Senses by name
+
+A brain with several senses declares them once, by name. `senses=` takes the place of `inputs=`:
+a sense is a width, or a mapping of field to width for a sense made of channels. The brain's
+inputs are their sum in the declared order, and every operation that takes observations
+(`live`, `wait`, `step`, `act`, `lesson`, `learn`, `value`, `imagine`, `predict`, `accuracy`,
+`fit`, `observation_code` and `stimulus`) also takes a dict of sense to rows.
+
+```python
+creature = Brain.compose(senses={"eyes": {"hue": 12, "shape": 30}, "ear": 22}, actions=3,
+                         arousal=True, seed=0)
+assert creature.inputs == 64                             # the sum, in the declared order
+assert creature.senses == {"eyes": {"hue": slice(0, 12), "shape": slice(12, 42)},
+                           "ear": slice(42, 64)}
+rng = np.random.default_rng(0)
+hue, shape, heard = rng.random((1, 12)), rng.random((1, 30)), rng.random((1, 22))
+action = creature.live({"eyes": {"hue": hue, "shape": shape}, "ear": heard})
+action = creature.live({"eyes": np.hstack([hue, shape])}, reward=[1.0])   # the ear is silent
+row = np.hstack([hue, shape, np.zeros((1, 22))])         # the same moment as one row
+assert np.array_equal(creature.observation_code({"eyes": {"hue": hue}, "ear": heard})[:, :12],
+                      hue)
+assert np.array_equal(creature.observation_code({"eyes": np.hstack([hue, shape])}), row)
+assert creature.describe()["layout"]["senses"]["ear"] == [42, 64]
+```
+
+- **A sense left out is silent.** Its columns read zero, and a dict that names no sense is one
+  silent row. A sense with fields takes rows of its whole width or a dict of its fields, a field
+  left out silent. Each sense's rows are a batch, one row a stream, as observations are.
+- **Rows are taken too.** Rows of the summed width are read as a brain composed with `inputs=`
+  reads them, so a recorded row and a dict of its parts are one observation.
+- **One brain, with names beside it.** A brain composed with `senses=` and no code is the brain
+  composed with `inputs=` at the summed width and the same seed: the same weights, the same
+  acts and the same saved arrays. The sensory region is one population, and the names are held
+  beside it as columns of the observation: `brain.senses` gives each sense's `slice` (a dict of
+  field to `slice` for a sense with fields), `describe()["layout"]["senses"]` the same columns
+  as `[start, stop]`, and a checkpoint keeps them under `senses` in its metadata. A copy, a
+  loaded brain and a grown brain keep the names.
+- **Refused by name.** An observation that names a sense or a field the brain does not have,
+  gives a sense another width than it declared, or gives two senses different numbers of rows
+  is refused with a `ValueError` that names the sense, before anything changes. `compose`
+  refuses `inputs=` beside `senses=`, a width below 1, a sense without a name or without a
+  field, `learned_fields` and `ports` (named senses are vectors), and the name `space`, which
+  is the name a map's read joins the senses under
+  ([a brain that knows where things are](modules.md#a-brain-that-knows-where-things-are)).
+  `Lives` takes one row a life and refuses `senses=`.
+
+### Equal senses in the fixed code
+
+With `code=units` ([the observation code](#the-observation-code)) a brain composed with
+`senses=` gives every field of every sense to the code at unit length. A sense without fields
+is one field, and a field with nothing in it stays zero. The expansion keeps its largest sums,
+so a sense that arrives large decides which units are active: a glimpse of 26 lit inputs has
+length 5.1, a word of one lit input has length 1, and in a code read from the row as it is the
+word moves few of the active units. At unit length each field moves the code alike, whatever
+its width and the size of its values.
+
+```python
+equal = Brain.compose(senses={"glimpse": 40, "word": 24}, actions=3, code=64, seed=0)
+control = Brain.compose(inputs=64, actions=3, code=64, seed=0)    # the row as it is
+glimpse = np.zeros((1, 40))
+glimpse[0, :26] = 1.0                                    # length 5.1
+first, second = np.eye(24)[[3]], np.eye(24)[[17]]        # two words, each of length 1
+
+def moved(brain, a, b):
+    """The units of the code that are active under one observation and not the other."""
+    return int(((brain.observation_code(a) > 0) != (brain.observation_code(b) > 0)).sum())
+
+said = {"glimpse": glimpse, "word": first}
+assert moved(equal, said, {"glimpse": glimpse, "word": second}) == 16    # of 24 active units
+assert moved(control, np.hstack([glimpse, first]), np.hstack([glimpse, second])) == 0
+louder = equal.observation_code({"glimpse": 7.0 * glimpse, "word": first})
+assert np.allclose(louder, equal.observation_code(said))  # a field's size does not move the code
+assert not equal.observation_code({}).any()               # nothing sensed: no code
+```
+
+Over twelve seeds of this brain, 40 glimpses of 26 lit inputs each and two words a glimpse, a
+change of word changes 16.5 of the 24 active units where the senses are equal (15.2 to 18.2 by
+seed) and 5.1 where the row is read as it is (4.0 to 5.8); the two codes lie at cosine .62
+against .92. This is a reading of the code alone, and no behaviour is measured here.
+
+The rule belongs to `senses=` with `code=`. A brain composed with `inputs=` keeps its code to
+the bit, also where a map's read joins its senses, and so does a brain composed with `senses=`
+and no code, whose sensory region holds the observation itself. A learned code
+([`learned_code=units`](#the-learned-code)) takes the senses as they are given: its sensory
+region holds the observation itself, and it learns its own thresholds and, with
+`learned_code_fields`, units of its own for each channel
+([when to declare fields](#when-to-declare-fields)). Scale a sense to the range its meaning
+needs before a brain without a fixed code.
 
 ## The learned code
 

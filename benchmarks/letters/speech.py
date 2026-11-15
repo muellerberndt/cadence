@@ -32,6 +32,7 @@ for _name in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
     os.environ.setdefault(_name, "1")
 
 import argparse  # noqa: E402
+import dataclasses  # noqa: E402
 import hashlib  # noqa: E402
 import importlib.util  # noqa: E402
 import json  # noqa: E402
@@ -579,8 +580,26 @@ def life_batched(cache: Path, protocol: dict[str, Any], seed: int, out: Path,
     The brain is saved at rest at every re-alignment (``save_slot``), and a stopped life
     continues from the latest of those saves: it re-aligns there as the life did and hears the
     same batches. ``stop_after`` ends the life after that many batches, as a lost machine would
-    (None is returned)."""
+    (None is returned). ``place`` in the protocol names where the brain settles (the keywords
+    of ``Brain.compose`` and ``Brain.load``: ``backend``, ``device``, ``precision``); without
+    it the CPU.
+
+    ``teacher`` in the protocol names the lesson: ``"path"`` (as without it) teaches each step
+    the symbol on the forced alignment, the first batches on an even split; ``"soft"`` teaches
+    each step the soft path through the brain's beliefs (``cadence.speech.align``'s
+    ``soft_path``: the share of the transcript's paths that say each symbol at the step), from
+    the first batch on, through the newborn's beliefs there, each moment a ``soft_step``: the
+    lesson of the distribution and a greedy act. The soft teacher reads the beliefs from the
+    brain itself, at rest between two batches with its learned fields held (its parameters
+    stay as they were), every ``align_every`` batches, and the brain is saved at rest every
+    ``save_every`` batches (a multiple of ``align_every``; ``align_every`` without it).
+    ``sharpness`` in the protocol is the soft path's (1 without it): one number, or one per
+    pass, the last held for the passes after.
+    ``rate`` in the protocol multiplies the lesson's two rates (``eta`` and ``eta_bias`` as
+    composed; 1 without it), one number or one per pass in the same form: the brain is retuned
+    where the multiplier changes, and keeps its optimizer's history."""
     import cadence as cd
+    from cadence.speech.align import soft_path, soft_step
 
     train, held = load(cache, "train"), load(cache, "held")
     size = int(protocol["batch"])
@@ -590,14 +609,46 @@ def life_batched(cache: Path, protocol: dict[str, Any], seed: int, out: Path,
                                if p else np.random.default_rng([seed, 7]).permutation(len(train)),
                                lengths, size)]
     every, probe_every = int(protocol["align_every"]), int(protocol["probe_every"])
-    brain = cd.Brain.compose(inputs_of(cache), SYMBOLS, backend="cpu", seed=seed,
+    place = dict(protocol.get("place", {"backend": "cpu"}))  # where the brain settles
+    brain = cd.Brain.compose(inputs_of(cache), SYMBOLS, seed=seed, **place,
                              **protocol["brain"]["genes"])
     matcher = word_matcher(protocol)
     clock = {"training": 0.0, "reading": 0.0, "aligning": 0.0}
     record: dict[str, Any] = {"seed": seed, "parameters": brain.parameters(), "probes": [],
                               "alignments": [], "describe": brain.describe(), "batch": size}
+    soft = protocol.get("teacher", "path") == "soft"
+    if protocol.get("teacher", "path") not in ("path", "soft"):
+        raise ValueError("a protocol's teacher is 'path' or 'soft'")
+    save_every = int(protocol.get("save_every", every))
+    if save_every < 1 or save_every % every:
+        raise ValueError("a protocol's save_every is a multiple of its align_every")
+    per_pass = len(groups) // max(int(protocol.get("passes", 1)), 1)
+
+    def scheduled(name: str, batch: int) -> float:
+        """A protocol's number for a batch: the number itself, or its pass's of a list."""
+        value = protocol.get(name, 1.0)
+        if isinstance(value, (int, float)):
+            return float(value)
+        return float(value[min(batch // max(per_pass, 1), len(value) - 1)])
+
+    def sharpness(batch: int) -> float:
+        return scheduled("sharpness", batch)
+
+    composed = brain.learner.config  # the lesson's rates as composed: what ``rate`` multiplies
+    composed_bias = (composed.eta_bias if composed.eta_bias is not None else composed.eta / 10)
+    rated = [1.0]
+
+    def retuned(batch: int) -> None:
+        """The lesson's rates at the batch's multiplier, the optimizer's history kept."""
+        factor = scheduled("rate", batch)
+        if factor != rated[0]:
+            brain.retune(learning=dataclasses.replace(
+                brain.learner.config, eta=composed.eta * factor,
+                eta_bias=composed_bias * factor))
+            rated[0] = factor
+
     # each batch's paths, by the batch: an utterance heard in two passes takes a path in each
-    paths: dict[int, list[np.ndarray]] = {
+    paths: dict[int, list[np.ndarray]] = {} if soft else {
         m: [even_path(len(train[int(i)][0]), train[int(i)][1]) for i in groups[m]]
         for m in range(min(every, len(groups)))
     }
@@ -609,8 +660,11 @@ def life_batched(cache: Path, protocol: dict[str, Any], seed: int, out: Path,
             paths[m] = []
             for i, (_, logp) in zip(g, batch_beliefs(copy, [train[int(i)][0] for i in g]),
                                     strict=True):
-                new = lt.ctc_path(logp, train[int(i)][1])
-                moved.append(float(np.mean(new != even_path(len(new), train[int(i)][1]))))
+                text = train[int(i)][1]
+                new = (soft_path(logp, text, sharpness=sharpness(m)) if soft
+                       else lt.ctc_path(logp, text))
+                best = np.argmax(new, axis=1) if soft else new
+                moved.append(float(np.mean(best != even_path(len(best), text))))
                 paths[m].append(new)
         return moved
 
@@ -620,40 +674,67 @@ def life_batched(cache: Path, protocol: dict[str, Any], seed: int, out: Path,
     if saved is not None:  # a stopped life: from its latest saved re-alignment
         begin, steps = int(saved[1]["batches"]), int(saved[1]["steps"])
         clock = {**clock, **saved[1]["clock"]}
-        brain = cd.Brain.load(saved[0])
+        brain = cd.Brain.load(saved[0], **place)
         if partial.exists():
             earlier = lt.read_record(partial)
             record["probes"] = [q for q in earlier["probes"] if q["batches"] <= begin]
             record["alignments"] = [a for a in earlier["alignments"] if a["batches"] < begin]
             record["resumed"] = list(earlier.get("resumed", []))
         record.setdefault("resumed", []).append(begin)
+        loaded = brain.learner.config  # the rates the save holds
+        rated[0] = loaded.eta / composed.eta
     for n, group in enumerate(groups):
         if n < begin:
             continue
         if stop_after is not None and n >= stop_after:
             return None
-        if n and n % every == 0:
+        retuned(n)
+        if soft and n and n % save_every == 0:
+            brain.reset()  # a batch begins from rest: the save holds no stream
+            save_slot(brain, out, seed, n // save_every, {
+                "batches": n, "steps": steps, "clock": dict(clock)})
+        if soft and n % every == 0:  # the brain's own beliefs, at rest, its fields held
+            ticked = time.monotonic()
+            brain.reset()
+            moving = brain.fields is not None and brain.fields.learning
+            if moving:
+                brain.fields.learning = False
+            moved = realign(brain, n, n + every)
+            if moving:
+                brain.fields.learning = True
+            clock["aligning"] += time.monotonic() - ticked
+            record["alignments"].append({"batches": n, "moved_from_even": float(np.mean(moved))})
+        if not soft and n and n % every == 0:
             ticked = time.monotonic()
             brain.reset()  # a batch begins from rest: the save holds no stream
             copy = cd.Brain.load(save_slot(brain, out, seed, n // every, {
-                "batches": n, "steps": steps, "clock": dict(clock)}))
+                "batches": n, "steps": steps, "clock": dict(clock)}), **place)
             moved = realign(copy, n, n + every)
             clock["aligning"] += time.monotonic() - ticked
             record["alignments"].append({"batches": n, "moved_from_even": float(np.mean(moved))})
         x, mask = padded([train[int(i)][0] for i in group])
-        labels = np.zeros(mask.shape, dtype=np.int64)
-        for r, path_r in enumerate(paths[n]):
-            labels[: len(path_r), r] = path_r
+        if soft:  # a distribution per step, blank after an utterance's end
+            targets = np.zeros((*mask.shape, SYMBOLS))
+            targets[:, :, 0] = 1.0
+            for r, path_r in enumerate(paths[n]):
+                targets[: len(path_r), r] = path_r
+        else:
+            labels = np.zeros(mask.shape, dtype=np.int64)
+            for r, path_r in enumerate(paths[n]):
+                labels[: len(path_r), r] = path_r
         ticked = time.monotonic()
         brain.reset()
         for t in range(len(x)):
-            brain.step(x[t], teacher=labels[t])
+            if soft:  # the lesson's pull, then a greedy act; the fields step once, at the act
+                soft_step(brain, x[t], targets[t])
+            else:
+                brain.step(x[t], teacher=labels[t])
         clock["training"] += time.monotonic() - ticked
         steps += int(mask.sum())
         paths.pop(n, None)
         if (n + 1) % probe_every == 0 or n + 1 == len(groups):
             brain.reset()
-            copy = cd.Brain.load(brain.save(out / f"speech-{seed}-reading.npz"))
+            copy = cd.Brain.load(brain.save(out / f"speech-{seed}-reading.npz"), **place)
             ticked = time.monotonic()
             answered = []
             for k in range(0, len(held), size):
@@ -697,16 +778,19 @@ def control(cache: Path, model: str, mode: str, seed: int, parameters: int,
     ``offline_epochs``, else ``epochs``); read the same way, after every pass with
     ``read_each_pass`` and at the end without. With ``out`` the learner is saved after every
     pass and a stopped run continues from there (``stop_after`` passes ends it as a lost machine
-    would)."""
+    would). ``controls_device`` in the protocol names where torch runs the learner (the CPU
+    without it); its first weights are drawn on the CPU from the seed wherever it runs."""
     import controls as ct
     import torch
 
     torch.set_num_threads(1)
+    device = str(protocol.get("controls_device", "cpu"))
     train, held = load(cache, "train"), load(cache, "held")
     inputs = train[0][0].shape[1]
     matcher = word_matcher(protocol)
     width = ct.matched_width(model, parameters, inputs, SYMBOLS)
-    learner = ct.Learner(model, "ctc", width, inputs, SYMBOLS, seed, ct.RATES[mode])
+    learner = ct.Learner(model, "ctc", width, inputs, SYMBOLS, seed, ct.RATES[mode],
+                         device=device)
     order = np.random.default_rng([seed, 7]).permutation(len(train))
     record: dict[str, Any] = {"arm": f"{model}-ctc-{mode}", "seed": seed, "width": width,
                               "parameters": ct.count(learner.net), "probes": []}
@@ -717,9 +801,9 @@ def control(cache: Path, model: str, mode: str, seed: int, parameters: int,
         ticked = time.monotonic()
         with torch.no_grad():
             for x, _ in held:
-                logits = learner.net(torch.from_numpy(x[None]))[0]
-                actions.append(np.argmax(logits.numpy(), -1))
-                logps.append(torch.log_softmax(logits, -1).numpy().astype(np.float64))
+                logits = learner.net(torch.from_numpy(x[None]).to(device))[0]
+                actions.append(np.argmax(logits.cpu().numpy(), -1))
+                logps.append(torch.log_softmax(logits, -1).cpu().numpy().astype(np.float64))
         read_seconds = time.monotonic() - ticked
         score = {**read(actions, held), **locate(actions, logps, held)}
         if matcher is not None:
@@ -740,7 +824,7 @@ def control(cache: Path, model: str, mode: str, seed: int, parameters: int,
     best, waited, first = float("inf"), 0, 0
     state = None if out is None else out / f"speech-{record['arm']}-{seed}.state.pt"
     if state is not None and state.exists():  # a stopped run: from its last whole pass
-        kept = torch.load(state, weights_only=False)
+        kept = torch.load(state, weights_only=False, map_location=device)
         learner.net.load_state_dict(kept["net"])
         learner.opt.load_state_dict(kept["opt"])
         learner.work = dict(kept["work"])

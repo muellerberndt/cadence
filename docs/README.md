@@ -25,7 +25,7 @@ compares it with networks trained by backpropagation.
 ## Install
 
 ```sh
-python -m pip install cadence-net==0.99.1
+python -m pip install cadence-net==0.100.0
 ```
 
 Cadence needs Python 3.11 or later and NumPy. Optional extras add speed and hardware:
@@ -36,10 +36,10 @@ Cadence needs Python 3.11 or later and NumPy. Optional extras add speed and hard
 | `[accel]` | PyTorch | NVIDIA GPUs (CUDA) |
 | `[apple]` | MLX | Apple silicon GPUs |
 
-For example `python -m pip install "cadence-net[fast]==0.99.1"`. From a checkout of the
+For example `python -m pip install "cadence-net[fast]==0.100.0"`. From a checkout of the
 repository, run `python -m pip install -e .` at its root. A new brain picks the fastest backend
 the machine has for its size by itself ([backends](backends.md)). The
-[v0.99.1 documentation](https://github.com/muellerberndt/cadence/blob/v0.99.1/docs/README.md)
+[v0.100.0 documentation](https://github.com/muellerberndt/cadence/blob/v0.100.0/docs/README.md)
 is pinned to the release tag.
 
 ## Your first brain
@@ -120,14 +120,16 @@ Then, in this order:
 | The world to pay for good actions | `step(reward=...)`, `live`, `actor_eta` | [Learning from reward](reward.md) |
 | A memory for a task | the comparison table | [Memory](memory.md) |
 | Wide inputs: images, codes | image `inputs`, `code=units`, `learned_code=units` | [Wide inputs](senses.md) |
+| Several senses, each declared once and given by name; a brain that reads a map of things itself | `senses={name: width}`, `trained=["place"]` | [Senses by name](senses.md#senses-by-name), [a brain that knows where things are](modules.md#a-brain-that-knows-where-things-are) |
 | A speech recogniser from recordings and transcripts, adapted to a speaker, on live audio | `cadence.speech` (opt-in) | [Speech](speech.md) |
 | To track where things are, in view and out of it, by kind and by place, and where a hidden thing that moves has gone | `cadence.space` (opt-in): `Map`, `Map(physics=True)`, `forecast` | [Space: tracking what is where](space.md) |
+| A signal for what a moment brought that the brain did not carry, and one focus drawn by it | `surprise=True` (opt-in): `brain.surprise`, `brain.focus`, `Map(surprise=True)` | [Surprise, and the focus it draws](start.md#surprise-and-the-focus-it-draws-opt-in) |
 | To read or change a living brain | `describe`, `retune`, `last_settlement` | [Tune and read a living brain](tune.md) |
 | A deep or wide brain | `modules=(64, 32, 32)`, `apical=0.25`, `teaching="deep"` | [Larger brains](tune.md#larger-brains) |
 | A GPU, another device or precision | `backend`, `device`, `precision` | [Backends](backends.md) |
 | A brain that keeps learning after it has acquired a skill | `maturity=True` | [Maturity](reward.md#maturity-opt-in) |
 | To give a trained brain a memory, more outputs or another brain's regions | `grow`, `graft` | [Grow and combine brains](grow.md) |
-| A module that arrives as a file: the built-in map of things, or a trained brain's regions of your own | `cd.modules.load("place")`, `cd.load_module(path)`, `brain.space`, `save_module`, `trained=[module]`, `graft(module)` | [Modules](modules.md#modules-parts-that-arrive-as-files) |
+| A module that arrives as a file: the built-in map of things, or a trained brain's regions of your own | `trained=["place"]`, `cd.modules.load("place")`, `cd.load_module(path)`, `brain.space`, `save_module`, `trained=[module]`, `graft(module)` | [Modules](modules.md#modules-parts-that-arrive-as-files) |
 | To show a result | baselines, controls, receipts | [Evaluate a brain](evaluate.md) |
 | To design a continuing application or a behavioural claim | observation and action boundaries, acquisition and recovery | [Task design](task-design.md), [the design direction](world-model.md) |
 | Your own regions, a connectome, evolution | `Genome`, `develop`, `compose(connectome=)`, `evolve` | [Your own anatomy](anatomy.md) |
