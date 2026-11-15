@@ -52,7 +52,9 @@ class SynapticMemory(FastSynapses):
     ``i_k = 1 / (1 + (recent_k / FADE_FLOOR) ** 2)`` the coordinate's idleness: a record in use
     does not fade, one idle for some fifteen thousand moments starts to, and a deeply used one
     fades far more slowly. Each stream keeps its residual around the shared records. No count is
-    kept: the depth and the trace are sums of activity, as maturity's use is.
+    kept: the depth and the trace are sums of activity, as maturity's use is. With ``fade_keep``
+    (cadence#336) the records along a coordinate whose depth has reached it are kept for good:
+    they stop fading (the depth only grows, so a kept coordinate stays kept).
     """
 
     decay: float = 0.9
@@ -62,6 +64,7 @@ class SynapticMemory(FastSynapses):
     gate_noise: np.ndarray | None = field(default=None, repr=False)
     maturity: Maturity | None = field(default=None, repr=False, compare=False)
     fade: float = 0.0
+    fade_keep: float = 0.0
     fade_depth: np.ndarray | None = field(default=None, repr=False)
     fade_recent: np.ndarray | None = field(default=None, repr=False)
 
@@ -90,6 +93,12 @@ class SynapticMemory(FastSynapses):
         if not np.isfinite(self.fade) or not 0 <= self.fade < 1:
             raise ValueError("memory_fade must lie in [0, 1)")
         self.fade = float(self.fade)
+        if isinstance(self.fade_keep, bool) or not np.isfinite(self.fade_keep) \
+                or self.fade_keep < 0:
+            raise ValueError("fade_keep is the depth past which records are kept: 0 or more")
+        self.fade_keep = float(self.fade_keep)
+        if self.fade_keep and not self.fade:
+            raise ValueError("fade_keep keeps records from the fade: it needs fade above 0")
         if self.fade and self.fade_depth is None:
             self.fade_depth = np.zeros(self.key_width)
             self.fade_recent = np.zeros(self.key_width)
@@ -113,6 +122,8 @@ class SynapticMemory(FastSynapses):
                     self.fade_recent = self.fade_recent + used
         idle = 1.0 / (1.0 + (self.fade_recent / self.FADE_FLOOR) ** 2)
         lost = self.fade * idle / (1.0 + (self.fade_depth / self.FADE_SCALE) ** self.FADE_ORDER)
+        if self.fade_keep:  # coordinates used to the kept depth are kept for good
+            lost = np.where(self.fade_depth >= self.fade_keep, 0.0, lost)
         if self._device is not None:  # a fading store rests on the host (``reside``)
             self.leave_device()
         shed = self.consolidated * lost[:, None]
@@ -311,6 +322,8 @@ class SynapticMemory(FastSynapses):
         gate: dict[str, Any] = {} if self.gate_noise is None else {"surprise_gate": True}
         if self.fade:
             gate["fade"] = self.fade
+        if self.fade_keep:
+            gate["fade_keep"] = self.fade_keep
         return {
             **super().to_dict(),
             "kind": "consolidating",

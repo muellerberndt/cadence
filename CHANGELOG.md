@@ -45,6 +45,35 @@
   record answers at .997 to 1.000; every declared gate passes.
 - With both options unset a brain is composed, reads, learns and saves as it did.
 
+### A record's strength (#336)
+
+A long-term record grows strong when it comes up again and again or when it came with a large
+surprise, is kept for good past a threshold, and fades away below it. Every setting is off by
+default: without them `cadence.LongTermMemory` and `SynapticMemory` are what they were, to the
+bit. The guide is [docs/memory.md](docs/memory.md#a-records-strength-opt-in).
+
+- **`LongTermMemory.write(..., surprise=s)`**: a write counts `1 + s` tellings in its record's
+  depth. **`LongTermMemory(novelty=weight)`** reads the surprise of a write that gives none as
+  `weight` times how far its nearest record lies from the key (1 less their cosine, at most 1).
+- **`LongTermMemory(keep=depth)`**: a record whose depth (tellings, surprise and recall's
+  attention) reaches it is kept for good: it stops fading and is replaced last.
+- **`LongTermMemory(forget=fade)`**: a record below `keep` that fades that far is forgotten; no
+  read finds it and a new record takes its slot first.
+- **`LongTermMemory(blend=True)`** (with `cosine=True`): a take told again moves its record
+  toward it by `1 / (1 + deep)`, so the record holds the mean of its takes.
+- **`LongTermMemory(familiar=weight)`**: a read's score gains `weight * log(1 + deep)`, so the
+  deeper of two equal matches is read first.
+- **`SynapticMemory(fade_keep=depth)`**: with a fade, the records along a key coordinate whose
+  depth has reached it stop fading.
+- **In a brain**: `Brain.compose(longterm_strength=True)` gives each stream's records these
+  rules (kept past 8 tellings, forgotten after about 8 capacities' moments unused, a telling as
+  the record holds it counted, a read crediting only the record it delivers), with the brain's
+  surprise at the write (`brain.surprise`, #337) counted as tellings; `Brain.compose(memory_fade=,
+  memory_keep=depth)` keeps the place records used past that depth. A brain with either saves
+  `cadence-brain/6`, which 0.99.0 and earlier refuse by name.
+- **A chamber**, `benchmarks/memory_strength/strength.py`: the dose curve, the one-shot write
+  and the clean form beside the store without the settings.
+
 ## 0.99.1 - 2026-11-15
 
 A fix release. A learned code under several modules is read at unit length by the first module

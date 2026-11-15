@@ -134,7 +134,8 @@ brain](anatomy.md#genome-development-brain)).
 Brain(connectome, *, episodic=True, consolidation=0.05,
       memory_rate=1.0, memory_amplitude=1.0, memory_choice=False,
       memory_context=0.0, memory_extinction=0.0,
-      memory_context_hold=None, memory_fade=0.0, maturity=False, maturity_scale=10.0,
+      memory_context_hold=None, memory_fade=0.0, memory_keep=0.0, maturity=False,
+      maturity_scale=10.0,
       maturity_recovery=200000.0,
       working_memory_decay=0.0, working_memory_amplitude=3.0,
       efference_decay=0.2, efference_amplitude=0.0,
@@ -176,6 +177,7 @@ of 8 decisions, demonstrations recorded at 1.0, 24 active separation cells) are 
 | --- | --- |
 | `memory_choice` needs `episodic=True` | `ValueError` |
 | `memory_fade` in `[0, 1)`, and above 0 needs `episodic=True` ([records that fade](memory.md#records-that-fade-with-disuse-opt-in)) | `ValueError` |
+| `memory_keep` 0 or more, and above 0 needs `memory_fade` ([a record's strength](memory.md#a-records-strength-opt-in)) | `ValueError` |
 | `memory_context`, `memory_extinction` need `memory_choice`; `memory_context_hold` (`"unchanged"` or `"punished"`) needs `memory_choice` and `memory_context` | `ValueError` |
 | `learned_code` at least 2; `learned_code_fields` without it, `code` beside it, an image brain, the `torch` backend, or a connectome without the region's populations and complete synapses | `ValueError` |
 | `learned_fields` at least 2, on an image of at least 8 by 8 pixels, without `code` or `learned_code`; `image`, `ports` or `fields_motor` without `learned_fields`; `ports` negative or not an integer; `fields_motor` negative or not finite; `grow` and `graft` of a brain that holds them | `ValueError` |
@@ -262,7 +264,10 @@ the records' settings under `memories/longterm` in the metadata and, under
 `memories/longterm/`, the streams' turns (`since`, `read_slots`) and every stream's records
 (`store/<s>/keys`, `values`, `deep`, `recent`, `faded`, their first `count` rows, and
 `store/<s>/state`). `Brain.load` refuses records under another name and a `cadence-brain/4` file
-without them.
+without them. A brain whose memories grow strong (`longterm_strength`, `memory_keep`, #336)
+writes `cadence-brain/6`, which 0.99.0 and earlier refuse by name, whatever else it holds: the
+same members, with each record's `kept` and `gone` rows beside its sums and the place records'
+`fade_keep` under their settings.
 
 A brain with a [held message](memory.md#held-message) (`message`), [learned
 fields](senses.md#learned-receptive-fields) (`learned_fields`, `ports`), an actor's hold
@@ -508,7 +513,7 @@ FastSynapses(pre, post, decay=1.0, rate=1.0, amplitude=1.0, normalize=False,
              replace=False, rule="hebb", separator=None, writes=0)
 SynapticMemory(pre, post, decay=0.9, rate=1.0, amplitude=1.0, normalize=False,
                replace=False, rule="delta", separator=None, writes=0,
-               consolidation=0.05, gate_noise=None, maturity=None)
+               consolidation=0.05, gate_noise=None, maturity=None, fade=0.0, fade_keep=0.0)
 PatternSeparator(inputs, expansion, winners, seed=0, center=0.0, fan_in=0, cover=0)
 ```
 
@@ -525,7 +530,9 @@ array, each record's noise scale) and `maturity` (a `Maturity`) set, its writes 
 surprise-gated ([maturity](memory.md#maturity-and-surprise-gated-writes)); a composed brain
 with `maturity=True` sets them on its place records, shares its actor's `Maturity` with them and
 saves `gate_noise` with `arrays()`. `GATE_WIDTH` (2.0) and `GATE_RATE` (0.05) are the gate's
-constants.
+constants. `fade` (`memory_fade`) fades idle records by `fade_moment(key)`, and `fade_keep`
+(0, off) is the depth past which a coordinate's records stop fading; it refuses a `fade_keep`
+without a `fade`.
 `PatternSeparator` codes keys by a fixed random projection keeping `winners` of `expansion`:
 `code(key, learn=False)`, `habituate(keys)`, `arrays()`, `channels`, `to_dict()`; it raises
 `ValueError` for nonpositive sizes, `winners > expansion`, a `fan_in` or `cover` without room,
@@ -535,16 +542,25 @@ associative store: [memory](memory.md#associative-store-the-hippocampus).
 ```text
 LongTermMemory(width, value_width, capacity, temperature=0.0, candidates=256, expansion=8192,
                winners=64, depth=2.0, idle=None, hold=None, revise=0.9, fade=True, seed=0,
-               direct=None, dtype=float64, cosine=False, pairs=0, apart=0)
+               direct=None, dtype=float64, cosine=False, pairs=0, apart=0, blend=False,
+               familiar=0.0, keep=0.0, forget=0.0, novelty=0.0)
 LongTermRead(slots, weights)
 ```
 
 `LongTermMemory` (in `cadence.longterm`) holds records, a key with a value, for one stream under a
 budget of `capacity` slots; no `Brain.compose` setting builds it. `write(key, value,
-recognised=None) -> (slot, revised)` rewrites the record whose key it recognises (cosine
-`revise`), else takes an empty slot, else the most faded one (`fade=False`: the slot written
-longest ago); `recognised` is a caller's recognition from its own read (the slot, or -1 for none),
-and the write then reads nothing itself. `read(cue, heads=1,
+recognised=None, source=None, surprise=None) -> (slot, revised)` rewrites the record whose key
+it recognises (cosine `revise`), else takes an empty slot, else the most faded one
+(`fade=False`: the slot written longest ago); `recognised` is a caller's recognition from its
+own read (the slot, or -1 for none), and the write then reads nothing itself. `surprise` (0 or
+more) adds that many tellings to the record's depth; without it a store with `novelty` reads
+it from its nearest record. A record's strength ([memory](memory.md#a-records-strength-opt-in),
+#336, each off by default): `blend` (needs `cosine`) moves a record told again toward the new
+take by `1 / (1 + deep)`; `familiar` adds `familiar * log(1 + deep)` to a read's scores;
+`keep` is the depth at which a record is kept for good (it stops fading; a full memory replaces
+the most faded record not kept, else the shallowest kept one); `forget` the fade at which a
+record below it is forgotten (no read finds it); both need `fade=True`, and `kept` and `gone`
+are their state, saved with `arrays()`. `read(cue, heads=1,
 credit=True) -> LongTermRead` picks `candidates` slots by a sparse address of `winners` of
 `expansion` units and reads them as the recall memory reads its slots, at `temperature` (0: each
 head reads its first choice among the slots left, whole), scoring each by its key's dot product
@@ -584,7 +600,13 @@ brain's held message from a turn; it needs `message=units`, `message_boundary` a
 (0.75), `longterm_revise` (0.999), `longterm_turn` (None) and `longterm_rare` (0.03) are
 construction settings, as are `longterm_pairs` (0), `longterm_expansion`, `longterm_winners`,
 `longterm_candidates` (None: the store's own) and `longterm_fade` (True), which build each
-stream's store (`address()` names those that differ from the store's founders); with `longterm_turn=channel` every moment with that input channel on is a
+stream's store (`address()` names those that differ from the store's founders), and
+`longterm_strength` (False; needs `longterm_fade`, not built for `longterm_distinct`): each
+stream's store keeps a record for good past `LongTermRecords.KEEP` (8) tellings and forgets one
+below it that fades as far as its `hold` (8 capacities); a telling of a record as it holds itself deepens it,
+a read deepens only the record it delivers, the records read store by store, and `hear(x,
+surprise=)` counts the brain's surprise as tellings ([a record's
+strength](memory.md#a-records-strength-opt-in)); with `longterm_turn=channel` every moment with that input channel on is a
 turn, a turn's key is the rare units of the message's codes heard since the last value
 (`content(window)`), and `window`, `key`, `heard` and `moments` hold the streams' windows, their
 keys and the units' counts. `longterm_distinct=share` (with `longterm_turn`) reads by codebook
