@@ -77,8 +77,8 @@ as `completion.py` returns it, and the brain answers about a thing that is nowhe
 ## Readings
 
 Development readings on the meaning chamber's founder 33400121, every one frozen and greedy.
-The brain is the meaning chamber's equal-senses brain: it was trained with its glimpse from the
-eyes and is read here with no further lesson. One founder, one brain, no declared protocol.
+Unless a section says otherwise the brain is the meaning chamber's equal-senses brain: it was
+trained with its glimpse from the eyes and is read here with no further lesson.
 
 ### A thing out of view
 
@@ -109,6 +109,25 @@ eyes and is read here with no further lesson. One founder, one brain, no declare
   length from the settle of a look to the settle of the attended read and by .66 between the
   reads of two things of one room, and `where` lies on the attended thing's cells alone. The
   carried sheet is the same after a read.
+
+### A brain trained with its glimpse from the map
+
+`life.py` lived the pretraining mix (400 blocks, lesson weights .25, .10, .05) from the
+equal-senses lineage's checkpoint after names, colour and where, with its glimpse read from the
+map at every moment, the draws of the equal-senses brain's own mix. Read at its last block:
+
+| Reading | Equal-senses brain (glimpse from the eyes) | Trained through the map |
+| --- | --- | --- |
+| demo room, right in all three passes | .80 | .84 |
+| fresh rooms, pairs of the training rooms | .93 | .93 |
+| fresh rooms, kept-out pairs | .81 | .83 |
+| "what colour has the X" on kept-out pairs (chamber) | .77 | .84 |
+| "what colour is this" on kept-out pairs (chamber) | .74 | .82 |
+| demo room through the host, the thing asked about behind a screen | .86 | .90 (.08 through the eyes) |
+| "where is the X", the thing behind a screen and moved (chamber) | .93 | .96 |
+
+The brain trained through the map reads the same through the eyes as through the map on every
+row with things in view: in view the two glimpses are one code.
 
 ### Completion from one facet
 
@@ -207,8 +226,9 @@ class recalled, the voice answers for that kind.
 
 ### Limits
 
-- One founder and one brain, trained with its glimpse from the eyes; development readings with
-  no declared protocol.
+- One founder; development readings with no declared protocol. The brain trained through the
+  map lived the pretraining mix through the map from a checkpoint whose names, colour and where
+  were learned through the eyes.
 - The records' key that completes a word is the sparse mixed code, the population where the
   attended thing's senses and the heard word meet before the settle. Keyed by the association's
   settled activity, a word alone finds records named by it on .11 to .29 of the heads' reads.
