@@ -15,7 +15,9 @@ map's read of the attended thing, beside the same brain fed the eyes' direct rep
 ``source`` "eyes" feeds the glimpse the eyes' report (nothing, for a hidden thing); "map" feeds
 it the map's read. ``map activity`` reads how far the map's own read regions (``where`` and
 ``what``) move between the settle of a look and the settle of the attended read, and whether
-the sheet's carried potentials are the same after a read.
+the sheet's carried potentials are the same after a read. Where the folder holds a ``spec.json``
+the demo room is asked through the page's host as well (``mapped.MappedHost``): every question
+on every thing, with the thing asked about in view and behind a screen.
 """
 
 from __future__ import annotations
@@ -96,6 +98,27 @@ def map_activity(p, held: set, rooms: int = 64, seed: int = 5) -> dict[str, floa
             "the carried sheet is unchanged by a read": same, "rooms": rooms}
 
 
+def demo_room(folder: Path) -> dict[str, float]:
+    """The demo room through the page's host: the share of its questions answered right, the
+    thing asked about in view and behind a screen, the glimpse from the eyes and the map."""
+    ds, ep, ps = lane.demo_stage, lane.export_page, lane.pretrain_stage
+    out = {}
+    for source in ("eyes", "map"):
+        m = mapped.MappedHost(folder / "brain.npz", folder / "spec.json", seed=lane.SEED,
+                              source=source)
+        m.records = None
+        for how in ("in view", "behind a screen"):
+            ok = []
+            for words, answer, focus, _ in ps.room_questions():
+                things = ds.room_things(focus)
+                m.see(things)  # the eyes look over the room; then the thing is hidden
+                if how != "in view":
+                    things = [{**t, "hidden": bool(t["focus"])} for t in things]
+                ok.append(ep.ask(m, things, list(words), False) == answer)
+            out[f"{how} / {source}"] = round(float(np.mean(ok)), 3)
+    return out
+
+
 def main(argv: list[str]) -> None:
     folder, out = Path(argv[1]), Path(argv[2])
     n = int(argv[3]) if len(argv) > 3 else 96
@@ -115,6 +138,9 @@ def main(argv: list[str]) -> None:
             out.write_text(json.dumps(res, indent=1))
     res["map activity"] = map_activity(p, held)
     print(json.dumps(res["map activity"]), flush=True)
+    if (folder / "spec.json").exists():
+        res["demo room through the host"] = demo_room(folder)
+        print(json.dumps(res["demo room through the host"]), flush=True)
     out.write_text(json.dumps(res, indent=1))
 
 

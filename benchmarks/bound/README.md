@@ -102,6 +102,9 @@ eyes and is read here with no further lesson. One founder, one brain, no declare
 - `compare.py`: the demo room (.80 right in all three passes), fresh rooms (.93 on pairs of the
   training rooms, .81 on kept-out pairs) and every focus form read the same through the map as
   through the eyes.
+- The demo room through the page's host (`mapped.MappedHost`), every question on every thing in
+  one pass: .84 with the thing in view, through the eyes and through the map; with the thing
+  asked about behind a screen, .06 through the eyes and .86 through the map.
 - The map's own read regions follow the attended thing: `where` and `what` move by .85 of their
   length from the settle of a look to the settle of the attended read and by .66 between the
   reads of two things of one room, and `where` lies on the attended thing's cells alone. The
