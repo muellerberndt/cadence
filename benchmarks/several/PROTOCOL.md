@@ -171,4 +171,4 @@ An answer of `heads` costs 2.65e8 multiply-accumulates for one part and 5.32e8 f
 forward pass of the transformer over its window and the question costs 1.20e9 to 1.25e9. Located terms: on
 founder 3261 chains of three hops on new subjects are delivered at .735 (1.000 on the lesson
 subjects): a head's gates read the question's whole key, the subject's own form code with it.
-The offline transformer's held cross-entropy was still falling when its 3 hours ended.
+The offline transformer's held cross-entropy was falling when its 3 hours ended.
