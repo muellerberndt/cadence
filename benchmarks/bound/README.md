@@ -205,6 +205,25 @@ questions (the right answer is "round" for a round kind and "no" for another):
 The answer follows the thing the name recalls: with the records of a kind of the other shape
 class recalled, the voice answers for that kind.
 
+### Limits
+
+- One founder and one brain, trained with its glimpse from the eyes; development readings with
+  no declared protocol.
+- The records' key that completes a word is the sparse mixed code, the population where the
+  attended thing's senses and the heard word meet before the settle. Keyed by the association's
+  settled activity, a word alone finds records named by it on .11 to .29 of the heads' reads.
+- A read is a prototype of the things a word named. With records of fewer things it is
+  coarser: on records of 80 things (350 namings) a word alone returns its own word on .97 of
+  the words; on records of 40 things, .69. At 160 things a ball's name drew the focus to an
+  apple in one room of 32.
+- Five heads that must agree say nothing of what the named things differ in; one head returns
+  one record whole. In a room of other things one head reads a kind's word at .89, five heads
+  at .80.
+- A sense alone gains little over its control, and a thing seen with nothing heard returns no
+  word: which facet's word is wanted is nothing the read says.
+- Which read holds to the ear, and that a recalled form moves the focus, are born rules of
+  `named.py`, set by hand. The map takes the world's kind number with each report.
+
 ## Run
 
 ```sh
