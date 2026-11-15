@@ -4,7 +4,7 @@
 
 # Cadence
 
-[**Live demos**](https://cadence.floatingpragma.ai/) · [Pragma Research](https://floatingpragma.ai/) · [Documentation](https://github.com/muellerberndt/cadence/blob/main/docs/README.md) · [Application demos](https://github.com/muellerberndt/cadence-demos) · [Paper](https://philpapers.org/rec/MUECAP-2) · [PyPI](https://pypi.org/project/cadence-net/)
+[**Live demos**](https://cadence.floatingpragma.ai/) · [Parrot video](https://www.youtube.com/watch?v=amR3cnrmgDo) · [Pragma Research](https://floatingpragma.ai/) · [Documentation](https://github.com/muellerberndt/cadence/blob/main/docs/README.md) · [Application demos](https://github.com/muellerberndt/cadence-demos) · [Paper](https://philpapers.org/rec/MUECAP-2) · [PyPI](https://pypi.org/project/cadence-net/)
 
 [![CI](https://github.com/muellerberndt/cadence/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/muellerberndt/cadence/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](https://github.com/muellerberndt/cadence/blob/main/LICENSE)
