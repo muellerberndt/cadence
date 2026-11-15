@@ -269,3 +269,40 @@ def test_a_cue_from_the_brains_own_state_fetches_records_and_their_context():
     assert heads.last == last
     with pytest.raises(ValueError, match="cue"):
         heads.fetch(np.zeros(3))
+
+
+def test_the_heads_read_records_that_grow_strong():
+    """With ``longterm_strength`` (#336) the heads read as without it, and a record a head
+    delivers is deepened by that read."""
+    b, plain = brain(longterm_strength=True), brain()
+    told(b)
+    told(plain)
+    records = b.longterm
+    assert records.attended is not None and records.strength
+    store = records.stores[0]
+    before = store.deep[: store.count].copy()
+    np.testing.assert_array_equal(ask(b, R, OF, 3), ask(plain, R, OF, 3))
+    held = [int(slot) for slot in records.read_slots[0] if slot >= 0]
+    assert held == [int(slot) for slot in plain.longterm.read_slots[0] if slot >= 0]
+    assert held and all(store.deep[slot] > before[slot] for slot in held)
+
+
+def test_a_brain_with_learned_heads_names_them_in_its_file(tmp_path):
+    """A brain with ``longterm_attention`` or ``longterm_motor`` saves ``cadence-brain/5`` with
+    the feature ``heads``; a brain without them keeps the format of long-term records."""
+    import json
+
+    def record(b, name):
+        with np.load(b.save(tmp_path / name), allow_pickle=False) as archive:
+            return json.loads(str(archive["brain"]))
+
+    b = brain()
+    told(b)
+    saved = record(b, "heads.npz")
+    assert saved["format"] == "cadence-brain/5" and saved["features"] == ["heads"]
+    assert cd.Brain.load(tmp_path / "heads.npz").longterm.attended is not None
+    both = record(brain(longterm_strength=True), "both.npz")
+    assert both["features"] == ["heads", "strength"]
+    plain = record(brain(longterm_attention=None), "plain.npz")
+    assert plain["format"] == "cadence-brain/4" and "features" not in plain
+

@@ -1150,9 +1150,6 @@ class LongTermRecords:
     ) -> None:
         if strength and not fade:
             raise ValueError("longterm_strength reads the records' fade: it needs longterm_fade")
-        if strength and distinct is not None:
-            raise ValueError("longterm_strength is built for records read by their keys: it is "
-                             "not built for longterm_distinct")
         if turn is None and (
             message is None or message.boundary is None or not message.boundary_holds
         ):
@@ -1472,6 +1469,8 @@ class LongTermRecords:
                     if slot >= 0:
                         out[row, columns] = self.amplitude * store.values[slot]
                         self.read_slots[row, head] = slot
+                        if self.strength and not self._private:  # recall that is used deepens
+                            store.attend(slot)
             self.counts["reads"] += 0 if self._private else len(rows)
             return out
         if self.batched:
@@ -1612,6 +1611,18 @@ class LongTermRecords:
         for e in entries.tolist():
             postings.setdefault(e, []).append(slot)
 
+    def _forgotten(self, row: int, store: LongTermMemory) -> None:
+        """With ``strength`` and ``distinct``: a record the store has forgotten leaves the
+        entries' postings, so no read by what tells records apart finds it; its slot is the
+        first a new record takes."""
+        members = self._members[row] if row < len(self._members) else {}
+        if not members or not len(store.gone):
+            return
+        for slot in np.flatnonzero(store.gone[: store.count]).tolist():
+            if slot in members:
+                self._hold(row, slot, np.zeros(0, dtype=np.int64))
+                del members[slot]
+
     def _read_distinct(self, row: int, cue: np.ndarray, exclude: list[int] | None = None) -> int:
         """The latest record of stream ``row`` that holds at least ``match`` of the weight of
         the cue's distinct entries (``cue`` the entries, ascending); with ``best`` the latest of
@@ -1701,7 +1712,10 @@ class LongTermRecords:
                 store = self.stores[int(row)]
                 whole = np.maximum(self.key[row], codes[row])
                 said = self.entry(codes[row])
-                slot, _ = store.write(whole, x[row], recognised=-1)
+                slot, _ = store.write(
+                    whole, x[row], recognised=-1,
+                    surprise=None if self._told is None else float(self._told[row]),
+                )
                 if self.batched:
                     self._index[row, :, slot] = whole.astype(np.uint8)
                 self._hold(int(row), int(slot), np.union1d(self._cues[row], [said]))
@@ -1783,8 +1797,10 @@ class LongTermRecords:
     def _live(self, batch: int) -> None:
         """One moment of every stream's records: each fades by the store's law."""
         if not self.batched:
-            for store in self.stores[:batch]:
+            for row, store in enumerate(self.stores[:batch]):
                 store.moment()
+                if self.strength and self.distinct is not None:
+                    self._forgotten(row, store)
             return
         held = max((store.count for store in self.stores[:batch]), default=0)
         if not held:

@@ -2902,19 +2902,25 @@ cosine to the clean pattern .99 after 16 takes, the nearest take's .90).
 good past 8 tellings (`LongTermRecords.KEEP`) and forgets one below it once it has faded for as
 long as the store keeps its depth (`hold`, eight capacities), so a fact told once and never used
 is gone after about eight times as many moments as the store has slots. A fact told again as the record holds it (which writes nothing) counts
-one more telling, and a read deepens the record only where it delivers it. The brain's own
-surprise at the moment a record is written counts as tellings: from `brain.surprise` (per stream
-and input unit, each unit's miss of its forecast over that forecast's usual size, #337), the
-root mean square over the units less one, so a moment as surprising as usual adds nothing and
-one eight times as surprising is kept at once. Without a surprise the brain counts each telling
-as one.
+one more telling, and a read deepens the record only where it delivers it. In a brain composed
+with `surprise=True` ([surprise](start.md#surprise-and-the-focus-it-draws-opt-in)) the brain's
+own surprise at the moment a record is written counts as tellings: `brain.surprise.moment` is the
+log of how many times its tolerated size the most surprised neuron's residual was, and the write
+counts that ratio less one. A moment within what every neuron is used to adds nothing, and one
+nine times the tolerated size counts as eight tellings more, so its record is kept at once.
+Without `surprise` the brain counts each telling as one.
+
+Records read by what tells them apart (`longterm_distinct`, with turns, and the learned heads of
+`longterm_attention`) grow strong too. There every telling is a record of its own, so a record
+deepens by the reads that deliver it and by the surprise at its write; a record the store
+forgets leaves the entries the reads look under, and no head finds it.
 
 The associative store's place records have the same threshold: `SynapticMemory(fade_keep=depth)`,
 and in a brain `Brain.compose(memory_fade=..., memory_keep=depth)`, keeps the records along a
 key coordinate whose [fade](#records-that-fade-with-disuse-opt-in) depth has reached it, so they
 stop fading. Repetition sums in its slow matrix, and `salience` raises its slow write rate. A
-brain with either setting saves checkpoint format `cadence-brain/6`, which 0.99.0 and earlier
-refuse by name.
+brain with either setting saves checkpoint format `cadence-brain/5` with the feature `strength`
+in its record, which 0.99.1 and earlier refuse by the format's name.
 
 **Beside a brain.** The memory's read of a moment's key is held on input coordinates of its own,
 as a recall port is held through a settle, and lessons teach the brain to answer from it:

@@ -294,18 +294,37 @@ def checkpoint_format(path):
         return json.loads(str(archive["brain"]))["format"]
 
 
+def checkpoint_features(path):
+    import json
+
+    with np.load(path, allow_pickle=False) as archive:
+        return json.loads(str(archive["brain"])).get("features")
+
+
 def test_a_brain_s_records_grow_strong_by_retelling_and_surprise_and_the_rest_fade(tmp_path):
     import cadence as cd
 
-    brain = records_brain(longterm_strength=True)
+    brain = records_brain(longterm_strength=True, surprise=True)
     records = brain.longterm
     assert records.strength and not records.batched
+    for _ in range(4):  # a life before the facts: every word heard, no turn, so nothing written
+        brain.reset()
+        for word in range(TURN):
+            brain.act(moment(word), greedy=True)
+    assert records.stores[0].count == 0
     for _ in range(10):  # told ten times: each telling as the record holds itself deepens it
         tell(brain, 0, 0, 1)
-    tell(brain, 1, 1, 2)  # told once
-    brain.surprise = np.full((1, 5), 9.0)  # the brain's surprise (#337): nine times the usual
-    tell(brain, 2, 2, 3)  # told once, at a moment that surprising: eight tellings more
-    brain.surprise = None
+    tell(brain, 1, 1, 2)  # told once, at a moment as surprising as the brain is used to
+    assert brain.surprise.moment[0] < 0.1
+    # told once, at a moment of the brain's own surprise (#337): the statement comes with an
+    # input over nine times what its neuron tolerates, which counts as eight tellings and more
+    brain.reset()
+    for x in (moment(2), moment(6 + 2), moment(TURN)):
+        brain.act(x, greedy=True)
+    struck = moment(10 + 3)
+    struck[0, 5] = 80.0
+    brain.act(struck, greedy=True)
+    assert np.expm1(brain.surprise.moment[0]) > 8.0
     store = records.stores[0]
     assert store.count == 3 and records.counts["agreed"] == 9
     assert store.kept[:3].tolist() == [True, False, True]
@@ -317,7 +336,8 @@ def test_a_brain_s_records_grow_strong_by_retelling_and_surprise_and_the_rest_fa
     assert asked(brain, 0, 0) == 0 and asked(brain, 2, 2) == 2 and asked(brain, 1, 1) == -1
     assert brain.describe()["genes"]["longterm_strength"] is True
     path = brain.save(tmp_path / "strong.npz")
-    assert checkpoint_format(path) == "cadence-brain/6"
+    assert checkpoint_format(path) == "cadence-brain/5"
+    assert checkpoint_features(path) == ["strength"]
     loaded = cd.Brain.load(path)
     again = loaded.longterm.stores[0]
     assert loaded.longterm.strength and again.kept[:3].tolist() == store.kept[:3].tolist()
@@ -338,10 +358,102 @@ def test_a_brain_s_place_records_used_past_the_kept_depth_stop_fading(tmp_path):
     assert brain.hippocampus.fade_keep == 50.0
     assert brain.describe()["genes"]["memory_keep"] == 50.0
     path = brain.save(tmp_path / "kept.npz")
-    assert checkpoint_format(path) == "cadence-brain/6"
+    assert checkpoint_format(path) == "cadence-brain/5"
+    assert checkpoint_features(path) == ["strength"]
     assert cd.Brain.load(path).hippocampus.fade_keep == 50.0
     faded = cd.Brain.compose(6, 3, seed=2, arousal=True, recall=False, memory_fade=1e-3)
     assert faded.hippocampus.fade_keep == 0.0 and "memory_keep" not in faded.describe()["genes"]
-    assert checkpoint_format(faded.save(tmp_path / "faded.npz")) == "cadence-brain/3"
+    plain_path = faded.save(tmp_path / "faded.npz")
+    assert checkpoint_format(plain_path) == "cadence-brain/3"
+    assert checkpoint_features(plain_path) is None
+
+
+def test_a_checkpoint_names_its_features_and_a_reader_refuses_one_it_does_not_hold(tmp_path):
+    """One format, ``cadence-brain/5``, for every brain 0.99.1 cannot continue: its record
+    names the features the file needs, and a name this version does not hold is refused."""
+    import json
+
+    import cadence as cd
+
+    brain = records_brain(longterm_strength=True)
+    tell(brain, 0, 0, 1)
+    path = brain.save(tmp_path / "strong.npz")
+    with np.load(path, allow_pickle=False) as archive:
+        arrays = {name: archive[name] for name in archive.files}
+    record = json.loads(str(arrays["brain"]))
+    assert record["format"] == "cadence-brain/5" and record["features"] == ["strength"]
+
+    def written(change, name):
+        changed = json.loads(json.dumps(record))
+        change(changed)
+        target = tmp_path / name
+        np.savez(target, **{**arrays, "brain": np.array(json.dumps(changed))})
+        return target
+
+    later = written(lambda r: r["features"].append("telepathy"), "later.npz")
+    with pytest.raises(ValueError, match="telepathy"):
+        cd.Brain.load(later)
+    unnamed = written(lambda r: r.pop("features"), "unnamed.npz")
+    with pytest.raises(ValueError, match="cadence-brain/5"):
+        cd.Brain.load(unnamed)
+    older = written(lambda r: r.update(format="cadence-brain/4") or r.pop("features"), "older.npz")
+    with pytest.raises(ValueError, match="cadence-brain/5"):
+        cd.Brain.load(older)
+    assert cd.Brain.load(path).longterm.strength
     with pytest.raises(ValueError, match="memory_fade"):
         cd.Brain.compose(6, 3, seed=2, recall=False, memory_keep=50.0)
+
+
+# -- with records read by what tells them apart (``longterm_distinct``)
+
+
+def distinct_strong(**settings):
+    import cadence as cd
+
+    return cd.Brain.compose(INPUTS, 4, modules=(32,), seed=0, backend="cpu", message=70,
+                            longterm=16, longterm_turn=TURN, longterm_distinct=0.5,
+                            longterm_heads=2, longterm_match=0.5, longterm_strength=True,
+                            **settings)
+
+
+def say(brain, *words):
+    for on in words:
+        brain.act(moment(on) if on is not None else np.zeros((1, INPUTS)), greedy=True)
+
+
+def answered(brain, agent):
+    """The slot the first head holds for a question that names ``agent`` (-1 for none)."""
+    brain.reset()
+    say(brain, agent, 8, TURN, None)  # the question, then the moment its answer is read
+    return int(brain.longterm.read_slots[0, 0])
+
+
+def test_distinct_records_grow_strong_by_use_and_an_unused_one_is_forgotten(tmp_path):
+    import cadence as cd
+
+    brain = distinct_strong()
+    records = brain.longterm
+    brain.reset()
+    say(brain, 0, 6, TURN, 10)  # agent 0 with verb 0: patient 10
+    say(brain, 1, 6, TURN, 11)  # agent 1: told once, never asked about
+    store = records.stores[0]
+    assert store.count == 2 and not store.kept[:2].any()
+    for _ in range(30):  # asked about again and again: each read that delivers it deepens it
+        if store.kept[0]:
+            break
+        assert answered(brain, 0) == 0
+    assert store.kept[:2].tolist() == [True, False] and store.deep[0] > store.deep[1]
+    brain.reset()
+    for _ in range(4000):  # idle moments, until the record told once is forgotten
+        if store.gone[1]:
+            break
+        say(brain, None)
+    assert store.gone[:2].tolist() == [False, True]
+    assert answered(brain, 1) == -1 and answered(brain, 0) == 0  # no read finds the forgotten one
+    path = brain.save(tmp_path / "distinct-strong.npz")
+    again = cd.Brain.load(path)
+    assert answered(again, 1) == -1 and answered(again, 0) == 0
+    brain.reset()
+    say(brain, 2, 7, TURN, 12)  # a new fact is a record of its own, and is read
+    assert answered(brain, 2) == 2 and answered(brain, 1) == -1
+

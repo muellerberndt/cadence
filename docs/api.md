@@ -308,10 +308,14 @@ the records' settings under `memories/longterm` in the metadata and, under
 `memories/longterm/`, the streams' turns (`since`, `read_slots`) and every stream's records
 (`store/<s>/keys`, `values`, `deep`, `recent`, `faded`, their first `count` rows, and
 `store/<s>/state`). `Brain.load` refuses records under another name and a `cadence-brain/4` file
-without them. A brain whose memories grow strong (`longterm_strength`, `memory_keep`, #336)
-writes `cadence-brain/6`, which 0.99.0 and earlier refuse by name, whatever else it holds: the
-same members, with each record's `kept` and `gone` rows beside its sums and the place records'
-`fade_keep` under their settings.
+without them. A brain that 0.99.1 and earlier cannot continue writes one format,
+`cadence-brain/5`, whose record names the features the file needs (`features`, sorted names),
+whatever else it holds: `strength` for memories that grow strong (`longterm_strength`,
+`memory_keep`, #336: the same members, with each record's `kept` and `gone` rows beside its sums
+and the place records' `fade_keep` under their settings) and `heads` for the learned heads
+(`longterm_attention`, `longterm_motor`, #325). `Brain.load` refuses a file that names a feature
+this version does not hold, by that name, and a file whose features and contents disagree. A
+later option adds a feature's name and no format name.
 
 A brain with a [held message](memory.md#held-message) (`message`), [learned
 fields](senses.md#learned-receptive-fields) (`learned_fields`, `ports`), an actor's hold
@@ -728,7 +732,7 @@ brain's held message from a turn; it needs `message=units`, `message_boundary` a
 construction settings, as are `longterm_pairs` (0), `longterm_expansion`, `longterm_winners`,
 `longterm_candidates` (None: the store's own) and `longterm_fade` (True), which build each
 stream's store (`address()` names those that differ from the store's founders), and
-`longterm_strength` (False; needs `longterm_fade`, not built for `longterm_distinct`): each
+`longterm_strength` (False; needs `longterm_fade`): each
 stream's store keeps a record for good past `LongTermRecords.KEEP` (8) tellings and forgets one
 below it that fades as far as its `hold` (8 capacities); a telling of a record as it holds itself deepens it,
 a read deepens only the record it delivers, the records read store by store, and `hear(x,

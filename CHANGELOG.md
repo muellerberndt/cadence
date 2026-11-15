@@ -78,10 +78,20 @@ bit. The guide is [docs/memory.md](docs/memory.md#a-records-strength-opt-in).
   depth has reached it stop fading.
 - **In a brain**: `Brain.compose(longterm_strength=True)` gives each stream's records these
   rules (kept past 8 tellings, forgotten after about 8 capacities' moments unused, a telling as
-  the record holds it counted, a read crediting only the record it delivers), with the brain's
-  surprise at the write (`brain.surprise`, #337) counted as tellings; `Brain.compose(memory_fade=,
-  memory_keep=depth)` keeps the place records used past that depth. A brain with either saves
-  `cadence-brain/6`, which 0.99.0 and earlier refuse by name.
+  the record holds it counted, a read crediting only the record it delivers);
+  `Brain.compose(memory_fade=, memory_keep=depth)` keeps the place records used past that depth.
+- **Strength reads the brain's one surprise signal.** With `surprise=True` a record written at a
+  moment of the brain's own surprise (`brain.surprise.moment`, #337) counts the ratio of the most
+  surprised neuron's residual to its tolerated size, less one, as tellings more: nothing for a
+  moment the brain is used to, eight and more for one nine times the tolerated size.
+- **Strength with records read by what tells them apart.** `longterm_strength` composes with
+  `longterm_distinct` (turns) and with the learned heads (`longterm_attention`, #325): a read
+  deepens the record it delivers, a telling carries the moment's surprise, and a forgotten record
+  leaves the entries the reads look under.
+- **One file format that names its features.** A brain that 0.99.1 cannot continue saves
+  `cadence-brain/5`, whose record lists what the file needs (`features`: `strength`, `heads`).
+  `Brain.load` refuses a feature it does not hold by its name. A later option adds a name to that
+  list and no format name; every other brain keeps the format it had.
 - **A chamber**, `benchmarks/memory_strength/strength.py`: the dose curve, the one-shot write
   and the clean form beside the store without the settings.
 
