@@ -329,6 +329,12 @@ graph of their own inside the brain object, beside the brain's connectome and ou
 brain reads the map through `observation()`: the activity of `where` (one value a cell) and of
 `what` (one a code unit) as the latest moment settled them.
 
+`Brain.compose(..., trained=["place"])`, or `trained=[Map(...)]`, composes a brain that holds the
+map and reads it itself: the read joins the brain's senses as the sense `space`, and an
+observation carries the brain's own senses alone
+([a brain that knows where things are](modules.md#a-brain-that-knows-where-things-are)). The
+form below, as on 0.99.1, sizes the inputs by hand and passes the read with each observation.
+
 ```python
 import cadence as cd
 

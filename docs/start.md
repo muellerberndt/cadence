@@ -43,6 +43,7 @@ brain ([observers](#add-optional-observers)). `arousal=True` gives the brain the
 | Setting | What it sets |
 | --- | --- |
 | `inputs` | the observation's width, or an image shape ([wide inputs](senses.md#image-inputs)) |
+| `senses` | in place of `inputs`: several senses by name, each a width, given by name at every moment ([senses by name](senses.md#senses-by-name)) |
 | `actions` | the number of actions to choose from |
 | `arousal` | `True` for a brain that `live` drives |
 | `seed` | the random draw of the newborn brain; the same seed gives the same brain |

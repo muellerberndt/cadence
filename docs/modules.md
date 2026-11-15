@@ -108,6 +108,7 @@ continuous readings, an image, a wide vector.
 | Part | For | Joins by | Holds between moments | Learns | Arrives | Grow and graft | Reading |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | [A vector of numbers](start.md#2-observations-actions-and-streams) | Senses that are a row of numbers at each moment | `inputs=n` | nothing | its synapses into the first region, by lessons and rewards | blank | at birth; by region (`sensory`) | |
+| [Senses by name](senses.md#senses-by-name) | Several senses, each declared once and given by name at every moment; a sense left out is silent | `senses={name: width}` in place of `inputs`, a sense with channels as `{field: width}` | nothing | as a vector of numbers: the brain is the brain of `inputs=` at the summed width | blank | at birth; `grow`, `save` and `load` keep the names | With `code=64`, a word of length 1 beside a glimpse of length 5.1 changes 16.5 of the 24 active units where the senses are equal and 5.1 where the row is read as it is, twelve seeds; a reading of the code alone ([equal senses](senses.md#equal-senses-in-the-fixed-code)) |
 | [Population code](senses.md#continuous-readings-a-population-code) | A few continuous readings (an angle, a velocity, a distance), each spread over tuned inputs | `code = cd.PopulationCode(ranges)` before the brain, then `inputs=code.inputs` | nothing | no | fixed | beside the brain; a checkpoint does not hold it | Cart-pole from four readings: 0 starts of 32 balanced on the raw readings, 1 to 22 through the code, three founders ([coaching chamber](../benchmarks/coaching/README.md), [#309](https://github.com/muellerberndt/cadence/issues/309)) |
 | [An image through a visual cortex](senses.md#image-inputs) | An image, read through receptive fields that keep their draw | `inputs=(height, width)` or `(height, width, channels)`, with `features` and `field` | nothing | its receptive fields keep their draw; the regions that read them learn | blank | at birth; by region (`visual`, with the regions above it) | An `act` at 84 by 84 takes 163 ms on one core, against 2.6 ms through learned fields ([pixel chamber](../benchmarks/pixels/README.md)) |
 | [Learned receptive fields](senses.md#learned-receptive-fields) | A rendered screen or a spectrogram, where an object reads the same wherever it appears | `learned_fields=features` with an image `inputs` | nothing | yes, by a local rule of their own at every moment the brain accepts | blank | at birth; refused | Fresh frames .974 and a band of places no lesson showed .948, where a convolutional network trained by gradient reads 1.000 and .145, six fresh founders ([pixel chamber](../benchmarks/pixels/README.md), [#284](https://github.com/muellerberndt/cadence/issues/284)) |
@@ -376,7 +377,7 @@ the thing is, in the settled activity of a sheet of neurons. Its graph has no ta
 
 | Part | For | Joins by | Holds between moments | Learns | Arrives | Grow and graft | Reading |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| [The place module, a `Map`](space.md#a-first-map) | Where things are, held while they are out of view: "where is the apple?" and "what is at this place?" | `cd.modules.load("place")` or `Map(plane)`; `brain.space = ...` for a brain that holds it; `moment(seen=, heard=, felt=, lit=)` at each moment | every thing the senses reported: its kind, its last known place, the moments since a sense wrote it, and the doubt of a thing seen missing | no | empty | held by the brain object: `grow`, `graft`, `retune`, `save` and `load` keep it | A hand that rests behind a pillar, on the two recorded scenes: 10.7 cm out of view, where its last seen place reads 15.5 cm; 1.2 cm in view, the camera's own error ([`mapped.py`](../benchmarks/tracking/mapped.py)) |
+| [The place module, a `Map`](space.md#a-first-map) | Where things are, held while they are out of view: "where is the apple?" and "what is at this place?" | `trained=["place"]` or `trained=[Map(plane)]` for a brain that holds it and reads it as the sense `space`; `cd.modules.load("place")` or `Map(plane)` alone; `moment(seen=, heard=, felt=, lit=)` at each moment | every thing the senses reported: its kind, its last known place, the moments since a sense wrote it, and the doubt of a thing seen missing | no | empty | held by the brain object: `grow`, `graft`, `retune`, `save` and `load` keep it | A hand that rests behind a pillar, on the two recorded scenes: 10.7 cm out of view, where its last seen place reads 15.5 cm; 1.2 cm in view, the camera's own error ([`mapped.py`](../benchmarks/tracking/mapped.py)) |
 | [Learned physics on the map](space.md#learned-physics-on-the-map) | A hidden thing that moves is followed, not left where it vanished: "where is the hand now?" and "where will it be?" | `Map(plane, physics=True)`; the same `moment(...)` calls; `forecast(moments)` for the map a few moments on | what the brain knows of each thing's motion, at the thing's cells; out of view, the share that kept its line, the share at rest and the share that left its line | yes, while things move in view: four numbers (how often a moving thing comes to rest or leaves its line, how far ahead and aside it then goes), by imagined lessons | untaught: it answers as the map until it has watched things move | held with the map: `save`, `load` and a brain's `space` keep what it learned | A person's hand out of view, twelve founders: 9.4 cm, where the map without physics reads 22.9; 10.3 after 25 scenes watched ([`mapped.py --physics`](../benchmarks/tracking/mapped.py)) |
 
 How the senses change the map ([space](space.md#how-a-position-travels)):
@@ -805,9 +806,9 @@ last seen, and answers where a thing is and what is at a place.
 
 | Part | Why |
 | --- | --- |
-| The place module, `cd.modules.load("place")` | The map of things: each thing's kind and last known place, held while the camera looks elsewhere |
-| `brain.space` | The brain holds the map, and `save` and `load` keep it with the brain |
-| `inputs=place.count + place.units` | The brain reads the map's `observation()`: `where`, one value a cell, and `what`, one a code unit |
+| `trained=["place"]` | The place module by its name: the map of things, each thing's kind and last known place, held while the camera looks elsewhere. It becomes `brain.space`, and `save` and `load` keep it with the brain |
+| `senses={"touch": 8}` | The brain's own senses, declared by name ([senses by name](senses.md#senses-by-name)). The map's read joins them as the sense `space`: `where`, one value a cell, and `what`, one a code unit |
+| `live({"touch": touch})` | An observation carries the brain's own senses. The brain reads its map itself at every moment |
 | `lit=` at each moment | The places the camera sees. A turn that reports nothing leaves each thing where it was |
 
 ```python
@@ -819,23 +820,66 @@ def ahead(points):                                       # the camera looks to t
 def behind(points):                                      # and then turns to the left
     return points[:, 0] < 0.0
 
-place = cd.modules.load("place")                         # the built-in map
-kitchen = Brain.compose(inputs=place.count + place.units, actions=2, seed=0)
-kitchen.space = place                                    # the brain holds the map
+kitchen = Brain.compose(senses={"touch": 8}, actions=2, arousal=True, seed=0,
+                        trained=["place"])               # the built-in map, by its name
+assert kitchen.senses == {"touch": slice(0, 8),
+                          "space": {"where": slice(8, 840), "what": slice(840, 856)}}
+touch = np.zeros((1, 8))
+touch[0, 2] = 1.0
 kitchen.space.moment(seen=[(APPLE, [0.3, 0.6]), (BREAD, [0.6, 1.0])], lit=ahead)
+action = kitchen.live({"touch": touch})                  # the brain reads its map itself
 for _ in range(20):
     kitchen.space.moment(lit=behind)                     # the camera turns away: no report
-kitchen.act(kitchen.space.observation()[None])           # the brain reads where and what
-assert np.allclose(kitchen.space.where_is(APPLE), [[0.3, 0.6]], atol=0.001)
+action = kitchen.live({"touch": touch}, reward=[1.0])
+assert np.allclose(kitchen.space.where_is(APPLE), [[0.3, 0.6]], atol=0.001)   # held unseen
+read = kitchen.observation_code({"touch": touch})        # the row the brain reads
+assert read.shape == (1, 856) and read[0, kitchen.senses["space"]["what"]][APPLE] > 0
 assert kitchen.space.what_is_at([0.6, 1.0]) == BREAD     # "what is at this place?"
 assert kitchen.space.what_is_at([-0.5, 0.5]) is None     # in view, and nothing there
-again = Brain.load(kitchen.save("kitchen.npz"))          # the map is saved with the brain
-assert again.space.what_is_at([0.3, 0.6]) == APPLE
+again = Brain.load(kitchen.save("kitchen.npz"))          # the map and the names are saved
+assert again.space.what_is_at([0.3, 0.6]) == APPLE and again.senses == kitchen.senses
 ```
 
 The camera sees none of the places where the apple and the bread were last seen, so each stays
 at its last known place for any number of moments. The brain reads `where` and `what` at every
 moment; what it does with them is its own task, taught by lessons or rewards as any brain's is.
+
+The long form, as on 0.99.1, sizes the inputs by hand, assigns the map and passes its read:
+
+```python
+place = cd.modules.load("place")                         # the built-in map
+by_hand = Brain.compose(inputs=place.count + place.units, actions=2, seed=0)
+by_hand.space = place                                    # the brain holds the map
+by_hand.space.moment(seen=[(APPLE, [0.3, 0.6])], lit=ahead)
+by_hand.act(by_hand.space.observation()[None])           # the caller passes where and what
+assert by_hand.senses == {}                              # no sense is named
+```
+
+Both forms compose one brain: `senses={"touch": 8}` with the map in `trained=` is the brain of
+`inputs=8 + place.count + place.units` with the map assigned and its read placed after the
+touch in every row, to the bit.
+
+**The map's read is small.** A thing held on the built-in map reads `where` at length .010
+and `what` at length .019, beside a touch at length 1: the row the brain reads with an apple on
+the map lies at cosine .9998 from the row with the map empty, and a brain without a code
+settles on that row and keys its memories on it. With `code=units` the brain's senses are equal
+([equal senses](senses.md#equal-senses-in-the-fixed-code)): `where` and `what` enter the code
+at unit length beside the touch, and the code with the apple on the map lies at cosine .56 from
+the code of the empty map.
+
+```python
+coded = Brain.compose(senses={"touch": 8}, actions=2, seed=0, code=256, trained=["place"])
+empty = coded.observation_code({"touch": touch})         # the map holds no thing
+bare = np.hstack([touch, np.zeros((1, 848))])            # the row of the empty map
+coded.space.moment(seen=[(APPLE, [0.3, 0.6])], lit=ahead)
+map_read = coded.space.observation()
+assert np.isclose(np.linalg.norm(map_read[:832]), 0.010, atol=0.001)   # where
+assert np.isclose(np.linalg.norm(map_read[832:]), 0.019, atol=0.001)   # what
+row = np.hstack([touch, map_read[None]])                 # the row with the apple on the map
+assert float(bare[0] @ row[0]) / np.linalg.norm(row) > 0.9997
+apple = coded.observation_code({"touch": touch})
+assert abs(float(empty[0] @ apple[0]) - 0.56) < 0.02     # at unit length the map moves the code
+```
 
 ## Modules: parts that arrive as files
 
@@ -845,7 +889,7 @@ arrive ready, and then lives to learn its own tasks. There are two kinds of modu
 
 | Kind | What it holds | Made by | Joins a brain by |
 | --- | --- | --- | --- |
-| A map file | A map of things: its settings, codes and carried state ([space pieces](#space-pieces)) | `map.save(path, card=...)`; the library ships `place` | `brain.space = map` |
+| A map file | A map of things: its settings, codes and carried state ([space pieces](#space-pieces)) | `map.save(path, card=...)`; the library ships `place` | `Brain.compose(..., trained=["place"])` by its name, `trained=[map]`, or `brain.space = map` |
 | A trained module | A trained brain's regions with their interface: the regions its own senses drive and the regions a host reads | `brain.save_module(path, name=, inputs=, published=, regions=)` | `Brain.compose(..., trained=[module])`, `brain.graft(module)` |
 
 `cd.modules.names()` lists the modules the library ships and `cd.modules.load(name)` returns
@@ -938,6 +982,10 @@ What a hosted module does, and what it does not:
 - **It carries weights, and no memory.** The donor's trace, heard history and recall memory stay
   behind. Check the skill with `predict` before you save it: a skill that `predict` does not
   show does not travel.
+- **Its inputs are a sense under its name.** In a brain composed with `senses=` the module's
+  inputs are the sense `name` (`brain.senses["kinds"]`), given by name as the brain's own
+  senses are; a module of several input regions is a sense with a field a region
+  ([senses by name](senses.md#senses-by-name)).
 - **Into a brain that holds its regions.** `brain.graft(module)` grafts it into the populations
   `name/region`, or into populations of the regions' own names in a brain laid out as the donor.
   With `joints="kept"` a host keeps what it learned to read from an older file of the module.
@@ -972,14 +1020,24 @@ assert "records its construction" in refused(lambda: host.grow(slots=(2, 2)))
 
 ### A brain that holds the map
 
-- **Held by the brain.** `brain.space = map` gives a brain its map. The map is a graph of its
-  own inside the brain object, beside the brain's connectome.
+- **Held by the brain.** A map in `trained=`, by the name the library ships it under
+  (`trained=["place"]`) or as an object (`trained=[map]`), becomes `brain.space`; `brain.space
+  = map` assigns one by hand. The map is a graph of its own inside the brain object, beside the
+  brain's connectome. A brain holds one map.
 - **Saved with the brain.** `brain.save` writes the map's settings, codes and carried state
   under `space/`, and `Brain.load` restores them. A brain without a map saves no `space/` key.
 - **What the brain reads.** `brain.space.observation()` gives `where`, one value a cell (832
-  for the built-in map), and `what`, one a code unit (16), as the latest moment settled them. A
-  brain composed with `inputs=map.count + map.units` takes them as its observation
+  for the built-in map), and `what`, one a code unit (16), as the latest moment settled them.
+  With the map in `trained=` the read is the sense `space`, after the brain's own inputs
+  (`brain.senses["space"]`): an observation carries the brain's own senses, as a dict or as
+  rows of their width, and the brain reads its map at every operation that takes observations.
+  A row of the whole width (`brain.inputs`) is taken as it is, the map's part as given: the
+  form of a recorded row, and of a read the caller imagines. A brain composed with
+  `inputs=map.count + map.units` and `brain.space = map` takes the read from its caller
   ([a brain that knows where things are](#a-brain-that-knows-where-things-are)).
+- **Beside trained modules.** `trained=[module, "place"]` builds the brain around the module
+  with the map among its senses: the brain's own inputs, the map's read, then the module's
+  inputs. `module.columns(brain)` gives the module's columns of the whole row.
 - **Only the senses change it.** The map has no taught synapse, so the brain's lessons and
   rewards do not reach it: `moment` alone writes it.
 
@@ -1012,7 +1070,7 @@ Each row below was read from the library's own refusal.
 | `graft` | A learned code's `code` region, or a joint that lands on it | Graft the regions above the code |
 | `graft` | Regions that share no synapse; regions of different sizes; a donor synapse the host lacks; another neuron model or apical compartment | Graft the regions a trained pathway runs through, into a host laid out alike |
 | `Lives` | `tied`, `memory_choice`, the efference copy, a held message, long-term records, a fixed or learned code, image inputs, an apical compartment, rehearsal, qualified teaching, `actor_entropy`, and a recall memory with several heads, a window, the command, the read of when, tokens or the cortex at unit norm | One brain's streams, or lone brains in a process pool |
-| `Lives` | `trained=` | Brains composed around the module, one by one |
+| `Lives` | `trained=`, with a module or a map; `senses=` | Brains composed with them, one by one |
 | `Lives` | `backend="mlx"` and the MPS device | `backend="torch"` on CUDA or the torch CPU device, or `backend="cpu"` |
 | Learned fields | A vector brain; `code` or `learned_code` beside them; an image under 8 by 8 pixels; fewer than 2 fields | An image `inputs` with `learned_fields` alone |
 | `ports`, `fields_motor` | A brain without `learned_fields` | Add `learned_fields=features` |
@@ -1031,7 +1089,10 @@ Each row below was read from the library's own refusal.
 | `StreamReader` | A brain whose motor neurons do not match the alphabet | `actions=alphabet.size` |
 | `cd.load_module`, `Map.load` | A file that is no archive of arrays, holds a pickled object or holds no record (a brain's checkpoint); a record of another format; a map's record without checksums; a trained module's record without its name, library, regions, inputs, published regions or checksums; an array that differs from its checksum, or that the file or the record holds alone; arrays that do not fit the map's cells; a region the trained brain lacks at that size | Write the file again with `Map.save` or `save_module` |
 | `save_module` | A name that is empty or holds `/`; a region that is no population of the brain; no inputs or no published regions; an input region that is no input of the brain; a donor with a learned code | Name populations of the brain's own senses as inputs |
-| `compose(..., trained=)` | Image `inputs` or `ports`; `code`, `learned_code`, `learned_fields`, `tied` or `connectome=` beside it; `message`; anything in `trained` that is no trained module (a map joins as `brain.space`); two modules of one name; a module named as a region of the brain; a module whose donor has an apical compartment | A vector brain with inputs of its own, or `graft(module)` into an anatomy of your own |
+| `compose(..., trained=)` with a trained module | Image `inputs` or `ports`; `code`, `learned_code`, `learned_fields`, `tied` or `connectome=` beside it; `message`; anything in `trained` that is no trained module, map or name of a module the library ships; two modules of one name; a module named as a region of the brain or as a sense; a module whose donor has an apical compartment | A vector brain with inputs of its own, or `graft(module)` into an anatomy of your own |
+| `compose(..., trained=)` with a map | Two maps; image `inputs`, `learned_fields` or `ports`; a brain without an input of its own; a name the library ships no module by | One map a brain, beside `inputs=count` or `senses=` |
+| `compose(senses=)` | `inputs=` beside it; a sense or a field without a name or with a width below 1; a sense without a field; the name `space`; `learned_fields` or `ports` | `senses={name: width}` alone; an image brain takes `inputs=(height, width)` |
+| Observations by name | A dict for a brain composed without `senses=`; a sense or a field the brain does not have; another width than the sense declared; senses that give different numbers of rows; `space`, which the brain reads from its map; with a map, rows that are neither the brain's own senses nor the whole row; a brain whose `space` holds no map, or a map of another size | A dict of the declared senses, or rows of their summed width |
 | `compose(..., trained=)`, `graft(module)` | A module whose donor held a message or tied projections | A donor without them |
 | `graft(module)` | A brain that lacks one of the module's regions, by that region's name; a region held at another size | A brain that holds the regions as `name/region` or under their own names |
 | A brain composed around a module | `grow`: the brain records no construction | Compose it with every part it needs |
@@ -1041,6 +1102,15 @@ Each row below was read from the library's own refusal.
 A few of them, read with the `refused` helper of [a module file](#a-module-file):
 
 ```python
+assert "pass one of the two" in refused(
+    lambda: Brain.compose(inputs=8, senses={"touch": 8}, actions=2))
+assert "no sense 'smell'" in refused(lambda: kitchen.act({"smell": touch}))
+assert "sense 'touch' takes 8 values per row, got 5" in refused(
+    lambda: kitchen.act({"touch": np.zeros((1, 5))}))
+assert "reads its sense 'space' from its map itself" in refused(
+    lambda: kitchen.act({"touch": touch, "space": np.zeros((1, 848))}))
+assert "a brain holds one map" in refused(
+    lambda: Brain.compose(inputs=8, actions=2, trained=["place", "place"]))
 tie = {("sensory", "association"): (3, 1)}
 trained = Brain.compose(inputs=6, actions=4, modules=(16,), seed=0)
 tied = Brain.compose(inputs=12, actions=3, seed=0, recall=False, tied=tie)
