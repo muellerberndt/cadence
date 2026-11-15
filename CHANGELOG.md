@@ -5,8 +5,8 @@
 A fix release. A learned code under several modules is read at unit length by the first module
 (#339), and two tests close the checkpoint files they compare, so they pass on Windows (#340).
 Learned physics on the map (#324) ships as an opt-in addition, `Map(physics=True)`. No default
-changes: a brain without `learned_code`, a brain with `learned_code` and one module, and a map
-with physics unset are as on 0.99.0, to the bit.
+changes: a brain without `learned_code`, a brain composed with `learned_code` and one module,
+and a map with physics unset are as on 0.99.0, to the bit.
 
 ### Fixed
 
@@ -19,14 +19,16 @@ with physics unset are as on 0.99.0, to the bit.
   readings had retired (`learned_code_output`). In a brain of 32 inputs, a code of 32 and
   modules of 32 the first module's input from the code read .32 after 50 acts where the
   unit-length read gives 1.05. The term is carried on the neurons the code projects to, at any
-  depth. A brain of one module is unchanged to the bit, and so is every brain without
+  depth. A composed brain of one module is unchanged to the bit, and so is every brain without
   `learned_code`. A brain with `learned_code` and several modules settles and learns otherwise
   than on 0.99.0; a checkpoint of such a brain loads, and its first module, trained under the
-  weaker read, then receives the code at unit length.
+  weaker read, then receives the code at unit length. In a hand-built connectome whose code
+  units project to more than one region, every region they reach reads the code at unit length
+  (on 0.99.0: the association region alone).
 - **Two founder-to-the-bit tests on Windows** (#340). `test_off_is_the_founder_to_the_bit` in
   `tests/test_maturity.py` and in `tests/test_memory_fade.py` compared two saved checkpoints
   and left both files open. Windows refuses to remove an open file, so each test failed with
-  `PermissionError` at the end of its temporary directory, after its assertions had passed.
+  `PermissionError` at the end of its temporary directory, after the comparison had passed.
   Both tests open the checkpoints in a `with` statement and compare the same arrays. The
   library is unchanged by this fix. The Windows reading is the pull request's (Windows 10,
   Python 3.12); CI's test jobs run on Ubuntu and macOS.
