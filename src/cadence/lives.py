@@ -32,8 +32,9 @@ and its heard history among them, with or without the store (``episodic=False``)
 (``history_decays=()``), the recall memory, the carried gains, arousal, ``memory_fade``, maturity
 and ``actor_hold``, at any teaching point. ``Lives`` refuses a learned or fixed code, an apical
 compartment, rehearsal, qualified teaching, the efference copy, a held message, long-term
-records, ``actor_entropy`` and a recall memory with several heads, a window, the command, the
-read of when or tokens, each by name. A moment any life refuses is refused for every life.
+records, ``actor_entropy``, ``surprise`` and a recall memory with several heads, a window, the
+command, the read of when or tokens, each by name. A moment any life refuses is refused for
+every life.
 """
 
 from __future__ import annotations
@@ -1819,6 +1820,8 @@ def _supported(brain: Any) -> None:
         raise refuse("no salience")
     if agent.config.entropy:
         raise refuse("no actor entropy (actor_entropy=0)")
+    if getattr(brain, "surprise", None) is not None:
+        raise refuse("no surprise (a lone brain reads it: Brain.compose(surprise=True))")
 
 
 def _takes_outcome(brain: Any) -> bool:

@@ -109,6 +109,7 @@ from .stream import (
     Trace,
     _route_matrix,
 )
+from .surprise import Focus, Orienting, Surprise
 
 __all__ = ["Brain"]
 
@@ -743,8 +744,13 @@ _CONSTRUCTION = frozenset({
     *_EPISODIC_SETTINGS, "recall", *(f"recall_{name}" for name in Recall.CONSTRUCTION),
     *(f"recall_{name}" for name in Recall.CONSTRUCTION_OPTIONS), "code",
     "learned_code", *(f"learned_code_{name}" for name in LearnedCode.GENES),
-    "attention", "apical", "maturity", "tied", "trained",
+    "attention", "apical", "maturity", "tied", "trained", "surprise",
 })
+# surprise reads each neuron's residual in float64 on the host (``NeuralGraph.residual``)
+_SURPRISE_HOST = (
+    "surprise reads each neuron's residual on the host in float64: compose the brain with "
+    "backend='cpu'"
+)
 
 
 def _longterm_genes(longterm: Any, genes: Mapping[str, Any]) -> dict[str, Any]:
@@ -2493,6 +2499,7 @@ class Brain:
         image: Sequence[int] | None = None,
         ports: int = 0,
         tied: Mapping[tuple[str, str], Sequence[int]] | None = None,
+        surprise: bool | Mapping[str, Any] = False,
         **genes: Any,
     ) -> None:
         populations = connectome.populations
@@ -2964,6 +2971,22 @@ class Brain:
         # a map of things this brain holds (``cadence.space.map.Map``, opt-in): a graph of its
         # own inside the brain object, saved and loaded with it
         self.space: Any = None
+        # surprise and the one focus it draws (``cadence.surprise``, #337; off unless given):
+        # each neuron's residual at the start of the moment's settle, against the neuron's usual
+        # residual. It reads the carried state under the moment's drive and changes nothing else.
+        self.surprise: Surprise | None = None
+        self.orienting: Orienting | None = None
+        self._places: np.ndarray | None = None  # the sensory neurons' places, for the focus
+        # the residual read at a moment's first settle, until the moment is certain (the
+        # observations, each neuron's size, the streams that carried a state); and the
+        # observations of a moment in progress whose surprise has been observed
+        self._surprise_read: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
+        self._surprise_seen: np.ndarray | None = None
+        self._surprise_private = False  # a replay's moments are not the streams' own
+        if surprise is not None and surprise is not False:
+            if brain.backend != "cpu":
+                raise ValueError(_SURPRISE_HOST)
+            self._surprise_genes(surprise)
 
     @property
     def brain(self) -> NeuralGraph:
@@ -4000,6 +4023,8 @@ class Brain:
             genes.update({f"learned_code_{name}": value for name, value in learned.genes().items()})
         if self.attention:
             genes["attention"] = True
+        if self.surprise is not None and self.orienting is not None:
+            genes["surprise"] = {**self.surprise.settings(), **self.orienting.settings()}
         populations = self.connectome.populations
         result = {
             "layout": {
@@ -4598,6 +4623,9 @@ class Brain:
             if candidate.backend == "cpu":
                 held.update(why=candidate.why, refused=refused)
                 return
+            if self.surprise is not None:  # read on the host: no device takes this brain
+                refused.append(f"{candidate.backend}: {_SURPRISE_HOST}")
+                continue
             try:
                 with tempfile.TemporaryDirectory(prefix="cadence-place-") as folder:
                     path = self.save(Path(folder) / "brain.npz", compressed=False)
@@ -5686,6 +5714,7 @@ class Brain:
         report = dict.fromkeys(("rows", "moments", *presentations), 0.0)
         lengths = [len(episode) for episode in moments]
         held = self._streams()
+        private, self._surprise_private = self._surprise_private, True  # no moment of the streams
         try:
             for length in dict.fromkeys(lengths):
                 rows = [row for row, count in enumerate(lengths) if count == length]
@@ -5702,6 +5731,7 @@ class Brain:
         except RuntimeError:  # a refused settle, or a refused lesson (LearningPhaseError)
             report["refused"] = 1.0
         finally:
+            self._surprise_private = private
             self._resume(held)
         return report
 
@@ -5749,11 +5779,15 @@ class Brain:
                 region.halvings, region.graph, region.last, dict(region.work)
             ),
             records,
+            self._surprise_streams(),
         )
 
     def _resume(self, held: tuple[Any, ...]) -> None:
         """Return every stream to the state ``_streams`` held."""
-        actor, traces, recalled, episode, phase, records = held
+        actor, traces, recalled, episode, phase, records, surprised = held
+        if surprised is not None and self.surprise is not None and self.orienting is not None:
+            self.surprise.last, self._surprise_read, self._surprise_seen, competition = surprised
+            self.orienting.resume(competition)
         for name, value in actor.items():
             setattr(self.basal_ganglia, name, value)
         _restore_traces(traces)
@@ -5905,9 +5939,12 @@ class Brain:
                         "feedback was accepted but arousal could not update; "
                         "retry live(observations) without reward or done or salience"
                     ) from exc
+                self._surprise_read = None  # the forecast's residual goes with the forecast
                 raise
             self._lived = None  # this outcome is taken, exactly once
             self._awaiting = None  # and the stream continues from where it settled
+            if routine and self.surprise is not None:
+                self._surprised(x)  # the moment is certain: what follows reads its surprise
             if routine:
                 if ended[0] and self.working_memory is not None:
                     self.working_memory.reset(1, rows=np.array([0]))
@@ -6073,6 +6110,10 @@ class Brain:
             self._prepare(x)
             drive = self._moment_drive(x)
             state = self._qualified(drive, self._activity(), operation="wait")
+        if self.surprise is not None:  # a sensed moment is the stream's own: read here, anew
+            self._surprise_read, self._surprise_seen = None, None
+            self._read_surprise(x, drive, self._activity())
+            self._surprised(x)
         code = self._coded(x)
         lived = self._lived
         routine = lived is not None and lived[4] is current and not lived[3]
@@ -6097,6 +6138,134 @@ class Brain:
         if self._episodic is not None:
             self._episodic.sense(code)  # what was sensed enters the temporal context
         self._awaiting = (current, state)
+        self._surprise_seen = None  # the stream has moved on
+
+    # -- surprise and the focus it draws (``cadence.surprise``)
+
+    @property
+    def places(self) -> np.ndarray | None:
+        """With ``surprise``: the place of each sensory neuron ``(sensory neurons, d)`` in the
+        frame of the focus (a map's plane), set by the caller as its body moves; None, the
+        default, leaves the senses out of the focus."""
+        return self._places
+
+    @places.setter
+    def places(self, value: Any) -> None:
+        if value is None:
+            self._places = None
+            return
+        if self.surprise is None:
+            raise ValueError("places are read by the focus: compose the brain with surprise=True")
+        try:
+            places = np.array(value, dtype=np.float64)
+        except (TypeError, ValueError):
+            places = np.zeros(0)
+        if places.ndim != 2 or len(places) != len(self.sensory_index) or not places.shape[1] or (
+            not np.isfinite(places).all()
+        ):
+            raise ValueError(
+                f"places holds one finite place a sensory neuron, {len(self.sensory_index)} rows"
+            )
+        self._places = places
+
+    @property
+    def focus(self) -> Focus | None:
+        """With ``surprise``: the one place attended (``cadence.surprise.Focus``), drawn at each
+        moment among the sensory neurons that have ``places`` and the cells of a held map with
+        surprise (``space``), by the first stream's surprise; None with no focus."""
+        return None if self.orienting is None else self.orienting.focus
+
+    def _surprise_genes(self, surprise: Any) -> None:
+        """Build the brain's surprise and its orienting from ``surprise``: True, or the genes of
+        ``Surprise`` and ``Orienting`` by name."""
+        if surprise is True:
+            genes: dict[str, Any] = {}
+        elif isinstance(surprise, Mapping):
+            genes = dict(surprise)
+        else:
+            raise ValueError(
+                "surprise is True or a mapping of the genes of cadence.surprise.Surprise and "
+                "Orienting by name"
+            )
+        unknown = set(genes) - set(Surprise.GENES) - set(Orienting.GENES)
+        if unknown:
+            raise ValueError(f"unknown surprise gene: {sorted(map(str, unknown))[0]}")
+        self.surprise = Surprise(
+            self.connectome.n, **{k: v for k, v in genes.items() if k in Surprise.GENES}
+        )
+        self.orienting = Orienting(**{k: v for k, v in genes.items() if k in Orienting.GENES})
+
+    def _residual_read(
+        self, x: np.ndarray, drive: Any, carried: BrainState | None,
+        rows: np.ndarray | None = None,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """A moment's residual: each neuron's size of the potential equation's error at the
+        state the streams carried into the moment, under the moment's ``drive`` and the present
+        synapses, before a settle repairs it (``NeuralGraph.residual(per_unit=True)``), with
+        the observations and the streams that carried a state (``rows``; every stream unless
+        given, none with no carried state). Nothing is changed."""
+        held = self.surprise
+        assert held is not None
+        batch = len(x)
+        if carried is None or _batch_of(carried) != batch:
+            return x.copy(), np.zeros((batch, held.size)), np.zeros(batch, dtype=bool)
+        sizes = np.abs(self.brain.residual(drive, carried, per_unit=True))
+        if not np.isfinite(sizes).all():
+            sizes = np.nan_to_num(sizes, nan=0.0, posinf=np.finfo(np.float64).max)
+        return x.copy(), sizes, np.ones(batch, dtype=bool) if rows is None else rows.copy()
+
+    @staticmethod
+    def _same(held: np.ndarray | None, x: np.ndarray) -> bool:
+        return held is not None and held.shape == x.shape and bool(np.array_equal(held, x))
+
+    def _read_surprise(self, x: np.ndarray, drive: Any, carried: BrainState | None) -> None:
+        """Read the moment's residual (``_residual_read``) at a settle that qualified. It is
+        read once a moment, at the first settle from the carried state: a later settle of the
+        same observations before the stream moves on (the act after ``learn``, the settle
+        ``live`` repeats under a new record) starts from that settle's own answer and reads
+        nothing new. Kept until the moment is certain (``_surprised``)."""
+        if self.surprise is None or self._surprise_private or self._same(self._surprise_seen, x):
+            return
+        read = self._surprise_read
+        if read is None or not self._same(read[0], x):
+            self._surprise_read = self._residual_read(x, drive, carried)
+
+    def _surprised(self, x: np.ndarray) -> None:
+        """The moment of the observations ``x`` is certain (its outcome is learned or taken, or
+        its answer is being issued or sensed): its residual (``_read_surprise``) becomes the
+        streams' surprise against each neuron's usual residual, which learns from it, and draws
+        the focus among the sensory neurons that have ``places`` and the cells of a held map
+        with surprise (``space``). Once a moment: a later call for the same moment changes
+        nothing, so whatever the moment does next (a lesson, a memory's write) reads its
+        surprise. A moment with no residual read reads no surprise."""
+        held = self.surprise
+        if held is None or self.orienting is None or self._surprise_private:
+            return
+        read, self._surprise_read = self._surprise_read, None
+        if read is not None and self._same(read[0], x):
+            held.observe(read[1], carried=read[2])
+        elif self._same(self._surprise_seen, x):
+            return  # observed where the moment became certain
+        else:
+            held.observe(np.zeros((len(x), held.size)), carried=np.zeros(len(x), dtype=bool))
+        self._surprise_seen = x.copy()
+        sources: dict[str, Any] = {}
+        if self._places is not None:
+            sources["senses"] = (held.last[0][self.sensory_index], self._places)
+        mapped = getattr(self.space, "surprise", None)
+        if isinstance(mapped, Surprise):
+            sources["map"] = (mapped.last[0], self.space.centers)
+        if sources:
+            self.orienting.attend(sources)
+
+    def _surprise_streams(self) -> tuple[Any, ...] | None:
+        """The surprise's stream state, for ``_resume``: the latest surprise, the residual read
+        for a moment in progress and the competition's state. What each neuron is used to is
+        learned and stays."""
+        if self.surprise is None or self.orienting is None:
+            return None
+        return (self.surprise.last, self._surprise_read, self._surprise_seen,
+                self.orienting.streams())
 
     def _owned(self, decision_id: Any) -> None:
         """Refuse an outcome reported for an action other than the one awaiting it."""
@@ -6324,7 +6493,10 @@ class Brain:
             greedy and temperature is None and _moment.SHORTCUTS and self._compiled_moment()
         )
         action: np.ndarray | None = (
-            self._act_compiled(x) if compiled and _moment.ONE_CALL else None
+            # the one compiled call keeps no carried state apart from its solve: a brain with
+            # surprise takes the same calls in turn, where the residual is read
+            self._act_compiled(x) if compiled and _moment.ONE_CALL and self.surprise is None
+            else None
         )
         if action is None:
             drive, free = self._settled(x)
@@ -6357,6 +6529,8 @@ class Brain:
         agent._drive = drive.copy()
         self._prepared = None
         self._awaiting = None
+        if self.surprise is not None:
+            self._surprised(x)  # before the memories write: they read the moment's surprise
         code = self._coded(x)
         # the actor's greedy act on the free state it holds (``ActorCritic.act``)
         agent._pending = None
@@ -6394,6 +6568,8 @@ class Brain:
             self._episode_moments, self._episode_told = [], np.zeros(0, dtype=np.int64)
         self._moment = None
         self._moment_code = None
+        if not self._surprise_private:
+            self._surprise_seen = None  # the stream has moved on
         return cast(np.ndarray, action)
 
     def _settled(self, x: np.ndarray) -> tuple[np.ndarray, BrainState]:
@@ -6411,14 +6587,20 @@ class Brain:
             try:
                 drive = self._compiled_drive(x, x)
                 if drive is not None:
-                    return drive, self._qualified(drive, self._activity(), operation="act")
+                    free = self._qualified(drive, self._activity(), operation="act")
+                    if self.surprise is not None:
+                        self._read_surprise(x, drive, self._activity())
+                    return drive, free
             except BaseException:
                 self._coded_moment = held
                 raise
         with self._code_attempt():
             self._prepare(x)
             drive = self._moment_drive(x)
-            return drive, self._qualified(drive, self._activity(), operation="act")
+            free = self._qualified(drive, self._activity(), operation="act")
+            if self.surprise is not None:
+                self._read_surprise(x, drive, self._activity())
+            return drive, free
 
     def _coded(self, x: np.ndarray) -> np.ndarray:
         """The observation code of the moment being acted on, computed by ``_settled``; of any
@@ -6464,6 +6646,8 @@ class Brain:
         self.basal_ganglia._drive = _held_drive(drive)
         self._prepared = None
         self._awaiting = None
+        if self.surprise is not None:
+            self._surprised(x)  # before the memories write: they read the moment's surprise
         code = self._coded(x)  # the memories key on the observation code
         place = self._placed(x)  # the place stores on the place key
         episodic = self._episodic
@@ -6528,6 +6712,8 @@ class Brain:
         self._moment_code = (
             None if greedy or self.learned_code is None else np.array(place, copy=True)
         )
+        if not self._surprise_private:
+            self._surprise_seen = None  # the stream has moved on
         return action
 
     def _greedy(self, state: BrainState, code: np.ndarray, key: np.ndarray | None) -> np.ndarray:
@@ -6631,6 +6817,7 @@ class Brain:
         recalled_state = None if recalled is None or not done.any() else recalled.snapshot()
         episodic = self._episodic  # its context records, temporal contexts and paths
         episode_values = None if episodic is None else episodic.snapshot()
+        read: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None  # with surprise
         try:
             if memory is not None and self._moment is not None:
                 keys, action = self._moment
@@ -6658,9 +6845,15 @@ class Brain:
                 recalled.reset(len(done), rows=np.flatnonzero(done))
             next_drive = self._moment_drive(following)
             warm = self._awaited()
+            # with surprise: the state the streams carry into this moment, whose first settle is
+            # the next state's; a stream whose episode ended begins from rest
+            carried = self.basal_ganglia.state if warm is None else warm
             if self.learned_code is not None:
                 # the next state settles warm from the stream's state with the code's phase
                 warm = self._warm(next_drive, self.basal_ganglia.state if warm is None else warm)
+            if self.surprise is not None and not self._surprise_private:
+                # under the synapses that settle starts from, before the outcome moves them
+                read = self._residual_read(following, next_drive, carried, ~done)
             report = self.basal_ganglia.learn(reward, done, next_drive, bootstrap, warm=warm)
         except Exception:
             if memory is not None:
@@ -6687,6 +6880,11 @@ class Brain:
         self._moment_code = None
         self._prepared = following.copy()
         self._awaiting = None
+        if read is not None:
+            # the outcome is learned and the stream is at this moment: its surprise is observed
+            # here, for the lesson and the act that follow
+            self._surprise_read, self._surprise_seen = read, None
+            self._surprised(following)
         self._begin_episodes(done)  # the streams whose attempt ended begin an episode
         return report
 
@@ -6755,6 +6953,14 @@ class Brain:
         self._acted = None
         self._awaiting = None
         self._episode_moments, self._episode_told = [], np.zeros(0, dtype=np.int64)
+        if self.surprise is not None and self.orienting is not None and (
+            not self._surprise_private
+        ):
+            # the streams begin afresh: no surprise read and no focus; each neuron's usual
+            # residual is learned and stays
+            self.surprise.reset()
+            self.orienting.reset()
+            self._surprise_read = self._surprise_seen = None
         if self.arousal is not None and "arousal" not in kept:
             self.arousal.reset()
 
@@ -6954,6 +7160,20 @@ class Brain:
             record, arrays = self.space.parts()
             metadata["space"] = record
             data.update({f"space/{name}": value for name, value in arrays.items()})
+        if self.surprise is not None and self.orienting is not None:
+            # what each neuron is used to, the latest surprise, the focus and the observations
+            # of a moment in progress whose surprise is observed (#337)
+            competition, placed = self.orienting.parts()
+            metadata["surprise"] = {**self.surprise.to_dict(), "orienting": competition}
+            kept = self.surprise.arrays()
+            if agent.state is None:  # no stream lives: ``last`` is a fresh stream's
+                del kept["last"]
+            kept.update(placed)
+            if self._places is not None:
+                kept["places"] = self._places
+            if self._surprise_seen is not None:
+                kept["seen"] = self._surprise_seen
+            data.update({f"surprise/{name}": value for name, value in kept.items()})
         data["brain"] = np.array(canonical_json(metadata))
         return _write(data, path, compressed=compressed)
 
@@ -7512,7 +7732,37 @@ class Brain:
                 result.space = Map.from_parts(meta["space"], {
                     name[len("space/"):]: data[name] for name in data
                     if name.startswith("space/")})
+            if "surprise" in meta:  # what each neuron is used to, and the focus (#337)
+                _load_surprise(result, meta["surprise"], {
+                    name[len("surprise/"):]: data[name] for name in data
+                    if name.startswith("surprise/")})
+            elif any(name.startswith("surprise/") for name in data):
+                raise ValueError("saved surprise arrays require the surprise's record")
         return result
+
+
+def _load_surprise(brain: Brain, told: Any, arrays: Mapping[str, Any]) -> None:
+    """Give a loaded ``brain`` its saved surprise: the genes and each neuron's usual residual,
+    the latest surprise, the competition with its focus, the sensory neurons' places and the
+    observations of a moment in progress whose surprise is observed."""
+    if brain.brain.backend != "cpu":
+        raise ValueError(_SURPRISE_HOST)
+    if not isinstance(told, dict) or not isinstance(told.get("orienting"), dict) or (
+        "usual" not in arrays
+    ):
+        raise ValueError("a saved surprise holds its genes, its orienting and its usual residuals")
+    held = Surprise.from_dict(told, arrays)
+    if held.size != brain.connectome.n:
+        raise ValueError("a saved surprise holds one usual residual a neuron")
+    state = brain.basal_ganglia.state
+    if state is not None and len(held.last) != _batch_of(state) and "last" in arrays:
+        raise ValueError("a saved surprise holds one row a stream")
+    brain.surprise = held
+    brain.orienting = Orienting.from_parts(told["orienting"], arrays)
+    if "places" in arrays:
+        brain.places = arrays["places"]
+    if "seen" in arrays:
+        brain._surprise_seen = brain._observations(arrays["seen"])
 
 
 # -- growing a trained brain (``Brain.grow``)
@@ -7994,6 +8244,16 @@ def _grown_checkpoint(
             continue  # the reservoir's labels may lack a new slot: the grown brain starts afresh
         if name.startswith("space/"):  # a map of things the brain holds goes with it as it is
             data[name] = value
+            continue
+        if name.startswith("surprise/"):
+            # each neuron's usual residual on the neuron it was (a new neuron's is zero); the
+            # sensory neurons' places as they are; the streams start afresh
+            if name == "surprise/usual":
+                usual = np.array(new[name])
+                usual[index] = value
+                data[name] = usual
+            elif name == "surprise/places":
+                data[name] = value
             continue
         if name not in new:
             raise RuntimeError(f"grow could not lay this brain out again: {name} is missing")
