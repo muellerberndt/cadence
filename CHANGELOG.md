@@ -17,6 +17,13 @@
 - **`cadence.meaning.compose` routes**: `ear_entry` (the lowest region, the association or
   both), `ear_motor` (the ear straight to the voice, beside the association's route) and
   `eyes_entry` (the eyes into the association too); `learning_*` genes pass to `Brain.compose`.
+- **The host's read of the word records is the chamber's.** `MeaningParrot.recall` returned one
+  record's word alone where its key lay at cosine .95 or above, a rule the chamber the brain was
+  trained in does not hold; a key of what is seen (length 5.1) and the last word (length 1) puts
+  every record of one thing near .96 whatever was asked. The read asks for the agreement of the
+  nearest records at any cosine. On the demo room's questions (three passes, one founder's
+  pretrained brain with its word records) the host reads .67 with the rule and .80 without it,
+  the same as with the records off.
 - **`cadence.meaning.host.MeaningParrot`**: a trained brain on a page, one moment at a time:
   `see`, `hear`, `moment`, `pistachio` (with `first` and an amount), `correct`, the word records
   beside the brain (keyed on the association's pattern or on the input, as `spec.json` says),

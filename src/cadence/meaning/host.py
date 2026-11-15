@@ -137,7 +137,9 @@ class MeaningParrot:
 
     def recall(self, cue: np.ndarray) -> np.ndarray:
         """The word the records hold for ``cue``: the nearest records' value where the
-        ``agree`` nearest hold one word and the nearest lies at cosine ``match`` or above."""
+        ``agree`` nearest hold one word and the nearest lies at cosine ``match`` or above, at any
+        cosine: the rule of the chamber the brain was trained in (``benchmarks/meaning/night.py``).
+        A record however near answers only where its neighbours agree."""
         assert self.records is not None
         if not self.records.count or not np.any(cue):
             return np.zeros(self.width)
@@ -149,8 +151,6 @@ class MeaningParrot:
         key = np.asarray(self.records.keys[slot], dtype=np.float64)
         cos = float(key @ cue) / (np.linalg.norm(key) * np.linalg.norm(cue) + 1e-12)
         value = self.records.value(got)
-        if cos >= float(self.spec["records"].get("exact", 0.95)):
-            return value  # the situation itself, recognised: its record alone is enough
         for h in range(1, heads):
             if got.first(h) < 0 or not np.array_equal(self.records.value(got, h), value):
                 return np.zeros(self.width)

@@ -91,3 +91,41 @@ def test_every_gene_of_the_space_mutates_to_a_genome_that_composes():
     drawn = random_genome(rng)
     assert set(drawn) == set(SPACE)
     compose({**drawn, "module_width": 16, "association": 16}, inputs=12, words=3, seed=0)
+
+
+def test_the_host_recalls_a_word_only_where_the_nearest_records_agree():
+    """The page host's read of the word records is the chamber's: the nearest records agree and
+    the nearest lies at ``match`` or above. A record at a cosine near 1 answers only with its
+    neighbours' agreement (keys of one seen thing lie near .96 whatever was asked)."""
+    from cadence.longterm import LongTermMemory
+    from cadence.meaning.host import MeaningParrot
+
+    width = 8
+    host = MeaningParrot.__new__(MeaningParrot)
+    host.width = width
+    host.spec = {"records": {"agree": 3, "match": 0.85}}
+    host.records = LongTermMemory(width=16, value_width=width, capacity=32, cosine=True,
+                                  revise=0.9999, seed=0)
+    thing = np.zeros(16)
+    thing[:5] = 1.0  # what is seen of one thing: the long part of every key about it
+    words = np.eye(width)
+
+    def key(asked):
+        out = thing.copy()
+        out[8 + asked] = 1.0  # the last word heard: the short part
+        return out
+
+    for asked, said in ((0, 1), (1, 2), (2, 3)):  # three questions about it, three answers
+        host.records.write(key(asked), words[said])
+    cue = key(0)
+    nearest = host.records.read(cue, heads=1, credit=False).first()
+    held = np.asarray(host.records.keys[nearest], dtype=float)
+    assert float(held @ cue) / (np.linalg.norm(held) * np.linalg.norm(cue)) > 0.95
+    assert not host.recall(cue).any()  # the neighbours hold other words: nothing is recalled
+    agreed = LongTermMemory(width=16, value_width=width, capacity=32, cosine=True,
+                            revise=0.9999, seed=0)
+    for asked in (0, 1, 2):  # the same keys, one word
+        agreed.write(key(asked), words[4])
+    host.records = agreed
+    np.testing.assert_array_equal(host.recall(cue), words[4])
+
