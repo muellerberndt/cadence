@@ -84,3 +84,34 @@ def test_a_word_alone_reads_the_records_of_the_things_it_names(tmp_path: Path) -
         assert all(back[ch.lines[f"shape {k}"]].any() for k in range(6))
         assert np.allclose(back[ch.lines["word"]], ch.p.forms(word))
         assert not back[ch.lines["direction"]].any()  # the things lay in every direction
+
+
+def test_a_heard_name_draws_the_focus_to_the_thing_it_names(tmp_path: Path) -> None:
+    """The born rule on a newborn brain: at the moment a thing's name is heard, the focus is
+    on the thing of that name the map holds; a question that says no name draws no focus. The
+    rule needs no trained synapse. With records of fewer things a recalled form is a coarser
+    prototype: at 160 things a ball's name draws the focus to an apple in one room of 32."""
+    import named
+
+    p = nt.Parrot(lane.SEED, dict(lane.GENOME), streams=32)
+    p.brain.save(tmp_path / "brain.npz")
+    ch = named.Named(tmp_path, 320, 5, np.random.default_rng(7))
+    ch.draw = True
+    rng = np.random.default_rng(3)
+    rooms = named.rooms_of_three(rng, ch.held, 32)
+    quiet = np.zeros(32, dtype=bool)
+    asked = [r.things[0].kind for r in rooms]
+    exs = [nt.make_exchange(r, nt.Question(["where", "is", "the", kind], ["front"], "direction"),
+                            "turn", rng) for r, kind in zip(rooms, asked, strict=True)]
+    for t in range(3):  # "where is the": no name heard
+        ch.p.observe(exs, t, [None] * 32, quiet, rng)
+    assert ch.drawn == [None] * 32
+    x = ch.p.observe(exs, 3, [None] * 32, quiet, rng)  # the name
+    drawn = [d == kind for d, kind in zip(ch.drawn, asked, strict=True)]
+    assert all(d is None or d == kind for d, kind in zip(ch.drawn, asked, strict=True))
+    assert np.mean(drawn) >= 0.9
+    for i in np.flatnonzero(drawn)[:4]:  # the glimpse is the map's read of the named thing
+        thing = rooms[i].things[0]
+        thing.focus = True
+        assert np.allclose(x[i, : ch.w], ch.eyes.slot(rooms[i].seen_of(thing)), atol=2e-3)
+        thing.focus = False
