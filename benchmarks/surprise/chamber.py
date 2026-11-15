@@ -11,8 +11,9 @@ measure beside it on the same brains and the same streams, at every moment:
 
 Both sizes pass through one law with the same genes (``cadence.surprise.Surprise``): a size
 against the size the neuron is used to. A reading is the moment's largest surprise over the
-neurons (``Surprise.moment``), over the whole brain and over the sensory neurons alone (what
-the focus reads).
+neurons (``Surprise.moment``), over the whole brain, over the sensory neurons alone (what the
+focus reads), and over the association and motor regions (``inner``: under greedy acts no
+drive enters them).
 
 Sections:
 
@@ -97,6 +98,8 @@ class Reader:
         self.brain = held
         self.moved = Surprise(held.connectome.n, **held.surprise.settings())
         self.senses = np.asarray(held.sensory_index)
+        # the association and the motor neurons: no sense and no trace drives them
+        self.inner = np.concatenate([held.association_index, held.motor_index])
 
     def moment(self, x: np.ndarray, how: str = "act", **given: Any) -> dict[str, float]:
         """One moment of the stream under ``how`` (``act`` greedy, ``live`` or ``step``); gives
@@ -120,6 +123,8 @@ class Reader:
             "residual": float(residual.max()), "move": float(move.max()),
             "residual_senses": float(residual[self.senses].max()),
             "move_senses": float(move[self.senses].max()),
+            "residual_inner": float(residual[self.inner].max()),
+            "move_inner": float(move[self.inner].max()),
             "residual_units": float((residual > 0).sum()),
             "move_units": float((move > 0).sum()),
             "action": float(np.asarray(action).reshape(-1)[0]),
@@ -169,6 +174,8 @@ def deviants(seed: int, stream: str = "repeat", deviant: str = "units", how: str
         kind: {name: [] for name in MEASURES} for kind in ("deviant", "after", "standard")
     }
     last, reward = False, None
+    # the largest reading over the association and motor regions at any moment of the stream
+    inner = {"residual": 0.0, "move": 0.0}
     for moment in range(warm + moments):
         is_odd = moment >= warm and not last and rng.random() < 1.0 / every
         x = standards[moment % len(standards)]
@@ -176,13 +183,15 @@ def deviants(seed: int, stream: str = "repeat", deviant: str = "units", how: str
             x = distinct(rng, 1, own, standards)[0] if deviant == "fresh" else odd
         given = {"reward": reward} if how == "live" and reward is not None else {}
         read = reader.moment(x, how, **given)
+        for measure in inner:
+            inner[measure] = max(inner[measure], read[measure + "_inner"])
         reward = np.array([float(int(read["action"]) == int(is_odd))])
         if moment >= warm:
             kind = "deviant" if is_odd else "after" if last else "standard"
             for name in MEASURES:
                 reads[kind][name].append(read[name])
         last = is_odd
-    out: dict[str, Any] = {"deviants": len(reads["deviant"]["residual"])}
+    out: dict[str, Any] = {"deviants": len(reads["deviant"]["residual"]), "inner": inner}
     for name in MEASURES:
         out[name] = {
             "area": area(reads["deviant"][name], reads["standard"][name]),
@@ -463,8 +472,15 @@ def report(seeds: list[int], main: str | None, moments: int) -> dict[str, Any]:
                 cells.append(" / ".join(f"{value:.2f}" for value in means) + f" ({ratio})")
             where = "senses" if scope else "whole brain"
             print(f"| {stream} | {deviant} | {how}, {where} | " + " | ".join(cells) + " |")
+    for how in ("act", "live"):
+        runs = [r for key, found in out["deviants"].items() for r in found
+                if key.split("/")[2] == how]
+        print(f"\nThe largest reading over the association and motor regions at any moment "
+              f"of the streams lived by {how}: residual "
+              f"{max(r['inner']['residual'] for r in runs):.2f}, move "
+              f"{max(r['inner']['move'] for r in runs):.2f}")
     print("\n(b) onset and habituation: the reading at each moment named; whole brain "
-          "(senses)\n")
+          "(senses; association and motor)\n")
     runs = [onset(seed) for seed in seeds]
     out["onset"] = runs
     print("| Moment | residual | move |")
@@ -473,7 +489,8 @@ def report(seeds: list[int], main: str | None, moments: int) -> dict[str, Any]:
     def both(reads: list[dict[str, float]]) -> str:
         return " | ".join(
             f"{np.mean([r[m] for r in reads]):.2f} "
-            f"({np.mean([r[m + '_senses'] for r in reads]):.2f})"
+            f"({np.mean([r[m + '_senses'] for r in reads]):.2f}; "
+            f"{np.mean([r[m + '_inner'] for r in reads]):.2f})"
             for m in ("residual", "move"))
 
     print(f"| the input held, its last moment | {both([r['held'] for r in runs])} |")

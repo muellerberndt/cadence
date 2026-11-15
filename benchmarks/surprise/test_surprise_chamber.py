@@ -49,6 +49,11 @@ def test_an_input_held_reads_nothing_and_a_change_habituates_in_both_measures():
     assert first["residual_senses"] > 2.9 and first["move_senses"] > 0.0
     assert third["residual_senses"] == third["move_senses"] == 0.0
     assert found["new"]["residual_senses"] > 2.9 and found["new"]["move_senses"] > 0.0
+    # under greedy acts no drive enters the association and motor regions: they carry no
+    # residual at the start of a settle, and they do move
+    moments = [found["held"], *found["changes"], found["return"], found["new"]]
+    assert max(read["residual_inner"] for read in moments) == 0.0
+    assert max(read["move_inner"] for read in moments) > 0.0
 
 
 def test_a_deviant_on_spare_inputs_reads_above_the_standards_in_both_measures():

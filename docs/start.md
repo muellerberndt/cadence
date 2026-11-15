@@ -506,6 +506,9 @@ assert (senses > 0).tolist() == [True, False, True, False]
 **What the residual reads.** For a state that settled within the tolerance, under synapses
 unchanged since, a neuron's residual is the change of its drive since that settle: at a sensory
 neuron the change of its input, at a neuron a memory drives the change of what the memory reads.
+A neuron that no drive enters carries no residual at the start of a settle and reads no
+surprise: the association region, and the motor region wherever no record of the place store
+reads into it.
 So an input held reads nothing at the senses, and nothing anywhere once the memories' own
 traces have come to rest with it (the working trace and the heard history are part of the drive
 and take a few moments). A change reads at the neurons whose drive changed, and at the

@@ -16,10 +16,12 @@ The adaptation equation (``activation - a``) holds for a carried state as it hel
 settled, whatever the moment brings, so it reads nothing of the moment. For a state that settled
 within the tolerance, under synapses unchanged since, ``r`` is the change of the unit's drive
 since that settle, to within the tolerance: what the senses and the memories' reads bring that
-the equilibrium carried in does not hold. A lesson taught between two moments adds what the
-changed synapses move (an outcome is learned inside its own moment, whose act settles again
-under the new synapses). A stream that begins from rest carries no equilibrium: its moment reads
-no surprise and teaches the usual nothing.
+the equilibrium carried in does not hold. A unit that no drive enters therefore reads none:
+in a composed brain the association region, and the motor region wherever no record of the
+place store reads into it. A lesson taught between two moments adds what the changed synapses
+move (an outcome is learned inside its own moment, whose act settles again under the new
+synapses). A stream that begins from rest carries no equilibrium: its moment reads no surprise
+and teaches the usual nothing.
 
 ``usual`` is each unit's learned size of ``r``: it rises fast when a moment exceeds it and falls
 slowly, as tectal and forebrain neurons adapt to a repeated stimulus within a few repetitions

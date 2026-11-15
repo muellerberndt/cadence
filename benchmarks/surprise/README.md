@@ -17,7 +17,8 @@ moment, so the two can be compared:
 Both sizes pass through one law with one set of genes (`cadence.surprise.Surprise` at its
 founders, `tolerance=2.0`, `floor=0.05`, `adapt=0.5`, `recover=0.01`): a size against the size
 the neuron is used to. A reading is the moment's largest surprise over the neurons: over the
-whole brain (`Surprise.moment`), and over the sensory neurons alone (what the focus reads).
+whole brain (`Surprise.moment`), over the sensory neurons alone (what the focus reads), and
+over the association and motor regions.
 
 ## The chamber
 
@@ -64,22 +65,26 @@ or by `live` with reward only.
 | cycle | fresh, 10 | live, whole brain | 0.53 (0.49 to 0.55) | 0.02 / 0.04 / 0.01 (4) | 0.55 (0.49 to 0.59) | 0.04 / 0.07 / 0.01 (6) |
 | cycle | fresh, 10 | live, senses | 0.50 (0.50 to 0.50) | 0.00 / 0.00 / 0.00 | 0.50 (0.50 to 0.50) | 0.00 / 0.00 / 0.00 |
 
-At the senses no standard moment reads in either measure, so those rows carry no ratio.
+At the senses no standard moment reads in either measure, so those rows carry no ratio. Over
+the association and motor regions the residual's largest reading at any moment is 0.00 on every
+stream lived by greedy acts and 1.72 on the streams lived by `live`; the move's is 2.40 and
+2.40.
 
 ### (b) Onset and habituation
 
 One input is held for 20 moments; a change comes for one moment and the held input returns for
 four, eight times over; then a new change comes on spare inputs. Each cell: the whole brain's
-reading, and in brackets the senses'. The three seeds read alike to the second decimal.
+reading, and in brackets the senses' and the association and motor regions' (the mean of the
+seeds; the whole brain's and the senses' are the same on every seed to the second decimal).
 
 | Moment | residual | move |
 | --- | --- | --- |
-| the input held, its last moment | 0.00 (0.00) | 0.00 (0.00) |
-| the change, its first coming | 3.00 (3.00) | 2.22 (2.22) |
-| the change, its second coming | 4.09 (0.00) | 2.90 (0.00) |
-| the change, its third, fourth and eighth coming | 0.00 (0.00) | 0.00 (0.00) |
-| the held input back after the first change | 4.09 (0.00) | 2.90 (0.00) |
-| a new change on spare inputs | 3.00 (3.00) | 2.22 (2.22) |
+| the input held, its last moment | 0.00 (0.00; 0.00) | 0.00 (0.00; 0.00) |
+| the change, its first coming | 3.00 (3.00; 0.00) | 2.22 (2.22; 0.17) |
+| the change, its second coming | 4.09 (0.00; 0.00) | 2.90 (0.00; 1.13) |
+| the change, its third, fourth and eighth coming | 0.00 (0.00; 0.00) | 0.00 (0.00; 0.00) |
+| the held input back after the first change | 4.09 (0.00; 0.00) | 2.90 (0.00; 1.56) |
+| a new change on spare inputs | 3.00 (3.00; 0.00) | 2.22 (2.22; 0.00) |
 
 ### (c) Learned, not built
 
@@ -155,8 +160,14 @@ its saved file, without the surprise's own arrays and record.
 - At the senses the two read the same moments on every row of (a) and (c): their areas lie
   within 0.02 of each other and their shares are equal.
 
-**They differ** in four ways:
+**They differ** in five ways:
 
+- **Where it reads.** The residual reads the neurons a drive enters: the senses and the regions
+  the memories drive (the working trace's, the heard history's, the recall memory's ports, and
+  under `live` the neurons the place store's records read into). A neuron that no drive enters
+  carries no residual at the start of a settle: under greedy acts the association and motor
+  regions read 0.00 at every moment of (a) and (b). The move reads those regions as well (1.13
+  and 1.56 at the second coming and at the return in (b), up to 2.40 in (a)).
 - **Scale.** The residual is in units of drive (a first change of one unit of sensory drive
   reads `log(1 / 0.05)`, 3.00; a neuron a memory drives at amplitude 3 reads 4.09). The move is
   in units of activity (2.22 and 2.90 for the same moments).
