@@ -8,6 +8,7 @@ keyword.
 | --- | --- |
 | [Brain](#brain-cadence) | `Brain`, its methods, attributes and checkpoint formats |
 | [Arousal](#arousal-cadencearousal) | `ArousalConfig`, `Arousal` |
+| [Surprise and the focus](#surprise-and-the-focus-cadencesurprise) | `Surprise`, `Orienting`, `Focus` |
 | [Streams](#streams-cadencestream) | `Trace`, `Efference`, `History`, `Message`, `Recall`, `FastSynapses`, `SynapticMemory`, `PatternSeparator`, `LongTermMemory` |
 | [Learning](#learning-cadencelearning), [checkpoints](#checkpoints-cadencecheckpoint), [reward](#the-agent-cadenceplasticity) | `LearnerConfig`, `Learner`, `GraphHolder`, `LearningPhaseError`, graph factories and diagnostics, `save`, `load`, `ActorCritic`, `ActorCriticConfig`, `Maturity` |
 | [The graph](#neuralgraph-cadence) | `NeuralGraph`, `BrainState`, `Equilibrium`, `Nudge`, `Connectome`, `NeuronModel`, `Adaptation`, blocks, `Certificate`, the neuron-by-neuron reference |
@@ -99,6 +100,12 @@ The composed System 1 brain, with optional System 2 `observers` in the same grap
   memory takes one as wide as its blocks wherever at least half their entries are synapses); a
   brain over it settles on the slower sparse transport
   ([implementation notes](backends.md#implementation-notes)).
+- `surprise=True` (opt-in), or a mapping of the genes of `Surprise` and `Orienting` by name:
+  the brain reads each neuron's surprise from the residual its settle starts from, as
+  `brain.surprise`, and draws one focus from it (`brain.focus`). It changes no action, weight
+  or record; unset, the brain is as without the option, to the bit. It runs on `backend="cpu"`
+  ([surprise and the focus](#surprise-and-the-focus-cadencesurprise),
+  [the guide](start.md#surprise-and-the-focus-it-draws-opt-in)).
 - `options`: every constructor keyword below and every `learning_<field>`, `actor_<field>`
   and `arousal_<field>` name; with `memory_choice=True` it fills in the episodic founders.
 
@@ -238,6 +245,8 @@ their shape. Keep row identities fixed until `reset()`.
 | `sensory_index`, `association_index`, `motor_index` | neuron indices of those populations |
 | `memory_choice` | whether the episodic records vote; `memories["episodic"]` holds their settings (`share`, `extinction`, `hold`) |
 | `arousal` | the stream's `Arousal`, or `None` |
+| `surprise`, `orienting` | with `surprise`: the `Surprise` over the brain's neurons (`last`, `moment`, `usual`) and the `Orienting` that draws the focus; each `None` without it |
+| `focus`, `places` | with `surprise`: the `Focus` drawn at the latest moment, or `None` (read-only); the place of each sensory neuron in the focus's frame, `(sensory neurons, d)`, set by the caller, `None` unless set |
 | `pending_feedback` | read-only: the issued action awaits its outcome (`wait` keeps it) |
 | `decision_id` | read-only: the `arousal.age` at which `live` issued the awaited action, or `None`; saved and restored |
 | `last_arousal` | immutable snapshot of the latest `live` moment; `None` after construction, reset or load ([fields](start.md#routine-and-repair-live)) |
@@ -282,9 +291,16 @@ the groups out again from the connectome and refuses a file whose groups differ 
 whose copies hold different efficacies. 0.97.0 and earlier refuse a composed tied brain's file
 by `invalid saved composition provenance`.
 
+A brain with [surprise](#surprise-and-the-focus-cadencesurprise) saves under the name its
+maturity, fade and records give it, with its genes, the moments it observed and the focus under
+`surprise` in the metadata and its arrays under `surprise/`. A file without them loads as a
+brain without surprise; arrays without the record, a usual residual that does not hold one
+value a neuron and a load on another backend than the CPU are refused with `ValueError`.
+
 | Members | What they hold |
 | --- | --- |
 | `meta` and the unprefixed arrays | the learner's checkpoint ([checkpoints](#checkpoints-cadencecheckpoint)) |
+| `surprise/` | with `surprise`: each neuron's usual residual (`usual`); where a stream lives the latest surprise (`last`); the focus's place and the places inhibited (`focus`, `inhibited`); the sensory neurons' `places` where set; and the observations of a moment in progress whose surprise is observed (`seen`), between `learn` and the act that follows it |
 | `rehearsal/` | with `learning_rehearsal`: the reservoir's rows with their episodes and the streams' episodes in progress (`heard`, `told`, `lengths`, `moments`, `labels`), the counts `seen` and `draws` under `rehearsal` in the metadata; written whenever the brain holds either |
 | `brain` | the metadata: the actor's config, both random states, the free phase and a pending action, the arousal and the action `live` issued with its forecast, the state a waiting stream sensed, a `code=units` code or a learned code, the composition, and under `memories` the settings of each memory the brain holds |
 | `actor/`, `free/`, `pending/`, `moment/`, `prepared`, `lived/`, `awaiting/` | the critic and eligibility, the free phase, a pending action's phases and decision, the action `live` issued, the sensed state |
@@ -349,9 +365,9 @@ heard history and its gains per block, the carried gains and arousal (`arousal=T
 teaching point, with one or several regions, observers and motor slots. It refuses, naming the part:
 `memory_choice`, a store with a separator, a learned or fixed code, an apical compartment, rehearsal, qualified
 teaching, the efference copy, a held message (`message`), long-term records (`longterm`), tied projections
-(`tied`), `actor_entropy`, a recall memory with several heads, a window, the command, the read of when, tokens or
-the cortex at unit norm, image inputs, and MPS, which has no float64 for the settles' checks. A moment any life
-refuses is refused for every life.
+(`tied`), `actor_entropy`, `surprise`, a recall memory with several heads, a window, the command, the read of
+when, tokens or the cortex at unit norm, image inputs, and MPS, which has no float64 for the settles' checks. A
+moment any life refuses is refused for every life.
 
 ## Arousal (`cadence.arousal`)
 
@@ -386,6 +402,73 @@ meaning of each gene are in [routine and repair](start.md#routine-and-repair-liv
 `from_dict` reads `cadence-arousal/4` and refuses the earlier formats by name: cadence 0.94.0
 loads those. A retired gene loads at the one value this version keeps for it and is refused by
 name at any other ([CHANGELOG](../CHANGELOG.md)).
+
+## Surprise and the focus (`cadence.surprise`)
+
+Opt-in; `import cadence` loads the module and names none of it at the top level. Guide:
+[surprise, and the focus it draws](start.md#surprise-and-the-focus-it-draws-opt-in).
+
+```text
+Surprise(units, *, tolerance=2.0, floor=0.05, adapt=0.5, recover=0.01, usual=None)
+```
+
+One surprise per unit from one size per unit: `surprise = log(size / (tolerance * usual +
+floor))` where that is positive, else 0, and then `usual += adapt * (size - usual)` where the
+size exceeds it, else `recover * (size - usual)`. `Brain.compose(surprise=True)` holds one over
+the brain's neurons, whose size is each neuron's residual at the start of the moment's settle:
+the potential equation's error at the state the stream carried into the moment, under the
+moment's drive (`NeuralGraph.residual(drive, state, per_unit=True)`). For a carried state that
+settled within the tolerance, under synapses unchanged since, that is the change of the
+neuron's drive since that settle. `act`, `step`, `live` and `wait` are the moments that read it,
+once each, at the first settle from the carried state, and observe it as soon as the moment is
+certain (its outcome learned or taken, or its answer about to be issued), so a lesson and a
+memory's write of that moment read the moment's own surprise. `lesson`, `predict`, `value`,
+`imagine` and a rehearsal's replays leave it as it was, and so does a refused settle.
+`Map(surprise=True)` holds one over its cells, whose size is each thing's move.
+
+| Member | Behaviour |
+| --- | --- |
+| `observe(sizes, *, learn=True, carried=None) -> ndarray` | One moment's sizes `(units,)` or `(streams, units)`, signs ignored; gives the surprise per unit against the usual as it stood, then the usual learns from the mean over the streams (`learn=False`: it stays). `carried` flags the streams that carried a state into the moment: a stream that did not reads no surprise and teaches nothing |
+| `last` | The latest moment's surprise, `(streams, units)`, zero or more |
+| `moment` | One finite number of zero or more per stream, `(streams,)`: the largest of the stream's units. Zero: no unit's size exceeded its tolerated size (`tolerance * usual + floor`), which a stream that begins from rest reads as well. `k`: the most surprised unit's size was `exp(k)` times its tolerated size (`log(1 / floor)`, about 3.0, for a first size of 1) |
+| `usual`, `moments`, `size` | Each unit's learned size; the moments observed; the units |
+| `settings()`, `reset(streams=1)` | The four genes by name; `last` emptied for streams that begin afresh, the usual kept |
+| `to_dict()`, `arrays()`, `Surprise.from_dict(values, arrays)` | The genes and the moments; `usual` and `last`; a surprise read back from them |
+
+In a brain: a stream that begins from rest (its first moment, the moment after `reset`, a row
+whose episode ended) reads no surprise and teaches the usual nothing. `reset()` empties `last`
+and the focus and keeps the usual; `save` and `load`, `copy.deepcopy`, `grow` (each neuron's
+usual on the neuron it was) and `graft` keep it. `describe()["genes"]["surprise"]` names the
+genes of the surprise and of the focus, and `retune` refuses `surprise` as a construction
+setting.
+
+```text
+Orienting(*, hold=0.8, least=0.5, reach=0.1, inhibit=1.0, release=0.95, gain=1.0)
+Focus(place, sense, index, salience, held, turned)
+```
+
+One focus among the places of every sense, drawn by surprise. A brain with `surprise` holds one
+(`brain.orienting`) and attends at each moment to the first stream's surprise at the sensory
+neurons that have `brain.places` (sense `"senses"`) and at the cells of a held map with
+surprise (`brain.space`, sense `"map"`, as the map's latest moment read them); with neither
+there is no competition.
+
+| Member | Behaviour |
+| --- | --- |
+| `attend(surprise, places=None, *, sense="place") -> Focus or None` | One moment of the competition: one sense's surprise `(units,)` with its `places` `(units, d)`, or a mapping of sense to `(surprise, places)` in one frame. The focus keeps `hold` of its salience a moment, is renewed by the surprise within `reach` of its place and follows it there; another place wins where its surprise exceeds that; nothing below `least` orients. A place the focus leaves loses `inhibit` of its salience, which fades by `release` a moment |
+| `focus` | The `Focus`, or `None`: its `place`, the `sense` and `index` of the place that won, its `salience`, the moments `held` (1 when taken) and whether it was taken at this moment (`turned`) |
+| `gains(places) -> (n,)` | The top-down gain at each place: `1 + gain` at the focus, falling off as a Gaussian of width `reach`; ones with no focus. The library applies it nowhere |
+| `bearing(origin) -> float or None` | The direction from `origin` to the focus, radians |
+| `settings()`, `reset()`, `parts()`, `Orienting.from_parts(record, arrays)` | The six genes; no focus and nothing inhibited; the competition as a record and arrays, and read back |
+
+Refusals (`ValueError`): a gene outside its range (`adapt`, `recover`, `hold`, `inhibit` and
+`release` in `[0, 1]`, the others zero or more, `floor` above zero), no unit, sizes that are not
+finite or do not hold one value a unit, `carried` that is not one flag a stream, surprise or
+places that are not finite, places that do not hold one place a unit or share one frame;
+in `compose`, a gene `Surprise` and `Orienting` do not name, a value that is neither `True` nor
+a mapping, and a backend other than the CPU (`Lives` refuses the option by name);
+`brain.places` that does not hold one finite place a sensory neuron, or set on a brain without
+surprise.
 
 ## The memories (`cadence.memories`)
 
@@ -700,7 +783,7 @@ observation. `Brain.compose(..., trained=[module])` builds a brain around it and
 ```text
 Map(plane, cells=(32, 26), *, units=16, kinds=None, weight=3, codes=None, level=0.02,
     empty="near", reach=0.15, step=0.15, stride=0.5, margin=0.02, seed=0, trace=False,
-    physics=None, backend="cpu")
+    physics=None, backend="cpu", surprise=None)
 ```
 
 What is where, held in a sheet's own settled activity: `cells` of the `plane` (`(x low, x high,
@@ -718,6 +801,7 @@ none of it. The map's graph has no taught synapse.
 | `observation()` | `where` and `what` as the latest moment settled them, for a brain that holds the map (`Brain.space`) |
 | `reset()`, `arrays()`, `save(path, card=None)`, `Map.load(path)`, `Map.card_of(path)` | The carried state emptied, read, written with a checksum of every array, read back (refusing a pickled object, a changed array, arrays that do not fit) |
 | `trajectory` | With `trace=True`, every region's activity by sweep of the latest settle |
+| `surprise`, `moves(expected) -> (cells,)` | With `surprise=True` (or the genes of `Surprise` by name): a [`Surprise`](#surprise-and-the-focus-cadencesurprise) over the cells. Every moment reads how far it moved each thing from the sheet the map carried into it (with a taught physics, the sheet of `forecast(1)`), in units of `step`, a thing that appears or is gone moving 1, on the thing's cells; `surprise.last` holds each cell's surprise against its usual move. A forecast reads and teaches none. The map's activity is the same with and without it, and a map file keeps what each cell is used to. Refuses a value that is neither `True` nor a mapping of genes |
 
 `sparse_codes(kinds,
 units, weight=3, seed=0)` gives codes of `weight` units, any two sharing one at most. `Sense(map,
@@ -951,7 +1035,7 @@ before any change.
 | `settle(stimulus=None, *, steps=60, state=None, mask=None, trajectory=False, nudge=None, tolerance=None) -> BrainState` | A list of neurons at full amplitude, a `{neuron: level}` map or a dense drive vector. A positive `tolerance` stops once no activation moves more. |
 | `settle_batch(drive, ...) -> BrainState` | The same for `(batch, n)` drives. `mask` is `(n,)`, `(1, n)` or `(batch, n)` in `[0, 1]`. |
 | `equilibrate(drive, *, budget=512, chunk=32, tolerance=1e-5, state=None, mask=None, nudge=None, damping=0, fast=False) -> Equilibrium` | Settles until the equation residual is below `tolerance`, checked per chunk; up to `damping` halvings of the step share the budget. |
-| `residual(drive, state, *, nudge=None, mask=None, on_device=True, own_precision=False) -> ndarray` | Per-row fixed-point discrepancy; no state change. `own_precision` checks an unread float32 torch state in float32. |
+| `residual(drive, state, *, nudge=None, mask=None, on_device=True, own_precision=False, per_unit=False) -> ndarray` | Per-row fixed-point discrepancy; no state change. `own_precision` checks an unread float32 torch state in float32. `per_unit=True` gives each neuron's signed error of the potential equation instead, `(rows, neurons)`, on the float64 CPU reference: what a settle from `state` under `drive` repairs, neuron by neuron. |
 | `apical_gain(drive, state, *, own_precision=False) -> ndarray or None` | The apical compartment's gain per row and pool at `state`, what a nudged settle from it holds; `None` without the compartment. |
 | `stimulus_vector(stimulus)`, `stimulus_levels(levels)`, `readings(state, names, i=0, level=0.5)` | Drive construction ([pattern targets](settling.md#pattern-targets)); population readings. |
 | `with_parameters(*, efficacy=None, log_gain=None, bias=None)`, `weights`, `dense()`, `to_dict()` | A new graph; effective drive per synapse; the `W[pre, post]` matrix. |
