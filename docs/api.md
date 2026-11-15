@@ -23,16 +23,28 @@ keyword.
 ### Construction
 
 ```text
-Brain.compose(inputs, actions, *, connectome=None, modules=(64,), observers=(),
-              lateral=None, teaching=None, scales=None, features=8, field=3, code=None,
-              learned_code=None, attention=False, seed=0, slots=1, learned_fields=None,
-              ports=0, tied=None, fields_motor=0.0, trained=None, **options) -> Brain
+Brain.compose(inputs=None, actions=None, *, senses=None, connectome=None, modules=(64,),
+              observers=(), lateral=None, teaching=None, scales=None, features=8, field=3,
+              code=None, learned_code=None, attention=False, seed=0, slots=1,
+              learned_fields=None, ports=0, tied=None, fields_motor=0.0, trained=None,
+              **options) -> Brain
 ```
 
-The composed System 1 brain, with optional System 2 `observers` in the same graph.
+The composed System 1 brain, with optional System 2 `observers` in the same graph. It takes
+`inputs` or `senses`, and `actions`; a call without them raises `TypeError`.
 
 - `inputs`: a vector length or an image shape `(height, width[, channels])`; `features` and
   `field` size an image's visual cortex.
+- `senses={name: width, ...}` (opt-in, in place of `inputs`): the brain's senses by name. A
+  sense is a width, or a mapping of field to width (`{"eyes": {"hue": 12, "shape": 30}, "ear":
+  64}`); the inputs are their sum in the declared order. Every operation that takes
+  observations then also takes a dict of sense to rows, a sense left out silent. The brain is
+  the brain of `inputs=<the sum>` and the same seed, with the names beside it (`brain.senses`);
+  with `code=units` every field of every sense enters the fixed sparse code at unit length.
+  Refused with `ValueError`: `inputs` beside it, a mapping that is empty or no mapping, a name
+  that is empty or no string, a width below 1 or no integer, a sense without a field, the name
+  `space`, and `learned_fields` or `ports`
+  ([senses by name](senses.md#senses-by-name)).
 - `modules`: the widths of the reciprocal processing chain, the last the association region.
   Each `observers` width adds a region connected both ways to every module, the motor region
   and earlier observers. A new brain with the memory and an association wider than 64 [steps at
@@ -69,7 +81,18 @@ The composed System 1 brain, with optional System 2 `observers` in the same grap
   brain's own as `name/region`, its inputs follow the brain's own in the observation, the
   association region reads what it publishes through one-way synapses that start at zero, and
   its synapses are grafted in and held. The brain records no construction
-  ([a trained module](modules.md#a-trained-module)).
+  ([a trained module](modules.md#a-trained-module)). An entry is a trained module, a map of
+  things or a name, and one entry may be given without a list. A name loads the module the
+  library ships by it (`cadence.modules.load`; `"place"` is a map). A
+  [`Map`](#the-map-of-things-cadencespacemap) becomes `brain.space`, and its read
+  (`Map.observation()`: `where`, one value a cell, and `what`, one a code unit) joins the
+  brain's senses as the sense `space`, after the brain's own inputs and before a trained
+  module's: observations carry the brain's own senses, and the brain reads its map itself at
+  every operation that takes observations. A brain with a map in `trained` is the brain of
+  `inputs=<its own inputs + map.count + map.units>` with the map assigned. Refused with
+  `ValueError`: two maps, a name the library ships no module by, image `inputs`,
+  `learned_fields` or `ports` beside a map, and a module named as a sense
+  ([a brain that knows where things are](modules.md#a-brain-that-knows-where-things-are)).
 - `scales`: maps `"sensory"` and `"trace"` to the initial magnitudes of the projections from
   those regions (founders 1.0 and 1.2; a name left out keeps its founder), fixed at
   construction. The history's and the recall memory's projections start at 1.2, a constant.
@@ -209,15 +232,25 @@ projections start at 1.2, a constant (`scales["history"]` and `scales["recall"]`
 | `save_module(path, *, name, inputs, published, regions=None, interface=None, card=None) -> Path` | Writes this brain's trained regions as a module file (`cadence-module/1`): `inputs` the populations its own senses drive, `published` those a host reads, `regions` every region of the module (where omitted, the inputs and the published), `interface` the module's own record and `card` what it was trained on. The brain is saved at rest and is unchanged. Refuses a name that is empty or holds `/`, a region that is no population, no inputs or no published regions, an input region that is no input of this brain, and a brain with a learned code. | [a trained module](modules.md#a-trained-module) |
 | `reset(*, keep=("arousal",))` | Clears per-stream state and eligibility; keeps records and weights. `keep` names what carries over: `"arousal"` (the default) the whole arousal state, `"slots"` the recall slots, ending each stream's episode; a reset that does not keep `"arousal"` begins it calm with its references cleared and its age kept. Other names raise `ValueError`, checked before anything changes; an unknown keyword raises `TypeError`. | [reset and save](start.md#reset-and-save) |
 | `placement` | Where the brain runs and why: `backend`, `device`, `precision`, `chosen_by`, `why`, `refused`, `pending`, and after a load `saved_on` ([the default backend](backends.md#the-default-backend)). | [backends](backends.md#the-default-backend) |
-| `describe() -> dict` | JSON-safe `layout` (regions, `code`, `composition`, `projection_rates` where the brain holds per-synapse rates, `tied` where it holds tied projections: each one's `pre`, `post`, `blocks` and shared `synapses`), `genes` (every setting by its `compose` name; at `teaching="custom"`, `learning` gives the six effective expert teaching settings), `memories` (each member's `to_dict()`) and `pending`, and `placement` where the brain is not on the CPU by name. | [defaults](tune.md#defaults-and-expert-overrides) |
-| `observation_code(observations) -> (batch, code_width)` | The unit-length key every memory reads and writes; with a learned code, the code the observations settle to without a context. | [the observation code](senses.md#the-observation-code), [the learned code](senses.md#the-learned-code) |
+| `describe() -> dict` | JSON-safe `layout` (regions, `code`, `composition`, `projection_rates` where the brain holds per-synapse rates, `tied` where it holds tied projections: each one's `pre`, `post`, `blocks` and shared `synapses`, `senses` where it has senses by name: each sense's columns `[start, stop]`, or its fields'), `genes` (every setting by its `compose` name; at `teaching="custom"`, `learning` gives the six effective expert teaching settings), `memories` (each member's `to_dict()`) and `pending`, and `placement` where the brain is not on the CPU by name. | [defaults](tune.md#defaults-and-expert-overrides) |
+| `observation_code(observations) -> (batch, code_width)` | The unit-length key every memory reads and writes; with a learned code, the code the observations settle to without a context. With `code=units` in a brain composed with `senses=`, the code of the row with every field of every sense at unit length ([equal senses](senses.md#equal-senses-in-the-fixed-code)). | [the observation code](senses.md#the-observation-code), [the learned code](senses.md#the-learned-code) |
 | `stimulus(observations, *, memory=True) -> drive` | The drive of a batch; with `memory` the trace, copy, history, recall and hippocampal reads are added, and the recall address is fixed for the moment. | [memory](memory.md) |
 | `parameters() -> int` | Actor and critic parameters, the consolidated matrices of the place and context records and of the direct payments, the recall memory's address and position maps, its options' maps (anchor, relative, slope, grid) and gains, one per carried route, a learned code's tables, and with `maturity` its use (one) and the place records' noise scales (`gate_noise`, one per consolidated entry). | |
 | `copy.deepcopy(brain)` | An independent copy: every array, store, state and random generator copied, the immutable connectomes shared. |
 | `save(path, *, compressed=True) -> Path`, `Brain.load(path, *, backend=None, device=None, precision=None)` | The whole continuation, written atomically ([the format](#checkpoint-format)); `compressed=False` writes a plain archive, faster for a large brain. `Brain.load` refuses a learner-only file; `Learner.load` reads either. | [reset and save](start.md#reset-and-save) |
 
 Observations are a nonempty finite batch `(streams, inputs)`, images flattened per row or in
-their shape. Keep row identities fixed until `reset()`.
+their shape. Keep row identities fixed until `reset()`. A brain composed with `senses=` also
+takes a dict of sense to rows, `{"eyes": rows, "ear": rows}`: each sense's rows are a batch of
+its width (for a sense with fields, of its whole width or a dict of field to rows), a sense or
+a field left out is silent, and a dict that names no sense is one silent row. A brain with a
+map in `trained=` takes observations without the map's read, as a dict or as rows of
+`inputs - map.count - map.units` values, and reads `brain.space.observation()` into the
+columns of `space` itself, the same read in every row; rows of all `inputs` values are taken as
+they are. Refused with `ValueError`, before anything changes and by the name that is wrong: a
+sense or a field the brain does not have, another width than declared, senses that give
+different numbers of rows, `space` in a dict, a dict for a brain composed without `senses=`,
+and a `brain.space` that holds no map or a map of another read.
 
 ### Attributes
 
@@ -231,6 +264,8 @@ their shape. Keep row identities fixed until `reset()`.
 | `hippocampus` | the associative `SynapticMemory` (with `memory_choice` the episodic place records), or `None` with `episodic=False` |
 | `context_memory` | the episodic context records with `memory_choice` and a positive `memory_context`, else `None` |
 | `sparse_code`, `code_width`, `coded_cortex`, `inputs` | the `PatternSeparator` of `code=units` or `None`; the key width; whether the sensory region is the code; the observation width |
+| `senses` | the senses by name, in the order of the observation's columns: each sense's columns as a `slice`, or for a sense with fields a dict of field to `slice`; the declared senses, then `space` (`where` and `what`) for a map in `trained=`, then a trained module's inputs under the module's name; empty for a brain composed with `inputs=` alone ([senses by name](senses.md#senses-by-name)) |
+| `space` | the [`Map`](#the-map-of-things-cadencespacemap) the brain holds, or `None`: the map of `trained=`, which the brain reads as the sense `space`, or a map assigned by hand; saved and loaded with the brain |
 | `fields`, `ports` | the `LearnedFields` of `learned_fields=features` or `None`; the width of the ports read beside its pools (0 without them) |
 | `tied` | the tied projections, `{(pre, post): (blocks of pre, blocks of post)}` by the connectome's populations; empty without them |
 | `learned_code`, `code_index`, `prefrontal_index` | the `LearnedCode` of `learned_code=units` or `None`; neuron indices of the `code` and `prefrontal` populations (empty without them) |
@@ -274,6 +309,15 @@ config, and with the entropy a pending act's surprise (`pending/surprise`, `pend
 0.96.1 and earlier refuse each such file by the part they do not read: `invalid saved memories` for
 a message, `invalid saved composition provenance` for learned fields and `invalid saved actor
 config` for a hold or an entropy. A brain that names none of them saves a file 0.96.1 loads.
+
+A brain with senses by name ([`senses=`](senses.md#senses-by-name), a map in `trained=`) saves
+them as `senses` in the metadata, under the name its other parts give the file: `named`, each
+sense's columns `[start, stop]` or its fields', `declared`, whether it was composed with
+`senses=`, and `space`, the columns it reads from its map (0 without one). A brain without them
+saves no such entry, and its file is the file of 0.99.1. `Brain.load` puts the senses in the
+order of their columns and refuses, with `invalid saved senses`, columns that do not lie side
+by side up to the last input, and senses that read a map the file does not hold. 0.99.1 reads
+such a file as the brain of its summed width, without the names.
 
 A brain with [tied projections](tune.md#tied-projections-opt-in) saves them as `tied` in the
 metadata (`[pre, post, blocks of pre, blocks of post]` each), and a composed one in its
@@ -320,7 +364,7 @@ population, so action indices keep their meaning after loading. A saved maturity
 Lives(inputs, actions, lives, *, seeds=None, backend="cpu", device=None, precision=None, **options)
 ```
 
-Many continuing brains of one anatomy (no trained module: `trained=` is refused by name), each composed by `Brain.compose(inputs, actions, seed=seeds[i],
+Many continuing brains of one anatomy (no trained module, map or senses by name: `trained=` and `senses=` are refused by name), each composed by `Brain.compose(inputs, actions, seed=seeds[i],
 **options)`, the default composition with its store of place records (`episodic=False` composes without it;
 seeds `range(lives)` by default), stepped together, one stream each. Every life has its own parameters, optimizer, critic, eligibility, recall
 memory (its slots, its address and position maps), carried gains, working trace and random state.
@@ -692,7 +736,9 @@ A `Module` has `name`, `regions` (each region's size), `inputs` and `published` 
 `brain(*, backend=None, device=None, precision=None)` is the brain it was trained in, a brain of
 its own at every call, and `columns(brain, prefix=None)` where its inputs lie in a brain's
 observation. `Brain.compose(..., trained=[module])` builds a brain around it and
-`Brain.graft(module)` grafts it; a map joins a brain as `brain.space`. Guide:
+`Brain.graft(module)` grafts it; in a brain composed with `senses=` its inputs are the sense
+`name`. A map joins a brain as `brain.space`: in `trained=`, by name or as an object, where the
+brain reads it as the sense `space`, or assigned by hand. Guide:
 [modules](modules.md#modules-parts-that-arrive-as-files).
 
 ## The map of things (`cadence.space.map`)

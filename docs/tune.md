@@ -79,7 +79,7 @@ The composed graph, in the order its regions are developed:
 
 | Region | Neurons | Wiring | Home |
 | --- | --- | --- | --- |
-| `sensory`, or `visual` for an image | `inputs`, the `code=units` code, or the visual cortex | Projects to the first module (to `code` with a learned code); initial scale `scales["sensory"]` | [image inputs](senses.md#image-inputs) |
+| `sensory`, or `visual` for an image | `inputs` (with `senses=` their sum, and after them the read of a map in `trained=`), the `code=units` code, or the visual cortex | Projects to the first module (to `code` with a learned code); initial scale `scales["sensory"]` | [image inputs](senses.md#image-inputs) |
 | `code` | `learned_code` units | With `learned_code=units`: the dictionary from `sensory`, lateral inhibition through its Gram matrix, the predictor from `prefrontal`; projects to the first module at `scales["sensory"]` | [the learned code](senses.md#the-learned-code) |
 | `module_0` ... | `modules[:-1]` | A chain of reciprocal projections | this page |
 | `association` | `modules[-1]` | Reciprocal with `motor` | this page |

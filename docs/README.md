@@ -120,6 +120,7 @@ Then, in this order:
 | The world to pay for good actions | `step(reward=...)`, `live`, `actor_eta` | [Learning from reward](reward.md) |
 | A memory for a task | the comparison table | [Memory](memory.md) |
 | Wide inputs: images, codes | image `inputs`, `code=units`, `learned_code=units` | [Wide inputs](senses.md) |
+| Several senses, each declared once and given by name; a brain that reads a map of things itself | `senses={name: width}`, `trained=["place"]` | [Senses by name](senses.md#senses-by-name), [a brain that knows where things are](modules.md#a-brain-that-knows-where-things-are) |
 | A speech recogniser from recordings and transcripts, adapted to a speaker, on live audio | `cadence.speech` (opt-in) | [Speech](speech.md) |
 | To track where things are, in view and out of it, by kind and by place, and where a hidden thing that moves has gone | `cadence.space` (opt-in): `Map`, `Map(physics=True)`, `forecast` | [Space: tracking what is where](space.md) |
 | To read or change a living brain | `describe`, `retune`, `last_settlement` | [Tune and read a living brain](tune.md) |
@@ -127,7 +128,7 @@ Then, in this order:
 | A GPU, another device or precision | `backend`, `device`, `precision` | [Backends](backends.md) |
 | A brain that keeps learning after it has acquired a skill | `maturity=True` | [Maturity](reward.md#maturity-opt-in) |
 | To give a trained brain a memory, more outputs or another brain's regions | `grow`, `graft` | [Grow and combine brains](grow.md) |
-| A module that arrives as a file: the built-in map of things, or a trained brain's regions of your own | `cd.modules.load("place")`, `cd.load_module(path)`, `brain.space`, `save_module`, `trained=[module]`, `graft(module)` | [Modules](modules.md#modules-parts-that-arrive-as-files) |
+| A module that arrives as a file: the built-in map of things, or a trained brain's regions of your own | `trained=["place"]`, `cd.modules.load("place")`, `cd.load_module(path)`, `brain.space`, `save_module`, `trained=[module]`, `graft(module)` | [Modules](modules.md#modules-parts-that-arrive-as-files) |
 | To show a result | baselines, controls, receipts | [Evaluate a brain](evaluate.md) |
 | To design a continuing application or a behavioural claim | observation and action boundaries, acquisition and recovery | [Task design](task-design.md), [the design direction](world-model.md) |
 | Your own regions, a connectome, evolution | `Genome`, `develop`, `compose(connectome=)`, `evolve` | [Your own anatomy](anatomy.md) |

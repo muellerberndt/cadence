@@ -2,6 +2,58 @@
 
 ## Unreleased
 
+### Senses by name, equal senses in the fixed code, and a name or a map in `trained=` (#342)
+
+A brain of several senses was composed as one row of inputs whose columns its caller kept
+track of, and a brain with the map of things was sized by hand (`inputs=place.count +
+place.units`), given its map by assignment and passed the map's read at every moment. These
+opt-in additions let a composite brain be declared in a few lines. A brain composed
+without `senses=` and without a name or a map in `trained=` is the brain of 0.99.1 to the bit:
+its parameters, its description, the acts of a short life and the contents of its checkpoint
+are pinned on that release's source for a default brain, a brain with `code=`, a brain around a
+trained module and a brain with a map assigned by hand.
+
+- **`Brain.compose(senses={name: width, ...})`** declares the senses by name, in place of
+  `inputs=`. A sense is a width, or a mapping of field to width (`{"eyes": {"hue": 12, "shape":
+  30}, "ear": 64}`); the inputs are their sum in the declared order. Every operation that takes
+  observations (`live`, `wait`, `step`, `act`, `lesson`, `learn`, `value`, `imagine`, `predict`,
+  `accuracy`, `fit`, `observation_code`, `stimulus`) also takes a dict of sense to rows; a sense
+  left out is silent, and rows of the summed width are taken as before. An unknown sense, a
+  wrong width and senses whose rows disagree are refused by name, before anything changes.
+  `brain.senses` gives each sense's columns, `describe()` names them under `layout`, and a
+  checkpoint keeps them under `senses` in its metadata, which 0.99.1 reads as the brain of the
+  summed width. A brain composed with `senses=` and no code is the brain composed with
+  `inputs=<the sum>` and the same seed: the same weights, acts and saved arrays. The sensory
+  region stays one population and the names are held beside it, since a population a sense
+  would cut the block layout and change the order the settle sums in. The guide is
+  [senses by name](docs/senses.md#senses-by-name).
+- **Equal senses.** With `code=units`, a brain composed with `senses=` gives every field of
+  every sense to the fixed sparse code at unit length (a field with nothing in it stays zero),
+  so each field moves the code alike whatever its width and the size of its values. In a code
+  of 64 units read from the row as it is, a word of length 1 beside a glimpse of length 5.1
+  changes 5.1 of the 24 active units; with equal senses it changes 16.5 (twelve seeds, a
+  reading of the code alone). A brain composed with `inputs=` keeps its code, and a learned code
+  takes the senses as they are given: its sensory region holds the observation itself and it
+  learns its own thresholds and fields
+  ([equal senses](docs/senses.md#equal-senses-in-the-fixed-code)).
+- **`trained=` takes a name and a map.** `trained=["place"]` loads the module the library ships
+  by that name. A map of things in `trained=`, by name or as an object, becomes `brain.space`,
+  and its read (`where` and `what`) joins the brain's senses as the sense `space`, after the
+  brain's own inputs: observations do not carry it, and the brain reads its map itself at every
+  operation that takes observations. `Brain.compose(senses={"touch": 8}, actions=2,
+  trained=["place"])` is the brain of `inputs=8 + place.count + place.units` with the map
+  assigned and its read passed by hand, to the bit, and that long form stays valid. A trained
+  module's inputs are a sense under the module's name in a brain composed with `senses=`. A
+  brain the default backend places at its first moment keeps the map object its caller holds.
+  Refused by name: two maps, a name the library ships no module by, image inputs beside a map,
+  and `senses=` or a map in `Lives`
+  ([a brain that knows where things are](docs/modules.md#a-brain-that-knows-where-things-are)).
+- **The refusals of a map and of a name in `trained=` are retired.** `Brain.compose(...,
+  trained=[a map])` and `trained=["place"]` were refused on 0.99.1 (a map joined a brain as `brain.space` alone, and
+  a name was no module); both compose a brain. `Brain.compose` takes `inputs` and `actions` as
+  optional in its signature and raises `TypeError` where neither `inputs` nor `senses`, or no
+  `actions`, is given.
+
 ### A lesson can leave a motor slot open (#302)
 
 - **`brain.lesson(observations, labels)` and `step(teacher=labels)`** take a label of `-1`
