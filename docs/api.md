@@ -731,8 +731,8 @@ observation. `Brain.compose(..., trained=[module])` builds a brain around it and
 
 ```text
 Map(plane, cells=(32, 26), *, units=16, kinds=None, weight=3, codes=None, level=0.02,
-    empty="near", reach=0.15, step=0.15, stride=0.5, margin=0.02, seed=0, trace=False,
-    physics=None, backend="cpu")
+    empty="near", reach=0.15, step=0.15, stride=0.5, margin=0.02, seed=0, values=None,
+    trace=False, physics=None, backend="cpu")
 ```
 
 What is where, held in a sheet's own settled activity: `cells` of the `plane` (`(x low, x high,
@@ -743,7 +743,8 @@ none of it. The map's graph has no taught synapse.
 | --- | --- |
 | `moment(seen=(), heard=(), felt=(), lit=None)` | One moment: each sense's reports as `(kind, (x, y))`; `lit` the cells in sight, flags `(cells,)` or a function of `(points, 2)` places. A report writes its place on its kind's units; a thing whose held place the camera sees with no report is driven once onto the cells out of sight within `reach` (`empty="near"`; `"clear"` and `"keep"` are the other rules); sight only takes cells away from a thing in doubt |
 | `where_is(kind) -> (things, 2)` | The places of a kind, by a settle with the kind's code as the cue |
-| `what_is_at(place, within=None) -> int or None` | The kind at a place, by a settle that keeps the cells around it |
+| `what_is_at(place, within=None, *, cells=None) -> int or None` | The kind at a place, by a settle that keeps the cells around it, or the cells that `cells` flags (with `place` None) |
+| `values_at(place, within=None, *, cells=None) -> dict`, `where_is_value(group, value) -> (things, 2)` | With `values={group: count}`: what the thing at a place is like, a value a group (None for a group held nowhere there), and the places of the things with a value. A report names its values as `(kind, (x, y), {group: value})`; they are carried and moved with the thing ([values carried with a thing](space.md#values-carried-with-a-thing)) |
 | `things() -> list[dict]` | The inventory read off the map: `kind`, `place`, `cells`, `pieces`, `since`, `state` (`seen`, `heard`, `felt`, `held`, `near`, `not known where`; with physics also `moving`, with the entry's `velocity` in metres a moment) |
 | `forecast(moments=1) -> Map` | With physics: a copy of the map that many moments on, as its physics predicts with nothing sensed. The map is left as it is and nothing is learned from a forecast; read the copy with `where_is`, `area` and `things`. Refuses a map without physics |
 | `area(kind, rate=0.9)`, `sheet(kind=None)` | The smallest set of cells holding `rate` of a kind's activity; its activity as a picture |

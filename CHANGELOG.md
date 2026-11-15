@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Values carried with a thing on the map (#326)
+
+- **`Map(values=)`** (opt-in): `Map(plane, values={"colour": 6})` gives every cell one more unit a
+  value, after the kinds' units. A report may name values (`(kind, place, {"colour": 2})`); they
+  are written on its cells with its kind's weights, carried with the thing (a report with no
+  value takes the value of the thing it claims), moved with it by the near rule and by learned
+  physics, and read by settling: `values_at`, `where_is_value(group, value)`,
+  `what_is_at(None, cells=flags)` and the `values` of `things()` entries. Which report is which
+  thing reads the kinds' units alone. With `values` unset the map is as on 0.99.1, to the bit.
+  The guide is [values carried with a thing](docs/space.md#values-carried-with-a-thing).
+
 ### A lesson can leave a motor slot open (#302)
 
 - **`brain.lesson(observations, labels)` and `step(teacher=labels)`** take a label of `-1`
