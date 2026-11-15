@@ -129,6 +129,26 @@ map at every moment, the draws of the equal-senses brain's own mix. Read at its 
 The brain trained through the map reads the same through the eyes as through the map on every
 row with things in view: in view the two glimpses are one code.
 
+The other two instruments on the same brain:
+
+| Reading | Equal-senses brain | Trained through the map |
+| --- | --- | --- |
+| "what colour has the X", the focus on another thing, rule on (off) | .91 (.00) | 1.00 (.01) |
+| the same, the asked thing behind a screen | .89 (.00) | .99 (.02) |
+| "where is the X", the focus on another thing, rule on (off) | .85 (.06) | .93 (.04) |
+| "what shape has the X" of a kind nowhere in the room, rule on: round kinds, other kinds | .97, .98 | .94, .89 |
+| a kind's word heard in a room of other things: its kind two moments after, records keyed by the sparse mixed code, five heads (one head; values dealt to other keys) | .80 (.89; .02) | .79 (.95; .24) |
+| a colour's word heard in a room of other things: its colour, five heads (one head; control) | .92 (1.00; .16) | .85 (.91; .18) |
+| a kind's word heard alone in an empty room: its kind, five heads, probes fitted on rooms of one to five things (control) | 1.00 (.22) | 1.00 (.22) |
+| records keyed by the association's state: a kind's word alone finds records named by it | .19 | .13 |
+
+On the brain trained through the map, the probes fitted on rooms of three to five things read
+a thing alone in its scene at kind .23 (.74 for the probes fitted on rooms of one to five), and
+in an empty room they read the completed kind at .22: the read, and not the state, fails
+there. Records written at block 300 of its mix and read at block 400 by the association's state
+find the cue's word on .11 of the heads' reads (the association's state of a naming moment moved
+to a cosine of .71); keyed by the sparse mixed code, on all of them.
+
 ### Completion from one facet
 
 `completion.py`: 400 things, each named by every word that names it; five heads. A cell holds
