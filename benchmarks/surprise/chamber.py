@@ -383,7 +383,8 @@ def life(surprise: bool | None, seed: int = 2, moments: int = 30) -> tuple[Any, 
 
 def digest(surprise: bool | None, seed: int = 2) -> str:
     """The digest of a short life: its actions, its weights and every array of its saved file,
-    without the surprise's own arrays and record."""
+    without the surprise's own arrays and record and the format that names it (a brain with
+    surprise saves ``cadence-brain/5`` with the feature ``surprise``)."""
     held, actions = life(surprise, seed)
     found = hashlib.sha256()
     found.update(np.asarray(actions, dtype=np.int64).tobytes())
@@ -399,6 +400,9 @@ def digest(surprise: bool | None, seed: int = 2) -> str:
                 if name == "brain":
                     record = json.loads(str(value))
                     record.pop("surprise", None)
+                    if record.get("features") == ["surprise"]:  # the format that names it
+                        record.pop("features")
+                        record["format"] = "cadence-brain/1"
                     value = np.array(json.dumps(record, sort_keys=True))
                 found.update(name.encode())
                 found.update(str(value.dtype).encode() + str(value.shape).encode())

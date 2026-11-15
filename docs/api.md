@@ -371,7 +371,9 @@ value a neuron and a load on another backend than the CPU are refused with `Valu
 | `memories/hippocampus/` | the associative store's ports, strengths, masses, consolidated records and separator; with maturity its noise scales (`gate_noise`); with `memory_fade` its depths and recent traces (`fade_depth`, `fade_recent`) |
 | `memories/episodic/` | the episodic choice (`memory_choice`): the context store (`context_memory/`), the stream's `context` and `decision`, the replay `path/`, with the hold the context and code of the last decision (`before`, `seen`), and with extinction the direct payments (`paid_memory/`, sharing the place records' separator) |
 
-`Brain.load` reads `cadence-brain/1` to `/4`, the formats of 0.85.0 on. It refuses the earlier
+`Brain.load` reads `cadence-brain/1` to `/5`, the formats of 0.85.0 on (`/5`, from 0.100.0,
+names the features its file needs, and a feature this version does not hold is refused by its
+name). It refuses the earlier
 `cadence-generic/1` to `/10` by name: cadence 0.94.0 loads those and saves `cadence-brain/1`. A
 retired setting loads at the one value this version keeps for it and is refused by name at any
 other ([CHANGELOG](../CHANGELOG.md)).

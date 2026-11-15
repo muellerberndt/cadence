@@ -533,7 +533,9 @@ read no surprise and teach the usual nothing. `lesson`, `predict`, `value`, `ima
 rehearsal's replays leave the signal as it was, and so does a moment whose settle is refused.
 
 **The focus.** `brain.places` gives each sensory neuron a place in one frame, such as a map's
-plane: an array `(sensory neurons, d)` the program sets as its body moves. Every moment then
+plane: an array `(sensory neurons, d)` the program sets as its body moves, in the frame of a
+held map's cells (places of another frame are refused when set beside a map; give the brain its
+map before its places). Every moment then
 draws one focus among those places, and among the cells of a held map with surprise
 ([surprise on the map](space.md#surprise-on-the-map-opt-in)). The place of the largest
 surprise wins, the winner keeps `hold` of its salience from moment to moment, and a place the
