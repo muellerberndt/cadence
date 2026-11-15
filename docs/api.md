@@ -208,6 +208,7 @@ of 8 decisions, demonstrations recorded at 1.0, 24 active separation cells) are 
 | `memory_choice` needs `episodic=True` | `ValueError` |
 | `memory_fade` in `[0, 1)`, and above 0 needs `episodic=True` ([records that fade](memory.md#records-that-fade-with-disuse-opt-in)) | `ValueError` |
 | `memory_keep` 0 or more, and above 0 needs `memory_fade` ([a record's strength](memory.md#a-records-strength-opt-in)) | `ValueError` |
+| `recall_strength` boolean, without `recall_heads` above 1, `recall_window` above 1, `recall_action` or `recall_when`; `recall_again` in `[0, 1]` and `recall_kept` above 0, each away from its founder only with `recall_strength` ([a slot's strength](memory.md#a-slots-strength-opt-in)) | `ValueError` |
 | `memory_context`, `memory_extinction` need `memory_choice`; `memory_context_hold` (`"unchanged"` or `"punished"`) needs `memory_choice` and `memory_context` | `ValueError` |
 | `learned_code` at least 2; `learned_code_fields` without it, `code` beside it, an image brain, the `torch` backend, or a connectome without the region's populations and complete synapses | `ValueError` |
 | `learned_fields` at least 2, on an image of at least 8 by 8 pixels, without `code` or `learned_code`; `image`, `ports` or `fields_motor` without `learned_fields`; `ports` negative or not an integer; `fields_motor` negative or not finite; `grow` and `graft` of a brain that holds them | `ValueError` |
@@ -312,8 +313,10 @@ without them. A brain that 0.99.1 and earlier cannot continue writes one format,
 `cadence-brain/5`, whose record names the features the file needs (`features`, sorted names),
 whatever else it holds: `strength` for memories that grow strong (`longterm_strength`,
 `memory_keep`, #336: the same members, with each record's `kept` and `gone` rows beside its sums
-and the place records' `fade_keep` under their settings) and `heads` for the learned heads
-(`longterm_attention`, `longterm_motor`, #325). `Brain.load` refuses a file that names a feature
+and the place records' `fade_keep` under their settings), `heads` for the learned heads
+(`longterm_attention`, `longterm_motor`, #325) and `recall_strength` for the recall memory's
+strength (`recall_strength`, #336: `strength` under the memory's settings and each slot's depth
+in `memories/recall/depth`). `Brain.load` refuses a file that names a feature
 this version does not hold, by that name, and a file whose features and contents disagree. A
 later option adds a feature's name and no format name.
 
@@ -419,7 +422,7 @@ teaching point, with one or several regions, observers and motor slots. It refus
 `memory_choice`, a store with a separator, a learned or fixed code, an apical compartment, rehearsal, qualified
 teaching, the efference copy, a held message (`message`), long-term records (`longterm`), tied projections
 (`tied`), `actor_entropy`, `surprise`, a recall memory with several heads, a window, the command, the read of
-when, tokens or the cortex at unit norm, image inputs, and MPS, which has no float64 for the settles' checks. A
+when, tokens, the cortex at unit norm or a slot's strength, image inputs, and MPS, which has no float64 for the settles' checks. A
 moment any life refuses is refused for every life.
 
 ## Arousal (`cadence.arousal`)
@@ -610,7 +613,8 @@ Recall(connectome, amplitude=3.0, temperature=0.25, recency=0.25,
        source="sensory", target="recall", inputs=0, writes=0, position=32, position_rate=0.1,
        boundary=False, tokens=None, action=False, anchor=False,
        relative=False, slope=0.0, when=False, gain=0.0, grid=(), actions=0, drive_gain=False,
-       hearing=1.0, cortex_norm=False, gain_after=0, gain_next=0.0, gain_lessons=0)
+       hearing=1.0, cortex_norm=False, gain_after=0, gain_next=0.0, gain_lessons=0,
+       strength=False, again=0.95, kept=8.0)
 ```
 
 The held-input index memory of each stream's recent moments. Each constructor argument is the
@@ -625,15 +629,16 @@ retired setting is refused by name with a sentence saying what the memory does i
 | Member | Behaviour |
 | --- | --- |
 | `stimulate(drive, observations)` | Addresses the moment, fixes the softmax over the slots (`attended_heads`) and writes the read into `recall` and, with `next`, `next`; with `heads` above one each head reads with its own address into its own port. |
-| `witness(observations, state, command=None)` | Writes the moment as a slot after its settle; with `action` the `(batch, actions)` command executed at it joins the slot's key and value (zero when None). |
+| `witness(observations, state, command=None, surprise=None)` | Writes the moment as a slot after its settle; with `action` the `(batch, actions)` command executed at it joins the slot's key and value (zero when None). With `strength` the moment acts on the slots' depths first, and `surprise`, one number of 0 or more per stream in tellings, writes its slot that much deeper than one telling; it is refused without `strength`. |
 | `learn(graph, learned) -> dict` | The address lesson after a teaching step; returns `address_rows`, `address_error`, `address_refused`, and with a position term `position_rows` and `position_refused` (zero when nothing moved). A nonfinite step is refused per row (per head for the position maps). With several heads each head steps its own maps: rows and refusals are summed over the heads, the error averaged over the heads that moved. The position term learns whatever `address` is. |
 | `contrast_rows(graph, plus, minus)`, `propose(step)`, `accept(proposal)` | Reward training of the address map at `address_reward > 0` and of the position maps (and the anchored ones) at `position_reward > 0`, on the rows of the event heard; `ActorCritic` calls them. `contrast_rows` is `None` when neither trains the read. It holds the event's rows of the columns that can step (`reward_blocks`); `full_eligibility(kept)` lays it out over every row of the maps and all `reward_columns`, as a checkpoint keeps it, and `propose` takes either. |
 | `end(batch, rows=None)` | Ends episodes and keeps the slots, as `Brain.reset(keep=("slots",))` does; the latest slot learns no successor. With `boundary` an end of every stream opens one boundary slot. |
 | `weights(address, position=None)`, `position_term(head, event, cortex, rows=None)`, `ages()`, `buckets()`, `readback(graph, region, movement, head=0)`, `activity(state)` | The read's slot shares (with a head's position term from `position_term`, the shares the read used; without it the content's and recency's alone), one head's position term at every slot, slot ages and their position buckets, and the association movement read back through one head's recall synapses. |
 | `reset(batch, rows=None)`, `keep(rows)`, `snapshot()`, `restore(snapshot)`, `reading()`, `hold(reading)`, `branch()` | Stream bookkeeping; `branch()` is a copy that reads the live slots and writes none. The slot arrays are views a write changes in place; `snapshot()` returns arrays the next write leaves alone. |
 | `Recall.COMPOSED`, `Recall.composed(named)`, `Recall.WIDE` | The settings a new brain's memory takes ([what `recall=True` gives a new brain](memory.md#what-recalltrue-gives-a-new-brain)), those settings beside the ones a caller named, and the observation-code width (4,096) above which `compose` asks for `code=units`, `recall=False` or `recall=True`. |
-| `Recall.founders()`, `Recall.options()`, `Recall.setting(name, value)`, `Recall.removed(name)`, `Recall.ports(heads, next=True)`, `Recall.action_ports(heads, next=True)`, `Recall.position_count(position, capacity)`, `Recall.map_names(kind, head)` | The always-described genes, the seventeen options saved only where they differ, validation of one gene, the sentence that refuses a retired setting, the regions of each head's port and of its command, the number of age buckets, and the checkpoint names of one head's three maps of a kind (`"address"`, `"position"`, `"anchor"`, `"relative"`, `"slope"`, `"grid"`; head 0's bare, head h's with `_h`). |
+| `Recall.founders()`, `Recall.options()`, `Recall.setting(name, value)`, `Recall.removed(name)`, `Recall.ports(heads, next=True)`, `Recall.action_ports(heads, next=True)`, `Recall.position_count(position, capacity)`, `Recall.map_names(kind, head)` | The always-described genes, the options saved only where they differ, validation of one gene, the sentence that refuses a retired setting, the regions of each head's port and of its command, the number of age buckets, and the checkpoint names of one head's three maps of a kind (`"address"`, `"position"`, `"anchor"`, `"relative"`, `"slope"`, `"grid"`; head 0's bare, head h's with `_h`). |
 | `grid_maps`, `grid_buckets()` | With `grid` every head's `(G_x, G_c, g)` maps, one column per residue of each modulus, and each slot's residues as columns of them, `(moduli, slots)`; empty without it |
+| `strength`, `again`, `kept`, `depth`, `protected`, `HOLD`, `PROTECT` | [A slot's strength](memory.md#a-slots-strength-opt-in): the option and its two numbers, each slot's depth `(streams, slots)` (None without the option), the newest slots of a full bank no drop reaches (`PROTECT`, .5, of the capacity) and the capacities of moments a depth below `kept` is kept over (`HOLD`, 8). With `strength`, `snapshot()`, `restore()`, `keep()` and `arrays()` hold the depths, `ages()` gives a slot's rank past the protected share, and `heads` above 1, `window` above 1, `action` and `when` are refused |
 | `told`, `focus`, `anchor_maps`, `relative_maps`, `slope_maps`, `anchored_buckets(rows=None)`, `relative_buckets(rows=None)`, `when_regions(heads)`, `when_features`, `when_width`, `RELATIVE`, `SLOPE` | The options' state: each stream's moments told in its episode and the age of the slot its previous read attended most (`-1` before a read); one `(E_x, E_c, e)`, `(Q_x, Q_c, q)`, `(S_x, S_c, s)` map per head for the anchor, the relative read and the slope (empty lists without the option); each slot's anchored and relative bucket per stream; the when regions' names, the features a read delivers per slot (two of its age, with the anchor two more of its place) and their count; the relative offsets kept apart (8) and the slope's age scale (8). |
 | `attended_heads`, `head_map(head)`, `head_maps`, `position_map(head)`, `position_maps`, `position_buckets` | Every head's attention of the latest read, head 0's first (None before a read, when the read found no slots, and once the streams changed); one head's address map `(w_x, w_c, b)` and every head's; one head's position maps `(P_x, P_c, p)` (refused at `position=0`), every head's (empty at `position=0`), and their number of age buckets. |
 | `RUNTIME`, `CONSTRUCTION`, `OPTIONS`, `CONSTRUCTION_OPTIONS`, `SAVED`, `RETIRED` | Class tables: retunable genes, construction genes, the options and those fixed at construction, the keys a memory always describes and saves (the founders and the constants `heard` 1.0 and `address_temperature` 0.1; the third constant, `window_decay` 1.0, is not saved) and the retired settings (each with the release that retired it, the one saved value a file loads at and what the memory does instead). |

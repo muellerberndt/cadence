@@ -87,6 +87,7 @@ testpaths = [
     "benchmarks/letters",
     "benchmarks/tracking",
     "benchmarks/surprise",
+    "benchmarks/recall_strength",
 ]
 
 [tool.ruff]

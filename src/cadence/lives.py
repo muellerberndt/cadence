@@ -33,8 +33,8 @@ and its heard history among them, with or without the store (``episodic=False``)
 and ``actor_hold``, at any teaching point. ``Lives`` refuses a learned or fixed code, an apical
 compartment, rehearsal, qualified teaching, the efference copy, a held message, long-term
 records, ``actor_entropy``, ``surprise`` and a recall memory with several heads, a window, the
-command, the read of when or tokens, each by name. A moment any life refuses is refused for
-every life.
+command, the read of when, tokens or a slot's strength, each by name. A moment any life refuses
+is refused for every life.
 """
 
 from __future__ import annotations

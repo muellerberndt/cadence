@@ -350,7 +350,8 @@ synapses of initial magnitude 1.2 (a constant).
 
 After each act, and after each moment `wait` senses, every stream writes one slot and the
 slot before learns the new value as its next. Beyond `recall_capacity` the oldest slot is
-dropped. Imagination writes none. The slot arrays (`recall.keys`, `recall.values`, `recall.nexts` and the
+dropped (with `recall_strength` the weakest outside the newest half:
+[a slot's strength](#a-slots-strength-opt-in)). Imagination writes none. The slot arrays (`recall.keys`, `recall.values`, `recall.nexts` and the
 others) are views that a write changes in place; code that holds them across a write takes
 `recall.snapshot()`, whose arrays the next write leaves alone.
 
@@ -492,6 +493,9 @@ only where they differ from their founder. A saved brain keeps its genes, slots 
 | `recall_boundary` | `False` | retune | Each stream that begins holds a silent boundary slot whose next the first event teaches ([the episode's boundary](#episodes-keys-and-windows)); a retune applies from the next stream that begins |
 | `recall_tokens` | `None` | construction | Per action the observation coordinate of the same token (`-1` for none). No synapse is added: a lesson whose answer has no token leaves the read's maps as they are, and `recall_gain` reads the tokens ([declared tokens](#declared-tokens)) |
 | `recall_action` | `False` | construction | Every slot carries the executed command in its key and value, and the maps read the command of the moment before ([its own actions](#its-own-actions-in-the-slots-opt-in)) |
+| `recall_strength` | `False` | construction | Every slot keeps a depth, and a full bank gives up its weakest slot outside the protected newest half in place of its oldest ([a slot's strength](#a-slots-strength-opt-in)) |
+| `recall_again` | `0.95` | retune | With `recall_strength`, the cosine at or past which a moment's key is a held slot's told again |
+| `recall_kept` | `8.0` | retune | With `recall_strength`, the depth at or past which a slot is kept whole |
 
 The [API reference](api.md#recall-memory-genes) gives the `Recall` class signature.
 
@@ -1382,6 +1386,89 @@ import cadence as cd
 
 brain = cd.Brain.compose(20, 12, recall=True, recall_cortex_norm=True)
 ```
+
+### A slot's strength (opt-in)
+
+A full memory drops its oldest slot, whatever that slot holds. With `recall_strength=True` every
+slot keeps a depth, and a full bank gives up its weakest slot in place of its oldest: a moment
+that came up again and again, one that came with a large surprise and one the reads keep
+fetching outlive the moments beside them
+([#336](https://github.com/muellerberndt/cadence/issues/336)). It is the law of
+[a record's strength](#a-records-strength-opt-in) on the memory every new brain holds. It is off
+unless you set it, and off a brain is the brain without it, to the bit. The read is unchanged:
+the option decides which moments a full bank holds.
+
+**A slot's depth** is one number, in `brain.recall.depth` per stream and slot, oldest first.
+
+| What happens | Its depth |
+| --- | --- |
+| The slot is written | One telling, 1. In a brain composed with `surprise=True`, 1 plus the brain's surprise at the moment in tellings: the ratio of the most surprised neuron's residual to its tolerated size, less one ([surprise](start.md#surprise-and-the-focus-it-draws-opt-in)). A moment nine times the tolerated size is written at 9 |
+| A later moment tells it again | Plus 1. A moment tells a slot again where their keys lie at cosine `recall_again` (.95) or above; where several slots hold the moment, the deepest gains the telling. The moment is a slot of its own all the same, so the bank keeps its order |
+| A later moment's read attends it with weight `p` | `depth + p * max(1 - depth, 0)`: a read renews a slot that has faded, by its share of the read, and deepens none past one telling |
+| A later moment is written | Times `1 - 1 / (8 * capacity)` below `recall_kept` (8), the time scale of a record's depth; at or past `recall_kept` the depth stays whole |
+
+A written moment acts on the depths: first the fade, then its read, then its telling. A read that
+writes nothing (`stimulus`, `predict`, a lesson, imagination) and a refused attempt leave every
+depth as it was.
+
+**The drop.** A full bank gives up the slot of least depth among the slots older than its
+protected newest half (`brain.recall.protected` slots, 64 of a new brain's 128), the oldest among
+equals.
+
+- A moment told once, without surprise and unread, is held for at least half the capacity. Past
+  that half it leaves when it is the weakest slot there: at the capacity where the other slots are
+  no stronger, as without the option, and sooner where they are.
+- A moment told n times in a row is held for about `8 ln(n / 0.9)` capacities of other moments:
+  6 for two tellings, 12 for four. Past `recall_kept` tellings it is kept. A kept slot leaves only
+  where every slot outside the protected half is kept, and then the weakest kept one goes.
+- A slot's age is its place in the order held. Within the protected half that is its time, as
+  without the option. Past it a slot that outlived a younger one sits at its rank, and every term
+  that reads an age reads the rank (the position table, the slope, the grid, the anchor, the
+  relative read). An episode shorter than the protected half reads every place as without the
+  option.
+
+```python
+import numpy as np
+from cadence import Brain
+
+def life(brain):
+    rng = np.random.default_rng(0)
+    fact = np.eye(12)[[0]] + np.eye(12)[[7]]         # a name (0) stated with a value (7)
+    for _ in range(3):
+        brain.act(fact, greedy=True)                 # told three times
+    for _ in range(24):                              # three capacities of other moments
+        brain.act(rng.standard_normal((1, 12)), greedy=True)
+    return (brain.recall.keys[0] == fact[0]).all(axis=1)
+
+deep = Brain.compose(inputs=12, actions=2, modules=(16,), seed=1, recall_capacity=8,
+                     recall_strength=True)
+held = life(deep)
+assert held[:4].any() and deep.recall.protected == 4   # held, outside the newest half
+assert deep.recall.depth[0, held].max() > 1.5          # deeper than a moment told once
+plain = Brain.compose(inputs=12, actions=2, modules=(16,), seed=1, recall_capacity=8)
+assert not life(plain).any()                           # without the option the oldest left first
+```
+
+**What it buys and what it costs.** The chamber
+[`benchmarks/recall_strength`](../benchmarks/recall_strength/README.md) reads a new brain's bank
+of 128 slots with and without the option. Without it no fact outlives one capacity of other
+moments, however often it was told. With it a fact told twice is held about 6 capacities, four
+times about 12 and sixteen times for good, and read right while held; one told at a large
+surprise is kept at once; one asked for again and again by parts of its name stays. The price is
+recent moments. Every read renews the slots it attends, so an older slot a read touched outlives
+a younger one no read touched: in a life where no moment comes up again the bank holds 84 to 89
+in a hundred of its last 128 moments, and a taught answer about a fact told once and never read
+since falls from .93 to .33 right at a gap of 0.875 of the capacity. Within the protected half
+the answers are those of the bank without the option.
+
+**Where it holds.** The law holds for a memory of one head over single events: `recall_heads`
+above 1, `recall_window` above 1 (so `attention=True`), `recall_action` and `recall_when` are
+refused beside it by name, and so is `Lives`. Its bank stays on the host. With
+`learning_compiled_moment` its moments run in turn on the general path, and on a torch device
+the solve runs there and the bank beside it on the host. `recall_again` and `recall_kept` retune
+in a life; `recall_strength` is a construction setting. A brain with the option saves checkpoint
+format `cadence-brain/5` with the feature `recall_strength` in its record and each slot's depth
+in `memories/recall/depth`, which 0.99.1 and earlier refuse by the format's name.
 
 ### Recall cost
 
@@ -2908,7 +2995,8 @@ own surprise at the moment a record is written counts as tellings: `brain.surpri
 log of how many times its tolerated size the most surprised neuron's residual was, and the write
 counts that ratio less one. A moment within what every neuron is used to adds nothing, and one
 nine times the tolerated size counts as eight tellings more, so its record is kept at once.
-Without `surprise` the brain counts each telling as one.
+Without `surprise` the brain counts each telling as one. The recall memory every new brain holds
+takes the same law with `recall_strength=True`: [a slot's strength](#a-slots-strength-opt-in).
 
 Records read by what tells them apart (`longterm_distinct`, with turns, and the learned heads of
 `longterm_attention`) grow strong too. There every telling is a record of its own, so a record
