@@ -325,7 +325,11 @@ def test_set_it_reads_the_settle_and_changes_nothing_else_to_the_bit(tmp_path):
             assert np.array_equal(left[name], right[name]), name
     record = json.loads(str(right["brain"]))
     told = record.pop("surprise")
-    assert record == json.loads(str(left["brain"]))
+    # the file names the feature a reader of 0.99.1 cannot build (cadence-brain/5)
+    assert (record.pop("format"), record.pop("features")) == ("cadence-brain/5", ["surprise"])
+    plain_record = json.loads(str(left["brain"]))
+    assert plain_record.pop("format") == "cadence-brain/1"
+    assert record == plain_record
     assert told["moments"] == held.surprise.moments and told["orienting"]["focus"] is None
 
 
@@ -642,7 +646,16 @@ def test_a_saved_surprise_that_does_not_fit_is_refused(tmp_path):
         del record["surprise"]
         data["brain"] = np.array(json.dumps(record))
 
-    refused(without_record, "surprise's record")
+    refused(without_record, "features")
+
+    def without_record_or_feature(data):
+        record = json.loads(str(data["brain"]))
+        del record["surprise"]
+        record["format"] = "cadence-brain/1"
+        del record["features"]
+        data["brain"] = np.array(json.dumps(record))
+
+    refused(without_record_or_feature, "surprise's record")
 
 
 def test_compose_names_the_genes_and_refuses_what_it_does_not_know():
@@ -913,3 +926,14 @@ def test_with_learned_physics_the_carried_place_is_the_physics_forecast():
     assert ahead.surprise is None and held.surprise.moments == 20
     assert np.array_equal(held.surprise.usual, usual)
     assert np.array_equal(held.surprise.last, last)
+
+
+def test_places_in_another_frame_than_the_maps_are_refused_when_set():
+    """The focus compares the senses' places with the map's cells: places of another number of
+    coordinates are refused when they are set, before any moment reads them."""
+    held = Map((-1.0, 1.0, -1.0, 1.0), (8, 6), units=4, surprise=True)
+    brain = cd.Brain.compose(4, 2, seed=0, backend="cpu", surprise=True)
+    brain.space = held
+    with pytest.raises(ValueError, match="frame"):
+        brain.places = np.zeros((len(brain.sensory_index), 3))
+    brain.places = np.zeros((len(brain.sensory_index), 2))

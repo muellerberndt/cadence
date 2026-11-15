@@ -677,3 +677,30 @@ def test_a_joining_brain_has_the_lives_composition():
         lives.join(0, lone(5, {}, **PLACE))
     with pytest.raises(ValueError, match="one of these"):
         lives.join(2, lone(5, AROUSED, **PLACE))
+
+
+def test_a_joining_brain_with_a_part_the_lives_do_not_cover_is_refused_by_name():
+    """A brain joins the lives only with the parts the lives axis covers, as at their birth: a
+    surprise, a slot's strength or senses by name are refused, not dropped."""
+    lives = some_lives(2, AROUSED, **PLACE)
+    for settings, named in (({"surprise": True}, "surprise"),
+                            ({"recall_strength": True}, "recall_strength")):
+        joining = cd.Brain.compose(INPUTS, ACTIONS, seed=5, backend="cpu", **AROUSED,
+                                   **settings)
+        with pytest.raises(ValueError, match=named):
+            lives.join(0, joining)
+    named_senses = cd.Brain.compose(senses={"a": INPUTS - 2, "b": 2}, actions=ACTIONS, seed=5,
+                                    backend="cpu", **AROUSED)
+    with pytest.raises(ValueError, match="senses by name"):
+        lives.join(0, named_senses)
+
+
+def test_lives_on_a_device_refuse_place_records_kept_from_the_fade():
+    """The device's store fades every record; a kept depth (memory_keep) is refused there by
+    name, and lone brains on the CPU hold it."""
+    with pytest.raises(ValueError, match="memory_keep"):
+        cd.Lives(INPUTS, ACTIONS, 2, seeds=[0, 1], recall=False, arousal=True,
+                 memory_fade=0.2, memory_keep=1.0, **PLACE)
+    kept = cd.Lives(INPUTS, ACTIONS, 2, seeds=[0, 1], recall=False, arousal=True,
+                    memory_fade=0.2, memory_keep=1.0)
+    assert kept.life(0).hippocampus.fade_keep == 1.0

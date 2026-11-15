@@ -284,6 +284,7 @@ def test_the_heads_read_records_that_grow_strong():
     np.testing.assert_array_equal(ask(b, R, OF, 3), ask(plain, R, OF, 3))
     held = [int(slot) for slot in records.read_slots[0] if slot >= 0]
     assert held == [int(slot) for slot in plain.longterm.read_slots[0] if slot >= 0]
+    b.act(moment(None), greedy=True)  # the moment is accepted: what its read used deepens
     assert held and all(store.deep[slot] > before[slot] for slot in held)
 
 

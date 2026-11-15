@@ -2989,7 +2989,8 @@ cosine to the clean pattern .99 after 16 takes, the nearest take's .90).
 good past 8 tellings (`LongTermRecords.KEEP`) and forgets one below it once it has faded for as
 long as the store keeps its depth (`hold`, eight capacities), so a fact told once and never used
 is gone after about eight times as many moments as the store has slots. A fact told again as the record holds it (which writes nothing) counts
-one more telling, and a read deepens the record only where it delivers it. In a brain composed
+one more telling, and a read deepens the record only where it delivers it, once its moment is
+accepted: a refused moment deepens none. In a brain composed
 with `surprise=True` ([surprise](start.md#surprise-and-the-focus-it-draws-opt-in)) the brain's
 own surprise at the moment a record is written counts as tellings: `brain.surprise.moment` is the
 log of how many times its tolerated size the most surprised neuron's residual was, and the write

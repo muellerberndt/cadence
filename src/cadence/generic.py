@@ -136,10 +136,12 @@ LONGTERM_FORMAT = "cadence-brain/4"
 # four names above stay for the files those readers do continue. The features: ``strength``
 # (memories that grow strong: ``longterm_strength`` or ``memory_keep``, #336), ``heads`` (the
 # learned heads into the brain's records and their route to the motor: ``longterm_attention``,
-# ``longterm_motor``, #325) and ``recall_strength`` (the recall memory's slots keep a depth and
-# a full bank gives up its weakest: ``recall_strength``, #336).
+# ``longterm_motor``, #325), ``recall_strength`` (the recall memory's slots keep a depth and
+# a full bank gives up its weakest: ``recall_strength``, #336), ``surprise`` (the brain's
+# surprise and the focus it draws, #337) and ``map`` (a held map of things whose sheet carries
+# values or reads surprise, which a reader of 0.99.1 cannot build).
 FEATURES_FORMAT = "cadence-brain/5"
-FEATURES = frozenset({"strength", "heads", "recall_strength"})
+FEATURES = frozenset({"strength", "heads", "recall_strength", "surprise", "map"})
 # A memory's group in BRAIN_FORMAT and the prefix the reader validates its arrays under; the
 # episodic memory's arrays are the context store's and the stream's (``_flat_layout``).
 _MEMORY_PREFIXES = {
@@ -2049,13 +2051,19 @@ def _actor_config(values: Any) -> ActorCriticConfig:
 def _saved_features(saved: Mapping[str, Any]) -> list[str]:
     """The features a checkpoint's metadata holds that belong to ``FEATURES_FORMAT``, sorted:
     ``strength`` (``longterm_strength``, ``memory_keep``), ``heads`` (``longterm_attention``,
-    ``longterm_motor``) and ``recall_strength`` (the recall memory's ``strength``)."""
+    ``longterm_motor``), ``recall_strength`` (the recall memory's ``strength``), ``surprise``
+    (the brain's surprise) and ``map`` (a held map with ``values`` or ``surprise``)."""
+    out = []
+    held = saved.get("space")
+    if isinstance(held, dict) and (held.get("values") or held.get("surprise")):
+        out.append("map")
+    if "surprise" in saved:
+        out.append("surprise")
     memories = saved.get("memories")
     if not isinstance(memories, dict):
-        return []
+        return sorted(out)
     records, store = memories.get("longterm"), memories.get("hippocampus")
     recalled = memories.get("recall")
-    out = []
     if isinstance(records, dict) and (
             records.get("attention") is not None or records.get("motor")):
         out.append("heads")
@@ -2064,7 +2072,7 @@ def _saved_features(saved: Mapping[str, Any]) -> list[str]:
     if (isinstance(records, dict) and bool(records.get("strength"))) or (
             isinstance(store, dict) and bool(store.get("fade_keep"))):
         out.append("strength")
-    return out
+    return sorted(out)
 
 
 def _saved_fade(saved: Mapping[str, Any]) -> bool:
@@ -6606,6 +6614,13 @@ class Brain:
             raise ValueError(
                 f"places holds one finite place a sensory neuron, {len(self.sensory_index)} rows"
             )
+        held = self.space
+        frame = getattr(getattr(held, "surprise", None), "size", None) and np.shape(
+            getattr(held, "centers", np.zeros((0, places.shape[1]))))[1]
+        if frame and frame != places.shape[1]:
+            raise ValueError(
+                f"places share one frame with the map's cells: {frame} coordinates a place"
+            )
         self._places = places
 
     @property
@@ -7482,12 +7497,23 @@ class Brain:
         from .checkpoint import _learner_data, _write
         from .receipts import canonical_json
 
+        if self._senses is not None and int(self._senses["space"]):
+            # a brain that reads its map itself is saved with that map: one that is gone, or
+            # reads another width, would write a file no load continues
+            self._map_read(int(self._senses["space"]))
         agent = self.basal_ganglia
         data = _learner_data(self.learner)
         memories: dict[str, Any] = {}
         store = self.hippocampus
         fading = isinstance(store, SynapticMemory) and bool(store.fade)
-        features = []  # what a reader must hold beyond 0.99.1's (``FEATURES_FORMAT``), sorted
+        features = []  # what a reader must hold beyond 0.99.1's (``FEATURES_FORMAT``)
+        held_map = self.space
+        if held_map is not None and (
+                getattr(held_map, "values", None) or getattr(held_map, "surprise", None)
+                is not None):
+            features.append("map")
+        if self.surprise is not None:
+            features.append("surprise")
         if self.longterm is not None and (
                 self.longterm.attention is not None or self.longterm.motor):
             features.append("heads")
@@ -7496,6 +7522,7 @@ class Brain:
         if (self.longterm is not None and self.longterm.strength) or (
                 isinstance(store, SynapticMemory) and bool(store.fade_keep)):
             features.append("strength")
+        features.sort()
         metadata: dict[str, Any] = {
             "format": FEATURES_FORMAT if features
             else LONGTERM_FORMAT if self.longterm is not None
@@ -8723,6 +8750,10 @@ def _grown_checkpoint(
     life.pop("rehearsal", None)
     if "rehearsal" in life_new:
         life["rehearsal"] = life_new["rehearsal"]
+    # a feature the grown memories hold (a slot's strength added by grow) names the file's format
+    features = _saved_features(life)
+    if features:
+        life["format"], life["features"] = FEATURES_FORMAT, features
     data["brain"] = np.array(canonical_json(life))
     for name, value in old.items():
         if name in _GROW_NEURON + _GROW_SYNAPSE + _GROW_LAYOUT:
@@ -8871,11 +8902,14 @@ def _compose_named(
             "a map's read joins the senses of a vector brain in this version: inputs is a "
             "count (or senses=), not an image shape"
         )
-    tail = 0 if held is None else int(held.count) + int(held.units)
+    # the map's read: ``where``, one value a cell, and ``what``, one a unit of its sheet (the
+    # kinds' units and, with ``values``, the value units after them)
+    sheet = 0 if held is None else int(getattr(held, "width", held.units))
+    tail = 0 if held is None else int(held.count) + sheet
     named: dict[str, Any] = {} if declared is None else _sense_columns(declared, 0)[0]
     if held is not None:
         named.update(_sense_columns(
-            {_SPACE: {"where": int(held.count), "what": int(held.units)}}, own
+            {_SPACE: {"where": int(held.count), "what": sheet}}, own
         )[0])
     for module in hosted:  # refused before anything is composed
         if getattr(module, "name", None) in named:

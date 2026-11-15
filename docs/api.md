@@ -316,7 +316,8 @@ whatever else it holds: `strength` for memories that grow strong (`longterm_stre
 and the place records' `fade_keep` under their settings), `heads` for the learned heads
 (`longterm_attention`, `longterm_motor`, #325) and `recall_strength` for the recall memory's
 strength (`recall_strength`, #336: `strength` under the memory's settings and each slot's depth
-in `memories/recall/depth`). `Brain.load` refuses a file that names a feature
+in `memories/recall/depth`), `surprise` for the brain's surprise (#337) and `map` for a held map
+whose sheet carries values or reads surprise. `Brain.load` refuses a file that names a feature
 this version does not hold, by that name, and a file whose features and contents disagree. A
 later option adds a feature's name and no format name.
 
@@ -740,7 +741,9 @@ stream's store (`address()` names those that differ from the store's founders), 
 `longterm_strength` (False; needs `longterm_fade`): each
 stream's store keeps a record for good past `LongTermRecords.KEEP` (8) tellings and forgets one
 below it that fades as far as its `hold` (8 capacities); a telling of a record as it holds itself deepens it,
-a read deepens only the record it delivers, the records read store by store, and `hear(x,
+a read deepens the record it delivers once its moment is accepted (a refused moment deepens
+none, and a moment's later read takes the place of its earlier one), the records read store by
+store, and `hear(x,
 surprise=)` counts the brain's surprise as tellings ([a record's
 strength](memory.md#a-records-strength-opt-in)); with `longterm_turn=channel` every moment with that input channel on is a
 turn, a turn's key is the rare units of the message's codes heard since the last value

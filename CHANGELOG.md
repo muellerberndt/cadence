@@ -184,10 +184,14 @@ bit. The guide is [docs/memory.md](docs/memory.md#a-records-strength-opt-in).
 - **Strength with records read by what tells them apart.** `longterm_strength` composes with
   `longterm_distinct` (turns) and with the learned heads (`longterm_attention`, #325): a read
   deepens the record it delivers, a telling carries the moment's surprise, and a forgotten record
-  leaves the entries the reads look under.
+  leaves the entries the reads look under. A read's deepening waits for its moment to be
+  accepted: a refused moment deepens no record, and a lesson's read before the act's is replaced
+  by it, so `step` deepens a record as `act` does.
 - **One file format that names its features.** A brain that 0.99.1 cannot continue saves
-  `cadence-brain/5`, whose record lists what the file needs (`features`: `strength`, `heads`).
-  `Brain.load` refuses a feature it does not hold by its name. A later option adds a name to that
+  `cadence-brain/5`, whose record lists what the file needs (`features`: `strength`, `heads`,
+  `recall_strength`, `surprise`, and `map` for a held map that carries values or reads surprise).
+  `Brain.load` refuses a feature it does not hold by its name, and 0.99.1 refuses the format by
+  its name. A later option adds a name to that
   list and no format name; every other brain keeps the format it had.
 - **A chamber**, `benchmarks/memory_strength/strength.py`: the dose curve, the one-shot write
   and the clean form beside the store without the settings.

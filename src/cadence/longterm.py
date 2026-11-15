@@ -1190,6 +1190,10 @@ class LongTermRecords:
         # moment's surprise counted as tellings; and that surprise per stream for this moment
         self.strength = bool(strength)
         self._told: np.ndarray | None = None
+        # with ``strength``: the records the latest read delivered, ``(stream, slot)``, deepened
+        # once the moment is accepted (``hear``): a refused moment's read deepens none, and a
+        # moment's second read (a lesson's before the act's) takes the place of its first
+        self._delivered: list[tuple[int, int]] = []
         self.width, self.value_width = int(message.units), int(message.inputs)
         populations = connectome.populations
         self.columns: list[slice | np.ndarray] = []
@@ -1443,6 +1447,8 @@ class LongTermRecords:
         for columns in self.columns:
             out[:, columns] = 0.0
         self.read_slots[:] = -1
+        if not self._private:
+            self._delivered = []
         if self.attended is not None:
             self.attended.last = {}  # a lesson reads the read of its own moment
             self.work = 0.0
@@ -1469,8 +1475,8 @@ class LongTermRecords:
                     if slot >= 0:
                         out[row, columns] = self.amplitude * store.values[slot]
                         self.read_slots[row, head] = slot
-                        if self.strength and not self._private:  # recall that is used deepens
-                            store.attend(slot)
+                        if self.strength and not self._private:  # used: deepened at hear
+                            self._delivered.append((int(row), int(slot)))
             self.counts["reads"] += 0 if self._private else len(rows)
             return out
         if self.batched:
@@ -1506,8 +1512,8 @@ class LongTermRecords:
                 if self._holds(store, slot, key, self.match):
                     out[row, columns] = self.amplitude * store.values[slot]
                     self.read_slots[row, head] = slot
-                    if self.strength and not self._private:  # recall that is used deepens
-                        store.attend(slot)
+                    if self.strength and not self._private:  # used: deepened at hear
+                        self._delivered.append((int(row), int(slot)))
         return out
 
     def _turn_slots(self, row: int, cue: np.ndarray) -> list[int]:
@@ -1546,6 +1552,11 @@ class LongTermRecords:
         x = np.asarray(observations, dtype=float)
         batch = len(x)
         self._told = None
+        if self.strength and not self._private:  # the accepted moment's read deepens what it used
+            for at, slot in self._delivered:
+                if at < len(self.stores) and slot < self.stores[at].count:
+                    self.stores[at].attend(slot)
+            self._delivered = []
         if self.strength and surprise is not None:
             told = np.asarray(surprise, dtype=float)
             if told.shape != (batch,) or not np.isfinite(told).all() or (told < 0).any():
@@ -1828,6 +1839,7 @@ class LongTermRecords:
 
     def reset(self, batch: int, rows: np.ndarray | None = None) -> None:
         """Streams that begin hold no turn; every record stays."""
+        self._delivered = []
         if rows is None or len(self.since) != batch:
             self.since = np.full(batch, -1, dtype=np.int64)
             self.read_slots = np.full((batch, self.heads), -1, dtype=np.int64)
@@ -1898,6 +1910,7 @@ class LongTermRecords:
         out._wlists = [list(held) for held in self._wlists]
         out._asked = [held.copy() for held in self._asked]
         out.asked_in = dict(self.asked_in)
+        out._delivered = []
         if self.attended is not None:  # the heads read the branch's turns; the maps are shared
             out.attended = copy(self.attended)
             out.attended.records = out

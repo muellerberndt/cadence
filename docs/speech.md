@@ -166,7 +166,9 @@ Read the beliefs before every batch, the first batch included. A newborn's belie
 and their soft path spreads each letter over the steps it can take, so no even split is needed.
 `log_beliefs(brain, rows, hold=True)` reads them from the brain itself between two batches: its
 learned fields take no step while it answers and its streams are at rest again afterwards, so
-every parameter is what it was and no copy is loaded. Distributions read several batches
+the recipe's brain keeps every parameter and no copy is loaded. The answers are acts: a brain
+with a learned code takes the code's step at each, and one with `surprise` learns its usual
+residuals, so read those from a copy. Distributions read several batches
 earlier teach less: in the chamber, a brain taught from beliefs read eight batches earlier says
 only blank after half a pass, where brains taught from beliefs read before each batch read .27
 to .33 characters there.

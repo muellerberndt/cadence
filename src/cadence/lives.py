@@ -1777,8 +1777,9 @@ class _LivesRandom:
         return np.stack([self.generators[i].random(tuple(shape)) for i in rows])
 
 
-def _supported(brain: Any) -> None:
-    """Refuse a composition with a part the lives axis does not cover, naming it."""
+def _supported(brain: Any, backend: str = "cpu") -> None:
+    """Refuse a composition with a part the lives axis does not cover, naming it; ``backend``
+    the lives' backend (a part the device's lives do not cover is refused there)."""
 
     def refuse(what: str) -> ValueError:
         return ValueError(f"Lives holds the parts its lives axis covers: {what}")
@@ -1822,6 +1823,12 @@ def _supported(brain: Any) -> None:
         raise refuse("no actor entropy (actor_entropy=0)")
     if getattr(brain, "surprise", None) is not None:
         raise refuse("no surprise (a lone brain reads it: Brain.compose(surprise=True))")
+    if getattr(brain, "_senses", None) is not None or getattr(brain, "space", None) is not None:
+        raise refuse("one row of inputs per life: senses by name and a map belong to a lone "
+                     "brain")
+    if backend != "cpu" and isinstance(store, SynapticMemory) and store.fade_keep:
+        raise refuse("on a device, place records that all fade (no memory_keep): the device's "
+                     "store holds no kept depth")
 
 
 def _takes_outcome(brain: Any) -> bool:
@@ -1905,7 +1912,7 @@ class Lives:
             warnings.simplefilter("ignore")
             lone = [Brain.compose(inputs, actions, seed=s, backend="cpu", **options)
                     for s in self.seeds]
-        _supported(lone[0])
+        _supported(lone[0], backend)
         topology = lone[0].connectome
         self._topology = topology
         self._parts = {part: getattr(lone[0], part) is not None
@@ -2509,6 +2516,7 @@ class Lives:
         composition of these lives' anatomy and options."""
         if not 0 <= i < self.lives:
             raise ValueError(f"life {i} is not one of these {self.lives} lives")
+        _supported(brain, self.backend)  # a part the lives do not cover is refused as at birth
         if not (np.array_equal(brain.connectome.pre, self._topology.pre)
                 and np.array_equal(brain.connectome.post, self._topology.post)):
             raise ValueError("a joining brain has the lives' anatomy")

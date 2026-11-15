@@ -963,3 +963,31 @@ def test_a_brain_placed_at_its_first_moment_keeps_the_map_its_caller_holds(monke
     assert brain.space is held and brain.senses["touch"] == slice(0, 8)
     held.moment(seen=[(BREAD, [-0.6, 1.0])], lit=behind)          # the caller's map is the one
     assert brain.observation_code({"touch": TOUCH})[0, brain.senses["space"]["what"]][BREAD] > 0
+
+
+def test_a_map_with_values_joins_as_a_sense_of_its_whole_read():
+    """A map whose sheet carries values reads ``count + width`` values; a brain that holds it
+    in ``trained=`` reads them all."""
+    painted = Map(PLANE, cells=(8, 6), units=4, values={"colour": 3})
+    brain = Brain.compose(inputs=4, actions=2, seed=0, backend="cpu", trained=[painted])
+    read = painted.observation()
+    assert len(read) == painted.count + painted.width == 55
+    assert brain.inputs == 4 + len(read)
+    painted.moment(seen=[(APPLE, [0.3, 0.6], {"colour": 2})])
+    assert brain.act(np.zeros((1, 4)), greedy=True).shape == (1,)
+    span = brain.senses["space"]
+    assert (span["where"].stop - span["where"].start, span["what"].stop - span["what"].start) == (
+        painted.count, painted.width)
+
+
+def test_a_brain_whose_map_is_gone_is_refused_at_save_and_writes_nothing(tmp_path):
+    """A brain that reads its map itself is saved with that map: with the map detached, or one
+    of another read, ``save`` refuses before it writes a file."""
+    brain = Brain.compose(senses={"touch": 8}, actions=2, seed=0, backend="cpu",
+                          trained=[small_map()])
+    brain.act({"touch": TOUCH})
+    brain.space = None
+    target = tmp_path / "gone.npz"
+    with pytest.raises(ValueError, match="holds no map"):
+        brain.save(target)
+    assert not target.exists()

@@ -337,7 +337,7 @@ def test_a_brain_s_records_grow_strong_by_retelling_and_surprise_and_the_rest_fa
     assert brain.describe()["genes"]["longterm_strength"] is True
     path = brain.save(tmp_path / "strong.npz")
     assert checkpoint_format(path) == "cadence-brain/5"
-    assert checkpoint_features(path) == ["strength"]
+    assert checkpoint_features(path) == ["strength", "surprise"]
     loaded = cd.Brain.load(path)
     again = loaded.longterm.stores[0]
     assert loaded.longterm.strength and again.kept[:3].tolist() == store.kept[:3].tolist()
@@ -457,3 +457,62 @@ def test_distinct_records_grow_strong_by_use_and_an_unused_one_is_forgotten(tmp_
     say(brain, 2, 7, TURN, 12)  # a new fact is a record of its own, and is read
     assert answered(brain, 2) == 2 and answered(brain, 1) == -1
 
+
+
+def test_a_refused_moment_deepens_no_record_and_a_moment_deepens_what_it_used_once():
+    """With strength, the records a read delivers deepen once the moment is accepted: a refused
+    act leaves every depth as it was, and step (a lesson's read, then the act's) deepens a
+    record as act does."""
+    def asked_twice(call):
+        brain = distinct_strong()
+        brain.reset()
+        say(brain, 0, 6, TURN, 10)  # two facts, as the test above tells them
+        say(brain, 1, 6, TURN, 11)
+        store = brain.longterm.stores[0]
+        brain.reset()
+        say(brain, 0, 8, TURN)  # a question about agent 0: read at the moment after the turn
+        before = store.deep[: store.count].copy()
+        if call == "refused":
+            brain.retune(learning_free_steps=0)  # the next settle is refused
+            with pytest.raises(RuntimeError, match="settle"):
+                brain.act(np.zeros((1, INPUTS)), greedy=True)
+            return before, store.deep[: store.count].copy()
+        silent = np.zeros((1, INPUTS))  # the moment after the turn: the records are read
+        if call == "act":
+            brain.act(silent, greedy=True)
+        else:
+            brain.step(silent, teacher=np.array([0]))
+        return before, store.deep[: store.count].copy()
+
+    before, after = asked_twice("refused")
+    np.testing.assert_array_equal(before, after)
+    gained = {call: asked_twice(call) for call in ("act", "step")}
+    act_gain = gained["act"][1] - gained["act"][0]
+    step_gain = gained["step"][1] - gained["step"][0]
+    assert act_gain.max() > 0.5
+    np.testing.assert_allclose(step_gain, act_gain, atol=1e-9)
+
+
+def test_a_brain_with_surprise_or_a_map_of_values_names_them_in_its_file(tmp_path):
+    """A reader of 0.99.1 cannot build a brain's surprise or a map whose sheet carries values;
+    their files are cadence-brain/5 and name them."""
+    import json
+
+    import cadence as cd
+    from cadence.space.map import Map
+
+    def record(brain, name):
+        with np.load(brain.save(tmp_path / name), allow_pickle=False) as archive:
+            return json.loads(str(archive["brain"]))
+
+    surprised = cd.Brain.compose(INPUTS, 4, seed=0, backend="cpu", surprise=True)
+    surprised.act(moment(0))
+    saved = record(surprised, "surprised.npz")
+    assert saved["format"] == "cadence-brain/5" and saved["features"] == ["surprise"]
+    assert cd.Brain.load(tmp_path / "surprised.npz").surprise is not None
+    painted = cd.Brain.compose(INPUTS, 4, seed=0, backend="cpu")
+    painted.space = Map((-1.0, 1.0, -1.0, 1.0), (8, 8), units=4, values={"colour": 3})
+    assert record(painted, "painted.npz")["features"] == ["map"]
+    plain = cd.Brain.compose(INPUTS, 4, seed=0, backend="cpu")
+    plain.space = Map((-1.0, 1.0, -1.0, 1.0), (8, 8), units=4)
+    assert record(plain, "plain.npz")["format"] == "cadence-brain/1"

@@ -575,7 +575,8 @@ def test_a_saved_brain_continues_with_the_same_slots_and_depths(tmp_path):
     with np.load(path, allow_pickle=False) as archive:
         meta = json.loads(str(archive["brain"]))
         np.testing.assert_array_equal(archive["memories/recall/depth"], recall.depth)
-    assert meta["format"] == "cadence-brain/5" and meta["features"] == ["recall_strength"]
+    assert meta["format"] == "cadence-brain/5"
+    assert meta["features"] == ["recall_strength", "surprise"]
     assert meta["memories"]["recall"]["strength"] is True
     assert (meta["memories"]["recall"]["again"], meta["memories"]["recall"]["kept"]) == (0.9, 6.0)
     twin = cd.Brain.load(path)
@@ -742,3 +743,21 @@ def test_a_brain_on_a_torch_device_keeps_the_bank_on_the_host():
     keys, depth = law(stream, 8, 4, recency=recall.recency)
     np.testing.assert_array_equal(recall.keys[0], keys)
     np.testing.assert_allclose(recall.depth[0], depth, rtol=1e-6)
+
+
+def test_a_grown_brain_with_a_slots_strength_names_it_in_its_file(tmp_path):
+    """grow adds a slot's strength to a brain without a recall memory: the grown brain saves
+    cadence-brain/5 with the feature, and loads."""
+    import json
+
+    import cadence as cd
+
+    brain = cd.Brain.compose(6, 3, seed=0, backend="cpu", recall=False, arousal=True)
+    brain.live(np.ones((1, 6)))
+    grown = brain.grow(recall=True, recall_strength=True)
+    grown.live(np.ones((1, 6)))
+    path = grown.save(tmp_path / "grown.npz")
+    with np.load(path, allow_pickle=False) as archive:
+        saved = json.loads(str(archive["brain"]))
+    assert saved["format"] == "cadence-brain/5" and saved["features"] == ["recall_strength"]
+    assert cd.Brain.load(path).recall.strength

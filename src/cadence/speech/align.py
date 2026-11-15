@@ -166,8 +166,10 @@ def log_beliefs(brain: Any, utterances: Sequence[Any], *, hold: bool = False) ->
     frozen copy (``Brain.load`` of a saved brain) where the life must go on untouched.
 
     With ``hold`` the brain's learned fields take no step while it answers, and its streams are
-    at rest again afterwards: every parameter is what it was, so between two batches of its
-    life a brain reads its own beliefs and no copy is loaded."""
+    at rest again afterwards, so between two batches of its life a brain of learned fields (the
+    recipe's brain) reads its own beliefs and no copy is loaded: its parameters are what they
+    were. Its acts are acts: a learned code takes its step at each one, and a brain with
+    ``surprise`` learns its usual residuals; read such a brain from a copy."""
     rows = [np.asarray(u, dtype=np.float64) for u in utterances]
     if not rows:
         return []
