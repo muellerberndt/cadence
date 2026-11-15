@@ -250,9 +250,10 @@ class LearnedFields:
         """One step of the dictionary and the thresholds from the frames ``x``, each group on
         its patches that carry structure; returns whether a table moved. A nonfinite proposal
         refuses the step and leaves the tables as they were."""
-        patches = self.retina(x).reshape(-1, self.patch)
         if not self.learning:
+            self._frames(x)  # held tables read no patches; the frames are checked as they were
             return False
+        patches = self.retina(x).reshape(-1, self.patch)
         self.work["updates"] += 1
         self.work["update_rows"] += len(np.atleast_2d(x))
         dictionary, thresholds = self.dictionary.copy(), self.thresholds.copy()
