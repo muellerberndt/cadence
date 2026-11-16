@@ -172,13 +172,12 @@ Eight outcomes exercise continuing feedback through a changed environment; they 
 acquisition or recovery. For batches, supplied teachers or learning from every outcome, use
 `step`. The [runnable lifecycle example](../examples/continuing_brain.py) separates bootstrap,
 unchanged conditions and changed conditions, records actual outcomes, and verifies identical
-continuation from a saved pending action. [Continuous interaction](start.md) specifies event
-order, refusal and retry, memory writes and reset; save the environment separately. Each
-mechanism's contract and boundary are tabled under
-[one continuing equilibrium brain](start.md#one-continuing-equilibrium-brain).
+continuation from a saved pending action. [A continuing life](life.md) specifies event order,
+refusal and retry, memory writes and reset; save the environment separately. Each mechanism's
+contract and boundary are tabled [below](#mechanisms-and-their-boundaries).
 
 `step` processes real feedback even when the task succeeded; it does not gate an update on
-witnessed failure. [`live`](start.md#routine-and-repair-live) gates learning by arousal for one
+witnessed failure. [`live`](life.md#routine-and-repair-live) gates learning by arousal for one
 stream: routine moments settle once and change no parameter or record, while a surprising
 outcome or a lasting reward shortfall starts exploration and learning. Youth and sustained
 arousal also learn from success, so the gate is wider than failure. Its evidence is the
@@ -195,6 +194,28 @@ association/motor pair exchange reciprocal signals. Processing regions have no i
 by default, and even `modules=(64,)` settles recurrently with memory. More modules or optional
 observers change connectivity; their behavioral benefit must be measured.
 [The numerical contracts](contracts.md) distinguish stochastic innovation from a learning error.
+
+## Mechanisms and their boundaries
+
+What each mechanism of a composed brain does, and where its contract stops:
+
+| Mechanism | Contract and boundary |
+| --- | --- |
+| Present interpretation and action | `Brain.act` qualifies the whole neural graph's residual with the trace and memory reads held as drive. With `memory_choice=True` the episodic vote joins the motor readout after the settle. The memory stores do not equilibrate jointly with the graph. |
+| Settling work | `Brain.last_settlement` reports free-answer residuals, sweeps, checks and qualification, refused attempts included. Eligibility, teaching, feedback, imagination and memory work are excluded; [`record_settlements`](api.md#record-every-settling-step) records every settlement, learning and imagination included, at a memory and copy cost. |
+| Memories | Working trace, heard history, associative store and recall memory on; efference copy and episodic memory opt-in. Each is read as held drive (the episodic vote joins after the settle) and written after the settle. [Memory](memory.md#memory-in-the-composed-brain). |
+| Local correction | Teacher labels change graph parameters, the address map of a recall memory and, with `memory_choice=True`, the episodic records. Chosen-action outcomes drive reward plasticity and associative writes. A label credits no earlier action. |
+| Routine and repair | `Brain.live`, for a brain built with `arousal`, answers greedily from one qualified settle while calm and changes no parameter or associative record; the trace, heard history and recall slots advance. Surprise, a reward shortfall or an unmet `need` (founder 0) or `need_scale` (0.1, a constant) raises arousal, and the outcome that wakes the brain is written to its associative store. The first `youth` moments (100) and aroused moments sample, keep eligibility and learn, from success too. One stream; the law's constants are genes. [Routine and repair](life.md#routine-and-repair-live). |
+| Private imagination | `Brain.imagine` settles **supplied** observation sequences with a private trace and read-only durable memory. It learns nothing and generates no environmental transition. [Private imagination](life.md#private-imagination). |
+
+Components for compositions beyond the default brain:
+
+| Function | Build with | Learned or supplied explicitly |
+| --- | --- | --- |
+| Perception and grounding | Input regions, associations and local updates (`Brain.compose`, `Genome`) | Features, entities, word/referent bindings |
+| Episodes and consolidation | `FastSynapses`, `SynapticMemory` | Addressing, relevant writes, retention, correction |
+| Workspace and goals | Recurrent state, `Trace`, goal and readback ports | Persistent context, goals and subgoals |
+| Action and value | `ActorCritic`, eligibility, dopamine | Exploration, delayed credit |
 
 ## Build and measure the whole life
 
@@ -218,5 +239,5 @@ count bootstrap, stable use, learning, replay, imagination and refused attempts.
 capability, scalability and efficiency are targets for matched comparisons; the word equilibrium
 does not imply them.
 
-Continue with [the continuing brain](start.md), [composition and tuning](tune.md),
+Continue with [a continuing life](life.md), [composition and tuning](tune.md),
 [task design](task-design.md) and [evaluation](evaluate.md).
