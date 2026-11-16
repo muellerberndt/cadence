@@ -69,6 +69,10 @@ REFUSED = [
     ({"code": "learned", "longterm": "strength"}, "message"),
     # attention=True reads a window of two events, which a slot's strength does not hold
     ({"code": "learned", "recall": "strength"}, "strength"),
+    # a held message hears the sensory region, which holds the observation itself
+    ({"cortex": "observation", "message": "on"}, "message"),
+    ({"cortex": "observation", "longterm": "records"}, "message"),
+    ({"cortex": "observation", "longterm": "strength"}, "message"),
 ]
 
 
@@ -446,6 +450,8 @@ def test_a_refused_pair_is_refused_by_name(pair, word):
     cell.update(pair)
     if cell["longterm"] != "off":
         cell["message"] = "on"
+    if cell["cortex"] != "code":
+        cell["code"] = "fixed"
     with pytest.raises(ValueError) as error:
         compose(cell)
     assert word in refusal(error.value)
