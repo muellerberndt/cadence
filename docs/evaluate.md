@@ -322,7 +322,7 @@ result together points to goal selection.
 
 | Misstep | Why it fails | Check |
 | --- | --- | --- |
-| Independent classification presented as a continuing world model | Fresh state omits the context being claimed | Test [one acquired brain](start.md#one-continuing-equilibrium-brain) across bootstrap, use, disruption and repair |
+| Independent classification presented as a continuing world model | Fresh state omits the context being claimed | Test [one acquired brain](world-model.md) across bootstrap, use, disruption and repair |
 | A small residual taken for a useful model | The equations can hold for a wrong interpretation | Measure task quality, retention, routine work and repair cost |
 | The answer produced by a trained external readout | The extra model carries the capability | Read the brain's declared output; report the readout as a baseline |
 | Free-state energy read as surprise | The causal recurrence has zero defect for a wrong prediction too | Compare the prediction with the actual reading |

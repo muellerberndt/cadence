@@ -12,7 +12,7 @@ difference, one number broadcast to every synapse like dopamine, turns every tra
 change: actions that did better than expected become likelier, actions that did worse less
 likely. No error is sent backward through the network.
 
-`Brain.step` and an aroused [`Brain.live`](start.md#routine-and-repair-live) take the reward of the
+`Brain.step` and an aroused [`Brain.live`](life.md#routine-and-repair-live) take the reward of the
 preceding action and return the next one:
 
 ```python
@@ -32,7 +32,7 @@ for _ in range(300):
 | Use | When | Learns |
 | --- | --- | --- |
 | `step(observations, reward=...)` | many streams, explicit control, every outcome should teach | from every outcome |
-| `live(observation, reward=...)` with `arousal=True` | one creature living one life | while young, surprised or wanting ([routine and repair](start.md#routine-and-repair-live)) |
+| `live(observation, reward=...)` with `arousal=True` | one creature living one life | while young, surprised or wanting ([routine and repair](life.md#routine-and-repair-live)) |
 | `act` then `learn(reward, done, next_observations)` | your body times the two halves of a moment | from that outcome ([by hand](tune.md#one-experience-step-by-hand)) |
 
 Use reward when outcomes pay actions: bandits, reversing rules, rewards a few choices later
@@ -99,7 +99,7 @@ of lessons alone.
 - `learn(reward, done, next_drive, bootstrap=None, *, observed=None, warm=None)`: `observed`
   marks real rows (at least one); padding rows are left out of plasticity and statistics
   and their traces reset. `warm` is the state to settle the next state from when the
-  stream moved on ([`Brain.wait`](start.md#outcomes-that-arrive-later-wait)).
+  stream moved on ([`Brain.wait`](life.md#outcomes-that-arrive-later-wait)).
 - `value(state)`, `value_of(drive)` (settled cold, cache untouched), `probabilities(state,
   temperature=None, *, bias=None)` (`(batch, slots, max_size)`, zero-padded, for several
   slots), `state` (the latest free phase), `fade(done=None)`, `reset()`. `salience`, a
@@ -372,7 +372,7 @@ action that pays most often. The readings below come from the
    competing one.
 4. **Choose `live` or `step` after the caregiver leaves.** `live` learns only while aroused,
    by a surprising outcome or by pay below what life usually brings; `step` learns from every
-   outcome ([routine and repair](start.md#routine-and-repair-live)). Which path erodes a taught
+   outcome ([routine and repair](life.md#routine-and-repair-live)). Which path erodes a taught
    chain depends on the founder. Where most surprises are punishments, `live` alone does not
    hold the skill, an averaged record holds a little more and a frozen store holds it (item 3).
    Teach by demonstration and correction through the episodic memory

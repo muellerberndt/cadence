@@ -394,7 +394,7 @@ assert focus is not None and np.linalg.norm(focus.place - [0.45, 0.6]) < 0.2
 
 A brain composed with `surprise=True` that holds such a map (`brain.space`) draws its focus
 among the map's cells and its own sensory neurons in one competition
-([the focus](start.md#surprise-and-the-focus-it-draws-opt-in)); with records of bound moments, a
+([the focus](life.md#surprise-and-the-focus-it-draws-opt-in)); with records of bound moments, a
 voice and values named as a sense's fields, a heard name draws it to its thing
 ([records of bound moments](memory.md#records-of-bound-moments-opt-in)). `surprise={...}` takes the genes
 of `Surprise` by name. A map file and a brain's file keep what each cell is used to; `reset()`

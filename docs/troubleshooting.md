@@ -107,7 +107,7 @@ trace, efference copy, heard history, episodic context and recall slots are clea
 is by default; after `reset(keep=())` an adult brain starts calm with no income or error
 references and no reward scale, so at `need=0` only a surprise at its own forecasts rouses it
 and the scaled need wants nothing until outcomes enter the new scale
-([reset and save](start.md#reset-and-save)).
+([reset and save](life.md#reset-and-save)).
 
 **Stored keys do not match a brain built with another `code`.** Keys are valid only under the
 code they were stored with; `retune` refuses `code` ([the observation code](senses.md#the-observation-code)).

@@ -225,7 +225,7 @@ then takes both a symbol's lesson and blank's.
 `step(observations, reward=...)` learns from every outcome it is given. `live(observation,
 reward=...)` runs one creature (a brain composed with `arousal=True`) that learns while it is
 young or aroused and answers calmly otherwise
-([routine and repair](start.md#routine-and-repair-live)). Both learn by a three-factor rule:
+([routine and repair](life.md#routine-and-repair-live)). Both learn by a three-factor rule:
 each synapse keeps an eligibility trace of what it did recently, and one broadcast prediction
 error turns the traces into weight changes ([learning from reward](reward.md)).
 
@@ -660,7 +660,7 @@ resumed.lesson(cues, labels)                     # training continues where it s
 
 - **Pending outcomes.** A brain saved while a sampled action waits for its reward loads with that
   action pending. Report the outcome once, to the loaded brain
-  ([reset and save](start.md#reset-and-save)).
+  ([reset and save](life.md#reset-and-save)).
 - **The environment is yours to save.** The brain does not save the world it lives in. Save the
   environment's state, and the rows' order, beside the brain.
 - **Keep checkpoints to choose from.** Save a copy at a declared schedule, score each copy on the

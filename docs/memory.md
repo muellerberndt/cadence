@@ -118,7 +118,7 @@ the brain issued (`efference_amplitude`) and the **held message**, the whole epi
 Every memory changes the answer through the same composed brain: the working trace, the efference
 copy, the heard history and the recall memory drive neural regions the association region reads;
 the associative store drives motor neurons; the episodic records add a vote to the motor readout.
-The answer has to [qualify](start.md#qualification-and-refusal) whichever of them shaped it.
+The answer has to [qualify](life.md#qualification-and-refusal) whichever of them shaped it.
 
 Start with the default brain. Add one memory at a time and compare it with the same brain
 without that memory, on held-out moments, through `act`, `step` or `live`: `predict` reads no
@@ -265,10 +265,10 @@ Memories have three lifetimes:
 - **Permanent until learning changes them**: the learned weights.
 
 The per-stream traces advance at every moment. Under
-[`live`](start.md#routine-and-repair-live) a calm brain reads its records and weights and
+[`live`](life.md#routine-and-repair-live) a calm brain reads its records and weights and
 changes neither; an aroused one learns and writes. `reset()` keeps the arousal state,
 including the income and error references that decide when a `live` brain wakes;
-`reset(keep=())` clears them ([reset and save](start.md#reset-and-save)).
+`reset(keep=())` clears them ([reset and save](life.md#reset-and-save)).
 
 ## Check that a memory does the work
 
@@ -1425,7 +1425,7 @@ the option decides which moments a full bank holds.
 
 | What happens | Its depth |
 | --- | --- |
-| The slot is written | One telling, 1. In a brain composed with `surprise=True`, 1 plus the brain's surprise at the moment in tellings: the ratio of the most surprised neuron's residual to its tolerated size, less one ([surprise](start.md#surprise-and-the-focus-it-draws-opt-in)). A moment nine times the tolerated size is written at 9 |
+| The slot is written | One telling, 1. In a brain composed with `surprise=True`, 1 plus the brain's surprise at the moment in tellings: the ratio of the most surprised neuron's residual to its tolerated size, less one ([surprise](life.md#surprise-and-the-focus-it-draws-opt-in)). A moment nine times the tolerated size is written at 9 |
 | A later moment tells it again | Plus 1. A moment tells a slot again where their keys lie at cosine `recall_again` (.95) or above; where several slots hold the moment, the deepest gains the telling. The moment is a slot of its own all the same, so the bank keeps its order |
 | A later moment's read attends it with weight `p` | `depth + p * max(1 - depth, 0)`: a read renews a slot that has faded, by its share of the read, and deepens none past one telling |
 | A later moment is written | Times `1 - 1 / (8 * capacity)` below `recall_kept` (8), the time scale of a record's depth; at or past `recall_kept` the depth stays whole |
@@ -2146,7 +2146,7 @@ are named as the fields of a sense (`Map(values={"hue": 8, "shape": 24})` beside
 `hue` and `shape`), a heard sound is read alone at every moment: where its records bring back a
 thing's fields, each thing on the map whose values hold more than half of them alike takes a
 salience of 8 times their mean cosine in the focus's competition
-([the focus](start.md#surprise-and-the-focus-it-draws-opt-in)), at its place, in view or out
+([the focus](life.md#surprise-and-the-focus-it-draws-opt-in)), at its place, in view or out
 of it. `brain.focus.sense` is then `"named"`.
 
 | Setting | Founder | Changed by | What it sets |
@@ -2456,9 +2456,9 @@ so do P4 with a mature skill A (A gains 2.4 points over the ring, B .24) and the
 (A loses 28.8 points, B .35), each to the same counts and means as without it.
 
 A sense that is active at every moment keeps its records in use. In a body whose senses stay
-busy, only the records of the senses that fall silent fade. Twelve brains of the
-[Robot Arena demo](https://github.com/muellerberndt/cadence-demos/tree/main/robot-arena) read
-this way ([#253](https://github.com/muellerberndt/cadence/issues/253)): over a nursery the
+busy, only the records of the senses that fall silent fade. Twelve brains of a body that
+fights in a ring read this way ([#253](https://github.com/muellerberndt/cadence/issues/253)):
+over a nursery the
 fade takes records of "outside the ring", a sense that falls silent as a brain learns to stay
 inside, and little else. The fights, the acquisition from birth and the revision test there
 hold every gate that maturity alone holds.
@@ -3125,7 +3125,7 @@ long as the store keeps its depth (`hold`, eight capacities), so a fact told onc
 is gone after about eight times as many moments as the store has slots. A fact told again as the record holds it (which writes nothing) counts
 one more telling, and a read deepens the record only where it delivers it, once its moment is
 accepted: a refused moment deepens none. In a brain composed
-with `surprise=True` ([surprise](start.md#surprise-and-the-focus-it-draws-opt-in)) the brain's
+with `surprise=True` ([surprise](life.md#surprise-and-the-focus-it-draws-opt-in)) the brain's
 own surprise at the moment a record is written counts as tellings: `brain.surprise.moment` is the
 log of how many times its tolerated size the most surprised neuron's residual was, and the write
 counts that ratio less one. A moment within what every neuron is used to adds nothing, and one

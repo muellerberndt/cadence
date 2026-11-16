@@ -126,7 +126,7 @@ an adapter-supplied relevant-memory index or a vote added after settlement do no
 goal. The opt-in episodic memory uses fixed observation/history keys and adds its vote to the
 motor readout after the neural solve, so its measured benefits are component evidence and do not
 demonstrate learned memory relevance. Begin with the existing state and memory, without
-prescribing a new module. The [task protocol](task-design.md#test-learned-memory-relevance) tests
+prescribing a new module. The [task protocol](evaluate.md#test-learned-memory-relevance) tests
 changed queries against identical saved memories, generalization, interference and recovery
 before a sentence-learning claim depends on that capability.
 
@@ -137,7 +137,7 @@ addition inside the same coupled equilibrium. An adapter must not supply the ans
 the arrangement on the brain's behalf.
 
 Declare component versus integrated scope in the
-[task's evidence contract](task-design.md#test-coherent-behavior-over-time). The
+[task's evidence contract](evaluate.md#test-coherent-behavior-over-time). The
 [roadmap](https://github.com/muellerberndt/cadence/issues/109) and its goal epics keep these
 targets distinct from implementation claims.
 
@@ -242,4 +242,4 @@ capability, scalability and efficiency are targets for matched comparisons; the 
 does not imply them.
 
 Continue with [a continuing life](life.md), [composition and tuning](tune.md),
-[task design](task-design.md) and [evaluation](evaluate.md).
+and [the design and evaluation of a claim](evaluate.md).

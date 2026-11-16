@@ -77,7 +77,7 @@ assert creature.inputs == 8 + 24 + 80                             # the senses s
   ([equal senses](senses.md#equal-senses-in-the-fixed-code)).
 - **Other senses.** A few continuous readings go through `cd.PopulationCode`; an image is
   `inputs=(height, width)`, read best through `learned_fields`
-  ([wide inputs](senses.md)). `Things` and `Ear` learn nothing and are not saved with the
+  ([senses](senses.md)). `Things` and `Ear` learn nothing and are not saved with the
   brain: make them again with the same arguments.
 
 ### Actions and a voice
@@ -162,7 +162,7 @@ assert watcher.surprise.moment[0] > 0.0                          # a ball where 
 ```
 
 The focus's rules (how long it holds, how long a place it left stays inhibited) are genes of
-`surprise=` ([surprise, and the focus it draws](start.md#surprise-and-the-focus-it-draws-opt-in)).
+`surprise=` ([surprise, and the focus it draws](life.md#surprise-and-the-focus-it-draws-opt-in)).
 
 ### Learning
 

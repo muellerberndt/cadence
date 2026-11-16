@@ -5,7 +5,7 @@ Every change must meet [the manifesto](MANIFESTO.md) and its
 requirement changes, and distinguish design goals from implemented capabilities.
 
 Start with [the guided documentation README](docs/README.md), then read the
-[continuing-world-model guide](docs/start.md#one-continuing-equilibrium-brain) before designing an application,
+[continuing-world-model guide](docs/world-model.md) before designing an application,
 tutorial or experiment. Use [the catalogue](docs/README.md#by-situation) to find individual
 guides. Read the owning guide, [numerical contracts](docs/contracts.md) and
 [API reference](docs/api.md) before changing semantics.
@@ -13,7 +13,7 @@ guides. Read the owning guide, [numerical contracts](docs/contracts.md) and
 | Task | Read and use |
 | --- | --- |
 | Build a continuing brain | [Quickstart](docs/start.md), [composition](docs/tune.md), [runnable lifecycle](examples/continuing_brain.py) |
-| Manage streams, outcomes and memory | [Continuous interaction](docs/start.md#continuous-interaction), [memory](docs/memory.md), [episodic memory](docs/memory.md#episodic-memory-what-happened-in-this-situation-before), [recall memory](docs/memory.md#the-recall-memory-in-full), [reward](docs/reward.md), [world model](docs/start.md#one-continuing-equilibrium-brain) |
+| Manage streams, outcomes and memory | [Continuous interaction](docs/life.md), [memory](docs/memory.md), [episodic memory](docs/memory.md#episodic-memory-what-happened-in-this-situation-before), [recall memory](docs/memory.md#the-recall-memory-in-full), [reward](docs/reward.md), [world model](docs/world-model.md) |
 | Diagnose learning or settling work | [Learning](docs/settling.md#learning-the-freenudged-rule), [contracts](docs/contracts.md), [API diagnostics](docs/api.md), [troubleshooting](docs/troubleshooting.md) |
 | Add optional recursive observation | [Composition](docs/tune.md#brain) (`observers=`), [cortical regions](docs/anatomy.md#write-a-cortex) |
 | Plan work or open an issue | [How the project is planned](#how-the-project-is-planned), the [roadmap](https://github.com/muellerberndt/cadence/issues/109) |
@@ -118,7 +118,7 @@ This goal is not implemented or established by a fixed history key or a vote
 added after settlement. Selection must participate through local repair in the
 same coupled equilibrium; an adapter must not supply the relevant memory index.
 Start with existing state and memory. Apply the
-[memory-relevance comparisons](docs/task-design.md#test-learned-memory-relevance)
+[memory-relevance comparisons](docs/evaluate.md#test-learned-memory-relevance)
 before claiming this capability or beginning sentence training on its premise.
 
 The current `Brain.act` qualifies a present neural state with held trace and
@@ -193,7 +193,7 @@ world's transitions or turn predictions into witnessed experience.
 Distinguish implemented contracts from the desired world-model lifecycle.
 `Brain.compose` does not yet integrate learned environmental transition prediction.
 `step` does not gate learning on witnessed failure; `live` gates it by arousal
-for one stream through its [arousal law](docs/start.md#routine-and-repair-live).
+for one stream through its [arousal law](docs/life.md#routine-and-repair-live).
 Youth and sustained arousal also allow learning from successful outcomes. Its
 routine moment still pays one full settle. Stable inputs do not guarantee cheap
 operation. Do not invent thresholds, success policies or runtime

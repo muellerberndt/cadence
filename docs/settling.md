@@ -168,7 +168,7 @@ Assign every state update to one clock. An environment step has the duration its
 or body declares; solver sweeps and `dt` have none, so measure wall time separately. An
 imagined future has its own step index inside a private branch; its steps simulate
 environment time and count neither as inference on the present nor as new observations.
-[Continuous interaction](start.md#defaults-and-the-thinking-clock) states which events
+[Continuous interaction](life.md#defaults-and-the-thinking-clock) states which events
 advance trace, eligibility, arousal and learning in `Brain`.
 
 A previous-state mixing term adds no inference depth to a one-step read from a zero initial
@@ -403,7 +403,7 @@ is refused by name with a message saying what to use instead ([CHANGELOG](../CHA
 
 Qualification certifies the equations at those states; the gradient reading also needs the
 assumptions above. `contrast`, `update` and `apply` act on supplied states. Answers follow
-[qualification and refusal](start.md#qualification-and-refusal).
+[qualification and refusal](life.md#qualification-and-refusal).
 
 #### Finite free phases that run out of budget
 
