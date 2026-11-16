@@ -14,7 +14,7 @@ engine.choose("wasm" if engine.BROWSER else (sys.argv[1] if len(sys.argv) > 1 el
 
 import numpy as np  # noqa: E402
 
-from cadence.space import compiled  # noqa: E402
+from cadence import compiled  # noqa: E402
 from cadence.space.map import Map  # noqa: E402
 
 assert compiled.available(), "the map's kernel is not in use"

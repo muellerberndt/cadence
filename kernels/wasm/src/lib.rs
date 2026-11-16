@@ -19,6 +19,7 @@
 #![no_std]
 #![allow(clippy::too_many_arguments, clippy::missing_safety_doc)]
 
+mod bound;
 mod fast;
 mod lesson;
 mod map;

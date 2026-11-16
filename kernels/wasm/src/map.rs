@@ -1,4 +1,4 @@
-//! The map of things' settle, `_map_settle` of `cadence/space/compiled.py`: `Map._settle`'s
+//! The map of things' settle, `_map_settle` of `cadence/compiled.py`: `Map._settle`'s
 //! drive, mask and start from the map's carried state, then the sweeps of `_settle_rows`, in
 //! one call and in the order the Python makes them.
 

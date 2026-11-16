@@ -475,7 +475,7 @@ class Map:
         from ..brain import BrainState
 
         if not self.trace:  # the same settle in one compiled call, where the kernels run
-            from . import compiled
+            from .. import compiled
 
             graph = self.graph if cue is not None else self._plain
             if (compiled.available() and graph.backend == "cpu" and graph._solves_alone()

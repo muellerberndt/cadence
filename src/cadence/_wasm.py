@@ -134,11 +134,12 @@ def load(source: str | bytes | None = None) -> bool:
 
     install(vars(fused))
     try:
-        from cadence.space import compiled as space
-    except ImportError:  # a release before the map's kernel
-        space = None
-    if space is not None:
-        space._map_settle = _caller("map_settle")
+        from cadence import compiled as parts
+    except ImportError:  # a release before the parts' kernels
+        parts = None
+    if parts is not None:
+        parts._map_settle = _caller("map_settle")
+        parts._bound_recall = _caller("bound_recall")
     if not hasattr(fused, "_wasm"):  # a release before this file: its kernels assert Numba
         fused.njit = _no_numba
         fused._threads = lambda: False
@@ -182,6 +183,7 @@ _KINDS = {
     "add_episode_terms": "wddbbiiinnnn",
     "clear_choice": "dfq",
     "map_settle": "dqdqqqqq?dfffffbqqqqfffd?bdbddd?b?b?bdbqnw",
+    "bound_recall": "qddd?b?bdbnnd?qnffnfffwq",
 }
 
 
