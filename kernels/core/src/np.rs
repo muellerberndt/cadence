@@ -83,7 +83,11 @@ pub fn einsum_dot(a: &[f64], b: &[f64]) -> f64 {
     }
     while i < n {
         lane0 = a[i].mul_add(b[i], lane0);
-        lane1 = if i + 1 < n { a[i + 1].mul_add(b[i + 1], lane1) } else { 0.0f64.mul_add(0.0, lane1) };
+        lane1 = if i + 1 < n {
+            a[i + 1].mul_add(b[i + 1], lane1)
+        } else {
+            0.0f64.mul_add(0.0, lane1)
+        };
         i += 2;
     }
     0.0 + (lane0 + lane1)
