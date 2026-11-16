@@ -86,6 +86,17 @@ pub unsafe extern "C" fn fast_solve(
     let out = take!(out, f64, FLOAT64, 16);
     let report = take!(report, i64, INT64, 17);
     let kept = take!(kept, f64, FLOAT64, 18);
+    fast(v, s, standing, flat, starts, pair_pre, pair_post, offset, slope, threshold, rest, leak,
+         budget, chunk, tolerance, settled, out, report, kept)
+}
+
+/// The fast free solve of `fast_solve` on a graph's arrays.
+pub(crate) unsafe fn fast(
+    v: View<f64>, s: View<f64>, standing: View<f64>, flat: View<f64>, starts: View<i64>,
+    pair_pre: View<i64>, pair_post: View<i64>, offset: View<i64>, slope: f64, threshold: f64,
+    rest: f64, leak: f64, budget: i32, chunk: i32, tolerance: f64, settled: f64, out: View<f64>,
+    report: View<i64>, kept: View<f64>,
+) -> i32 {
     let (batch, n) = (v.n0, v.n1);
     let ranges = if starts.len > 0 { starts.len - 1 } else { 0 };
     let pairs = pair_pre.len;

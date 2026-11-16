@@ -1477,21 +1477,36 @@ pub unsafe extern "C" fn solve_rows(
     let ka = take!(kept_a, f64, FLOAT64, 29);
     let kb = take!(kept_b, f64, FLOAT64, 29);
     let report = take!(report, i64, INT64, 29);
+    solve(&net, freezable, budget, chunk, tolerance, out, given, has_given != 0, in_place != 0,
+          change, ka, kb, report)
+}
+
+/// The free solve of `solve_rows` on a graph's arrays: the check, then chunks of sweeps and
+/// their checks while a row is over `tolerance` and sweeps are left. `given` is the state's kept
+/// array (read where `has_given`, made current in place where `in_place`); `kept_a` and `kept_b`
+/// (zeros, `kept_len` long) take the chunks' states in turn. `report` (at least 4 long)
+/// receives the sweeps, the checks, the last chunk's sweeps and which array holds what the
+/// state keeps (0 given, 1 `kept_a`, 2 `kept_b`).
+pub(crate) unsafe fn solve(
+    net: &Net, freezable: View<u8>, budget: i32, chunk: i32, tolerance: f64, out: View<f64>,
+    given: View<f64>, has_given: bool, in_place: bool, change: View<f64>, ka: View<f64>,
+    kb: View<f64>, report: View<i64>,
+) -> i32 {
     let length = net.kept_len();
     if freezable.len != net.ranges || out.len != net.batch || change.len != net.batch
         || ka.len != length || kb.len != length || report.len < 4
     {
         return refused(29);
     }
-    if (has_given != 0 || in_place != 0) && given.len != length {
+    if (has_given || in_place) && given.len != length {
         return refused(27);
     }
     let batch = net.batch;
-    let code = residual(&net, out, given, has_given != 0, in_place != 0, ka);
+    let code = residual(net, out, given, has_given, in_place, ka);
     if code < 0 {
         return code;
     }
-    let mut kept = if in_place != 0 { 0usize } else { 1usize };
+    let mut kept = if in_place { 0usize } else { 1usize };
     let budget = budget.max(0) as usize;
     let chunk = chunk.max(0) as usize;
     let (mut used, mut checks, mut taken) = (0usize, 1usize, 0usize);
@@ -1528,14 +1543,14 @@ pub unsafe extern "C" fn solve_rows(
             change.set(b, 0.0);
         }
         let steps = chunk.min(budget - used);
-        let got = settle(&net, freezable, steps, 0.0, false, source, true, change, target);
+        let got = settle(net, freezable, steps, 0.0, false, source, true, change, target);
         if got < 0 {
             return got;
         }
         taken = got as usize;
         kept = if kept == 1 { 2 } else { 1 };
         used += taken;
-        let code = residual(&net, out, target, true, true, target);
+        let code = residual(net, out, target, true, true, target);
         if code < 0 {
             return code;
         }

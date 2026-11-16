@@ -4,6 +4,7 @@
 pub mod arousal;
 pub mod brain;
 pub mod code;
+pub mod graph;
 pub mod hearing;
 pub mod history;
 pub mod recall;
@@ -55,6 +56,11 @@ pub fn call(part: &str, method: &str, state: &Named, args: &Named) -> Result<Nam
         }
         "hearing" => {
             let mut held = hearing::Hearing::import(state)?;
+            held.call(method, args, &mut out)?;
+            held.export(&mut after);
+        }
+        "graph" => {
+            let mut held = graph::Graph::import(state)?;
             held.call(method, args, &mut out)?;
             held.export(&mut after);
         }

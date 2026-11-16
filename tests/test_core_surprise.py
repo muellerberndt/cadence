@@ -140,16 +140,16 @@ def test_attend_in_the_core():
 def test_the_core_refuses_what_the_python_refuses():
     core = Core()
     surprise, orienting = surprises()[2], orientings()[3]
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ValueError):
         core.call("surprise", "observe", SURPRISE.state_of(surprise),
                   {"sizes": np.array([np.nan] * 7), "learn": np.bool_(True)})
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ValueError):
         core.call("surprise", "observe", SURPRISE.state_of(surprise),
                   {"sizes": np.zeros(6), "learn": np.bool_(True)})
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ValueError):
         core.call("orienting", "attend", ORIENTING.state_of(orienting),
                   {"surprise": np.array([np.inf]), "places": np.zeros((1, 2)),
                    "sense": np.zeros(1, dtype=np.int64)})
     bad = {**SURPRISE.state_of(surprise), "config.floor": np.float64(0.0)}
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ValueError):
         core.call("surprise", "state", bad, {})

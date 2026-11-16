@@ -175,7 +175,7 @@ impl Hearing {
             self.second[k] = RHO * self.second[k] + (1.0 - RHO) * (c(k) * c(k));
         }
         // Python's float ** int: the C library's pow
-        let correction = 1.0 - libm::pow(RHO, self.count as f64);
+        let correction = 1.0 - crate::np::pow(RHO, self.count as f64);
         for k in 0..n {
             let moved = self.rate * c(k) / (np::sqrt(self.second[k] / correction) + FLOOR);
             self.gains[k] = np::clip(self.gains[k] + moved, 0.0, self.routes[k].bound);
