@@ -57,6 +57,9 @@ def serve(files: dict[str, bytes], pyodide: Path | None) -> http.server.Threadin
             if path.startswith("/pyodide/") and pyodide is not None:
                 self.path = path[len("/pyodide"):]
                 self.directory = str(pyodide)
+            elif path.startswith("/webgpu/"):  # the GPU kernels beside these scripts
+                self.path = path[len("/webgpu"):]
+                self.directory = str(HERE.parent.parent / "webgpu")
             super().do_GET()
 
         def end_headers(self) -> None:
@@ -104,7 +107,9 @@ def main() -> int:
     url = f"http://127.0.0.1:{server.server_address[1]}/page.html?{urlencode(query)}"
     status = "error"
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        # WebGPU on the machine's own GPU (Metal on a Mac), for the scripts that use it
+        browser = p.chromium.launch(headless=True, args=[
+            "--enable-unsafe-webgpu", "--use-angle=metal", "--enable-features=Vulkan,WebGPU"])
         page = browser.new_page()
         page.goto(url)
         printed, began = 0, time.time()

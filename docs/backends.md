@@ -627,6 +627,59 @@ python kernels/wasm/browser/compare.py wasm.txt numpy.txt
 python kernels/wasm/browser/run.py --workers 4 many.py wasm 12 10 3 {k}   # brains in 4 workers
 ```
 
+The parts around the settle have compiled forms in `cadence.compiled`, one call each for the Python
+it stands for: the map of things' settle, its pieces (in the order a Python set pops their seeds),
+the moves its surprise reads and the values it writes, and the bound records' read. Numba compiles
+them natively and the same WebAssembly module holds them under Pyodide; the Python of each part
+is the reference, and `CADENCE_FUSED=0` takes it. In Chromium each equals its Python to the bit;
+natively NumPy's BLAS sums a dot product in another order, within 1e-9.
+
+```bash
+python kernels/wasm/browser/run.py maps.py      # the map's moments, both ways
+python kernels/wasm/browser/run.py records.py   # every read of the bound records, both ways
+python kernels/wasm/browser/run.py pieces.py    # the map's pieces over random masks
+```
+
+### A batch of lives on the GPU
+
+[`kernels/webgpu/lives.js`](../kernels/webgpu/lives.js) settles many lives of one anatomy on the
+GPU through WebGPU, each life with its own synapses: a sweep is three passes (each neuron's basal
+and apical input over its incoming synapses, each pool's apical gain, each neuron's step and
+activation), and a settle's sweeps go to the GPU as one submission. WGSL has no float64, so the GPU
+computes in float32; over 30 sweeps of Wild's pocket brain (872 neurons, 28,160 synapses) its
+activations lie within 1.1e-6 of the WebAssembly kernel's float64 ones, and the check passes under
+1e-5. `GpuLives.create()` rejects where a browser has no WebGPU, and the lives settle on the
+WebAssembly kernel.
+
+Milliseconds a life for a free settle of the pocket brain, Chromium 156 on an Apple M4 (Metal),
+the GPU's figure the best of five round trips (upload, sweeps, read back):
+
+| sweeps | lives | WebAssembly, lives in one call | WebAssembly, each life alone | WebGPU | WebGPU against the faster |
+|---|---|---|---|---|---|
+| 30 | 12 | 0.51 | 0.34 | 0.32 | 1.1x |
+| 30 | 50 | 0.59 | 0.36 | 0.090 | 4.0x |
+| 30 | 200 | 0.71 | 0.35 | 0.062 | 5.6x |
+| 30 | 1000 | 0.90 | 0.37 | 0.055 | 6.8x |
+| 10 | 12 | 0.20 | 0.14 | 0.14 | 1.0x |
+| 10 | 50 | 0.20 | 0.15 | 0.050 | 2.9x |
+| 10 | 200 | 0.24 | 0.15 | 0.024 | 6.3x |
+| 10 | 1000 | 0.26 | 0.15 | 0.021 | 7.1x |
+
+The GPU overtakes the WebAssembly kernel at about 12 lives: below that its round trip of a few
+milliseconds outweighs the sweeps. A life settles alike alone and among others on the WebAssembly
+kernel, to the bit, and alone it settles faster there, since one life's synapses stay in cache.
+
+The GPU settles free lives for a given number of sweeps. A brain's settle stops on its residual,
+takes nudges and clamps, and learns between settles; Python under Pyodide calls its kernels
+synchronously while the GPU answers a promise. A brain on the GPU takes a settle of `Lives`, whose
+lives share an anatomy, with its weights kept on the GPU between moments and its Python awaiting
+the settle (Pyodide's `run_sync` over JavaScript promise integration).
+
+```bash
+python kernels/wasm/browser/run.py gpu.py 1 2                     # one sweep against NumPy
+python kernels/wasm/browser/run.py gpu.py 30 12 50 200 1000       # the table
+```
+
 ## Precision matters
 
 Near multiple attractors a rounding difference can change the selected state, and float32

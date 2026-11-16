@@ -10,6 +10,15 @@
   kernels to the bit in headless Chromium, and a life chooses the NumPy loop's action at every
   moment ([backends](docs/backends.md#in-a-browser)). Wild's pocket brain takes 25.2 ms a moment
   in Chromium against 43.8 ms on the NumPy loop; demo-sized brains three to five times less.
+- **The parts around the settle compiled** (`cadence.compiled`): the map of things' settle, pieces,
+  moves and written values, and the bound records' read, each one call of the Python it stands
+  for, with Numba natively and in the WebAssembly module under Pyodide, where each equals its
+  Python to the bit. A free solve with an apical compartment runs in one compiled call.
+- **A batch of lives on the GPU** (`kernels/webgpu/lives.js`, WebGPU, float32): many lives of one
+  anatomy, each with its own synapses, settle within 1.1e-6 of the WebAssembly kernel's float64
+  activations. On an Apple M4 the GPU overtakes the WebAssembly kernel at about 12 lives of Wild's
+  pocket brain and settles 200 lives 5.6 to 6.3 times faster
+  ([backends](docs/backends.md#a-batch-of-lives-on-the-gpu)).
 
 - **Corrections beside watched episodes, and many streams, on the brain's own path**
   (`benchmarks/coaching/cartpole.py`, twelve founders): each own episode corrected through
