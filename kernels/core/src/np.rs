@@ -48,6 +48,22 @@ pub fn sum_squares(a: &[f64]) -> f64 {
     sum(&squares)
 }
 
+/// `a.sum(axis=0)` of a C-contiguous array of `cols` columns, `a` row after row: NumPy adds
+/// the rows in order to +0.0, except over a single column, which it reads as one run and sums
+/// pairwise (`sum`).
+pub fn sum_rows(a: &[f64], cols: usize) -> Vec<f64> {
+    if cols == 1 {
+        return vec![sum(a)];
+    }
+    let mut out = vec![0.0; cols];
+    for row in a.chunks_exact(cols.max(1)) {
+        for (o, x) in out.iter_mut().zip(row) {
+            *o += x;
+        }
+    }
+    out
+}
+
 /// `np.mean` of a run: its sum over its count.
 pub fn mean(a: &[f64]) -> f64 {
     sum(a) / a.len() as f64

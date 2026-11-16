@@ -152,6 +152,18 @@ for run in (np.array([-0.0]), np.full(9, -0.0), np.zeros(0), np.array([-0.0, 0.0
     same(f"sum of {run.tolist()}", np.atleast_1d(core.probe("sum", a=run)["sum"]),
          np.atleast_1d(np.sum(run)))
 
+# a sum over the first axis (``a.sum(axis=0)``): the rows added in order, a single column summed
+# pairwise
+rng = np.random.default_rng(4)
+for cols in (1, 2, 3, 5, 9):
+    ok = True
+    for rows in (1, 2, 7, 8, 9, 64, 70, 300):
+        for _ in range(20):
+            a = rng.standard_normal((rows, cols)) * 10.0 ** rng.integers(-8, 3, (rows, cols))
+            got = core.probe("sum_rows", a=a, cols=np.int64(cols))["sums"]
+            ok &= got.tobytes() == a.sum(axis=0).tobytes()
+    same(f"sum over rows of {cols} columns", np.array([ok]), np.array([True]))
+
 # np.tanh as NumPy's ufunc computes it (its own routine where it has a fused multiply-add), over
 # every interval of its table, beyond it, and at zeros, infinities and NaN; and the C library's,
 # which the compiled kernels call (math.tanh)
