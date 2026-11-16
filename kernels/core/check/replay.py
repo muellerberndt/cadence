@@ -2,7 +2,9 @@
 reference); every call of the part's methods is kept with the part's state before it, its
 arguments, what it returned and the state after it (``cadence.core.parts``); each is then made
 in the core on the state before, and what it returned and the state it leaves are compared,
-entry by entry: to the bit, within a tolerance (shown), or apart (the first few shown).
+entry by entry: to the bit, within a tolerance (shown), or apart (the first few shown). A brain
+error in the life (Wild logs it as ``brain_error`` and lets the animal act at random) or a part
+with no call recorded fails the check.
 
     python kernels/core/check/replay.py arousal [steps] [--wild PATH]
 """
@@ -50,9 +52,23 @@ for name, (arguments, result) in module.METHODS.items():
 world = World(Rules(), seed=1)
 sim = Sim(world, minds=Host(world.rules.width, world.rules.height, world.seed, None, []))
 began = time.perf_counter()
-for _ in range(a.steps):
+seen = 0
+for step in range(a.steps):
     sim.step()
+    # Wild catches a mind's error and the animal acts at random: a broken recording or state
+    # shows only there, so the first one ends the check
+    events = getattr(world, "events", [])
+    seen = 0 if len(events) < seen else seen  # a world that clears its events each step
+    errors = [e for e in events[seen:] if e.get("what") == "brain_error"]
+    seen = len(events)
+    if errors:
+        print(f"FAIL: a brain error at step {step}: {errors[0]}")
+        sys.exit(2)
 print(f"{a.part}: {len(kept)} calls over {a.steps} steps ({time.perf_counter() - began:.0f} s)")
+if not kept:
+    print(f"FAIL: no call of {a.part} was recorded: its methods ({', '.join(module.METHODS)}) "
+          "never ran, or their recording broke")
+    sys.exit(2)
 
 core = Core()
 bitwise = close = apart = 0
