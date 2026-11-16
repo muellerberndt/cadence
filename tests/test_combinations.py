@@ -64,8 +64,7 @@ REFUSED = [
     ({"code": "learned", "message": "on"}, "message"),
     ({"code": "learned", "longterm": "records"}, "message"),
     ({"code": "learned", "longterm": "strength"}, "message"),
-    # attention=True supplies a read over two moments (recall_window=2), which a slot's
-    # strength does not hold
+    # attention=True reads a window of two events, which a slot's strength does not hold
     ({"code": "learned", "recall": "strength"}, "strength"),
 ]
 
@@ -126,7 +125,7 @@ CELLS = covering_array()
 
 # Cells that meet a known defect of the library; each is reproduced alone at the end of this file.
 F1 = (
-    "on the compiled kernel a held message with a turn that holds (message_boundary_holds) "
+    "#346: on the compiled kernel a held message with a turn that holds (message_boundary_holds) "
     "continues from its save in other last bits once a lesson came before (efficacy within "
     "1e-11, the same actions over 196 moments); the NumPy loop continues to the bit"
 )
@@ -523,15 +522,9 @@ def test_known_a_held_message_with_a_holding_turn_continues_as_it_lived(tmp_path
     assert not differ, differ
 
 
-F2 = (
-    "a held message whose turn empties it (message_boundary without message_boundary_holds) "
-    "raises IndexError at its first moment after a load: its per-stream counts are saved only "
-    "with message_roles"
-)
-
-
-@pytest.mark.xfail(strict=True, raises=IndexError, reason=F2)
-def test_known_a_held_message_with_an_emptying_turn_lives_after_a_load(tmp_path):
+def test_a_held_message_with_an_emptying_turn_lives_after_a_load(tmp_path):
+    """A held message whose turn empties it (``message_boundary`` without
+    ``message_boundary_holds``) lives on after a load: its counts are rebuilt."""
     brain = Brain.compose(
         INPUTS, 3, modules=(16,), seed=3, backend="cpu", message=12, message_boundary=TURN
     )

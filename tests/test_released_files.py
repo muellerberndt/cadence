@@ -92,13 +92,6 @@ def test_a_file_naming_a_feature_this_version_lacks_is_refused_by_name(tmp_path)
         cd.Brain.load(_with_record(source, tmp_path / "later.npz", later))
 
 
-F3 = (
-    "a file of a later format name is refused as an 'unsupported Brain checkpoint format', "
-    "without the name it carries"
-)
-
-
-@pytest.mark.xfail(strict=True, reason=F3)
 def test_a_file_of_a_later_format_is_refused_by_its_name(tmp_path):
     source = HERE / "v0.100.0" / "default.npz"
 
