@@ -933,7 +933,7 @@ _CONSTRUCTION = frozenset({
     *_EPISODIC_SETTINGS, "recall", *(f"recall_{name}" for name in Recall.CONSTRUCTION),
     *(f"recall_{name}" for name in Recall.CONSTRUCTION_OPTIONS), "code",
     "learned_code", *(f"learned_code_{name}" for name in LearnedCode.GENES),
-    "attention", "apical", "maturity", "tied", "trained", "surprise",
+    "attention", "apical", "maturity", "tied", "trained", "surprise", "bound", "voice",
 })
 # surprise reads each neuron's residual in float64 on the host (``NeuralGraph.residual``)
 _SURPRISE_HOST = (
@@ -4363,7 +4363,9 @@ class Brain:
         if self.surprise is not None and self.orienting is not None:
             genes["surprise"] = {**self.surprise.settings(), **self.orienting.settings()}
         if self.bound is not None:
-            genes["bound"] = self.bound.settings()
+            genes["bound"] = self.bound.capacity
+            if self.bound.heard is not None:
+                genes["voice"] = self.bound.heard
         populations = self.connectome.populations
         result = {
             "layout": {
@@ -4458,7 +4460,9 @@ class Brain:
     def _sensed_rows(self, observations: Any, complete: bool = True) -> Any:
         """What a brain with named senses is given, as rows of its whole width. A mapping of
         sense to rows (a brain composed with ``senses=``): each sense's rows in its columns,
-        a sense left out silent, and no sense at all one silent row. The map's read
+        a sense left out silent, and no sense at all one silent row; with ``bound`` and
+        ``complete`` the senses it leaves silent hold what the records bring back (rows of the
+        whole width are taken as given). The map's read
         (``brain.space.observation()``) takes the columns of ``space`` in rows given
         without them; rows of the whole width are taken as they are, the map's part as
         given. An unknown sense, a wrong width and senses whose rows disagree are refused by
@@ -4551,14 +4555,16 @@ class Brain:
         self._bound_given = (filled.copy(), np.array(given, dtype=float))
         return filled
 
-    def _bound_hear(self, x: np.ndarray) -> None:
+    def _bound_hear(self, x: np.ndarray, acted: bool) -> None:
         """The moment ``x`` the streams lived joins the bound records: what the senses gave
-        (not what the records brought back), under its code, with the moment's surprise."""
+        (not what the records brought back), under its code, with the moment's surprise; a
+        moment ``acted`` at is the one a reward pays."""
         held = self.bound
         assert held is not None
         given = self._bound_given
         rows = given[1] if given is not None and self._same(given[0], x) else x
-        held.hear(rows, self._bound_keyed(rows), surprise=self._moment_surprise(len(x), held))
+        held.hear(rows, self._bound_keyed(rows), surprise=self._moment_surprise(len(x), held),
+                  acted=acted)
 
     def _map_read(self, width: int) -> np.ndarray:
         """What the brain reads of its map this moment (``brain.space.observation()``: ``where``
@@ -6193,14 +6199,14 @@ class Brain:
         the recall memory keeps slots (its ``capacity``), ``_EPISODE_REACH`` without one."""
         return _EPISODE_REACH if self.recall is None else int(self.recall.capacity)
 
-    def _hear_episode(self, x: np.ndarray) -> None:
+    def _hear_episode(self, x: np.ndarray, acted: bool = True) -> None:
         """With ``learning_rehearsal`` above zero: the moment ``x`` the streams heard (an act,
         or a moment ``wait`` sensed) joins their episodes; the latest moments a replay reaches
         are kept. At zero nothing is kept, so a rate retuned above zero keeps the moments heard
         from then on. With ``bound`` the moment joins the bound records (a replay's moments
         are not the streams' own and write none)."""
         if self.bound is not None and not self._surprise_private:
-            self._bound_hear(x)
+            self._bound_hear(x, acted)
         if not self.learner.config.rehearsal:
             if self._episode_moments:
                 self._episode_moments, self._episode_told = [], np.zeros(0, dtype=np.int64)
@@ -6708,7 +6714,7 @@ class Brain:
             self.recall.witness(
                 code, state, surprise=self._moment_surprise(len(x), self.recall)
             )
-        self._hear_episode(x)
+        self._hear_episode(x, acted=False)  # sensed, not acted at: no reward pays it
         if self._episodic is not None:
             self._episodic.sense(code)  # what was sensed enters the temporal context
         self._awaiting = (current, state)
@@ -9161,6 +9167,10 @@ def _bound_senses(declared: dict[str, Any] | None, records: Any, voice: Any, cod
         raise ValueError(
             "voice names the declared sense whose format the brain speaks in: one of "
             + ", ".join(repr(name) for name in declared)
+        )
+    if isinstance(declared[voice], Mapping):
+        raise ValueError(
+            f"voice speaks in the format of a sense of one field: {voice!r} has fields"
         )
     return {**declared, _VOICE: declared[voice]}
 

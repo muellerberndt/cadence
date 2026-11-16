@@ -7,9 +7,10 @@ and is read at each step. The world and the trainer are in ``world.py``.
 1. **Listen.** The trainer says every word of the world three times, nothing else in view.
 2. **Naming.** The trainer holds up a thing (a kind in one of its colours, at a place) and says
    its kind's name, ``ROUNDS`` times a kind.
-3. **Y1, a thing named by sight.** A thing at a place no naming used, in either colour of its
-   kind, nothing heard: what the parrot says (``Brain.say``) is heard by the trainer as a word.
-   Right when it is the kind's name.
+3. **Y1h (the record's key "Y1"), a thing named by sight from naming alone.** A thing at a place
+   no naming used, in either colour of its kind, nothing heard: what the parrot says
+   (``Brain.say``) is heard by the trainer as a word. Right when it is the kind's name. Reported
+   without a bar; the gated naming (S6) is read after the reward's exchanges.
 4. **Y2, a sound brings the thing back.** A kind's name heard alone, nothing in view:
    - what the records bring back (``Brain.complete``): the kind read from the shape and surface
      that come back (the nearest kind's);
@@ -25,7 +26,7 @@ and is read at each step. The world and the trainer are in ``world.py``.
    - a phrase: "what colour is this" heard with a thing in view, a reward when the parrot says
      its colour. Four things (kind and colour), each until right three times running or
      ``BUDGET`` exchanges;
-   - unpaid: the same exchanges with no reward.
+   - unpaid: the same exchanges with a reward of 0.0 at every answer.
 6. **Y4, controls on the same exchanges.** A lookup table keyed by (the thing's kind and colour,
    the word heard) that keeps a paid answer and otherwise guesses among the words heard, and a
    delta-rule readout of the brain's code to the words, taught by the reward, choosing by

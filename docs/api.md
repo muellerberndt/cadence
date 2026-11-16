@@ -133,8 +133,8 @@ The composed System 1 brain, with optional System 2 `observers` in the same grap
   records of what its named senses held together and reads them back by a part, completing a
   silent sense before every settle; `voice=sense` adds a sense `voice` of that declared sense's
   layout and lets `say` give what the records bind to a moment. Refused by name: either option
-  without named senses or a fixed code, `voice` without `bound` or naming no declared sense, a
-  declared sense named `voice`, and `bound` that is not a positive integer
+  without named senses or a fixed code, `voice` without `bound`, naming no declared sense or a
+  sense with fields, a declared sense named `voice`, and `bound` that is not a positive integer
   ([records of bound moments](#records-of-bound-moments-cadencebound),
   [the guide](memory.md#records-of-bound-moments-opt-in)).
 - `options`: every constructor keyword below and every `learning_<field>`, `actor_<field>`
@@ -859,11 +859,12 @@ A brain's records of its bound moments (`Brain.compose(bound=records)`, `brain.b
 `store`, keyed by the brain's fixed code of each moment's senses with each sense at unit length.
 `complete(rows, codes)` fills the fields the rows leave silent, `recall(row, code)` gives each
 field that comes back, `say(rows, codes)` the voice's choice (`said_from`), `hear(rows, codes,
-surprise=None)` writes the moment and fades the records a moment, and `pay(reward)` deepens the
-moment's records by `PAY` tellings a unit of reward or refuses a said record (`refused`) at a
-reward of zero or less. `named(row, code_of)` and `salience(template, things)` give a heard
+surprise=None, acted=True)` writes the moment and fades the records a moment (a moment `acted`
+at becomes the one a reward pays), and `pay(reward)` deepens that moment's records by `PAY`
+tellings a unit of reward, counted in `paid`, or refuses a said record (`refused`) at a reward of
+zero or less. `named(row, code_of)` and `salience(template, things)` give a heard
 name's pull on the focus. The constants: `HEADS` 8, `NEAR` .7, `MATCH` .15, `AGREE` .8, `MOST`
-.3, `ANSWER` .5, `KNOWN` .5, `PAID` 3, `PAY` 4, `NAMED` 8, `REVISE` .95, `KEEP` 8. Guide:
+.3, `ANSWER` .5, `KNOWN` .5, `PAY` 4, `NAMED` 8, `REVISE` .95, `KEEP` 8. Guide:
 [records of bound moments](memory.md#records-of-bound-moments-opt-in).
 
 ## Senses for things and sound (`cadence.senses`)

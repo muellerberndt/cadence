@@ -2,36 +2,40 @@
 read back by a part (``Brain.compose(bound=records)``, cadence 0.101, #342).
 
 A brain with named senses and a fixed code (``senses=``, ``code=``) codes each moment where its
-senses meet, every sense at unit length. With ``bound`` it keeps records of its moments in one
-``LongTermMemory``:
+senses meet. With ``bound`` it keeps records of its moments in one ``LongTermMemory``:
 
-- **A record** is written at every moment the brain lives in which a sense holds something: its
-  key is the moment's code, its value what each sense held. A moment told again (a key the
-  store holds at cosine ``REVISE``) moves its record toward the new take (``blend``) and
-  deepens it; the brain's surprise (``surprise=True``) counts as tellings; a record told past
-  ``KEEP`` tellings is kept for good, one told once fades and is forgotten in time (#336's
-  strength law).
-- **A reward** given to ``live`` or ``step`` deepens the record of the moment it pays by
-  ``PAY`` tellings a unit of reward.
-- **A read by a part.** At every moment the brain reads its records with the code of what its
-  senses hold. Up to ``HEADS`` heads each take a record; a head takes part where its record is
-  known (``KNOWN`` tellings, or ``PAID`` for a record of something the brain said, which only a
-  reward makes deep) and its key lies within ``NEAR`` of the nearest's cosine (and above
-  ``MATCH``). A field (a sense, or a field of a sense) comes back where every taking part that
-  holds it holds it alike (cosine ``AGREE``), as their mean. Where a field that comes back
-  disagrees with what the senses hold, the records are of something else and nothing comes
-  back.
-- **Completion.** A field the senses leave silent is given what came back, and the brain
-  settles on it: a word heard alone brings back the thing it was heard with.
-- **A voice** (``voice=sense``): the brain says, in the format of a sense it hears, what its
-  records bind to what it senses (``Brain.say``): what it said and was paid for, else what it
-  heard with it; with neither, a sound drawn from the sounds it holds, the deeper the likelier
-  (a babble). What it says joins the moment under the sense ``voice`` when the caller passes it
-  back, so the moment's record binds the sound said to what was sensed and a reward that
-  follows deepens it.
-- **A heard name draws the focus** (with ``surprise=True`` and a map with values): the records
-  read by the heard sense alone bring back a thing's fields, and the things on the map whose
-  values hold those fields alike take a salience of ``NAMED`` in the focus's competition.
+- **A record** is written at every moment the brain lives (``act``, ``step``, ``live``,
+  ``wait``) in which a sense holds something: its key is the brain's code of what the senses
+  gave, each sense at unit length and its fields alike within it; its value what each sense
+  gave. A moment told again (a key the store holds at cosine ``REVISE``) moves its record toward
+  the new take (``blend``) and deepens it; the brain's surprise (``surprise=True``) counts as
+  tellings; a record told past ``KEEP`` tellings is kept for good, one told once fades and is
+  forgotten in time (#336's strength law).
+- **A reward** given to ``live`` or ``step`` pays the record of the moment the brain acted at:
+  ``PAY`` tellings a unit of reward deepen it and are counted as its pay (``paid``). A reward of
+  zero or less refuses a record of something said (``refused``).
+- **A read by a part.** The records a read reaches are the known ones (depth ``KNOWN`` or kept;
+  a record of something said only once paid or refused) whose key lies at cosine ``MATCH`` or
+  more to the moment's code. For a field (a sense, or a field of a sense): the ``HEADS`` nearest
+  records that hold it, those within ``NEAR`` of the nearest's cosine, fall into groups that hold
+  it alike (cosine ``AGREE``), each weighed by its records' cosines; the heaviest comes back, as
+  its mean, where it weighs more than ``MOST`` of them.
+- **Completion.** Before every settle a field the senses given by name leave silent is given
+  what came back (the voice apart), and the brain settles on it: a word heard alone brings back
+  the thing it was heard with.
+- **A voice** (``voice=sense``): ``Brain.say`` gives, in that sense's format, the paid sound
+  whose moments share fields nearest the moment's (the paid records with one sound stand for the
+  fields all of them hold alike, a field where they differ left out; a match of ``ANSWER`` or
+  more, above every other sound's; a refused record of that sound at a moment like this one
+  refuses it), else the heard sound the records bring back where the moment holds none, else a
+  sound drawn from the distinct sounds the records hold, each one chance, passing over sounds
+  refused at moments like this one (a babble). A moment like another holds more than half of the
+  other's fields alike. What it says joins the moment under the sense ``voice`` when the caller
+  passes it back, so the moment's record binds it and a reward that follows pays it.
+- **A heard name draws the focus** (with a voice, ``surprise=True`` and a map with values):
+  the records read by the heard sense alone bring back a thing's fields, and each thing on the
+  map whose values hold more than half of them alike takes a salience of ``NAMED`` times their
+  mean cosine in the focus's competition.
 
 Born: the rule and its constants. Learned: every record, its strength and so what a part brings
 back, what the brain says, and which thing a heard sound draws the focus to.
@@ -89,7 +93,6 @@ class BoundRecords:
     AGREE = 0.8
     MATCH = 0.15
     KNOWN = 0.5
-    PAID = 3.0
     PAY = 4.0
     NAMED = 8.0
     REVISE = 0.95
@@ -113,11 +116,12 @@ class BoundRecords:
             blend=True, keep=self.KEEP, forget=8.0 * self.capacity, seed=self.seed,
         )
         self.written = np.full(0, -1, dtype=np.int64)  # the slot each stream's moment took
-        # records of something said that a reward of zero or less followed
+        # records of something said that a reward of zero or less followed, and each record's
+        # pay: the tellings rewards added to it
         self.refused = np.zeros(self.capacity, dtype=bool)
+        self.paid = np.zeros(self.capacity)
         self.draws = 0  # the babbles drawn, for the next draw's generator
         self.said_from: list[str | None] = []  # where each stream's latest said sound came from
-        self.recalled: np.ndarray | None = None  # the latest completion's rows
 
     # -- what a description and a file hold
 
@@ -132,6 +136,7 @@ class BoundRecords:
         out = {f"store/{name}": value for name, value in self.store.arrays().items()}
         out["written"] = self.written.copy()
         out["refused"] = self.refused.copy()
+        out["paid"] = self.paid.copy()
         return out
 
     @classmethod
@@ -148,6 +153,8 @@ class BoundRecords:
                 out.written = np.asarray(arrays["written"], dtype=np.int64)
             if "refused" in arrays:
                 out.refused = np.asarray(arrays["refused"], dtype=bool).reshape(out.capacity)
+            if "paid" in arrays:
+                out.paid = np.asarray(arrays["paid"], dtype=np.float64).reshape(out.capacity)
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError(f"invalid saved bound records: {exc}") from exc
         return out
@@ -163,27 +170,19 @@ class BoundRecords:
         return any(self._active(row, field) for field in self.fields)
 
     def _known_slots(self, slots: np.ndarray) -> np.ndarray:
-        """``_known`` of each of ``slots``."""
+        """Whether each of ``slots`` is read: a record at depth ``KNOWN`` or kept for good; a
+        record of something said only once a reward paid it or refused it; none forgotten."""
         store = self.store
-        bars = np.full(len(slots), self.KNOWN)
+        known = np.asarray(store.deep[slots], dtype=np.float64) >= self.KNOWN
+        if store.keep:
+            known |= np.asarray(store.kept[slots], dtype=bool)
         if self.voice is not None:
             first, last = self.fields[self._voice_field()]
-            bars[np.any(store.values[slots, first:last], axis=1)] = self.PAID
-        known = (np.asarray(store.deep[slots], dtype=np.float64) >= bars) | self.refused[slots]
+            said = np.any(store.values[slots, first:last], axis=1)
+            known = np.where(said, (self.paid[slots] > 0) | self.refused[slots], known)
         if store.forget:
             known &= ~np.asarray(store.gone[slots], dtype=bool)
-        return np.asarray(known)
-
-    def _known(self, slot: int) -> bool:
-        store = self.store
-        if store.forget and bool(store.gone[slot]):
-            return False
-        if self.refused[slot]:
-            return True
-        bar = self.KNOWN
-        if self.voice is not None and self._active(store.values[slot], self._voice_field()):
-            bar = self.PAID  # something said is known once it was paid for
-        return float(store.deep[slot]) >= bar
+        return np.asarray(known, dtype=bool)
 
     def _voice_field(self) -> str:
         assert self.voice is not None
@@ -211,29 +210,28 @@ class BoundRecords:
 
     def _agreed(self, taking: list[tuple[int, float]], row: np.ndarray
                 ) -> dict[str, np.ndarray]:
-        """Each field the reached records hold, where most of the nearest of them hold it alike.
-        For a field: the ``HEADS`` nearest records that hold it, those within ``NEAR`` of the
-        nearest's cosine, fall into groups that hold it alike (cosine ``AGREE`` to a group's
-        first), each weighed by its records' cosines; a refused record (something said that no
-        reward followed) within that reach weighs against the group whose value it holds. The
+        """Each field the reached records hold, where most of the nearest of them hold it alike
+        (the voice apart, whose read is ``_answer``). For a field: the ``HEADS`` nearest records
+        that hold it, those within ``NEAR`` of the nearest's cosine, fall into groups that hold
+        it alike (cosine ``AGREE`` to a group's first), each weighed by its records' cosines; the
         heaviest group comes back, as its mean, where it weighs more than ``MOST`` of the
-        records that hold the field and more than nothing."""
+        records that hold the field. ``row`` is the moment read (unused by this rule)."""
         out: dict[str, np.ndarray] = {}
         if not taking:
             return out
         slots = np.array([slot for slot, _ in taking], dtype=np.int64)
         weights = np.array([weight for _, weight in taking])
-        refused = self.refused[slots]
         values = np.asarray(self.store.values[slots], dtype=np.float64)
+        voice = None if self.voice is None else self._voice_field()
         for field, (first, last) in self.fields.items():
+            if field == voice:
+                continue
             parts = values[:, first:last]
-            held = np.any(parts, axis=1)
-            holding = np.flatnonzero(held & ~refused)
+            holding = np.flatnonzero(np.any(parts, axis=1))
             if not len(holding):
                 continue
             holding = holding[np.argsort(-weights[holding], kind="stable")][: self.HEADS]
-            reach = self.NEAR * weights[holding[0]]
-            holding = holding[weights[holding] >= reach]
+            holding = holding[weights[holding] >= self.NEAR * weights[holding[0]]]
             groups: list[list[int]] = []
             for k in holding:
                 for group in groups:
@@ -243,13 +241,8 @@ class BoundRecords:
                 else:
                     groups.append([int(k)])
             mass = [float(weights[g].sum()) for g in groups]
-            for k in np.flatnonzero(held & refused & (weights >= reach)):
-                for g, group in enumerate(groups):
-                    if float(_unit(parts[k]) @ _unit(parts[group[0]])) >= self.AGREE:
-                        mass[g] -= float(weights[k])
-                        break
             best = int(np.argmax(mass))
-            if mass[best] > 0.0 and mass[best] > self.MOST * float(weights[holding].sum()):
+            if mass[best] > self.MOST * float(weights[holding].sum()):
                 out[field] = parts[groups[best]].mean(axis=0)
         return out
 
@@ -261,12 +254,9 @@ class BoundRecords:
             if not self.holds(out[i]):
                 continue
             for field, part in self._agreed(self._taking(codes[i]), out[i]).items():
-                if self.voice is not None and field == self._voice_field():
-                    continue
                 first, last = self.fields[field]
                 if not np.any(out[i, first:last]):
                     out[i, first:last] = part
-        self.recalled = out
         return out
 
     def recall(self, row: np.ndarray, code: np.ndarray) -> dict[str, np.ndarray]:
@@ -276,10 +266,10 @@ class BoundRecords:
     # -- the voice
 
     def say(self, rows: np.ndarray, codes: np.ndarray) -> np.ndarray:
-        """What the brain says at each row, in the format of the voice: what its records bind to
-        what it senses (what it said and was paid for, else the heard sense's record where the
-        senses hold no sound), else a sound drawn from the sounds the records hold, the deeper
-        the likelier; zeros where the records hold no sound. ``said_from`` names each choice:
+        """What the brain says at each row, in the format of the voice: the paid sound that
+        stands for the moment (``_answer``), else the heard sound the records bring back where
+        the moment holds none, else a sound drawn from the distinct sounds the records hold
+        (``_babble``); zeros where the records hold no sound. ``said_from`` names each choice:
         ``"said"``, ``"heard"``, ``"babble"`` or None."""
         assert self.voice is not None and self.heard is not None
         voice, heard = self._voice_field(), self.heard
@@ -325,7 +315,7 @@ class BoundRecords:
         values = np.asarray(store.values[slots], dtype=np.float64)
         sounds = values[:, v0:v1]
         said = np.any(sounds, axis=1)
-        paid = np.flatnonzero(said & ~self.refused[slots])
+        paid = np.flatnonzero(said & (self.paid[slots] > 0) & ~self.refused[slots])
         refused = np.flatnonzero(said & self.refused[slots])
         groups: list[list[int]] = []
         for k in paid:
@@ -425,10 +415,12 @@ class BoundRecords:
 
     # -- the write
 
-    def hear(self, rows: np.ndarray, codes: np.ndarray, surprise: Any = None) -> None:
+    def hear(self, rows: np.ndarray, codes: np.ndarray, surprise: Any = None,
+             acted: bool = True) -> None:
         """The moment's records: each row that holds something written under its code (a moment
         told again deepens its record), with the moment's surprise in tellings; then the
-        records fade by one moment."""
+        records fade by one moment. A moment the brain ``acted`` at becomes the one a reward
+        pays; a moment it only sensed (``wait``) is written and leaves that as it was."""
         rows = np.asarray(rows, dtype=np.float64)
         written = np.full(len(rows), -1, dtype=np.int64)
         for i in range(len(rows)):
@@ -440,28 +432,36 @@ class BoundRecords:
             told = None if surprise is None else float(max(surprise[i], 0.0))
             written[i], revised = self.store.write(np.asarray(codes[i], dtype=np.float64), value,
                                                    surprise=told)
-            if not revised:
+            if not revised:  # a record of its own: no pay, nothing refused
                 self.refused[written[i]] = False
-        self.written = written
+                self.paid[written[i]] = 0.0
+        if acted:
+            self.written = written
         self.store.moment()
 
     def pay(self, reward: Any) -> None:
-        """A reward for the latest moment: each stream's record of it deepens by ``PAY``
-        tellings a unit of reward; a record of something said that a reward of zero or less
-        follows is refused (it weighs against what it holds in a read, until a reward pays
-        it)."""
+        """A reward for the moment the brain acted at: each stream's record of it deepens by
+        ``PAY`` tellings a unit of reward, counted as its pay, and is no longer refused; a
+        reward of zero or less refuses a record of something said (it then answers nothing and
+        its sound is passed over at moments like it, until a reward pays it)."""
         r = np.asarray(reward, dtype=np.float64).reshape(-1)
         said = None
         if self.voice is not None:
             first, last = self.fields[self._voice_field()]
             said = (first, last)
+        store = self.store
         for i, slot in enumerate(self.written):
             if slot < 0 or i >= len(r) or not np.isfinite(r[i]):
                 continue
             if r[i] > 0:
-                self.store.retell(int(slot), surprise=max(self.PAY * float(r[i]) - 1.0, 0.0))
+                tellings = self.PAY * float(r[i])
+                store.deep[slot] += tellings
+                if store.keep and store.deep[slot] >= store.keep:
+                    store.kept[slot] = True
+                store.faded[slot] = 0.0
+                self.paid[slot] += tellings
                 self.refused[slot] = False
-            elif said is not None and np.any(self.store.values[slot, said[0]:said[1]]):
+            elif said is not None and np.any(store.values[slot, said[0]:said[1]]):
                 self.refused[slot] = True
 
     # -- the focus a heard name draws

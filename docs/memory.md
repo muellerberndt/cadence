@@ -2078,12 +2078,15 @@ told once fades and is forgotten in time (the [strength law](#a-records-strength
 `LongTermMemory(blend=True, keep=8, forget=...)`).
 
 **A read by a part.** Before every settle the brain reads its records with the code of what its
-senses hold. For each field (a sense, or a field of a sense) it takes the eight nearest records
-that hold the field, those within .7 of the nearest's cosine and above .15: records that hold
-the field alike (cosine .8) form a group, weighed by their cosines, and the heaviest group comes
-back where it weighs more than .3 of them. A field the senses leave silent is given what came
-back, and the brain settles on the moment so completed. `brain.complete(observations)` gives
-what comes back, sense by sense, and changes nothing.
+senses given by name hold (rows of the whole width are taken as given and not completed). The
+records read are the known ones: a record at depth .5 or kept for good, a record of something
+said only once a reward paid or refused it, none forgotten, at a cosine of .15 or more to the
+moment's code. For each field (a sense, or a field of a sense) the eight nearest records that
+hold it, those within .7 of the nearest's cosine, form groups that hold the field alike (cosine
+.8), weighed by their cosines, and the heaviest group comes back where it weighs more than .3 of
+them. A field the senses leave silent is given what came back (the voice apart), and the brain
+settles on the moment so completed. `brain.complete(observations)` gives what comes back, sense
+by sense, and changes nothing.
 
 **A voice.** `voice="ear"` adds a sense `voice` of the ear's layout: what the brain says, heard
 by itself. `brain.say(observations)` gives, one row a stream, the sound that stands for the
@@ -2098,10 +2101,13 @@ not paid (`"babble"`); zeros where no record holds a sound. A moment like anothe
 more than half of the fields it holds are held alike. `brain.bound.said_from` names each choice.
 Pass the sound back under `"voice"` at the moment it is said, so the moment's record binds it.
 
-**A reward.** A reward given to `live` or `step` deepens the record of the moment it pays by 4
-tellings a unit of reward. A record of something said is an answer only once paid (depth 3); a
-reward of zero or less refuses it, and a refused record weighs against its sound in the reads of
-moments like it, until a reward pays it. A life with no reward given pays and refuses nothing.
+**A reward.** A reward given to `live` or `step` pays the record of the moment the brain acted
+at (a moment `wait` sensed in between is written and is not the one paid): it deepens by 4
+tellings a unit of reward, counted as its pay (`brain.bound.paid`). A record of something said
+answers only once paid; a reward of zero or less refuses it (`brain.bound.refused`), and its
+sound is passed over at moments like it until a reward pays it. Telling a said moment again, or
+the brain's surprise at it, deepens its record and pays nothing. A life with no reward given
+pays and refuses nothing.
 
 ```python
 for word in (said_cup, np.random.default_rng(1).normal(size=(20, 10))):
@@ -2113,8 +2119,8 @@ parrot.live({"eyes": cup}, reward=[1.0])                         # paid: that is
 assert np.allclose(parrot.say(question), said) and parrot.bound.said_from == ["said"]
 ```
 
-**A heard name draws the focus.** With `surprise=True` and a map of things whose values are
-named as the fields of a sense (`Map(values={"hue": 8, "shape": 24})` beside eyes of fields
+**A heard name draws the focus.** With a voice, `surprise=True` and a map of things whose values
+are named as the fields of a sense (`Map(values={"hue": 8, "shape": 24})` beside eyes of fields
 `hue` and `shape`), a heard sound is read alone at every moment: where its records bring back a
 thing's fields, each thing on the map whose values hold more than half of them alike takes a
 salience of 8 times their mean cosine in the focus's competition
@@ -2127,9 +2133,9 @@ of it. `brain.focus.sense` is then `"named"`.
 | `voice` | `None` | construction | The declared sense whose format the brain speaks in; adds the sense `voice` |
 
 The rule's constants are `cadence.bound.BoundRecords`'s (`HEADS`, `NEAR`, `MATCH`, `AGREE`,
-`MOST`, `ANSWER`, `KNOWN`, `PAID`, `PAY`, `NAMED`). A checkpoint keeps the records and saves as
+`MOST`, `ANSWER`, `KNOWN`, `PAY`, `NAMED`). A checkpoint keeps the records and saves as
 `cadence-brain/5` with the feature `bound`, which 0.100.0 refuses by name; `describe()` names
-the settings under `bound`. `grow`, `graft` and `Lives` refuse a brain with records.
+them under `bound` and `voice`. A voice takes a sense of one field. `grow`, `graft` and `Lives` refuse a brain with records.
 
 **What it reads.** In the [symbols chamber](../benchmarks/symbols/README.md) (the parrot that
 starts with no words: eight kinds of things in two colours, seventeen words said by a speaker),

@@ -72,7 +72,8 @@ with one phrase item past the budget on one founder, unpaid .05 to .15; S6 .60 t
 founder of two at 1.00, one at .80 in the second pass); S7 .83 to 1.00 taught and .00 untaught.
 S2, S5 and S6 may miss on more than two founders.
 
-**The located limit (Y1h).** A thing seen alone is named from the naming moments at .82 to .90:
+**The located limit (Y1h).** A thing seen alone is named from the naming moments at .82 to .90
+in development (.725 to .975 in the third declared run):
 the read weighs the thing's place and colour as it weighs its form, and a thing's form decides
 its name. Records alone do not learn which field a name follows; the reward of S4 does it for
 the things it pays.
@@ -206,3 +207,18 @@ first two runs.
 
 Beside them, without a bar: a thing named from the naming moments alone (Y1h) .725 to .975; the
 lookup table and the delta-rule readout given the same exchanges are in each life's record.
+
+### The fourth declared run: the code that ships
+
+**What changed after the third run** (an independent review of the release; `cadence.bound`): a
+record of something said answers only once a reward paid it (its pay counted apart from its
+depth, which telling a moment again and the brain's surprise also raise); a reward after `wait`
+pays the moment the brain acted at; records kept for good stay readable; a refused record weighs
+only on what the voice says, and completion reads every known record; a voice of a sense with
+fields is refused. The chamber and its brain are the third run's.
+
+**Declared** on [#342](https://github.com/muellerberndt/cadence/issues/342) before the first life:
+founders **1010400 to 1010411**, twelve and fresh, the same gates and bars.
+
+**Expectations.** As the third run: every gate on 11 or 12 founders, S3 and S7 possibly missing
+on one or two.

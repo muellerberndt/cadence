@@ -53,8 +53,8 @@ def test_compose_lays_out_a_voice_and_holds_the_records():
     assert list(brain.senses) == ["eyes", "ear", "voice"]
     assert brain.inputs == THINGS.width + 2 * EAR.width
     assert isinstance(brain.bound, BoundRecords) and brain.bound.store.count == 0
-    assert brain.describe()["genes"]["bound"] == {"records": 256, "voice": "voice",
-                                                 "heard": "ear", "seed": 0}
+    genes = brain.describe()["genes"]
+    assert genes["bound"] == 256 and genes["voice"] == "ear"
     plain = Brain.compose(senses={"eyes": THINGS.widths, "ear": EAR.width}, actions=2,
                           code=512, seed=0, backend="cpu")
     assert plain.bound is None and "bound" not in plain.describe()["genes"]
@@ -67,6 +67,9 @@ def test_compose_lays_out_a_voice_and_holds_the_records():
     ({"senses": {"ear": 8}, "code": 64, "bound": 16, "voice": "nose"}, "voice names"),
     ({"senses": {"ear": 8, "voice": 8}, "code": 64, "bound": 16}, "name the declared"),
     ({"senses": {"ear": 8}, "code": 64, "bound": 0}, "positive integer"),
+    ({"senses": {"eyes": 16, "ear": {"a": 8, "b": 8}}, "code": 64, "bound": 16, "voice": "ear"},
+     "one field"),
+    ({"senses": {"ear": 40}, "code": 64, "learned_code": 32, "bound": 16}, "learned code"),
 ])
 def test_compose_refuses_by_name(options, says):
     with pytest.raises(ValueError, match=says):
@@ -140,7 +143,7 @@ def test_a_reward_makes_what_was_said_the_answer_and_no_reward_refuses_it():
             break
         assert brain.bound.refused[slot]
     assert right and not brain.bound.refused[slot]
-    assert brain.bound.store.deep[slot] >= BoundRecords.PAID
+    assert brain.bound.paid[slot] == BoundRecords.PAY
     said = brain.say({"eyes": eyes(CUP, 0.3), "ear": sound("what colour", rng)})
     assert heard_as(said) == "white" and brain.bound.said_from == ["said"]
 
@@ -153,8 +156,8 @@ def test_a_life_without_rewards_pays_nothing():
     said = brain.say({"eyes": eyes(CUP, 0.0)})
     brain.live({"eyes": eyes(CUP, 0.0), "voice": said})
     slot = int(brain.bound.written[0])
-    brain.live({"eyes": eyes(CUP, 0.0)})
-    assert not brain.bound.refused[slot] and brain.bound.store.deep[slot] < BoundRecords.PAID
+    brain.live({"eyes": eyes(CUP, 0.0)})  # no reward given
+    assert not brain.bound.refused[slot] and brain.bound.paid[slot] == 0.0
 
 
 def test_step_pays_the_record_of_the_moment_it_rewards():
@@ -163,7 +166,7 @@ def test_step_pays_the_record_of_the_moment_it_rewards():
     brain.step({"eyes": eyes(CUP, 0.0), "voice": sound("cup", rng)})
     slot = int(brain.bound.written[0])
     brain.step({"eyes": eyes(CUP, 0.0)}, reward=[1.0])
-    assert brain.bound.store.deep[slot] >= BoundRecords.PAID
+    assert brain.bound.paid[slot] == BoundRecords.PAY
 
 
 def test_save_and_load_keep_the_records(tmp_path):
@@ -241,3 +244,72 @@ def test_things_and_ear():
         EAR.code(np.zeros((5, 3)))
     audio = np.sin(np.linspace(0, 2000, 8000))
     assert Ear().hear(audio).shape == (1, 640)
+
+
+def test_what_was_said_answers_only_once_paid_however_often_it_is_told():
+    rng = np.random.default_rng(9)
+    for surprise in (False, True):
+        brain = parrot(surprise=surprise)
+        for word in WORDS:
+            brain.act({"ear": sound(word, rng)}, greedy=True)
+        question = {"eyes": eyes(CUP, 0.3), "ear": sound("what colour", rng)}
+        said = brain.say(question)
+        for _ in range(4):  # the same moment told again, no reward given
+            brain.live({**question, "voice": said})
+            brain.live({"eyes": eyes(CUP, 0.3)})
+        brain.say(question)
+        assert brain.bound.said_from == ["babble"]
+        assert not brain.bound.paid[: brain.bound.store.count].any()
+
+
+def test_a_reward_after_wait_pays_the_moment_acted_at():
+    rng = np.random.default_rng(10)
+    brain = parrot()
+    for word in WORDS:
+        brain.act({"ear": sound(word, rng)}, greedy=True)
+    said = brain.say({"eyes": eyes(CUP, 0.0)})
+    brain.live({"eyes": eyes(CUP, 0.0), "voice": said})
+    acted = int(brain.bound.written[0])
+    brain.wait({"eyes": eyes(APPLE, 0.5), "ear": sound("red", rng)})
+    brain.live({"eyes": eyes(CUP, 0.0)}, reward=[1.0])
+    assert brain.bound.paid[acted] == BoundRecords.PAY
+    assert brain.bound.paid.sum() == BoundRecords.PAY
+
+
+def test_records_kept_for_good_are_read_however_long_ago():
+    brain = Brain.compose(senses={"eyes": THINGS.widths, "ear": EAR.width}, actions=2, code=512,
+                          bound=4, seed=0, backend="cpu")
+    for _ in range(15):  # told past 8 tellings, the fading of the depth taken off
+        brain.act({"eyes": eyes(CUP, 0.0), "ear": EAR.code(WORDS["cup"])}, greedy=True)
+    store = brain.bound.store
+    assert store.kept[: store.count].any()
+    for _ in range(400):
+        store.moment()
+    assert flat(brain.complete({"ear": EAR.code(WORDS["cup"])})["eyes"]).any()
+
+
+def test_two_streams_are_paid_and_refused_each_its_own():
+    rng = np.random.default_rng(12)
+    brain = parrot()
+    for word in WORDS:
+        brain.act({"ear": np.vstack([sound(word, rng), sound(word, rng)])}, greedy=True)
+    seen = {"eyes": {f: np.vstack([eyes(CUP, 0.0)[f], eyes(APPLE, 0.5)[f]])
+                     for f in THINGS.widths}}
+    said = brain.say(seen)
+    brain.step({**seen, "voice": said})
+    slots = brain.bound.written.copy()
+    brain.step(seen, reward=[1.0, 0.0])
+    assert brain.bound.paid[slots[0]] == BoundRecords.PAY and not brain.bound.refused[slots[0]]
+    assert brain.bound.paid[slots[1]] == 0.0 and brain.bound.refused[slots[1]]
+
+
+def test_imagine_and_reads_write_nothing():
+    rng = np.random.default_rng(13)
+    brain = parrot()
+    named(brain, rng)
+    before = {k: v.copy() for k, v in brain.bound.arrays().items()}
+    brain.imagine([{"ear": sound("cup", rng)}, {"eyes": eyes(APPLE, 0.0)}])
+    brain.complete({"ear": sound("apple", rng)})
+    brain.predict({"ear": sound("apple", rng)})
+    after = brain.bound.arrays()
+    assert all(np.array_equal(before[k], after[k]) for k in before)

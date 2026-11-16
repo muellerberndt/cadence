@@ -34,10 +34,11 @@ which shipped in 0.100.0, is posted on its issue.
   sounds, the one whose moments share fields nearest the moment's (a place where they differ
   left out); else what was heard with it; else a sound drawn from the distinct sounds the records
   hold, passing over sounds said at moments like this one and not paid.
-- **A reward** to `live` or `step` deepens the record of the moment it pays by 4 tellings a unit;
-  a reward of zero or less refuses a said record, which then weighs against its sound.
-- **A heard name draws the focus** (with `surprise=True` and a map whose values are named as a
-  sense's fields): the records read by the heard sound alone bring back a thing's fields, and the
+- **A reward** to `live` or `step` pays the record of the moment the brain acted at (4 tellings
+  a unit, counted as its pay); a said record answers only once paid, and a reward of zero or less
+  refuses it, its sound passed over at moments like it.
+- **A heard name draws the focus** (with a voice, `surprise=True` and a map whose values are
+  named as a sense's fields): the records read by the heard sound alone bring back a thing's fields, and the
   matching things on the map take a salience in the focus's competition (`focus.sense ==
   "named"`).
 - **`cadence.senses.Things`** (a seen thing as tuned cells a field) and **`Ear`** (an utterance as
