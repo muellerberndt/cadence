@@ -4,12 +4,13 @@
 //! settle, its reports' pieces, claims and writes, its pieces and its moves are the compiled
 //! kernels of `cadence.compiled` (`crate::map`).
 //!
-//! The camera (`lit` in the Python, a function of places) is a `Camera` the caller implements.
+//! The camera (`lit` in the Python, a function of places) is a `Camera` the caller implements:
+//! Wild's eyes judge whether each place is lit.
 
 use super::physics::{self as ph, Physics};
 use super::surprise::Surprise;
 use crate::np;
-use crate::state::{Array, Error, Named};
+use crate::state::{refused, Array, Error, Named};
 use crate::View;
 
 const SENSES: usize = 3; // seen, heard, felt
@@ -22,8 +23,8 @@ const NOT_KNOWN_WHERE: i64 = 6;
 
 /// What the camera sees: whether it sees each of a set of places.
 pub trait Camera {
-    /// `points` holds x, y pairs; one answer each.
-    fn sees(&mut self, points: &[f64]) -> Result<Vec<bool>, Error>;
+    /// Whether the camera sees each place: rows of x, y in metres in, one flag a row out.
+    fn lit(&mut self, places: &[[f64; 2]]) -> Result<Vec<bool>, Error>;
 }
 
 /// `lit`: nothing said, flags on cells, or the camera asked about places.
@@ -110,8 +111,19 @@ fn mat_mut<T>(v: &mut [T], n0: usize, n1: usize) -> View<T> {
     View { p: v.as_mut_ptr(), n0, n1, len: n0 * n1 }
 }
 
-fn refused(why: &str) -> Error {
+/// A fault: arrays that do not fit, or a call the Python never makes.
+fn fault(why: &str) -> Error {
     Error::Shape(why.to_string())
+}
+
+/// Rows of x, y as the kernels read them: a view of `rows` by 2.
+fn pairs_of(v: &[[f64; 2]]) -> View<f64> {
+    View { p: v.as_ptr() as *mut f64, n0: v.len(), n1: 2, len: 2 * v.len() }
+}
+
+/// Rows of x, y from a flat run.
+fn rows(flat: &[f64]) -> Vec<[f64; 2]> {
+    flat.chunks_exact(2).map(|p| [p[0], p[1]]).collect()
 }
 
 impl Graph {
@@ -121,13 +133,13 @@ impl Graph {
         let mut flat = vec![0.0; size];
         let (at, value) = (g.i64s("flat.at")?, g.f64s("flat.value")?);
         if at.len() != value.len() {
-            return Err(refused("the graph's flat entries do not fit"));
+            return Err(fault("the graph's flat entries do not fit"));
         }
         for (&i, &x) in at.iter().zip(&value) {
-            *flat.get_mut(i as usize).ok_or_else(|| refused("graph.flat.at"))? = x;
+            *flat.get_mut(i as usize).ok_or_else(|| fault("graph.flat.at"))? = x;
         }
         if g.bools("has_apical")?[0] {
-            return Err(refused("the core settles a map's plain graph"));
+            return Err(fault("the core settles a map's plain graph"));
         }
         let out = Graph {
             flat,
@@ -149,7 +161,7 @@ impl Graph {
             runs: g.i64s("runs")?,
         };
         if out.runs.len() != 16 || out.runs.iter().any(|&r| r < 0) {
-            return Err(refused("graph.runs"));
+            return Err(fault("graph.runs"));
         }
         Ok(out)
     }
@@ -296,10 +308,10 @@ pub struct Map {
     pub floor: f64,
     pub trace: bool,
     pub codes: Vec<f64>,
-    pub centers: Vec<f64>,
+    centers: Vec<[f64; 2]>,
     pub low: [f64; 2],
     pub size: [f64; 2],
-    offsets: Vec<f64>,
+    offsets: Vec<[f64; 2]>,
     density: Vec<f64>,
     pub potential: Vec<f64>,
     pub clock: Vec<f64>,
@@ -320,17 +332,17 @@ impl Map {
     // -- the state
 
     pub fn import(s: &Named) -> Result<Map, Error> {
-        let plane: [f64; 4] = s.f64s("plane")?.try_into().map_err(|_| refused("plane"))?;
+        let plane: [f64; 4] = s.f64s("plane")?.try_into().map_err(|_| fault("plane"))?;
         let cells = s.i64s("cells")?;
         if cells.len() != 2 || cells[0] < 3 || cells[1] < 3 {
-            return Err(refused("a map takes 3 cells or more an axis"));
+            return Err(fault("a map takes 3 cells or more an axis"));
         }
         let (nx, ny) = (cells[0] as usize, cells[1] as usize);
         let count = nx * ny;
         let width = s.i64("width")? as usize;
         let codes_shape = s.shape("codes")?;
         if codes_shape.len() != 2 || codes_shape[1] > width {
-            return Err(refused("codes"));
+            return Err(fault("codes"));
         }
         let (kinds, units) = (codes_shape[0], codes_shape[1]);
         let mut groups = Vec::new();
@@ -340,16 +352,16 @@ impl Map {
             start += many as usize;
         }
         if start != width {
-            return Err(refused("the values' units and the kinds' fill the sheet's width"));
+            return Err(fault("the values' units and the kinds' fill the sheet's width"));
         }
         let empty = match s.i64("empty")? {
             0 => Empty::Near,
             1 => Empty::Clear,
             2 => Empty::Keep,
-            _ => return Err(refused("empty is near, clear or keep")),
+            _ => return Err(fault("empty is near, clear or keep")),
         };
         let two = |name: &str| -> Result<[f64; 2], Error> {
-            s.f64s(name)?.try_into().map_err(|_| refused(name))
+            s.f64s(name)?.try_into().map_err(|_| fault(name))
         };
         let looked = |m: f64| if m != 0.0 { 81 } else { 1 };
         let margin = s.f64("margin")?;
@@ -357,7 +369,7 @@ impl Map {
         let seen = s.bools("views.seen")?;
         let k = place.len() / 2;
         if seen.len() != k * looked(margin) {
-            return Err(refused("views.seen"));
+            return Err(fault("views.seen"));
         }
         let views = (0..k)
             .map(|i| ([place[2 * i], place[2 * i + 1]],
@@ -367,12 +379,12 @@ impl Map {
         let physics = if s.holds("physics") { Some(Physics::import(s)?) } else { None };
         let motion = if physics.is_some() { s.f64s("motion")? } else { Vec::new() };
         if physics.is_some() && motion.len() != count * width * ph::FIELDS {
-            return Err(refused("motion"));
+            return Err(fault("motion"));
         }
         let surprise = if s.holds("surprise") {
             let held = Surprise::import(&s.under("surprise"))?;
             if held.size() != count {
-                return Err(refused("the map's surprise holds one unit a cell"));
+                return Err(fault("the map's surprise holds one unit a cell"));
             }
             Some(held)
         } else {
@@ -390,10 +402,10 @@ impl Map {
             floor: s.f64("floor")?,
             trace: s.bools("trace")?[0],
             codes: s.f64s("codes")?,
-            centers: s.f64s("centers")?,
+            centers: rows(&s.f64s("centers")?),
             low: two("low")?,
             size: two("size")?,
-            offsets: s.f64s("offsets")?,
+            offsets: rows(&s.f64s("offsets")?),
             density: s.f64s("density")?,
             potential: s.f64s("potential")?,
             clock: s.f64s("clock")?,
@@ -411,10 +423,10 @@ impl Map {
         };
         if out.potential.len() != count * width || out.clock.len() != count
             || out.doubt.len() != count || out.lost.len() != width
-            || out.reading.len() != count + width || out.centers.len() != 2 * count
-            || out.offsets.len() != 2 * out.density.len()
+            || out.reading.len() != count + width || out.centers.len() != count
+            || out.offsets.len() != out.density.len()
         {
-            return Err(refused("the map's carried state does not fit its cells"));
+            return Err(fault("the map's carried state does not fit its cells"));
         }
         Ok(out)
     }
@@ -440,10 +452,10 @@ impl Map {
         }
         out.put("trace", Array::from_bool(&[], &[self.trace]));
         out.put("codes", Array::from_f64(&[self.kinds, self.units], &self.codes));
-        out.put("centers", Array::from_f64(&[count, 2], &self.centers));
+        out.put("centers", Array::from_f64(&[count, 2], self.centers.as_flattened()));
         out.put("low", Array::from_f64(&[2], &self.low));
         out.put("size", Array::from_f64(&[2], &self.size));
-        out.put("offsets", Array::from_f64(&[self.density.len(), 2], &self.offsets));
+        out.put("offsets", Array::from_f64(&[self.density.len(), 2], self.offsets.as_flattened()));
         out.put("density", Array::from_f64(&[self.density.len()], &self.density));
         out.put("potential", Array::from_f64(&[count, width], &self.potential));
         out.put("clock", Array::from_f64(&[count], &self.clock));
@@ -478,6 +490,11 @@ impl Map {
 
     pub fn count(&self) -> usize {
         self.nx * self.ny
+    }
+
+    /// Each cell's middle, x and y in metres.
+    pub fn centers(&self) -> &[[f64; 2]] {
+        &self.centers
     }
 
     fn valued(&self) -> usize {
@@ -545,7 +562,7 @@ impl Map {
         let mut bounds = vec![0i64; count + 1];
         let found = unsafe {
             let mut scratch = crate::Scratch::new(crate::map::pieces_room(count))
-                .ok_or_else(|| refused("no room for the map's pieces"))?;
+                .ok_or_else(|| fault("no room for the map's pieces"))?;
             crate::map::pieces(flags.as_ptr(), self.nx, self.ny, cells.as_mut_ptr(),
                                bounds.as_mut_ptr(), &mut scratch)
         };
@@ -564,15 +581,15 @@ impl Map {
     }
 
     /// Places with masses as weights on cells (`_spread`).
-    fn spread(&self, points: &[f64], masses: &[f64]) -> Vec<f64> {
+    fn spread(&self, points: &[[f64; 2]], masses: &[f64]) -> Vec<f64> {
         let (nx, ny) = (self.nx, self.ny);
         let n = masses.len();
         let mut cell = vec![0usize; n];
         let (mut ax, mut ay) = (vec![0.0; n], vec![0.0; n]);
         for i in 0..n {
-            let x = np::clip((points[2 * i] - self.low[0]) / self.size[0] - 0.5, 0.0,
+            let x = np::clip((points[i][0] - self.low[0]) / self.size[0] - 0.5, 0.0,
                              nx as f64 - 1.0);
-            let y = np::clip((points[2 * i + 1] - self.low[1]) / self.size[1] - 0.5, 0.0,
+            let y = np::clip((points[i][1] - self.low[1]) / self.size[1] - 0.5, 0.0,
                              ny as f64 - 1.0);
             let ix = (x as i64).min(nx as i64 - 2);
             let iy = (y as i64).min(ny as i64 - 2);
@@ -598,17 +615,17 @@ impl Map {
 
     /// A place as weights on the four cells around it (`weights`).
     pub fn weights(&self, point: [f64; 2]) -> Vec<f64> {
-        self.spread(&point, &[1.0])
+        self.spread(&[point], &[1.0])
     }
 
     /// A bump's places and their shares (`_points`).
-    fn points(&self, mean: [f64; 2], var: f64) -> (Vec<f64>, Vec<f64>) {
+    fn points(&self, mean: [f64; 2], var: f64) -> (Vec<[f64; 2]>, Vec<f64>) {
         let sd = np::sqrt(if 0.0 > var { 0.0 } else { var });
         if sd < 1e-4 {
-            return (mean.to_vec(), vec![1.0]);
+            return (vec![mean], vec![1.0]);
         }
-        let places = self.offsets.chunks_exact(2)
-            .flat_map(|o| [mean[0] + sd * o[0], mean[1] + sd * o[1]]).collect();
+        let places = self.offsets.iter()
+            .map(|o| [mean[0] + sd * o[0], mean[1] + sd * o[1]]).collect();
         (places, self.density.clone())
     }
 
@@ -623,11 +640,12 @@ impl Map {
     }
 
     /// Whether the camera sees each of `points` (`_sees`).
-    fn sees(&self, lit: &mut Lit, sight: &[bool], points: &[f64]) -> Result<Vec<bool>, Error> {
-        let n = points.len() / 2;
+    fn sees(&self, lit: &mut Lit, sight: &[bool], points: &[[f64; 2]])
+            -> Result<Vec<bool>, Error> {
+        let n = points.len();
         match lit {
             Lit::Camera(camera) => {
-                let out = camera.sees(points)?;
+                let out = camera.lit(points)?;
                 if out.len() != n {
                     return Err(refused("the camera answers each place once"));
                 }
@@ -637,7 +655,7 @@ impl Map {
             Lit::Flags(_) => Ok((0..n)
                 .map(|i| {
                     let at = |k: usize, m: usize| {
-                        let x = libm::floor((points[2 * i + k] - self.low[k]) / self.size[k]);
+                        let x = ((points[i][k] - self.low[k]) / self.size[k]).floor();
                         (x as i64).clamp(0, m as i64 - 1) as usize
                     };
                     sight[at(0, self.nx) * self.ny + at(1, self.ny)]
@@ -650,15 +668,15 @@ impl Map {
     /// around it (`_looks`).
     fn looks(&self, lit: &mut Lit, sight: &[bool], at: [f64; 2], within: f64)
              -> Result<Vec<bool>, Error> {
-        let points: Vec<f64> = if within != 0.0 {
+        let points: Vec<[f64; 2]> = if within != 0.0 {
             (0..81)
-                .flat_map(|k| {
+                .map(|k| {
                     let g = |i: usize| i as f64 * 0.25 + -1.0;
                     [at[0] + within * g(k / 9), at[1] + within * g(k % 9)]
                 })
                 .collect()
         } else {
-            vec![at[0] + 0.0, at[1] + 0.0]
+            vec![[at[0] + 0.0, at[1] + 0.0]]
         };
         self.sees(lit, sight, &points)
     }
@@ -704,7 +722,7 @@ impl Map {
               fresh: Option<&[u8]>, kept: Option<&[u8]>, doubt: Option<&[f64]>,
               sure: Option<&[u8]>) -> Result<Vec<f64>, Error> {
         if self.trace {
-            return Err(refused("a traced map settles in the Python"));
+            return Err(fault("a traced map settles in the Python"));
         }
         let (count, width) = (self.count(), self.width);
         let none_flags = [0u8; 1];
@@ -725,7 +743,7 @@ impl Map {
             return Err(refused("drive must be finite and the brain must contain neurons"));
         }
         if taken < 0 {
-            return Err(refused(&format!("the map's settle refused its arrays ({taken})")));
+            return Err(fault(&format!("the map's settle refused its arrays ({taken})")));
         }
         Ok(out)
     }
@@ -769,14 +787,14 @@ impl Map {
     /// felt, and what the camera sees.
     pub fn moment(&mut self, reports: &[Report], lit: &mut Lit) -> Result<(), Error> {
         if self.trace {
-            return Err(refused("a traced map settles in the Python"));
+            return Err(fault("a traced map settles in the Python"));
         }
         let (count, width, valued) = (self.count(), self.width, self.valued());
         for r in reports {
             if r.kind >= self.kinds || !(0..SENSES as i64).contains(&r.sense)
                 || r.values.len() != valued || r.named.len() != valued
             {
-                return Err(refused("a report is a kind of the map's, a place and its values"));
+                return Err(fault("a report is a kind of the map's, a place and its values"));
             }
             if !r.place.iter().all(|x| x.is_finite()) {
                 return Err(refused("a report's place is finite"));
@@ -788,7 +806,7 @@ impl Map {
         let expected = if self.surprise.is_some() { Some(self.expected()?) } else { None };
         let sight: Vec<bool> = match lit {
             Lit::Camera(camera) => {
-                let seen = camera.sees(&self.centers)?;
+                let seen = camera.lit(&self.centers)?;
                 if seen.len() != count {
                     return Err(refused("the camera answers each cell once"));
                 }
@@ -835,7 +853,7 @@ impl Map {
             let taken = unsafe {
                 crate::map::report(
                     r.kind as i32, r.place[0], r.place[1], mat_of(&self.codes, self.kinds, self.units),
-                    mat_of(&self.centers, count, 2), mat_of(&activity, count, width), vec_of(&self.doubt),
+                    pairs_of(&self.centers), mat_of(&activity, count, width), vec_of(&self.doubt),
                     motion, physics as i32, hidden, ident, fields, self.low[0], self.low[1],
                     self.size[0], self.size[1], self.floor, self.step, self.stride, self.level,
                     self.nx as i32, self.ny as i32, (!self.groups.is_empty()) as i32,
@@ -844,7 +862,7 @@ impl Map {
                     vec_mut(&mut lost), vec_mut(&mut near_cells), vec_mut(&mut near_bounds))
             };
             if taken < 0 {
-                return Err(refused(&format!("the map's report kernel refused ({taken})")));
+                return Err(fault(&format!("the map's report kernel refused ({taken})")));
             }
             if physics {
                 let near: Vec<Vec<usize>> = (0..taken as usize)
@@ -878,8 +896,8 @@ impl Map {
             let active: Vec<bool> = own.iter().map(|&x| x > self.floor).collect();
             for piece in self.pieces(&active)? {
                 let weights: Vec<f64> = piece.iter().map(|&c| own[c]).collect();
-                let xs: Vec<f64> = piece.iter().map(|&c| self.centers[2 * c]).collect();
-                let ys: Vec<f64> = piece.iter().map(|&c| self.centers[2 * c + 1]).collect();
+                let xs: Vec<f64> = piece.iter().map(|&c| self.centers[c][0]).collect();
+                let ys: Vec<f64> = piece.iter().map(|&c| self.centers[c][1]).collect();
                 let total = np::sum(&weights);
                 let at = [np::dot(&weights, &xs) / total, np::dot(&weights, &ys) / total];
                 let doubts: Vec<f64> = piece.iter().map(|&c| self.doubt[c]).collect();
@@ -938,7 +956,7 @@ impl Map {
                 if self.empty == Empty::Near {
                     let wide: Vec<f64> = (0..count)
                         .map(|c| {
-                            let (dx, dy) = (self.centers[2 * c] - at[0], self.centers[2 * c + 1] - at[1]);
+                            let (dx, dy) = (self.centers[c][0] - at[0], self.centers[c][1] - at[1]);
                             let apart = np::sqrt(-0.0 + dx * dx + dy * dy);
                             let q = apart / self.reach;
                             let near = !sight[c] && apart <= 2.0 * self.reach;
@@ -1148,8 +1166,7 @@ impl Map {
                 let step = p.ahead * speed;
                 tx = [np::clip(tx[0] + step * u[0], lo[0], hi[0]),
                       np::clip(tx[1] + step * u[1], lo[1], hi[1])];
-                let wide = np::sqrt(tvar) + p.aside * speed;
-                tvar = wide * wide;
+                tvar = np::pow(np::sqrt(tvar) + p.aside * speed, 2.0);
             }
             if cm > 0.0 {
                 // the core: a share comes to rest, a share leaves its line, it moves on
@@ -1188,7 +1205,7 @@ impl Map {
                 places.extend(&tail_at);
                 let dark: Vec<bool> =
                     self.sees(lit, sight, &places)?.into_iter().map(|x| !x).collect();
-                let n_core = core_at.len() / 2;
+                let n_core = core_at.len();
                 let (m2, x2, var2, cut) = self.trim(cm, cx, var, &dark[..n_core]);
                 cm = m2;
                 cx = x2;
@@ -1302,10 +1319,10 @@ impl Map {
             return (mass, mean, var, false);
         }
         let kept: Vec<f64> = shares.iter().zip(&flags).map(|(s, d)| s * d / share).collect();
-        let xs: Vec<f64> = places.chunks_exact(2).map(|p| p[0]).collect();
-        let ys: Vec<f64> = places.chunks_exact(2).map(|p| p[1]).collect();
+        let xs: Vec<f64> = places.iter().map(|p| p[0]).collect();
+        let ys: Vec<f64> = places.iter().map(|p| p[1]).collect();
         let middle = [np::dot(&kept, &xs), np::dot(&kept, &ys)];
-        let apart: Vec<f64> = places.chunks_exact(2)
+        let apart: Vec<f64> = places.iter()
             .map(|p| {
                 let (a, b) = (p[0] - middle[0], p[1] - middle[1]);
                 a * a + b * b
@@ -1373,17 +1390,17 @@ impl Map {
     pub fn moves(&self, expected: &[f64]) -> Result<Vec<f64>, Error> {
         let (count, width) = (self.count(), self.width);
         if expected.len() != count * width {
-            return Err(refused("expected holds the sheet's potentials"));
+            return Err(fault("expected holds the sheet's potentials"));
         }
         let mut out = vec![0.0; count];
         let code = unsafe {
             crate::map::moves(mat_of(&self.potential, count, width), mat_of(expected, count, width),
                               mat_of(&self.codes, self.kinds, self.units),
-                              mat_of(&self.centers, count, 2), self.floor, self.stride, self.step,
+                              pairs_of(&self.centers), self.floor, self.stride, self.step,
                               self.nx as i32, self.ny as i32, vec_mut(&mut out))
         };
         if code < 0 {
-            return Err(refused(&format!("the map's moves kernel refused its arrays ({code})")));
+            return Err(fault(&format!("the map's moves kernel refused its arrays ({code})")));
         }
         Ok(out)
     }
@@ -1412,7 +1429,7 @@ impl Map {
     /// `thing_at(place, within, cells=, body=, heading=)`: the one thing at a place, read
     /// whole; None where the cells hold no thing.
     pub fn thing_at(&mut self, place: Option<[f64; 2]>, within: Option<f64>,
-                    cells: Option<Vec<bool>>, body: [f64; 2], heading: f64)
+                    cells: Option<&[bool]>, body: [f64; 2], heading: f64)
                     -> Result<Option<Thing>, Error> {
         let count = self.count();
         let near: Vec<u8> = match cells {
@@ -1426,7 +1443,7 @@ impl Map {
                 let at = place.unwrap_or([f64::NAN, f64::NAN]);
                 (0..count)
                     .map(|c| {
-                        let (dx, dy) = (self.centers[2 * c] - at[0], self.centers[2 * c + 1] - at[1]);
+                        let (dx, dy) = (self.centers[c][0] - at[0], self.centers[c][1] - at[1]);
                         (np::sqrt(-0.0 + dx * dx + dy * dy) <= reach) as u8
                     })
                     .collect()
@@ -1441,13 +1458,13 @@ impl Map {
         }
         let kind = self.kind_of(&what[..self.units]).unwrap();
         let own = least(self.kind_units(kind).into_iter().map(|u| what[u]));
-        let xs: Vec<f64> = (0..count).map(|c| self.centers[2 * c]).collect();
-        let ys: Vec<f64> = (0..count).map(|c| self.centers[2 * c + 1]).collect();
+        let xs: Vec<f64> = (0..count).map(|c| self.centers[c][0]).collect();
+        let ys: Vec<f64> = (0..count).map(|c| self.centers[c][1]).collect();
         let total = np::sum(&where_);
         let at = [np::dot(&where_, &xs) / total, np::dot(&where_, &ys) / total];
         let offset = [at[0] - body[0], at[1] - body[1]];
-        let turn = libm::atan2(offset[1], offset[0]) - heading;
-        let bearing = libm::atan2(libm::sin(turn), libm::cos(turn));
+        let turn = np::atan2(offset[1], offset[0]) - heading;
+        let bearing = np::atan2(np::sin(turn), np::cos(turn));
         let values = self.groups.iter()
             .flat_map(|&(a, b)| (a..b).map(|u| np::clip(what[u] / own, 0.0, 1.0)))
             .collect();
@@ -1459,7 +1476,7 @@ impl Map {
         let activity = self.activity();
         match kind {
             Some(k) if k < self.kinds => Ok(self.of_kind(k, &activity)),
-            Some(_) => Err(refused("no such kind on this map")),
+            Some(_) => Err(fault("no such kind on this map")),
             None => Ok(activity.chunks_exact(self.width).map(|row| np::sum(row)).collect()),
         }
     }
@@ -1541,8 +1558,8 @@ impl Map {
                         state = self.sensed.iter().find(|s| s.0 == kind as i64).map_or(SEEN, |s| s.1);
                     }
                     let weights: Vec<f64> = held.iter().map(|&c| own[c]).collect();
-                    let xs: Vec<f64> = held.iter().map(|&c| self.centers[2 * c]).collect();
-                    let ys: Vec<f64> = held.iter().map(|&c| self.centers[2 * c + 1]).collect();
+                    let xs: Vec<f64> = held.iter().map(|&c| self.centers[c][0]).collect();
+                    let ys: Vec<f64> = held.iter().map(|&c| self.centers[c][1]).collect();
                     let total = np::sum(&weights);
                     let found = self.values_of(&held, &activity);
                     let values = self.groups.iter()
@@ -1582,7 +1599,7 @@ impl Map {
                 if places.len() != 2 * r || senses.len() != r || values.len() != r * valued
                     || named.len() != r * valued || kinds.iter().any(|&k| k < 0)
                 {
-                    return Err(refused("the reports do not fit the map"));
+                    return Err(fault("the reports do not fit the map"));
                 }
                 let reports: Vec<Report> = (0..r)
                     .map(|i| Report {
@@ -1601,22 +1618,23 @@ impl Map {
                         };
                         self.moment(&reports, &mut Lit::Camera(&mut camera))?;
                         if camera.next + 1 != camera.bounds.len() {
-                            return Err(refused("the camera was asked fewer questions than the \
+                            return Err(fault("the camera was asked fewer questions than the \
                                                 Python asked"));
                         }
                         Ok(())
                     }
-                    _ => Err(refused("lit is nothing, flags or a camera")),
+                    _ => Err(fault("lit is nothing, flags or a camera")),
                 }?;
             }
             "thing_at" => {
                 let two = |name: &str| -> Result<[f64; 2], Error> {
-                    args.f64s(name)?.try_into().map_err(|_| refused(name))
+                    args.f64s(name)?.try_into().map_err(|_| fault(name))
                 };
                 let place = if args.has("place") { Some(two("place")?) } else { None };
                 let within = if args.has("within") { Some(args.f64("within")?) } else { None };
                 let cells = if args.has("cells") { Some(args.bools("cells")?) } else { None };
-                match self.thing_at(place, within, cells, two("body")?, args.f64("heading")?)? {
+                match self.thing_at(place, within, cells.as_deref(), two("body")?,
+                                    args.f64("heading")?)? {
                     None => out.put("found", Array::from_bool(&[], &[false])),
                     Some(t) => {
                         out.put("found", Array::from_bool(&[], &[true]));
@@ -1663,7 +1681,7 @@ impl Map {
             "sheet" => {
                 let kind = if args.has("kind") {
                     let k = args.i64("kind")?;
-                    Some(usize::try_from(k).map_err(|_| refused("no such kind on this map"))?)
+                    Some(usize::try_from(k).map_err(|_| fault("no such kind on this map"))?)
                 } else {
                     None
                 };
@@ -1700,20 +1718,21 @@ struct Recorded {
 }
 
 impl Camera for Recorded {
-    fn sees(&mut self, points: &[f64]) -> Result<Vec<bool>, Error> {
+    fn lit(&mut self, places: &[[f64; 2]]) -> Result<Vec<bool>, Error> {
+        let points = places.as_flattened();
         let k = self.next;
         if k + 1 >= self.bounds.len() {
-            return Err(refused("the camera was asked more questions than the Python asked"));
+            return Err(fault("the camera was asked more questions than the Python asked"));
         }
         let (lo, hi) = (self.bounds[k] as usize, self.bounds[k + 1] as usize);
         if hi < lo || hi > self.seen.len() || 2 * hi > self.points.len() {
-            return Err(refused("lit.bounds"));
+            return Err(fault("lit.bounds"));
         }
         let asked = &self.points[2 * lo..2 * hi];
         let same = asked.len() == points.len()
             && asked.iter().zip(points).all(|(a, b)| (a - b).abs() <= 1e-9 * a.abs().max(1.0));
         if !same {
-            return Err(refused("the camera was asked another question than the Python asked"));
+            return Err(fault("the camera was asked another question than the Python asked"));
         }
         self.next += 1;
         Ok(self.seen[lo..hi].to_vec())

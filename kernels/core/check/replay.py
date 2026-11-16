@@ -56,7 +56,7 @@ def check(k, name, before, args, theirs_out, theirs_after):
     methods[name] = methods.get(name, 0) + 1
     try:
         after, out = core.call(a.part, name, before, args)
-    except RuntimeError as error:  # the core refused the call
+    except (RuntimeError, ValueError) as error:  # the core refused the call, or faulted
         after, out = {}, {"refused": str(error)}
     gaps = []
     for label, ours, theirs in (("out", out, theirs_out), ("state", after, theirs_after)):

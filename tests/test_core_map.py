@@ -12,7 +12,7 @@ import functools
 import numpy as np
 import pytest
 
-from cadence.core import Core, _default_library, pack
+from cadence.core import Core, Refused, _default_library, pack
 from cadence.core.parts import part
 from cadence.space.map import Map
 
@@ -151,18 +151,20 @@ def test_the_core_refuses_what_the_python_refuses():
     core = Core()
     held = copy.deepcopy(maps()[3])
     state = MAP.state_of(held)
-    told = MAP.reports(held, seen=[(1, (3.0, 4.0))])
-    with pytest.raises(RuntimeError):  # a place that is not finite
-        core.call("map", "moment", state, {**told, "reports.place": np.array([[np.nan, 1.0]]),
-                                           "lit.kind": np.int64(0)})
+    told = {**MAP.reports(held, seen=[(1, (3.0, 4.0))]), "lit.kind": np.int64(0)}
+    with pytest.raises(Refused):  # a place that is not finite: the Python's settle refuses it
+        core.call("map", "moment", state, {**told, "reports.place": np.array([[np.nan, 1.0]])})
+    with pytest.raises(Refused):  # flags that do not fit the cells
+        core.call("map", "moment", state, {**told, "lit.kind": np.int64(1),
+                                           "lit.flags": np.ones(5, dtype=bool)})
+    plain = MAP.state_of(wild_map(physics=None, surprise=None))
+    with pytest.raises(Refused):  # a forecast without physics
+        core.call("map", "forecast", plain, {"moments": np.int64(1)})
+    # faults: what the Python never hands over
     with pytest.raises(RuntimeError):  # a kind the map does not hold
-        core.call("map", "moment", state, {**told, "reports.kind": np.array([9]),
-                                           "lit.kind": np.int64(0)})
+        core.call("map", "moment", state, {**told, "reports.kind": np.array([9])})
     with pytest.raises(RuntimeError):  # a camera asked what the Python did not ask
         core.call("map", "moment", state, {**told, "lit.kind": np.int64(2),
                                            "lit.points": np.zeros((0, 2)),
                                            "lit.bounds": np.zeros(1, dtype=np.int64),
                                            "lit.seen": np.zeros(0, dtype=bool)})
-    plain = MAP.state_of(wild_map(physics=None, surprise=None))
-    with pytest.raises(RuntimeError):  # a forecast without physics
-        core.call("map", "forecast", plain, {"moments": np.int64(1)})

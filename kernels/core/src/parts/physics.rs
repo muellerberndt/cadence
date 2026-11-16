@@ -34,7 +34,7 @@ pub fn corrected(error: [f64; 3], a: f64, b: f64, noise: f64) -> [f64; 3] {
     let (px, pxv) = (px + 2.0 * pxv + pv, pxv + pv);
     let s2 = noise * noise;
     let one = 1.0 - a;
-    [one * one * px + a * a * s2, one * (pxv - b * px) + a * b * s2,
+    [np::pow(one, 2.0) * px + a * a * s2, one * (pxv - b * px) + a * b * s2,
      pv - 2.0 * b * pxv + b * b * px + b * b * s2]
 }
 
@@ -146,7 +146,7 @@ impl Physics {
             _ => return 0.0,
         };
         let pv = if 1e-12 > pv { 1e-12 } else { pv };
-        let v0 = speed * speed / 2.0;
+        let v0 = np::pow(speed, 2.0) / 2.0;
         let vv = np::dot(&velocity, &velocity);
         let lbf = 0.5 * vv / pv * (v0 / (v0 + pv)) - np::log1p(v0 / pv);
         1.0 / (1.0 + np::exp(-np::clip(lbf, -50.0, 50.0)))
@@ -171,7 +171,7 @@ impl Physics {
             rec[EST..EST + 2].copy_from_slice(&r);
             rec[PREV..PREV + 2].copy_from_slice(&r);
             rec[FIT] = 1.0;
-            rec[ERROR..ERROR + 3].copy_from_slice(&[self.noise * self.noise, 0.0, 0.0]);
+            rec[ERROR..ERROR + 3].copy_from_slice(&[np::pow(self.noise, 2.0), 0.0, 0.0]);
             return rec;
         }
         let mut est = [rec[EST] + rec[VEL], rec[EST + 1] + rec[VEL + 1]];
@@ -195,11 +195,11 @@ impl Physics {
             }
         }
         let mut count = rec[COUNT] as i64;
-        let s2 = self.noise * self.noise;
+        let s2 = np::pow(self.noise, 2.0);
         let (px, pxv, pv) = (rec[ERROR], rec[ERROR + 1], rec[ERROR + 2]);
         let (d0, d1) = (r[0] - est[0], r[1] - est[1]);
         let z2 = (d0 * d0 + d1 * d1) / (2.0 * (s2 + px + 2.0 * pxv + pv));
-        rec[LOUD] = if z2 > self.surprise * self.surprise { rec[LOUD] + 1.0 } else { 0.0 };
+        rec[LOUD] = if z2 > np::pow(self.surprise, 2.0) { rec[LOUD] + 1.0 } else { 0.0 };
         rec[SURPRISE] += (z2 - rec[SURPRISE]) / 4.0;
         if z2 <= 1.0 {
             rec[FIT] = count as f64;
@@ -261,7 +261,7 @@ impl Physics {
         }
         let (lo, hi) = inside;
         let r = place;
-        let s2 = self.noise * self.noise;
+        let s2 = np::pow(self.noise, 2.0);
         let mut ok = vec![false; rows];
         let mut speed = vec![0.0; rows];
         for i in 0..rows {
