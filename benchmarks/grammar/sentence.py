@@ -36,6 +36,7 @@ overwritten at every moment. Every reading has the recall slots of the heard sen
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import sys
 import time
@@ -88,11 +89,15 @@ class Design:
 
     def __init__(self, name: str, brackets: tuple[tuple[str, tuple[Any, ...]], ...],
                  alone: bool, facts: bool = False, start_said: bool = False,
-                 clears: bool = False) -> None:
+                 clears: bool = False, every: bool = False) -> None:
         self.name, self.alone, self.facts = name, alone, facts
+        self.every = every  # the region shows every block of every group, not each group's head
         said = (("said_start", (("shift", START),)),) if start_said else ()
         cleared = tuple(("clear", g) for g in range(len(GROUPS)) if g != START) if clears else ()
-        self.roles = (*_CLAUSE, *brackets, ("start", (("set", START), *cleared)), *said,
+        clause = _CLAUSE if not every else tuple(
+            (role, tuple(("write", g) for op, g, *_ in steps if op in ("set", "write")))
+            for role, steps in _CLAUSE)
+        self.roles = (*clause, *brackets, ("start", (("set", START), *cleared)), *said,
                       *_TASKS)
         self.base = len(self.roles) - len(_TASKS)  # the say-back mix's roles
         assert self.base == BASE[1] + len(said)
@@ -123,6 +128,16 @@ _ALONE = (
     ("said_match", (("shift", SEQUENCE), ("pop", STACK))),
     ("said_close", (("pop", STACK),)),
 )
+# ``chosen`` (0.102.0, a development design): the role the brain names writes the moment's settled
+# activity into that role's own group and nothing else is operated (no shift, pop, move or
+# clear); the region shows every block of every group (``Design.every``), so the order within a
+# group is the order written and a said word reads its role's blocks through the synapses
+_CHOSEN = (
+    ("open", (("write", SEQUENCE),)),
+    ("close", (("write", SEQUENCE),)),
+    ("said_bracket", ()),
+    ("said_close", ()),
+)
 DESIGNS = {
     "context": Design("context", (
         ("open", (("write", SEQUENCE), ("write", STACK))),
@@ -135,6 +150,7 @@ DESIGNS = {
     "alone_path": Design("alone_path", _ALONE, alone=True, facts=True, start_said=True),
     "alone_facts": Design("alone_facts", _ALONE, alone=True, facts=True),  # the facts echoed
     "alone_clean": Design("alone_clean", _ALONE, alone=True, clears=True),  # the start clears
+    "chosen": Design("chosen", _CHOSEN, alone=False, every=True),
 }
 
 
@@ -145,8 +161,9 @@ class Store:
 
     def __init__(self, units: int, roles: tuple[tuple[str, tuple[Any, ...]], ...],
                  depth: int = DEPTH, groups: int = BASE[0],
-                 stacks: tuple[int, ...] = STACKS) -> None:
+                 stacks: tuple[int, ...] = STACKS, every: bool = False) -> None:
         self.units, self.depth, self.groups = int(units), int(depth), int(groups)
+        self.every = every
         self.roles, self.stacks = roles, tuple(stacks)
         self.reset(0)
 
@@ -211,7 +228,7 @@ class Store:
 
 def make_brain(founder: int, settings: dict[str, Any] | None = None, module: int = 256,
                depth: int | None = DEPTH, full: bool = False,
-               design: Design | None = None) -> Any:
+               design: Design | None = None, shown: int = DEPTH) -> Any:
     """The chamber's brain with the role slot and the store: every row taught, the previous
     observation heard (``history_decays=(0.0,)``), the recall memory of the default
     composition. ``depth`` blocks a group is the library's store (``message_settled`` with
@@ -223,21 +240,23 @@ def make_brain(founder: int, settings: dict[str, Any] | None = None, module: int
     groups, slots = design.inventory(full)
     settings = {"learning_surprise": False, "history_decays": [0.0], "message_amplitude": 3.0,
                 **(settings or {})}
-    store = ({"message_phases": groups} if depth is None else
+    every = design.every and depth is None
+    store = ({"message_phases": groups * (shown if every else 1)} if depth is None else
              {"message_phases": int(depth), "message_settled": True,
               "message_operations": [list(steps) for _, steps in design.roles[:slots[2]]],
               "message_stacks": list(STACKS),
               **({"message_alone": True} if design.alone else {})})
     return cd.Brain.compose(
         gr.INPUTS, sum(slots), modules=(module,), seed=int(founder), slots=slots,
-        **{"backend": "cpu", "recall": True, "message": module, **store, **settings})
+        **{"backend": os.environ.get("SENTENCE_BACKEND", "cpu"), "recall": True,
+           "message": module, **store, **settings})
 
 
 def install(brain: Any, store: Store | None) -> None:
     """The heads onto the region the association reads them from, for the next settle; the
     library's store shows its own."""
     if store is not None:
-        brain.message.trace = store.heads()
+        brain.message.trace = store.state() if store.every else store.heads()
 
 
 def settled(brain: Any, rows: int) -> np.ndarray:
@@ -727,9 +746,9 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     full = bool(spec.get("full", train == "all"))
     design = DESIGNS[str(spec.get("design", "context"))]
     brain = make_brain(founder, spec.get("settings"), module, None if emulated else depth, full,
-                       design)
-    store = (Store(module, design.roles, depth, design.inventory(full)[0]) if emulated
-             else None)
+                       design, shown=depth)
+    store = (Store(module, design.roles, depth, design.inventory(full)[0],
+                   every=design.every) if emulated else None)
     split = gr.Split.of(founder)
     count = int(spec.get("panel_batches", 4))
     tests = {**gr.panels(founder, count), **mn.sayback_panels(founder, count)}
