@@ -186,8 +186,8 @@ instruments of `benchmarks/instruments`.
 A change to a guide's code is a change to a test. The
 [minimal-install job](https://github.com/muellerberndt/cadence/blob/main/.github/workflows/ci.yml)
 builds the wheel with NumPy alone
-and runs 11 pages without optional backends: `README.md` and, under `docs/`, `start.md`, `world-model.md`,
-`teach.md`, `reward.md`, `memory.md`, `senses.md`, `tune.md`, `evaluate.md`, `settling.md`
+and runs the pages that need it alone: `README.md` and, under `docs/`, `start.md`, `assembly.md`,
+`world-model.md`, `teach.md`, `reward.md`, `memory.md`, `senses.md`, `tune.md`, `evaluate.md`, `settling.md`
 and `api.md` (`anatomy.md` imports the benchmark instruments of a source checkout, and
 `backends.md` needs PyTorch). It also executes `examples/continuing_brain.py`. For
 changes to these guides or examples, run `python -m pytest -q tests/test_documentation.py`

@@ -68,6 +68,7 @@ def test_continuing_brain_example():
 PAGES = [
     "README.md",
     "docs/start.md",
+    "docs/assembly.md",
     "docs/world-model.md",
     "docs/teach.md",
     "docs/reward.md",
