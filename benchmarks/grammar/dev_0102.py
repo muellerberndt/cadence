@@ -20,13 +20,15 @@ import meaning as mn  # noqa: E402
 import sentence as st  # noqa: E402
 
 
-def main(out: Path, batches: int) -> None:
+def main(out: Path, batches: int, founders: tuple[int, ...] = (0, 1, 2, 3)) -> None:
     out.mkdir(parents=True, exist_ok=True)
-    for founder in (0, 1, 2, 3):
+    for founder in founders:
         save = out / f"brain-{founder}"
         row = st.life({"kind": "store", "founder": founder, "batches": batches, "emulated": True,
                        "design": "chosen", "depth": 4, "held_probes": 4, "save": str(save),
-                       "landing": True, "tag": "chosen"})
+                       "landing": True, "tag": "chosen",
+                       "progress": str(out / "progress.jsonl"),
+                       "checkpoints": [250, batches // 4, batches // 2, 3 * batches // 4]})
         (out / f"life-{founder}.json").write_text(json.dumps(row, default=str))
         print(json.dumps({"founder": founder, "panels": row.get("panels"),
                           "sayback": row.get("sayback"), "seconds": row.get("seconds")},
@@ -34,4 +36,5 @@ def main(out: Path, batches: int) -> None:
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]), int(sys.argv[2]) if len(sys.argv) > 2 else mn.BATCHES)
+    main(Path(sys.argv[1]), int(sys.argv[2]) if len(sys.argv) > 2 else mn.BATCHES,
+         tuple(int(f) for f in sys.argv[3:]) or (0, 1, 2, 3))
