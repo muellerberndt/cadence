@@ -22,13 +22,13 @@ pub(crate) const NOT_FINITE: i32 = -2000;
 /// neuron's settled potential. Returns the sweeps taken.
 #[no_mangle]
 pub unsafe extern "C" fn map_settle(
-    flat: u32, pairs: u32, flat_apical: u32, apical_pairs: u32, starts: u32, pair_pre: u32,
-    pair_post: u32, offset: u32, freezable: u32, bias: u32, dt: f64, slope: f64,
-    threshold: f64, rest: f64, leak: f64, has_apical: i32, pool_of: u32, pool_index: u32,
-    pool_starts: u32, pool_run: u32, fraction: f64, floor2: f64, tiny: f64, potential: u32,
-    carried: u32, has_carried: i32, write: u32, has_write: i32, clock: u32, lost: u32,
-    doubt: u32, fresh: u32, has_fresh: i32, kept: u32, has_kept: i32, sure: u32,
-    has_sure: i32, cue: u32, has_cue: i32, runs: u32, sweeps: i32, out: u32,
+    flat: usize, pairs: usize, flat_apical: usize, apical_pairs: usize, starts: usize, pair_pre: usize,
+    pair_post: usize, offset: usize, freezable: usize, bias: usize, dt: f64, slope: f64,
+    threshold: f64, rest: f64, leak: f64, has_apical: i32, pool_of: usize, pool_index: usize,
+    pool_starts: usize, pool_run: usize, fraction: f64, floor2: f64, tiny: f64, potential: usize,
+    carried: usize, has_carried: i32, write: usize, has_write: i32, clock: usize, lost: usize,
+    doubt: usize, fresh: usize, has_fresh: i32, kept: usize, has_kept: i32, sure: usize,
+    has_sure: i32, cue: usize, has_cue: i32, runs: usize, sweeps: i32, out: usize,
 ) -> i32 {
     let flat = take!(flat, f64, FLOAT64, 0);
     let pairs = take!(pairs, i64, INT64, 1);
@@ -429,7 +429,7 @@ fn pieces_room(count: usize) -> usize {
 /// `Map._pieces(active)` (see `pieces`): `cells` and `bounds` int64, `count` and `count + 1`
 /// long. Returns the number of pieces.
 #[no_mangle]
-pub unsafe extern "C" fn map_pieces(active: u32, nx: i32, ny: i32, cells: u32, bounds: u32) -> i32 {
+pub unsafe extern "C" fn map_pieces(active: usize, nx: i32, ny: i32, cells: usize, bounds: usize) -> i32 {
     let active = take!(active, u8, BOOL, 0);
     let cells = take!(cells, i64, INT64, 3);
     let bounds = take!(bounds, i64, INT64, 4);
@@ -479,8 +479,8 @@ fn activity(v: f64) -> f64 {
 /// `step`) or appears (1); a piece before none took is gone (1).
 #[no_mangle]
 pub unsafe extern "C" fn map_moves(
-    potential: u32, expected: u32, codes: u32, centers: u32, floor: f64, stride: f64,
-    step: f64, nx: i32, ny: i32, out: u32,
+    potential: usize, expected: usize, codes: usize, centers: usize, floor: f64, stride: f64,
+    step: f64, nx: i32, ny: i32, out: usize,
 ) -> i32 {
     let potential = take!(potential, f64, FLOAT64, 0);
     let expected = take!(expected, f64, FLOAT64, 1);
@@ -673,8 +673,8 @@ unsafe fn of_kind(activity: View<f64>, codes: View<f64>, kind: usize, c: usize) 
 /// over their cells in order), the named values in their place, the claims, the write.
 #[no_mangle]
 pub unsafe extern "C" fn map_write_values(
-    kind: i32, near_cells: u32, near_bounds: u32, weights: u32, named: u32, named_mask: u32,
-    activity: u32, claimed: u32, write: u32, codes: u32, level: f64, floor: f64, nx: i32,
+    kind: i32, near_cells: usize, near_bounds: usize, weights: usize, named: usize, named_mask: usize,
+    activity: usize, claimed: usize, write: usize, codes: usize, level: f64, floor: f64, nx: i32,
     ny: i32,
 ) -> i32 {
     let near_cells = take!(near_cells, i64, INT64, 1);
@@ -918,11 +918,11 @@ unsafe fn least_at(values: *const f64, cells: *const i64, lo: usize, hi: usize) 
 /// Returns how many.
 #[no_mangle]
 pub unsafe extern "C" fn map_report(
-    kind: i32, px: f64, py: f64, codes: u32, centers: u32, activity: u32, doubt: u32,
-    motion: u32, has_physics: i32, hidden: i32, ident: i32, fields: i32, lowx: f64, lowy: f64,
+    kind: i32, px: f64, py: f64, codes: usize, centers: usize, activity: usize, doubt: usize,
+    motion: usize, has_physics: i32, hidden: i32, ident: i32, fields: i32, lowx: f64, lowy: f64,
     sizex: f64, sizey: f64, floor: f64, step: f64, stride: f64, level: f64, nx: i32, ny: i32,
-    has_values: i32, named: u32, named_mask: u32, claimed: u32, write: u32, fresh: u32,
-    lost: u32, near_cells: u32, near_bounds: u32,
+    has_values: i32, named: usize, named_mask: usize, claimed: usize, write: usize, fresh: usize,
+    lost: usize, near_cells: usize, near_bounds: usize,
 ) -> i32 {
     let codes = take!(codes, f64, FLOAT64, 3);
     let centers = take!(centers, f64, FLOAT64, 4);

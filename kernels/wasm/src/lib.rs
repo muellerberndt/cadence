@@ -11,6 +11,10 @@
 //! The module holds no data of its own and no static state: everything a kernel keeps lives in
 //! the arrays it is handed.
 //!
+//! The same source builds natively (`cargo build --release` in `kernels/wasm`: a shared
+//! library of the same exports, with the C library's `malloc` and `free`, and `exp` and `tanh`
+//! from the `libm` crate), for a Python that hands it NumPy's arrays the same way.
+//!
 //! A block product sums each output from 0.0 in the order of its inputs, as NumPy's matrix
 //! product without BLAS does (Pyodide's NumPy has none); the pairwise sums of the apical
 //! compartment follow NumPy's tree. With the same `exp`, every kernel that keeps the NumPy
@@ -25,11 +29,35 @@ mod lesson;
 mod map;
 mod settle;
 
+#[cfg(target_arch = "wasm32")]
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
     core::arch::wasm32::unreachable()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+#[panic_handler]
+fn panic(_: &core::panic::PanicInfo) -> ! {
+    trap()
+}
+
+/// Stop where a kernel's own room would overflow: a trap in the module, an abort natively.
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn trap() -> ! {
+    core::arch::wasm32::unreachable()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn trap() -> ! {
+    #[cfg_attr(target_os = "macos", link(name = "System"))]
+    #[cfg_attr(target_os = "linux", link(name = "c"))]
+    extern "C" {
+        fn abort() -> !;
+    }
+    unsafe { abort() }
+}
+
+#[cfg(target_arch = "wasm32")]
 #[link(wasm_import_module = "env")]
 extern "C" {
     #[link_name = "host_exp"]
@@ -42,22 +70,54 @@ extern "C" {
     fn host_free(p: *mut u8);
 }
 
-/// The C library's exponential, the one NumPy's `np.exp` calls.
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg_attr(target_os = "macos", link(name = "System"))]
+#[cfg_attr(target_os = "linux", link(name = "c"))]
+extern "C" {
+    #[link_name = "malloc"]
+    fn host_malloc(n: usize) -> *mut u8;
+    #[link_name = "free"]
+    fn host_free(p: *mut u8);
+}
+
+/// The C library's `exp`: in a browser the one NumPy calls under Pyodide (musl's), natively
+/// musl's as the `libm` crate carries it.
+#[cfg(target_arch = "wasm32")]
 #[inline(always)]
 pub(crate) fn exp(x: f64) -> f64 {
     unsafe { host_exp(x) }
 }
 
-/// The C library's hyperbolic tangent, the one NumPy's `np.tanh` calls.
+#[cfg(not(target_arch = "wasm32"))]
+#[inline(always)]
+pub(crate) fn exp(x: f64) -> f64 {
+    libm::exp(x)
+}
+
+#[cfg(target_arch = "wasm32")]
 #[inline(always)]
 pub(crate) fn tanh(x: f64) -> f64 {
     unsafe { host_tanh(x) }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+#[inline(always)]
+pub(crate) fn tanh(x: f64) -> f64 {
+    libm::tanh(x)
+}
+
+/// The square root, correctly rounded on every machine.
+#[cfg(target_arch = "wasm32")]
 #[inline(always)]
 pub(crate) fn sqrt(x: f64) -> f64 {
     use core::arch::wasm32::{f64x2_extract_lane, f64x2_splat, f64x2_sqrt};
     f64x2_extract_lane::<0>(f64x2_sqrt(f64x2_splat(x)))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[inline(always)]
+pub(crate) fn sqrt(x: f64) -> f64 {
+    libm::sqrt(x)
 }
 
 #[inline(always)]
@@ -93,24 +153,26 @@ pub(crate) fn finite(x: f64) -> bool {
 
 // -- NumPy's array object, as its C structs lay it out on wasm32 (NumPy 2, CPython 3)
 
+// NumPy's array object and descriptor as far as the kernels read them: pointer-sized fields,
+// so one layout serves the 32-bit module and a 64-bit machine alike
 #[repr(C)]
 struct PyArrayObject {
-    ob_refcnt: i32,
-    ob_type: u32,
+    ob_refcnt: isize,
+    ob_type: *const u8,
     data: *mut u8,
     nd: i32,
-    dimensions: *const i32,
-    strides: *const i32,
-    base: u32,
+    dimensions: *const isize,
+    strides: *const isize,
+    base: *const u8,
     descr: *const PyArrayDescr,
     flags: i32,
 }
 
 #[repr(C)]
 struct PyArrayDescr {
-    ob_refcnt: i32,
-    ob_type: u32,
-    typeobj: u32,
+    ob_refcnt: isize,
+    ob_type: *const u8,
+    typeobj: *const u8,
     kind: u8,
     type_char: u8,
     byteorder: u8,
@@ -157,7 +219,7 @@ impl<T: Copy> View<T> {
 
 /// The array object at `id` and its type number, or None where it is not a C-contiguous,
 /// aligned, native-order array of at most two dimensions.
-unsafe fn object(id: u32) -> Option<(&'static PyArrayObject, i32, usize, usize)> {
+unsafe fn object(id: usize) -> Option<(&'static PyArrayObject, i32, usize, usize)> {
     if id == 0 {
         return None;
     }
@@ -179,9 +241,11 @@ unsafe fn object(id: u32) -> Option<(&'static PyArrayObject, i32, usize, usize)>
 }
 
 /// The array at `id` as a view of `T`, where its type number is `num`.
-pub(crate) unsafe fn view<T>(id: u32, num: i32) -> Option<View<T>> {
+pub(crate) unsafe fn view<T>(id: usize, num: i32) -> Option<View<T>> {
     let (a, type_num, n0, n1) = object(id)?;
-    let same = type_num == num || (num == INT32 && type_num == LONG32);
+    // C's long is 32 bits in the module and 64 bits on a 64-bit machine
+    let same = type_num == num
+        || (num == if cfg!(target_pointer_width = "32") { INT32 } else { INT64 } && type_num == LONG32);
     if !same {
         return None;
     }
@@ -211,7 +275,7 @@ impl Index {
     }
 }
 
-pub(crate) unsafe fn index(id: u32) -> Option<Index> {
+pub(crate) unsafe fn index(id: usize) -> Option<Index> {
     if let Some(v) = view::<i64>(id, INT64) {
         return Some(Index::Wide(v));
     }
@@ -248,7 +312,7 @@ impl Scratch {
         let bytes = (count * core::mem::size_of::<T>() + 7) & !7;
         let p = self.base.add(self.at);
         if self.at + bytes > self.size {
-            core::arch::wasm32::unreachable();
+            trap();
         }
         self.at += bytes;
         core::ptr::write_bytes(p, 0, bytes);
@@ -274,9 +338,9 @@ impl Drop for Scratch {
 /// of type number `num`: the Python side compares it with NumPy's own before the kernels are
 /// used.
 #[no_mangle]
-pub unsafe extern "C" fn array_data(id: u32, num: i32) -> u32 {
+pub unsafe extern "C" fn array_data(id: usize, num: i32) -> usize {
     match object(id) {
-        Some((a, type_num, _, _)) if type_num == num => a.data as u32,
+        Some((a, type_num, _, _)) if type_num == num => a.data as usize,
         _ => 0,
     }
 }
@@ -284,7 +348,7 @@ pub unsafe extern "C" fn array_data(id: u32, num: i32) -> u32 {
 /// The two dimensions the module reads of the array at `id` (rows times 65536 plus columns,
 /// for small test arrays).
 #[no_mangle]
-pub unsafe extern "C" fn array_shape(id: u32) -> u32 {
+pub unsafe extern "C" fn array_shape(id: usize) -> u32 {
     match object(id) {
         Some((_, _, n0, n1)) => (n0 as u32) * 65536 + n1 as u32,
         _ => 0,

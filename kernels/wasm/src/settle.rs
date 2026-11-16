@@ -1,6 +1,7 @@
 //! The settle, the residual and the free solve: `_settle_rows`, `_residual_rows`,
 //! `_solve_rows`, `_publish` and `rows_finite` of `cadence/fused.py`, in its order.
 
+#[cfg(target_arch = "wasm32")]
 use core::arch::wasm32::*;
 
 use crate::{
@@ -91,6 +92,7 @@ unsafe fn softmax_groups(
 /// entry of exactly zero adds a zero to every sum it reaches, which leaves a sum begun at 0.0
 /// as it was (it is never -0.0), so its row of the block is skipped: the weights of a graph are
 /// finite (``Brain`` refuses others). `keep` holds room for `na` indices.
+#[cfg(target_arch = "wasm32")]
 pub(crate) unsafe fn product(
     src: *const f64, w: *const f64, out: *mut f64, m: usize, na: usize, nb: usize,
     keep: *mut u32,
@@ -143,6 +145,38 @@ pub(crate) unsafe fn product(
                 c += *x.add(k) * *w.add(k * nb + j);
             }
             *o.add(j) = c;
+        }
+    }
+}
+
+/// The product of `src` (m, na) and the block `w` (na, nb) into `out` (m, nb), each output
+/// from 0.0 in the order of the inputs, skipping the rows of a silent source: on a 64-bit
+/// machine, the same sums as the module's lanes.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) unsafe fn product(
+    src: *const f64, w: *const f64, out: *mut f64, m: usize, na: usize, nb: usize,
+    keep: *mut u32,
+) {
+    for b in 0..m {
+        let x = src.add(b * na);
+        let o = out.add(b * nb);
+        let mut count = 0usize;
+        for k in 0..na {
+            if *x.add(k) != 0.0 {
+                *keep.add(count) = k as u32;
+                count += 1;
+            }
+        }
+        for j in 0..nb {
+            *o.add(j) = 0.0;
+        }
+        for q in 0..count {
+            let k = *keep.add(q) as usize;
+            let a = *x.add(k);
+            let row = w.add(k * nb);
+            for j in 0..nb {
+                *o.add(j) += a * *row.add(j);
+            }
         }
     }
 }
@@ -1168,7 +1202,7 @@ pub(crate) unsafe fn publish(
 /// The arguments every launch shares, from their objects' addresses; the argument numbers of
 /// a refusal count from `v`.
 pub(crate) unsafe fn net_of(
-    ids: &[u32; 30], masked: i32, rule: [f64; 5], has_adapt: i32, strength: f64, tau: f64,
+    ids: &[usize; 30], masked: i32, rule: [f64; 5], has_adapt: i32, strength: f64, tau: f64,
     has_nudge: i32, ngroups: i32, beta: f64, has_apical: i32, apical: [f64; 3], has_held: i32,
 ) -> Result<Net, i32> {
     macro_rules! get {
@@ -1276,22 +1310,22 @@ pub(crate) unsafe fn net_of(
 }
 
 #[inline(always)]
-fn ids30(list: [u32; 30]) -> [u32; 30] {
+fn ids30(list: [usize; 30]) -> [usize; 30] {
     list
 }
 
 /// `_settle_rows`, then `activity_change` (batch,) and `kept` (zeros, as `kept_len` gives).
 #[no_mangle]
 pub unsafe extern "C" fn settle_rows(
-    v: u32, a: u32, s: u32, standing: u32, flat: u32, pairs: u32, flat_apical: u32,
-    apical_pairs: u32, starts: u32, pair_pre: u32, pair_post: u32, offset: u32,
-    freezable: u32, keep: u32, masked: i32, dt: f64, slope: f64, threshold: f64, rest: f64,
+    v: usize, a: usize, s: usize, standing: usize, flat: usize, pairs: usize, flat_apical: usize,
+    apical_pairs: usize, starts: usize, pair_pre: usize, pair_post: usize, offset: usize,
+    freezable: usize, keep: usize, masked: i32, dt: f64, slope: f64, threshold: f64, rest: f64,
     leak: f64, has_adapt: i32, adapt_strength: f64, adapt_tau: f64, has_nudge: i32,
-    target: u32, nmask: u32, gid: u32, ngroups: i32, beta: f64, softmax_t: u32, weight: u32,
-    anchor: u32, anchor_gain: u32, has_apical: i32, pool_of: u32, pool_index: u32,
-    pool_starts: u32, pool_run: u32, fraction: f64, floor2: f64, tiny: f64, held: u32,
-    has_held: i32, steps: i32, tolerance: f64, use_tolerance: i32, given: u32, has_given: i32,
-    activity_change: u32, kept: u32,
+    target: usize, nmask: usize, gid: usize, ngroups: i32, beta: f64, softmax_t: usize, weight: usize,
+    anchor: usize, anchor_gain: usize, has_apical: i32, pool_of: usize, pool_index: usize,
+    pool_starts: usize, pool_run: usize, fraction: f64, floor2: f64, tiny: f64, held: usize,
+    has_held: i32, steps: i32, tolerance: f64, use_tolerance: i32, given: usize, has_given: i32,
+    activity_change: usize, kept: usize,
 ) -> i32 {
     let ids = ids30([
         v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, pair_pre, pair_post,
@@ -1323,15 +1357,15 @@ pub unsafe extern "C" fn settle_rows(
 /// `settle_rows`, the bias inside each row's `standing`.
 #[no_mangle]
 pub unsafe extern "C" fn settle_lives(
-    v: u32, a: u32, s: u32, standing: u32, flat: u32, pairs: u32, flat_apical: u32,
-    apical_pairs: u32, starts: u32, pair_pre: u32, pair_post: u32, offset: u32,
-    freezable: u32, keep: u32, masked: i32, dt: f64, slope: f64, threshold: f64, rest: f64,
+    v: usize, a: usize, s: usize, standing: usize, flat: usize, pairs: usize, flat_apical: usize,
+    apical_pairs: usize, starts: usize, pair_pre: usize, pair_post: usize, offset: usize,
+    freezable: usize, keep: usize, masked: i32, dt: f64, slope: f64, threshold: f64, rest: f64,
     leak: f64, has_adapt: i32, adapt_strength: f64, adapt_tau: f64, has_nudge: i32,
-    target: u32, nmask: u32, gid: u32, ngroups: i32, beta: f64, softmax_t: u32, weight: u32,
-    anchor: u32, anchor_gain: u32, has_apical: i32, pool_of: u32, pool_index: u32,
-    pool_starts: u32, pool_run: u32, fraction: f64, floor2: f64, tiny: f64, held: u32,
-    has_held: i32, steps: i32, tolerance: f64, use_tolerance: i32, given: u32, has_given: i32,
-    activity_change: u32, kept: u32,
+    target: usize, nmask: usize, gid: usize, ngroups: i32, beta: f64, softmax_t: usize, weight: usize,
+    anchor: usize, anchor_gain: usize, has_apical: i32, pool_of: usize, pool_index: usize,
+    pool_starts: usize, pool_run: usize, fraction: f64, floor2: f64, tiny: f64, held: usize,
+    has_held: i32, steps: i32, tolerance: f64, use_tolerance: i32, given: usize, has_given: i32,
+    activity_change: usize, kept: usize,
 ) -> i32 {
     let ids = ids30([
         v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, pair_pre, pair_post,
@@ -1367,14 +1401,14 @@ pub unsafe extern "C" fn settle_lives(
 /// the given array is the one kept).
 #[no_mangle]
 pub unsafe extern "C" fn residual_rows(
-    v: u32, a: u32, s: u32, standing: u32, flat: u32, pairs: u32, flat_apical: u32,
-    apical_pairs: u32, starts: u32, pair_pre: u32, pair_post: u32, offset: u32, keep: u32,
+    v: usize, a: usize, s: usize, standing: usize, flat: usize, pairs: usize, flat_apical: usize,
+    apical_pairs: usize, starts: usize, pair_pre: usize, pair_post: usize, offset: usize, keep: usize,
     masked: i32, dt: f64, slope: f64, threshold: f64, rest: f64, leak: f64, has_adapt: i32,
-    adapt_strength: f64, has_nudge: i32, target: u32, nmask: u32, gid: u32, ngroups: i32,
-    beta: f64, softmax_t: u32, weight: u32, anchor: u32, anchor_gain: u32, has_apical: i32,
-    pool_of: u32, pool_index: u32, pool_starts: u32, pool_run: u32, fraction: f64, floor2: f64,
-    tiny: f64, held: u32, has_held: i32, out: u32, given: u32, has_given: i32, in_place: i32,
-    kept: u32,
+    adapt_strength: f64, has_nudge: i32, target: usize, nmask: usize, gid: usize, ngroups: i32,
+    beta: f64, softmax_t: usize, weight: usize, anchor: usize, anchor_gain: usize, has_apical: i32,
+    pool_of: usize, pool_index: usize, pool_starts: usize, pool_run: usize, fraction: f64, floor2: f64,
+    tiny: f64, held: usize, has_held: i32, out: usize, given: usize, has_given: i32, in_place: i32,
+    kept: usize,
 ) -> i32 {
     let ids = ids30([
         v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, pair_pre, pair_post,
@@ -1416,14 +1450,14 @@ pub unsafe extern "C" fn residual_rows(
 /// `kept_b`).
 #[no_mangle]
 pub unsafe extern "C" fn solve_rows(
-    v: u32, a: u32, s: u32, standing: u32, flat: u32, pairs: u32, flat_apical: u32,
-    apical_pairs: u32, starts: u32, pair_pre: u32, pair_post: u32, offset: u32,
-    freezable: u32, keep: u32, dt: f64, slope: f64, threshold: f64, rest: f64, leak: f64,
-    strength: f64, tau: f64, target: u32, nmask: u32, gid: u32, ngroups: i32, beta: f64,
-    softmax_t: u32, weight: u32, anchor: u32, anchor_gain: u32, pool_of: u32, pool_index: u32,
-    pool_starts: u32, pool_run: u32, held: u32, budget: i32, chunk: i32, tolerance: f64,
-    out: u32, given: u32, has_given: i32, in_place: i32, has_apical: i32, fraction: f64,
-    floor2: f64, tiny: f64, change: u32, kept_a: u32, kept_b: u32, report: u32,
+    v: usize, a: usize, s: usize, standing: usize, flat: usize, pairs: usize, flat_apical: usize,
+    apical_pairs: usize, starts: usize, pair_pre: usize, pair_post: usize, offset: usize,
+    freezable: usize, keep: usize, dt: f64, slope: f64, threshold: f64, rest: f64, leak: f64,
+    strength: f64, tau: f64, target: usize, nmask: usize, gid: usize, ngroups: i32, beta: f64,
+    softmax_t: usize, weight: usize, anchor: usize, anchor_gain: usize, pool_of: usize, pool_index: usize,
+    pool_starts: usize, pool_run: usize, held: usize, budget: i32, chunk: i32, tolerance: f64,
+    out: usize, given: usize, has_given: i32, in_place: i32, has_apical: i32, fraction: f64,
+    floor2: f64, tiny: f64, change: usize, kept_a: usize, kept_b: usize, report: usize,
 ) -> i32 {
     let ids = ids30([
         v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, pair_pre, pair_post,
@@ -1518,7 +1552,7 @@ pub unsafe extern "C" fn solve_rows(
 /// and `n` neurons (`_kept_room`).
 #[no_mangle]
 pub unsafe extern "C" fn kept_length(
-    starts: u32, pair_post: u32, pairs: u32, apical_pairs: u32, batch: i32, n: i32,
+    starts: usize, pair_post: usize, pairs: usize, apical_pairs: usize, batch: i32, n: i32,
 ) -> i32 {
     let starts = take!(starts, i64, INT64, 0);
     let pair_post = take!(pair_post, i64, INT64, 1);
@@ -1539,7 +1573,7 @@ pub unsafe extern "C" fn kept_length(
 /// `_publish`; returns 1 where the kept activations were read, 0 where they were made.
 #[no_mangle]
 pub unsafe extern "C" fn publish_rows(
-    v: u32, s: u32, kept: u32, has_kept: i32, slope: f64, threshold: f64, rest: f64,
+    v: usize, s: usize, kept: usize, has_kept: i32, slope: f64, threshold: f64, rest: f64,
     leak: f64,
 ) -> i32 {
     let v = take!(v, f64, FLOAT64, 0);
@@ -1553,18 +1587,21 @@ pub unsafe extern "C" fn publish_rows(
 
 /// `rows_finite`: 1 where every entry is finite.
 #[no_mangle]
-pub unsafe extern "C" fn rows_finite(x: u32) -> i32 {
+pub unsafe extern "C" fn rows_finite(x: usize) -> i32 {
     let x = take!(x, f64, FLOAT64, 0);
     let mut ok = true;
+    #[allow(unused_mut)]
     let mut i = 0usize;
+    #[cfg(target_arch = "wasm32")]
     while i + 2 <= x.len {
         let y = v128_load(x.p.add(i) as *const v128);
         let z = f64x2_sub(y, y);
         ok &= f64x2_extract_lane::<0>(z) == 0.0 && f64x2_extract_lane::<1>(z) == 0.0;
         i += 2;
     }
-    if i < x.len {
+    while i < x.len {
         ok &= finite(x.get(i));
+        i += 1;
     }
     ok as i32
 }

@@ -54,7 +54,7 @@ fn act_plain(x: f64, slope: f64, threshold: f64, rest: f64, up: f64, down: f64) 
 
 /// The kept length of a launch over every block of a layout (`_fast_solve`'s `_kept_room`).
 #[no_mangle]
-pub unsafe extern "C" fn kept_length_all(starts: u32, pair_post: u32, batch: i32, n: i32) -> i32 {
+pub unsafe extern "C" fn kept_length_all(starts: usize, pair_post: usize, batch: i32, n: i32) -> i32 {
     let starts = take!(starts, i64, INT64, 0);
     let pair_post = take!(pair_post, i64, INT64, 1);
     let (batch, n) = (batch.max(0) as usize, n.max(0) as usize);
@@ -71,9 +71,9 @@ pub unsafe extern "C" fn kept_length_all(starts: u32, pair_post: u32, batch: i32
 /// and the sweeps over the rows, `kept` (zeros, `kept_length_all` long) what the state keeps.
 #[no_mangle]
 pub unsafe extern "C" fn fast_solve(
-    v: u32, s: u32, standing: u32, flat: u32, starts: u32, pair_pre: u32, pair_post: u32,
-    offset: u32, slope: f64, threshold: f64, rest: f64, leak: f64, budget: i32, chunk: i32,
-    tolerance: f64, settled: f64, out: u32, report: u32, kept: u32,
+    v: usize, s: usize, standing: usize, flat: usize, starts: usize, pair_pre: usize, pair_post: usize,
+    offset: usize, slope: f64, threshold: f64, rest: f64, leak: f64, budget: i32, chunk: i32,
+    tolerance: f64, settled: f64, out: usize, report: usize, kept: usize,
 ) -> i32 {
     let v = take!(v, f64, FLOAT64, 0);
     let s = take!(s, f64, FLOAT64, 1);

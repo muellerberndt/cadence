@@ -72,10 +72,10 @@ unsafe fn unit(a: *const f64, n: usize, out: *mut f64) {
 /// columns and a one into `present`. Returns the fields that came back.
 #[no_mangle]
 pub unsafe extern "C" fn bound_recall(
-    slots: u32, keys: u32, code: u32, deep: u32, kept: u32, has_keep: i32, gone: u32,
-    has_forget: i32, values: u32, has_voice: i32, v0: i32, v1: i32, paid: u32, refused_: u32,
-    fields: u32, voice_field: i32, known_at: f64, match_at: f64, heads: i32, near: f64,
-    agree: f64, most: f64, out: u32, present: u32,
+    slots: usize, keys: usize, code: usize, deep: usize, kept: usize, has_keep: i32, gone: usize,
+    has_forget: i32, values: usize, has_voice: i32, v0: i32, v1: i32, paid: usize, refused_: usize,
+    fields: usize, voice_field: i32, known_at: f64, match_at: f64, heads: i32, near: f64,
+    agree: f64, most: f64, out: usize, present: usize,
 ) -> i32 {
     let slots = take!(slots, i64, INT64, 0);
     let keys = take!(keys, f64, FLOAT64, 1);

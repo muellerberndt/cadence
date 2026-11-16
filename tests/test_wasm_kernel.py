@@ -43,8 +43,8 @@ def test_every_kernel_hands_over_the_arguments_the_module_reads() -> None:
         assert len(params) == len(kinds), name
         for (param, rust), kind in zip(params, kinds, strict=True):
             assert (rust == "f64") == (kind == "f"), (name, param)
-            assert rust in {"f64", "u32", "i32"}, (name, param)
-            assert (rust == "u32") == (kind in _wasm._ARRAYS), (name, param)
+            assert rust in {"f64", "usize", "i32"}, (name, param)
+            assert (rust == "usize") == (kind in _wasm._ARRAYS), (name, param)
 
 
 def test_the_module_holds_a_kernel_of_every_name_fused_calls() -> None:

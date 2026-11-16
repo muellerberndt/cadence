@@ -28,8 +28,8 @@ macro_rules! index_of {
 /// accumulation and the dopamine-weighted sum into the step.
 #[no_mangle]
 pub unsafe extern "C" fn trace_step(
-    trace: u32, trace_bias: u32, decay: f64, s_plus: u32, s_minus: u32, pre: u32, post: u32,
-    span: f64, delta: u32, step_scale: u32, step_bias: u32,
+    trace: usize, trace_bias: usize, decay: f64, s_plus: usize, s_minus: usize, pre: usize, post: usize,
+    span: f64, delta: usize, step_scale: usize, step_bias: usize,
 ) -> i32 {
     let trace = take!(trace, f64, FLOAT64, 0);
     let trace_bias = take!(trace_bias, f64, FLOAT64, 1);
@@ -93,7 +93,7 @@ unsafe fn inside(ix: Index, size: usize) -> bool {
 
 /// `_place`: `out[index] = values`.
 #[no_mangle]
-pub unsafe extern "C" fn place(index: u32, values: u32, out: u32) -> i32 {
+pub unsafe extern "C" fn place(index: usize, values: usize, out: usize) -> i32 {
     let ix = index_of!(index, 0);
     let values = take!(values, f64, FLOAT64, 1);
     let out = take!(out, f64, FLOAT64, 2);
@@ -108,7 +108,7 @@ pub unsafe extern "C" fn place(index: u32, values: u32, out: u32) -> i32 {
 
 /// `_pick`: `out = values[index] / divisor`.
 #[no_mangle]
-pub unsafe extern "C" fn pick(values: u32, index: u32, divisor: f64, out: u32) -> i32 {
+pub unsafe extern "C" fn pick(values: usize, index: usize, divisor: f64, out: usize) -> i32 {
     let values = take!(values, f64, FLOAT64, 0);
     let ix = index_of!(index, 1);
     let out = take!(out, f64, FLOAT64, 3);
@@ -124,7 +124,7 @@ pub unsafe extern "C" fn pick(values: u32, index: u32, divisor: f64, out: u32) -
 /// `_group_power`: each group's sum of squares in index order and its member count (at least
 /// one), into `power` and `count` (zeros, `size` long).
 #[no_mangle]
-pub unsafe extern "C" fn group_power(values: u32, group: u32, power: u32, count: u32) -> i32 {
+pub unsafe extern "C" fn group_power(values: usize, group: usize, power: usize, count: usize) -> i32 {
     let values = take!(values, f64, FLOAT64, 0);
     let group = index_of!(group, 1);
     let power = take!(power, f64, FLOAT64, 2);
@@ -148,7 +148,7 @@ pub unsafe extern "C" fn group_power(values: u32, group: u32, power: u32, count:
 /// `_divisor`: `out = values + share * root[group] + tiny`.
 #[no_mangle]
 pub unsafe extern "C" fn divisor(
-    values: u32, group: u32, root: u32, share: f64, tiny: f64, out: u32,
+    values: usize, group: usize, root: usize, share: f64, tiny: f64, out: usize,
 ) -> i32 {
     let values = take!(values, f64, FLOAT64, 0);
     let group = index_of!(group, 1);
@@ -166,9 +166,9 @@ pub unsafe extern "C" fn divisor(
 /// `_plain`: each synapse's moments and step in one pass.
 #[no_mangle]
 pub unsafe extern "C" fn plain(
-    raw: u32, velocity: u32, second: u32, momentum: f64, momentum_rest: f64,
+    raw: usize, velocity: usize, second: usize, momentum: f64, momentum_rest: f64,
     momentum_correction: f64, rho: f64, rho_rest: f64, rho_correction: f64, has_momentum: i32,
-    has_normalize: i32, eta: f64, floor: f64, new_velocity: u32, new_second: u32, out: u32,
+    has_normalize: i32, eta: f64, floor: f64, new_velocity: usize, new_second: usize, out: usize,
 ) -> i32 {
     let raw = take!(raw, f64, FLOAT64, 0);
     let velocity = take!(velocity, f64, FLOAT64, 1);
@@ -205,9 +205,9 @@ pub unsafe extern "C" fn plain(
 /// `_moments`: the first pass of the projection-relative floor.
 #[no_mangle]
 pub unsafe extern "C" fn moments(
-    raw: u32, velocity: u32, second: u32, momentum: f64, momentum_rest: f64,
+    raw: usize, velocity: usize, second: usize, momentum: f64, momentum_rest: f64,
     momentum_correction: f64, rho: f64, rho_rest: f64, rho_correction: f64, has_momentum: i32,
-    new_velocity: u32, new_second: u32, term: u32, root: u32,
+    new_velocity: usize, new_second: usize, term: usize, root: usize,
 ) -> i32 {
     let raw = take!(raw, f64, FLOAT64, 0);
     let velocity = take!(velocity, f64, FLOAT64, 1);
@@ -241,8 +241,8 @@ pub unsafe extern "C" fn moments(
 /// `_step`: each step over its root plus its projection's share.
 #[no_mangle]
 pub unsafe extern "C" fn step(
-    term: u32, root: u32, group: u32, group_root: u32, eta: f64, share: f64, tiny: f64,
-    out: u32,
+    term: usize, root: usize, group: usize, group_root: usize, eta: f64, share: f64, tiny: f64,
+    out: usize,
 ) -> i32 {
     let term = take!(term, f64, FLOAT64, 0);
     let root = take!(root, f64, FLOAT64, 1);
@@ -266,8 +266,8 @@ pub unsafe extern "C" fn step(
 /// (int64, 3) receives how many of each are not finite.
 #[no_mangle]
 pub unsafe extern "C" fn tied(
-    delta: u32, partner: u32, efficacy: u32, gain_pre: u32, cap: f64, out_delta: u32,
-    out_scale: u32, out_weight: u32, report: u32,
+    delta: usize, partner: usize, efficacy: usize, gain_pre: usize, cap: f64, out_delta: usize,
+    out_scale: usize, out_weight: usize, report: usize,
 ) -> i32 {
     let delta = take!(delta, f64, FLOAT64, 0);
     let partner = index_of!(partner, 1);
@@ -318,8 +318,8 @@ pub unsafe extern "C" fn tied(
 /// `_add_episode_terms`: a read's anchored and relative position terms added to `term`.
 #[no_mangle]
 pub unsafe extern "C" fn add_episode_terms(
-    term: u32, anchored: u32, relative: u32, has_anchored: i32, has_relative: i32, told: u32,
-    focus: u32, table: u32, last_bucket: i32, outside: i32, reach: i32, none: i32,
+    term: usize, anchored: usize, relative: usize, has_anchored: i32, has_relative: i32, told: usize,
+    focus: usize, table: usize, last_bucket: i32, outside: i32, reach: i32, none: i32,
 ) -> i32 {
     let term = take!(term, f64, FLOAT64, 0);
     let anchored = take!(anchored, f64, FLOAT64, 1);
@@ -388,7 +388,7 @@ pub unsafe extern "C" fn add_episode_terms(
 /// `_clear_choice`: each row's largest `s / temperature` into `choice` (int64); returns 1 where
 /// it stands clear of the others in every row, finite and by more than 1e-9.
 #[no_mangle]
-pub unsafe extern "C" fn clear_choice(s: u32, temperature: f64, choice: u32) -> i32 {
+pub unsafe extern "C" fn clear_choice(s: usize, temperature: f64, choice: usize) -> i32 {
     let s = take!(s, f64, FLOAT64, 0);
     let choice: View<i64> = take!(choice, i64, INT64, 2);
     let (rows, width) = (s.n0, s.n1);
