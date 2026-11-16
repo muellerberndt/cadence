@@ -220,6 +220,33 @@ def test_a_brain_held_in_the_core_takes_the_same_lessons():
 
 
 @core_built
+def test_lessons_through_live_in_the_core():
+    core = Core()
+    held = brain(seed=19)
+    handle = core.brain(BRAIN.state_of(held))
+    try:
+        for t, (given, reward) in enumerate(moments(30, seed=20)):
+            targets, weights = shown(t)
+            lesson = (targets, weights) if t % 4 else None  # most moments teach
+            feedback = {"reward": [reward]} if reward is not None and held.pending_feedback else {}
+            kwargs = {**feedback, **({} if lesson is None else {"lesson": lesson})}
+            _, _, after = BRAIN.calling(held, "live", (given,), kwargs)
+            args = {**BRAIN._live(given, **kwargs), **after()}
+            before = BRAIN.state_of(held)
+            updates = held.learner.updates
+            action = held.live(given, **kwargs)
+            if lesson is not None:  # taken whatever was pending before the moment
+                assert held.learner.updates > updates
+            theirs, out = core.call("brain", "live", before, args)
+            assert np.array_equal(out["action"], action)
+            same(theirs, BRAIN.state_of(held))
+            assert np.array_equal(core.brain_call(handle, "live", args)["action"], action)
+        same(core.brain_state(handle), BRAIN.state_of(held))
+    finally:
+        core.brain_drop(handle)
+
+
+@core_built
 def test_the_core_refuses_the_lessons_the_python_refuses():
     core = Core()
     held = brain(seed=15)
@@ -233,6 +260,12 @@ def test_the_core_refuses_the_lessons_the_python_refuses():
             copy.deepcopy(held).lesson(given, targets=targets, weights=weights)
         with pytest.raises(Refused):
             core.call("brain", "lesson", state, lesson_arguments(held, given, targets, weights))
+        with pytest.raises(ValueError):  # and given to live
+            copy.deepcopy(held).live(given, lesson=(targets, weights))
+        args = {**BRAIN._live(given, lesson=(targets, weights)),
+                **BRAIN.calling(held, "live", (given,), {})[2]()}
+        with pytest.raises(Refused):
+            core.call("brain", "live", state, args)
 
 
 @core_built

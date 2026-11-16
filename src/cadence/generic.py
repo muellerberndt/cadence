@@ -5886,6 +5886,63 @@ class Brain:
         refuses weights other than one.
         """
         x = self._observations(observations)
+        labels, targets, weights = self._lesson_arguments(x, labels, targets, weights)
+        current = self.basal_ganglia.state
+        if current is not None and _batch_of(current) != len(x):
+            raise ValueError("lesson batch must match the live streams; reset for new streams")
+        if self.basal_ganglia._pending is not None:
+            raise RuntimeError(
+                "a sampled action awaits its outcome; report it with step or learn first"
+            )
+        acted = self._acted
+        if (
+            self.recall is not None
+            and acted is not None
+            and acted[1] is current
+            and np.array_equal(acted[0], x)
+        ):
+            warnings.warn(
+                "lesson on the observations the brain just acted on: the act already wrote "
+                "this moment to the recall memory, so the lesson reads the moment itself, its "
+                "successor still empty. Teach before acting, as step(..., teacher=labels) "
+                "orders them. A world whose next moment looks the same as this one is already "
+                "in that order, and this does not apply to it.",
+                RuntimeWarning,
+                stacklevel=3,  # the caller, past the operation wrapper
+            )
+        self.last_learning = {}
+        return self._given_lesson(x, labels, targets, weights)
+
+    def _live_lesson(self, x: np.ndarray, lesson: Any) -> tuple[np.ndarray, Any]:
+        """``live``'s ``lesson=(targets, weights)``, validated as ``lesson`` takes them: the
+        targets and the weights (a number is the row's)."""
+        try:
+            targets, weights = lesson
+        except (TypeError, ValueError):
+            raise ValueError("lesson is a pair (targets, weights)") from None
+        if weights is not None:
+            weights = np.asarray(weights, dtype=float).reshape(-1)
+        _, targets, weights = self._lesson_arguments(x, None, targets, weights)
+        assert targets is not None
+        return targets, weights
+
+    def _given_lesson(
+        self, x: np.ndarray, labels: np.ndarray | None, targets: np.ndarray | None,
+        weights: np.ndarray | None,
+    ) -> dict[str, float]:
+        """A lesson of validated arguments at the moment ``x``, the fields learning from its
+        frames: ``lesson``'s, and ``live``'s with ``lesson=``."""
+        report = dict(self._lesson(x, labels, targets=targets, weights=weights))
+        if self.fields is not None:  # the fields learn from the frames a lesson shows
+            self.fields.learn(x[:, : self.fields.inputs])
+        return report
+
+    def _lesson_arguments(
+        self, x: np.ndarray, labels: Any, targets: Any, weights: Any
+    ) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None]:
+        """A lesson's labels or targets and its weights for the moment ``x``, validated as
+        ``lesson`` takes them, refused before anything changes; a weight of one everywhere is
+        the lesson without weights."""
         if (labels is None) == (targets is None):
             raise ValueError("a lesson takes labels or targets, one of the two")
         cfg = self.learner.config
@@ -5922,34 +5979,7 @@ class Brain:
                     "learning_rehearsal replays its rows at weight one; weigh the lessons of a "
                     "brain without it"
                 )
-        current = self.basal_ganglia.state
-        if current is not None and _batch_of(current) != len(x):
-            raise ValueError("lesson batch must match the live streams; reset for new streams")
-        if self.basal_ganglia._pending is not None:
-            raise RuntimeError(
-                "a sampled action awaits its outcome; report it with step or learn first"
-            )
-        acted = self._acted
-        if (
-            self.recall is not None
-            and acted is not None
-            and acted[1] is current
-            and np.array_equal(acted[0], x)
-        ):
-            warnings.warn(
-                "lesson on the observations the brain just acted on: the act already wrote "
-                "this moment to the recall memory, so the lesson reads the moment itself, its "
-                "successor still empty. Teach before acting, as step(..., teacher=labels) "
-                "orders them. A world whose next moment looks the same as this one is already "
-                "in that order, and this does not apply to it.",
-                RuntimeWarning,
-                stacklevel=3,  # the caller, past the operation wrapper
-            )
-        self.last_learning = {}
-        report = dict(self._lesson(x, labels, targets=targets, weights=weights))
-        if self.fields is not None:  # the fields learn from the frames a lesson shows
-            self.fields.learn(x[:, : self.fields.inputs])
-        return report
+        return labels, targets, weights
 
     def _lesson(
         self,
@@ -6418,7 +6448,7 @@ class Brain:
     @_operation
     def live(
         self, observations: Any, *, reward: Any = None, done: Any = None,
-        salience: Any = None, decision_id: Any = None,
+        salience: Any = None, decision_id: Any = None, lesson: Any = None,
     ) -> np.ndarray:
         """One moment of a continuing life: routine while outcomes match, repair when not.
 
@@ -6465,6 +6495,15 @@ class Brain:
         It also sets consolidation's importance when an outcome wakes a routine brain.
         A mark does not itself wake the brain or permit a calm write. It needs a preceding
         action and is validated before feedback or forecasting changes anything.
+
+        ``lesson``, an optional pair ``(targets, weights)``, teaches the moment as ``lesson``
+        does (``targets`` one row of the outputs, each slot's summing to one; ``weights`` its
+        row's weight, a number or one row, or None), at its place in the moment: after the
+        preceding action's outcome is taken and before the moment's act, which settles afresh
+        under the taught parameters. There no outcome is pending, so a lesson a world gives
+        each moment (a young one watching a parent) is taken where ``lesson`` before ``live``
+        is refused while a sampled action awaits its outcome. It is validated with the
+        feedback, before anything changes.
         """
         arousal = self.arousal
         if arousal is None:
@@ -6496,6 +6535,7 @@ class Brain:
         importance = (
             None if salience is None else SynapticMemory.salience_vector(salience, 1)
         )
+        shown = None if lesson is None else self._live_lesson(x, lesson)
         answer: tuple[np.ndarray, BrainState] | None = None
         error = surprise = want = 0.0
         sweeps = learning_sweeps = 0
@@ -6588,6 +6628,15 @@ class Brain:
                 episodic.received(r)  # a calm outcome joins the path; replay may value it later
                 if ended[0]:  # the next attempt begins with no context and no path
                     episodic.reset(1, rows=np.flatnonzero(ended))
+        if shown is not None:
+            # the moment's lesson, its outcome taken and nothing pending: the act below
+            # settles afresh under the taught parameters
+            if agent._pending is not None:
+                raise RuntimeError(
+                    "a sampled action awaits its outcome; report it with step or learn first"
+                )
+            self._given_lesson(x, None, *shown)
+            answer = None
         aroused = arousal.aroused
         temperature = self.learner.config.temperature * arousal.heat if aroused else None
         # Validate before qualification; invalid heating must draw nothing.
