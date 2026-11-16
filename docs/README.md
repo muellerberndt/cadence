@@ -25,7 +25,7 @@ compares it with networks trained by backpropagation.
 ## Install
 
 ```sh
-python -m pip install cadence-net==0.101.0
+python -m pip install cadence-net==0.101.1
 ```
 
 Cadence needs Python 3.11 or later and NumPy. Optional extras add speed and hardware:
@@ -36,10 +36,10 @@ Cadence needs Python 3.11 or later and NumPy. Optional extras add speed and hard
 | `[accel]` | PyTorch | NVIDIA GPUs (CUDA) |
 | `[apple]` | MLX | Apple silicon GPUs |
 
-For example `python -m pip install "cadence-net[fast]==0.101.0"`. From a checkout of the
+For example `python -m pip install "cadence-net[fast]==0.101.1"`. From a checkout of the
 repository, run `python -m pip install -e .` at its root. A new brain picks the fastest backend
 the machine has for its size by itself ([backends](backends.md)). The
-[v0.101.0 documentation](https://github.com/muellerberndt/cadence/blob/v0.101.0/docs/README.md)
+[v0.101.1 documentation](https://github.com/muellerberndt/cadence/blob/v0.101.1/docs/README.md)
 is pinned to the release tag.
 
 ## Your first brain
@@ -135,6 +135,7 @@ Then, as your brain needs them:
 | A memory for a task | the comparison table | [Memory](memory.md) |
 | Senses: images, continuous readings, codes | image `inputs`, `cd.PopulationCode`, `code=units`, `learned_code=units` | [Senses](senses.md) |
 | Several senses, each declared once and given by name; a brain that reads a map of things itself | `senses={name: width}`, `trained=["place"]` | [Senses by name](senses.md#senses-by-name), [a brain that knows where things are](modules.md#a-brain-that-knows-where-things-are) |
+| A body that acts on where things are from it (a bearing, a distance), its memories keyed on a fixed code | `code=units, cortex_reads="both"` (opt-in) | [What the cortex reads](senses.md#what-the-cortex-reads), [a body that acts on what it senses](assembly.md#a-body-that-acts-on-what-it-senses) |
 | A speech recogniser from recordings and transcripts, adapted to a speaker, on live audio | `cadence.speech` (opt-in) | [Speech](speech.md) |
 | To track where things are, in view and out of it, by kind and by place, and where a hidden thing that moves has gone | `cadence.space` (opt-in): `Map`, `Map(physics=True)`, `forecast` | [Space: tracking what is where](space.md) |
 | A signal for what a moment brought that the brain did not carry, and one focus drawn by it | `surprise=True` (opt-in): `brain.surprise`, `brain.focus`, `Map(surprise=True)` | [Surprise, and the focus it draws](life.md#surprise-and-the-focus-it-draws-opt-in) |

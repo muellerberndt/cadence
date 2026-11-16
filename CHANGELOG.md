@@ -1,6 +1,83 @@
 # Changelog
 
-## Unreleased
+## 0.101.1 - 2026-11-16
+
+A cortex that reads the senses beside its fixed code. With `code=units` the memories of a brain
+key on a fixed sparse code where its senses meet, and a vector brain's cortex reads that code
+alone: what is on together, which records of bound moments and a heard name need, and a bearing
+or a distance less directly. `cortex_reads="both"` gives the cortex the senses themselves beside
+the code, and every memory keys on the code as before. Opt-in: a brain composed without it
+acts, learns, describes itself and saves as on 0.101.0, to the bit (the version string apart).
+
+```python
+import numpy as np
+from cadence import Brain
+
+senses = {"eyes": 32, "food": {"bearing": 8, "distance": 4}, "body": 8}
+body = Brain.compose(senses=senses, actions=5, code=128, cortex_reads="both", seed=0)
+food_left = {"food": {"bearing": np.eye(8)[[2]], "distance": np.eye(4)[[1]]}}
+body.lesson(food_left, np.array([2]))                       # a teacher shows: turn left
+assert len(body.connectome.populations["observation"]) == body.inputs == 52
+```
+
+The guide is [what the cortex reads](docs/senses.md#what-the-cortex-reads).
+
+### What the cortex reads (`cortex_reads`), an opt-in
+
+- **`Brain.compose(..., code=units, cortex_reads="both")`**: a region `observation` of one
+  neuron per input holds the observation itself, as given, and projects into the first module
+  beside the code, at the sensory scale. It is drawn after every other part, so the brain is the
+  brain with the code plus that region and its projection: every other synapse and bias starts
+  as without it. `cortex_reads="observation"` holds the observation in the sensory region in
+  place of the code, the routing of an image brain and of `Brain(connectome, code=units)`. Every
+  memory keys on the code whichever the cortex reads (the recall memory, the associative store,
+  records of bound moments, and a held message with the long-term records keyed on it, which
+  `"observation"` refuses); the heard history hears what the sensory region holds. `"code"` is
+  the founder.
+- **Why.** With `code=units` a body's cortex read its senses only through the code: each field at
+  unit length among every other, the largest sums kept. A body whose action follows a bearing or
+  a distance found less of it there, and its memories need the code (records keyed on the code
+  stay readable as the brain learns, and a heard name brings its thing back through the code's
+  conjunctions), so the cortex reads both.
+- **What it reads** (the [forager chamber](benchmarks/forager/README.md), new: an animal's 104
+  senses, `code=128`, modules of 32, taught by a forager that turns to the nearest plant, walks
+  to it and bites it; twelve fresh founders of its declared run). A linear readout of the
+  teacher's turn from the association's settled state: .837 with `"both"` against .756 with the
+  code alone, higher on 12 of 12 (gate F1 holds); the senses themselves hold it at .875. On its
+  own path the brain agrees with the teacher at .601 against .500 and eats 8.0 plants a body in
+  150 moments against 6.2, higher on 12 of 12. On the teacher's path its agreement is .679
+  against .672, higher on 6 of 12: gate F2 (10 of 12) fails. The walks are three in five of
+  those moments, and the brain that reads the bearing turns at more of them; by action it agrees
+  more with the turns and the bites and less with the walks (two founders read after the run).
+  `"observation"` reads .824 and 7.5 plants, and a brain without a code .788 and 6.0.
+- **No change where the code matters** (the [symbols chamber](benchmarks/symbols/README.md)
+  with `--cortex-reads both`, a quick reading of its gates S1 to S7 on four fresh founders
+  against the same founders with the code alone): every gate holds on every founder in both
+  arms, at the same readings, a name heard alone bringing its thing back from the records and in
+  the settled state at 1.00; the controls of S3 move within their bar.
+- A brain with `cortex_reads` other than `"code"` saves as `cadence-brain/5` with the feature
+  `cortex_reads` (the setting under `cortex_reads` in the metadata and the composition), which
+  0.101.0 refuses by name. `describe()` reports it under the layout's `code` as `cortex` and
+  among the genes. `grow` keeps it and refuses to change it, `retune` refuses it, `graft` carries
+  the `observation` region between brains that hold it, and `Lives` refuses it as it refuses a
+  code. Refused with `ValueError`: another value; `"both"` or `"observation"` without
+  `code=units`, beside a learned code, on an image brain or beside a trained module; a custom
+  anatomy that reads both without a population `observation` of one neuron per input
+  (`Genome.composed(..., cortex_reads="both")` lays it out). New public names: `cortex_reads` in
+  `compose`, in the constructor and in `Genome.composed`, and `Brain.observation_index`.
+- `benchmarks/symbols/chamber.py` takes `--cortex-reads`.
+
+### Upgrading from 0.101.0
+
+Nothing to name: a brain composed without `cortex_reads` acts, learns, describes itself and saves
+as on 0.101.0, to the bit, the version string apart (eleven compositions checked against a
+0.101.0 tree: the default brain, a fixed code at one and two modules and with the episodic
+choice, senses by name with the code, a map and surprise, records of bound moments with a voice,
+an image brain with a code, a custom anatomy with a code, a learned code, a held message with
+long-term records). A 0.101.0 file loads and continues; a file of a brain with `cortex_reads`
+needs 0.101.1.
+
+### Also in this release
 
 - **Corrections beside watched episodes, and many streams, on the brain's own path**
   (`benchmarks/coaching/cartpole.py`, twelve founders): each own episode corrected through
@@ -14,6 +91,13 @@
   as it ends.
 - The tuning guide shows how to change a teaching step under a named teaching point
   (`retune(learning=replace(config, eta=...))`).
+- **Tests** (#348): the option combinations, the saved files of earlier releases loaded and
+  continued, and a CI job in which the previous release reads this one's files. In this release
+  the released files gain 0.101.0's, a brain with bound records among them, and the job reads
+  with 0.101.0 and refuses a brain with `cortex_reads` by the feature's name.
+- **Documentation** (#350): the catalogue of parts complete, the settings table of the tuning
+  guide generated from `compose` (`tools/settings_table.py`), one home per concept, and a
+  runnable example in every guide.
 
 ## 0.101.0 - 2026-11-16
 

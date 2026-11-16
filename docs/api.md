@@ -31,7 +31,7 @@ keyword.
 ```text
 Brain.compose(inputs=None, actions=None, *, senses=None, connectome=None, modules=(64,),
               observers=(), lateral=None, teaching=None, scales=None, features=8, field=3,
-              code=None, learned_code=None, attention=False, seed=0, slots=1,
+              code=None, cortex_reads="code", learned_code=None, attention=False, seed=0, slots=1,
               learned_fields=None, ports=0, tied=None, fields_motor=0.0, trained=None,
               **options) -> Brain
 ```
@@ -60,6 +60,15 @@ The composed System 1 brain, with optional System 2 `observers` in the same grap
 - `code=units`: keys the memories on a fixed sparse code of that many units and, for a vector
   brain, makes the sensory region that code
   ([the observation code](senses.md#the-observation-code)).
+- `cortex_reads` (with `code=units`, a vector brain): what the cortex reads. `"code"` (the
+  founder) reads the code; `"both"` (opt-in) adds a population `observation` of one neuron per
+  input that holds the observation itself and projects into the first module beside the code,
+  drawn after every other part; `"observation"` (opt-in) holds the observation in the sensory
+  region and keys the memories on the code alone. Every memory keys on the code whichever the
+  cortex reads. Refused by name: another value, either opt-in without `code`, beside a learned
+  code, on an image brain or beside a trained module, and `"observation"` beside a held message
+  (`message=`), which would hear the observation itself
+  ([what the cortex reads](senses.md#what-the-cortex-reads)).
 - `learned_code=units` (a vector brain, without `code`): adds a `code` region of that many
   neurons that settles with the brain to a learned sparse code of the observation, read by the
   cortex and keyed on by the memories. Its one setting is `learned_code_fields`
@@ -186,8 +195,9 @@ Brain(connectome, *, episodic=True, consolidation=0.05,
       recall=False,
       learning=None,
       reward=None, slots=1, arousal=None, seed=0,
-      backend="cpu", device=None, precision=None, inputs=None, code=None, learned_code=None, apical=0.0,
-      dense_limit=None, learned_fields=None, image=None, ports=0, tied=None, **genes)
+      backend="cpu", device=None, precision=None, inputs=None, code=None, cortex_reads=None,
+      learned_code=None, apical=0.0, dense_limit=None, learned_fields=None, image=None, ports=0,
+      tied=None, surprise=False, **genes)
 ```
 
 Wraps any connectome with populations `association`, `motor` and `sensory` (or
@@ -202,6 +212,10 @@ neuron per sensory neuron (and `longterm_h` for each further head, `LongTermReco
 `code` population of that many neurons with its complete dictionary, lateral and predictor
 synapses ([the learned code](senses.md#the-learned-code)).
 `inputs` names the observation width when the sensory region is a `code` of that width.
+`cortex_reads` names what the cortex reads of a fixed code: `"code"` with `inputs`,
+`"observation"` without them, and `"both"` with `inputs` and a population `observation` of
+`inputs` neurons beside the code (`Genome.composed(..., cortex_reads="both")` lays it out);
+unset, the code with `inputs` and the observation without.
 `learned_fields=features` with `image=(height, width[, channels])` reads that image through
 learned fields whose `features * 9` pools the `sensory` population holds, followed by `ports`
 further neurons for the values a row carries after the image.
@@ -289,6 +303,7 @@ and a `brain.space` that holds no map or a map of another read.
 | `hippocampus` | the associative `SynapticMemory` (with `memory_choice` the episodic place records), or `None` with `episodic=False` |
 | `context_memory` | the episodic context records with `memory_choice` and a positive `memory_context`, else `None` |
 | `sparse_code`, `code_width`, `coded_cortex`, `inputs` | the `PatternSeparator` of `code=units` or `None`; the key width; whether the sensory region is the code; the observation width |
+| `observation_index` | neuron indices of the `observation` population, which holds the observation itself beside the code with `cortex_reads="both"`; empty without it |
 | `senses` | the senses by name, in the order of the observation's columns: each sense's columns as a `slice`, or for a sense with fields a dict of field to `slice`; the declared senses, then `space` (`where` and `what`) for a map in `trained=`, then a trained module's inputs under the module's name; empty for a brain composed with `inputs=` alone ([senses by name](senses.md#senses-by-name)) |
 | `space` | the [`Map`](#the-map-of-things-cadencespacemap) the brain holds, or `None`: the map of `trained=`, which the brain reads as the sense `space`, or a map assigned by hand; saved and loaded with the brain |
 | `fields`, `ports` | the `LearnedFields` of `learned_fields=features` or `None`; the width of the ports read beside its pools (0 without them) |
@@ -332,8 +347,10 @@ and the place records' `fade_keep` under their settings), `heads` for the learne
 (`longterm_attention`, `longterm_motor`, #325) and `recall_strength` for the recall memory's
 strength (`recall_strength`, #336: `strength` under the memory's settings and each slot's depth
 in `memories/recall/depth`), `surprise` for the brain's surprise (#337) and `map` for a held map
-whose sheet carries values or reads surprise, and `bound` for records of bound moments (their
-settings under `bound` in the metadata and the store's arrays under `bound/`). `Brain.load` refuses a file that names a feature
+whose sheet carries values or reads surprise, `bound` for records of bound moments (their
+settings under `bound` in the metadata and the store's arrays under `bound/`), and
+`cortex_reads` for a cortex that reads the observation beside or in place of its fixed code
+(`cortex_reads` in the metadata and the composition, 0.101.1). `Brain.load` refuses a file that names a feature
 this version does not hold, by that name, and a file whose features and contents disagree. A
 later option adds a feature's name and no format name.
 
