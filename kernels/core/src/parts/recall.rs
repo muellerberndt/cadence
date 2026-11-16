@@ -1006,10 +1006,6 @@ impl Recall {
     /// before learns them as its next, and the settled cortex moves on (`witness`).
     pub fn witness(&mut self, observations: F, activation: F) -> Result<(), Error> {
         let x = self.port(observations)?;
-        let moment = match &self.last {
-            Some(last) if last.event.shape == x.shape && last.event.v == x.v => last.clone(),
-            _ => self.moment(x.clone()),
-        };
         let n = x.rows();
         let columns = if activation.shape.len() == 2 { activation.shape[1] } else { 0 };
         if self.association.iter().any(|&k| k < 0 || k as usize >= columns) {
@@ -1018,6 +1014,12 @@ impl Recall {
         if activation.rows() != n {
             return Err(refused("the settled state needs one row per stream"));
         }
+        // the moment the read addressed, where these are its observations (it is not held
+        // after the write)
+        let moment = match self.last.take() {
+            Some(last) if last.event.shape == x.shape && last.event.v == x.v => last,
+            _ => self.moment(x),
+        };
         let cortex: Vec<f64> = (0..n)
             .flat_map(|b| self.association.iter().map(move |&k| (b, k)))
             .map(|(b, k)| activation.v[b * columns + k as usize])
@@ -1068,6 +1070,35 @@ impl Recall {
         // the new slots: the bank less the `drop` oldest and this moment behind them
         let drop = (m + 1).saturating_sub(self.config.capacity as usize);
         let kept = m - drop + 1;
+        if n == 1 && self.keys.v.len() == m * width && self.held.v.len() == m {
+            // one stream: the bank moved along in place
+            if drop > 0 {
+                for bank in [&mut self.keys.v, &mut self.values.v, &mut self.nexts.v] {
+                    bank.copy_within(drop * width.., 0);
+                    bank.truncate((m - drop) * width);
+                }
+                self.held.v.drain(..drop);
+            }
+            self.keys.v.extend_from_slice(row(&key.v, width, 0));
+            self.values.v.extend_from_slice(row(&value.v, width, 0));
+            self.nexts.v.extend(std::iter::repeat_n(0.0, width));
+            self.held.v.push(true);
+            for (_, slot) in successor {
+                if slot >= drop {
+                    let at = (slot - drop) * width;
+                    self.nexts.v[at..at + width].copy_from_slice(row(&value.v, width, 0));
+                }
+            }
+            for bank in [&mut self.keys, &mut self.values, &mut self.nexts] {
+                bank.shape = vec![1, kept, width];
+            }
+            self.held.shape = vec![1, kept];
+            for t in self.told.iter_mut() {
+                *t += 1;
+            }
+            self.focus = focus;
+            return;
+        }
         let mut keys = Vec::with_capacity(n * kept * width);
         let mut values = Vec::with_capacity(n * kept * width);
         let mut nexts = Vec::with_capacity(n * kept * width);
