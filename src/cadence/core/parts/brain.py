@@ -1,6 +1,7 @@
 """A composed brain (``cadence.generic.Brain``) in the core: each part it holds under its
 attribute's name (``arousal.level``, ``recall.keys``, ``brain.efficacy``, ...), as that part's
-module crosses it, the senses it declares and the spine's own state, and ``live``.
+module crosses it, the senses it declares and the spine's own state, and ``live``, ``act``,
+``say`` and ``lesson`` (a lesson of targets, as Wild's watching gives one).
 
 The senses cross as ``senses.<name>`` = ``[start, stop]`` in their order; a sense with fields
 is followed by each field's ``senses.<name>/<field>``. The spine's settings and what a moment
@@ -349,6 +350,18 @@ def _act(observations: Any, *, greedy: bool = False, temperature: Any = None) ->
     return out
 
 
+def _lesson(observations: Any, labels: Any = None, *, targets: Any = None,
+            weights: Any = None) -> dict[str, Any]:
+    out = _rows(observations)
+    if labels is not None:
+        out["labels"] = np.asarray(labels, dtype=np.int64)
+    if targets is not None:
+        out["targets"] = np.atleast_2d(np.asarray(targets, dtype=np.float64))
+    if weights is not None:
+        out["weights"] = np.asarray(weights, dtype=np.float64).reshape(-1)
+    return out
+
+
 def _settled(x: Any) -> dict[str, Any]:
     return {"x": np.array(x, dtype=np.float64)}
 
@@ -375,6 +388,7 @@ def _pair(value: Any) -> dict[str, Any]:
 METHODS = {
     "live": (_live, _action),
     "act": (_act, _action),
+    "lesson": (_lesson, lambda value: {}),
     "say": (lambda observations: {}, lambda value: {"said": np.array(value, dtype=np.float64)}),
     "_observations": (lambda observations: _rows(observations),
                       lambda value: {"x": np.array(value, dtype=np.float64)}),
@@ -391,7 +405,7 @@ def calling(brain: Brain, method: str, args: tuple[Any, ...], kwargs: dict[str, 
     row the bound records were given at it (``given.*``, ``Brain._bound_given``)."""
     named: dict[str, Any] = {}
     given = args[0] if args else kwargs.get("observations")
-    if method in ("live", "act", "say", "_observations") and isinstance(given, Mapping):
+    if method in ("live", "act", "say", "lesson", "_observations") and isinstance(given, Mapping):
         named["observations"] = whole_row(brain, given)
         named["mapping"] = np.bool_(True)
     if method in ("_surprised", "_choose") and brain._bound_given is not None:

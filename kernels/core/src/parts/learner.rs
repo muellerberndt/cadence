@@ -7,7 +7,7 @@
 //! by its `GraphHolder`): its methods take that graph from the caller. `LearnerPart` holds the
 //! two together, as `cadence.core.parts.learner` crosses them.
 
-use super::graph::{Graph, Rows, State};
+use super::graph::{Graph, Nudge, Rows, State, Temperature};
 use crate::lesson;
 use crate::np;
 use crate::state::{Array, Error, Named};
@@ -15,6 +15,54 @@ use crate::{Index, View};
 
 fn refused(text: &str) -> Error {
     Error::Refused(text.to_string())
+}
+
+/// `learning._RELATIVE_TINY`: under the projection-relative floor.
+const RELATIVE_TINY: f64 = 1e-12;
+
+/// The three phases of a lesson (`LearnedState`), every row taught.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Learned {
+    pub free: State,
+    pub nudged: State,
+    pub opposite: State,
+}
+
+/// A view of a run a pass only reads.
+fn seen(x: &[f64]) -> View<f64> {
+    View { p: x.as_ptr() as *mut f64, n0: x.len(), n1: 1, len: x.len() }
+}
+
+/// A view of a run a pass writes.
+fn held(x: &mut [f64]) -> View<f64> {
+    View { p: x.as_mut_ptr(), n0: x.len(), n1: 1, len: x.len() }
+}
+
+fn index(x: &[i64]) -> Index {
+    Index::Wide(View { p: x.as_ptr() as *mut i64, n0: x.len(), n1: 1, len: x.len() })
+}
+
+/// `_projections`: the block each synapse's entry lies in (`layout.block_of_edge`) and the
+/// range each neuron lies in.
+fn projections(graph: &Graph) -> (Vec<i64>, Vec<i64>) {
+    let blocks = graph.edge_index.iter()
+        .map(|&x| graph.offset.partition_point(|&o| o <= x) as i64 - 1).collect();
+    let ranges = (0..graph.n() as i64)
+        .map(|i| graph.starts.partition_point(|&s| s <= i) as i64 - 1).collect();
+    (blocks, ranges)
+}
+
+/// Each group's root mean square, `sqrt(power / count)` of `_group_power` (its squares summed
+/// in index order, its members at least one).
+fn group_roots(values: &[f64], group: &[i64], size: usize) -> Result<Vec<f64>, Error> {
+    let (mut power, mut count) = (vec![0.0; size], vec![0.0; size]);
+    let code = unsafe {
+        lesson::group_power_pass(seen(values), index(group), held(&mut power), held(&mut count))
+    };
+    if code < 0 {
+        return Err(Error::Shape("the group power's pass refused its arrays".into()));
+    }
+    Ok(power.iter().zip(&count).map(|(p, c)| np::sqrt(p / c)).collect())
 }
 
 /// A lesson's label for a motor slot it leaves open (`learning.OPEN`).
@@ -556,6 +604,305 @@ impl Learner {
         let scale_step = if d.is_empty() { 0.0 } else { mean_size(&mut d) };
         self.rooms.d = d;
         Ok(vec![("scale_step", scale_step), ("bias_step", mean_size(&mut step_bias.clone()))])
+    }
+
+    // -- a lesson's step (`step` with targets)
+
+    /// `soft_targets(p)`: a distribution over the outputs per row (`rows` of `outputs`, each
+    /// slot's summing to one) as the target activation over every neuron, `(rows, n)`.
+    pub fn soft_targets(&self, p: &[f64], rows: usize, cols: usize) -> Result<Vec<f64>, Error> {
+        if cols != self.output_index.len() || p.len() != rows * cols {
+            return Err(refused(
+                "targets must have shape (batch, outputs): one probability per output neuron"));
+        }
+        if !p.iter().all(|x| x.is_finite() && *x >= 0.0) {
+            return Err(refused("target probabilities must be finite and nonnegative"));
+        }
+        for row in p.chunks_exact(cols.max(1)) {
+            for (k, &start) in self.slot_offsets.iter().enumerate() {
+                let stop = self.slot_offsets.get(k + 1).map_or(cols, |&s| s as usize);
+                let total = np::sum(&row[start as usize..stop]);
+                if !((total - 1.0).abs() <= 1e-6) {
+                    return Err(refused("target probabilities must sum to one over each output slot"));
+                }
+            }
+        }
+        let n = self.n();
+        let mut target = vec![0.0; rows * n];
+        for r in 0..rows {
+            for (j, &k) in self.output_index.iter().enumerate() {
+                target[r * n + k as usize] = p[r * cols + j];
+            }
+        }
+        Ok(target)
+    }
+
+    /// `nudge_for(target, beta, weight, apical_gain)`: the outputs pulled toward `target`.
+    fn nudge_for(&self, target: &[f64], batch: usize, beta: f64, weight: Option<&[f64]>,
+                 held: Option<&Vec<f64>>, pools: usize) -> Nudge {
+        let cfg = &self.config;
+        Nudge {
+            target: Rows { data: target.to_vec(), rows: batch, cols: self.n(), ndim: 2 },
+            mask: self.output_mask.clone(),
+            beta: beta / self.slot_count() as f64,
+            temperature: cfg.cross_entropy.then_some(Temperature::One(cfg.temperature)),
+            weight: weight.map(|w| w.to_vec()),
+            groups: self.output_groups.clone(),
+            anchor: None,
+            anchor_gain: None,
+            apical_gain: held.map(|g| Rows { data: g.clone(), rows: batch, cols: pools, ndim: 2 }),
+        }
+    }
+
+    /// `step(drive, None, warm=, weight=, targets=)`, the lesson of `target` (`(batch, n)`, as
+    /// `soft_targets` makes it) on the finite path: the free phase from `warm` and its check,
+    /// the two nudged phases under the apical gain the free phase set, and the update from
+    /// their contrast; `graph` becomes the update's graph. Every row is taught (targets have
+    /// no answer to agree with). Qualified teaching is not held here.
+    pub fn lesson(&mut self, graph: &mut Graph, drive: &Rows, warm: Option<&State>,
+                  target: &[f64], weight: Option<&[f64]>) -> Result<Learned, Error> {
+        let n = self.n();
+        let batch = target.len() / n.max(1);
+        if drive.ndim != 2 || drive.rows != batch {
+            return Err(refused("drive and labels must have the same batch size"));
+        }
+        let cfg = self.config.clone();
+        if cfg.qualified {
+            return Err(Error::Missing("qualified teaching in the core's lesson".into()));
+        }
+        let mut free = self.free(graph, drive, warm)?;
+        // `_diagnostic`: the free phase's check keeps its record on the state, as the nudged
+        // phases read it
+        graph.check(drive, &mut free, None, None)?;
+        let held = graph.apical_gain(drive, &free)?;
+        let pools = graph.pools();
+        let pull = self.nudge_for(target, batch, cfg.beta, weight, held.as_ref(), pools);
+        let push = self.nudge_for(target, batch, -cfg.beta, weight, held.as_ref(), pools);
+        let tolerance = if cfg.nudged_fixed { None } else { cfg.tolerance };
+        let nudged = graph.settle_batch(drive, cfg.nudged_steps, Some(&free), None, Some(&pull),
+                                        tolerance)?;
+        let opposite = graph.settle_batch(drive, cfg.nudged_steps, Some(&free), None, Some(&push),
+                                          tolerance)?;
+        self.update(graph, &free, &nudged, &opposite)?;
+        Ok(Learned { free, nudged, opposite })
+    }
+
+    /// `contrast(free, nudged, opposite)`: each synapse's and each neuron's contrast of the two
+    /// nudged phases over their span, the mean over the rows (`block_contrast` where the graph
+    /// is in blocks and has more than four synapses a neuron).
+    pub fn contrast(&self, graph: &Graph, plus: &State, minus: &State)
+                    -> Result<(Vec<f64>, Vec<f64>), Error> {
+        let n = self.n();
+        let batch = plus.batch;
+        if batch == 0 || minus.batch != batch || plus.activation.len() != batch * n
+            || minus.activation.len() != batch * n
+        {
+            return Err(refused("all phases must have the same nonempty (batch, neurons) shape"));
+        }
+        let span = 2.0 * self.config.beta;
+        let (s_plus, s_minus) = (&plus.activation, &minus.activation);
+        let e = graph.synapses();
+        let mut edges = vec![0.0; e];
+        if e > 4 * n {
+            // `block_contrast`: each block's `a+ᵀ (b+ - b-)`, plus `(a+ - a-)ᵀ b-` where the
+            // block's sources moved, then each synapse's entry over `batch * span` (`gather`)
+            let size = *graph.offset.last().unwrap_or(&0) as usize;
+            let mut g = vec![0.0; size];
+            let at = |s: &[f64], b: usize, i: usize| s[b * n + i];
+            for k in 0..graph.pair_pre.len() {
+                let (a, bb) = (graph.pair_pre[k] as usize, graph.pair_post[k] as usize);
+                let (a0, a1) = (graph.starts[a] as usize, graph.starts[a + 1] as usize);
+                let (b0, b1) = (graph.starts[bb] as usize, graph.starts[bb + 1] as usize);
+                let (rows, cols) = (a1 - a0, b1 - b0);
+                let place = &mut g[graph.offset[k] as usize..graph.offset[k + 1] as usize];
+                let moved = (0..batch).any(|b| (a0..a1).any(|i| at(s_plus, b, i) != at(s_minus, b, i)));
+                for i in 0..rows {
+                    let ap: Vec<f64> = (0..batch).map(|b| at(s_plus, b, a0 + i)).collect();
+                    let ad: Vec<f64> = (0..batch).map(|b| at(s_plus, b, a0 + i) - at(s_minus, b, a0 + i)).collect();
+                    for j in 0..cols {
+                        let bd: Vec<f64> = (0..batch).map(|b| at(s_plus, b, b0 + j) - at(s_minus, b, b0 + j)).collect();
+                        let mut v = if batch == 1 { ap[0] * bd[0] } else { np::dot(&ap, &bd) };
+                        if moved {
+                            let bm: Vec<f64> = (0..batch).map(|b| at(s_minus, b, b0 + j)).collect();
+                            v += if batch == 1 { ad[0] * bm[0] } else { np::dot(&ad, &bm) };
+                        }
+                        place[i * cols + j] = v;
+                    }
+                }
+            }
+            let code = unsafe {
+                let index = Index::Wide(View { p: graph.edge_index.as_ptr() as *mut i64, n0: e,
+                                               n1: 1, len: e });
+                lesson::pick_pass(seen(&g), index, batch as f64 * span, held(&mut edges))
+            };
+            if code < 0 {
+                return Err(Error::Shape("the gather refused its arrays".into()));
+            }
+        } else {
+            for (k, edge) in edges.iter_mut().enumerate() {
+                let (i, j) = (graph.pre[k] as usize, graph.post[k] as usize);
+                // `products.mean(axis=0)`: the rows added in order to +0.0
+                let mut total = 0.0;
+                for b in 0..batch {
+                    let (a_plus, a_minus) = (s_plus[b * n + i], s_minus[b * n + i]);
+                    let (b_plus, b_minus) = (s_plus[b * n + j], s_minus[b * n + j]);
+                    total += a_plus * (b_plus - b_minus) + (a_plus - a_minus) * b_minus;
+                }
+                *edge = total / batch as f64 / span;
+            }
+        }
+        let moved: Vec<f64> = s_plus.iter().zip(s_minus).map(|(p, m)| p - m).collect();
+        let neurons = np::sum_rows(&moved, n).iter().map(|s| s / batch as f64 / span).collect();
+        Ok((edges, neurons))
+    }
+
+    /// `update(free, nudged, opposite)`: the contrast's step through the optimizer's moments
+    /// (`_compiled_step`), then `apply`; the moments as they were where it is refused.
+    pub fn update(&mut self, graph: &mut Graph, free: &State, nudged: &State, opposite: &State)
+                  -> Result<Vec<(&'static str, f64)>, Error> {
+        if free.batch != nudged.batch || free.activation.len() != nudged.activation.len() {
+            return Err(refused("all phases must have the same nonempty (batch, neurons) shape"));
+        }
+        let before = (self.velocity.clone(), self.velocity_bias.clone(),
+                      self.second_moment.clone(), self.second_moment_bias.clone());
+        let found = self.updated(graph, nudged, opposite);
+        if found.is_err() {
+            (self.velocity, self.velocity_bias, self.second_moment, self.second_moment_bias) =
+                before;
+        }
+        found
+    }
+
+    fn updated(&mut self, graph: &mut Graph, nudged: &State, opposite: &State)
+               -> Result<Vec<(&'static str, f64)>, Error> {
+        let (synapse_term, neuron_term) = self.contrast(graph, nudged, opposite)?;
+        if !synapse_term.iter().chain(&neuron_term).all(|x| x.is_finite()) {
+            return Err(refused("phase contrasts must be finite"));
+        }
+        if synapse_term.is_empty() {
+            return Err(Error::Missing("a lesson of a graph without synapses in the core".into()));
+        }
+        let count = self.contrast_updates + 1;
+        let held = (self.velocity.clone(), self.second_moment.clone(),
+                    self.velocity_bias.clone(), self.second_moment_bias.clone());
+        let (delta_scale, delta_bias) = self.compiled_step(graph, &synapse_term, &neuron_term,
+                                                           count)?;
+        self.hold_moments(graph, held);
+        if ![&self.velocity, &self.velocity_bias, &self.second_moment, &self.second_moment_bias]
+            .iter().all(|m| m.iter().all(|x| x.is_finite()))
+        {
+            return Err(refused("optimizer moments must remain finite"));
+        }
+        let report = self.apply(graph, &delta_scale, &delta_bias)?;
+        self.contrast_updates += 1;
+        Ok(report)
+    }
+
+    /// `_hold_moments(before)`: the moments of the synapses (and the neurons) a rate of zero
+    /// holds stay as they were.
+    fn hold_moments(&mut self, graph: &Graph, before: (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>)) {
+        let Some(rate) = &self.synapse_rate else { return };
+        if rate.is_empty() || rate.iter().all(|&r| r > 0.0) {
+            return;
+        }
+        let zero: Vec<bool> = rate.iter().map(|&r| r == 0.0).collect();
+        for (k, &z) in zero.iter().enumerate() {
+            if z {
+                self.velocity[k] = before.0[k];
+                self.second_moment[k] = before.1[k];
+            }
+        }
+        if let Some(neurons) = self.held_neurons(graph) {
+            for (i, &h) in neurons.iter().enumerate() {
+                if h {
+                    self.velocity_bias[i] = before.2[i];
+                    self.second_moment_bias[i] = before.3[i];
+                }
+            }
+        }
+    }
+
+    /// `_compiled_step(raw_synapse, raw_neuron, count)`: the moments, the normalization and
+    /// the rates of a contrast in the compiled passes (`optimizer_step`, `relative_floor`).
+    fn compiled_step(&mut self, graph: &Graph, raw_synapse: &[f64], raw_neuron: &[f64],
+                     count: i64) -> Result<(Vec<f64>, Vec<f64>), Error> {
+        let cfg = self.config.clone();
+        let (m, rho) = (cfg.momentum, cfg.normalize);
+        // Python's float ** int: the C library's pow
+        let momentum_correction = if m > 0.0 { 1.0 - np::pow(m, count as f64) } else { 1.0 };
+        let rho_correction = if rho > 0.0 { 1.0 - np::pow(rho, count as f64) } else { 1.0 };
+        let mut neuron_term = raw_neuron.to_vec();
+        if m > 0.0 {
+            for (i, v) in self.velocity_bias.iter_mut().enumerate() {
+                *v = m * *v + (1.0 - m) * raw_neuron[i];
+                neuron_term[i] = *v / momentum_correction;
+            }
+        }
+        let (group, ranges) = projections(graph);
+        let e = raw_synapse.len();
+        let (has_momentum, has_normalize) = (m > 0.0, rho > 0.0);
+        let mut velocity = if has_momentum { vec![0.0; e] } else { self.velocity.clone() };
+        let mut second = if has_normalize { vec![0.0; e] } else { self.second_moment.clone() };
+        let mut step = vec![0.0; e];
+        let code = unsafe {
+            if !(has_normalize && cfg.normalize_relative != 0.0) {
+                lesson::plain_pass(seen(raw_synapse), seen(&self.velocity),
+                                   seen(&self.second_moment), m, 1.0 - m, momentum_correction,
+                                   rho, 1.0 - rho, rho_correction, has_momentum as i32,
+                                   has_normalize as i32, cfg.eta, cfg.normalize_floor,
+                                   held(&mut velocity), held(&mut second), held(&mut step))
+            } else {
+                let (mut term, mut root) = (vec![0.0; e], vec![0.0; e]);
+                let mut code = lesson::moments_pass(
+                    seen(raw_synapse), seen(&self.velocity), seen(&self.second_moment), m,
+                    1.0 - m, momentum_correction, rho, 1.0 - rho, rho_correction,
+                    has_momentum as i32, held(&mut velocity), held(&mut second), held(&mut term),
+                    held(&mut root));
+                if code >= 0 {
+                    let groups = group.iter().max().map_or(0, |&g| g as usize + 1);
+                    let group_root = group_roots(&root, &group, groups)?;
+                    code = lesson::step_pass(seen(&term), seen(&root), index(&group),
+                                             seen(&group_root), cfg.eta, cfg.normalize_relative,
+                                             RELATIVE_TINY, held(&mut step));
+                }
+                code
+            }
+        };
+        if code < 0 {
+            return Err(Error::Shape("the optimizer's pass refused its arrays".into()));
+        }
+        if has_momentum {
+            self.velocity = velocity;
+        }
+        if has_normalize {
+            self.second_moment = second;
+            for (i, v) in self.second_moment_bias.iter_mut().enumerate() {
+                *v = rho * *v + (1.0 - rho) * (raw_neuron[i] * raw_neuron[i]);
+            }
+            let root: Vec<f64> = self.second_moment_bias.iter()
+                .map(|v| np::sqrt(v / rho_correction)).collect();
+            let rms_bias = if cfg.normalize_relative != 0.0 {
+                // `_relative_divisor`: `relative_floor` over each neuron's range
+                let size = ranges.iter().max().map_or(0, |&g| g as usize + 1);
+                let group_root = group_roots(&root, &ranges, size)?;
+                let mut out = vec![0.0; root.len()];
+                let code = unsafe {
+                    lesson::divisor_pass(seen(&root), index(&ranges), seen(&group_root),
+                                         cfg.normalize_relative, RELATIVE_TINY, held(&mut out))
+                };
+                if code < 0 {
+                    return Err(Error::Shape("the divisor's pass refused its arrays".into()));
+                }
+                out
+            } else {
+                root.iter().map(|r| r + cfg.normalize_floor).collect()
+            };
+            for (t, r) in neuron_term.iter_mut().zip(&rms_bias) {
+                *t /= r;
+            }
+        }
+        let delta_bias = neuron_term.iter().map(|t| cfg.eta_bias * t).collect();
+        Ok((step, delta_bias))
     }
 
     /// The efficacies the graph held before the latest update (`apply`), which the update

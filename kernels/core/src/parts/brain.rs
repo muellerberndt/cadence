@@ -1,9 +1,10 @@
 //! A composed brain (`cadence.generic.Brain`): its parts, each under its attribute's name, the
 //! senses it declares, and the moment that runs them in the Python's order (`live`, `act`,
-//! `say`, with `generic.py`'s glue: `_observations`, `_code`, `_equal_senses`, `_bound_keyed`,
-//! `_bound_complete`, `_stimulus` through the memories in `Memories.ORDER`, `_qualified`,
-//! `_equilibrate`, `_read_surprise`, `_residual_read`, `_surprised`, `_bound_named`,
-//! `_choose`, `_hear_episode`, `_bound_hear`, `_moment_surprise`, `_record`).
+//! `say`, `lesson`, with `generic.py`'s glue: `_observations`, `_code`, `_equal_senses`,
+//! `_bound_keyed`, `_bound_complete`, `_stimulus` through the memories in `Memories.ORDER`,
+//! `_qualified`, `_equilibrate`, `_read_surprise`, `_residual_read`, `_surprised`,
+//! `_bound_named`, `_choose`, `_hear_episode`, `_bound_hear`, `_moment_surprise`, `_record`,
+//! `_teach`).
 //!
 //! A live moment is one stream: one row of the brain's whole width (`inputs`), a silent sense
 //! all zeros, as the Python builds the row from the senses it is given by name. The parts are
@@ -14,7 +15,7 @@ use super::arousal::Arousal;
 use super::bound::Bound;
 use super::code::Code;
 use super::graph::{self, Equilibrium, Graph, State};
-use super::hearing::Hearing;
+use super::hearing::{Graph as HeardGraph, Hearing};
 use super::history::History;
 use super::learner::Learner;
 use super::map::Map;
@@ -1525,6 +1526,82 @@ impl Brain {
         Ok(action)
     }
 
+    /// `lesson(observations, targets=, weights=)`: the targets (one row of the outputs, each
+    /// slot's summing to one) taught at a row given by name without acting on it, `weights`
+    /// (one number for the row) scaling its pull; refused while a sampled action's outcome is
+    /// pending, before anything changes.
+    pub fn lesson(&mut self, observations: &[f64], targets: &[f64], weights: Option<&[f64]>)
+                  -> Result<(), Error> {
+        self.lesson_row(observations, true, targets, weights)
+    }
+
+    pub fn lesson_row(&mut self, observations: &[f64], mapping: bool, targets: &[f64],
+                      weights: Option<&[f64]>) -> Result<(), Error> {
+        let x = self.observations(observations, mapping)?;
+        let learner = self.learner.as_ref().ok_or_else(|| fault("no learner"))?;
+        // `soft_targets`, refused before anything changes; one row, as the observations
+        let target = learner.soft_targets(targets, 1, targets.len())?;
+        if learner.config.rehearsal != 0.0 {
+            return Err(refused("learning_rehearsal replays the labels of lessons; teach targets \
+                                to a brain without it"));
+        }
+        let weights = match weights {
+            Some(w) => {
+                if w.len() != 1 || !w.iter().all(|v| v.is_finite() && *v >= 0.0) {
+                    return Err(refused("weights must be one finite nonnegative number per row"));
+                }
+                // a weight of one is the lesson without weights, to the bit
+                (!w.iter().all(|&v| v == 1.0)).then(|| w.to_vec())
+            }
+            None => None,
+        };
+        if self.actor()?.free.as_ref().is_some_and(|f| f.batch != 1) {
+            return Err(refused("lesson batch must match the live streams; reset for new streams"));
+        }
+        if self.actor()?.pending.is_some() {
+            return Err(refused("a sampled action awaits its outcome; report it with step or \
+                                learn first"));
+        }
+        self.teach(&x, &target, weights.as_deref())
+    }
+
+    /// `_teach(x, None, targets=, weights=)`: the moment's drive as an act reads it, the
+    /// learner's step from the stream's activity, then the recall memory's and the carried
+    /// gains' lessons on its phases.
+    fn teach(&mut self, x: &[f64], target: &[f64], weights: Option<&[f64]>) -> Result<(), Error> {
+        self.prepare(x)?;
+        let drive = self.moment_drive(x)?;
+        let warm = self.actor()?.free.clone();  // `_warm(drive, _activity())`
+        let learned = {
+            let learner = self.learner.as_mut().ok_or_else(|| fault("no learner"))?;
+            let graph = self.brain.as_mut().ok_or_else(|| fault("no graph"))?;
+            learner.lesson(graph, &graph_rows(&drive), warm.as_ref(), target, weights)?
+        };
+        let n = self.graph()?.n();
+        let (plus, minus) = (&learned.nudged, &learned.opposite);
+        if let Some(recall) = self.recall.as_mut() {
+            let weights = self.brain.as_ref().unwrap().weights();
+            recall.learn(weights, F { shape: vec![plus.batch, n], v: plus.activation.clone() },
+                         F { shape: vec![minus.batch, n], v: minus.activation.clone() })?;
+        }
+        if self.hearing.is_some() {
+            self.hearing_in()?;
+            let graph = self.brain.as_ref().unwrap();
+            let heard = HeardGraph { weights: std::borrow::Cow::Borrowed(graph.weights()),
+                                     efficacy: true, parallel: graph.parallel_synapses(),
+                                     device: false };
+            let rows = |s: &State| Rows { rows: s.batch, cols: n, data: s.activation.clone() };
+            let beta = self.learner.as_ref().unwrap().config.beta;
+            let hearing = self.hearing.as_mut().unwrap();
+            hearing.compiled_moment = false;
+            hearing.learn(&rows(plus), &rows(minus), beta, &heard)?;
+            self.hearing_out()?;
+        }
+        self.prepared = None;
+        self.basal_ganglia.as_mut().unwrap().drive = None;
+        Ok(())
+    }
+
     // -- calls by name (the replay's)
 
     pub fn call(&mut self, method: &str, args: &Named, out: &mut Named) -> Result<(), Error> {
@@ -1556,6 +1633,15 @@ impl Brain {
                 let action = self.act_row(&row("observations")?, flag(args, "mapping")?,
                                           flag(args, "greedy")?, one_of("temperature")?)?;
                 out.put("action", Array::from_i64(&[action.len()], &action));
+            }
+            "lesson" => {
+                if args.has("labels") {
+                    return Err(Error::Missing("a lesson of labels in the core".into()));
+                }
+                let targets = row("targets")?;
+                let weights = if args.has("weights") { Some(args.f64s("weights")?) } else { None };
+                self.lesson_row(&row("observations")?, flag(args, "mapping")?, &targets,
+                                weights.as_deref())?;
             }
             "_observations" => {
                 let x = self.observations(&row("observations")?, flag(args, "mapping")?)?;
