@@ -6,6 +6,8 @@ pub mod brain;
 pub mod code;
 pub mod hearing;
 pub mod history;
+pub mod map;
+pub mod physics;
 pub mod recall;
 pub mod surprise;
 pub mod trace;
@@ -55,6 +57,11 @@ pub fn call(part: &str, method: &str, state: &Named, args: &Named) -> Result<Nam
         }
         "hearing" => {
             let mut held = hearing::Hearing::import(state)?;
+            held.call(method, args, &mut out)?;
+            held.export(&mut after);
+        }
+        "map" => {
+            let mut held = map::Map::import(state)?;
             held.call(method, args, &mut out)?;
             held.export(&mut after);
         }
