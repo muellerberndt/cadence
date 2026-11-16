@@ -332,6 +332,24 @@ pub struct Map {
     pub motion: Vec<f64>,
     pub surprise: Option<Surprise>,
     graph: std::sync::Arc<Graph>,
+    /// The map a moment's forecast is lived on (`_expected`), kept for the next moment's.
+    ahead: Ahead,
+}
+
+/// The room of a moment's forecast: no state, a copy starts without it.
+#[derive(Default)]
+struct Ahead(Option<Box<Map>>);
+
+impl Clone for Ahead {
+    fn clone(&self) -> Ahead {
+        Ahead(None)
+    }
+}
+
+impl std::fmt::Debug for Ahead {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Ahead")
+    }
 }
 
 impl Map {
@@ -426,6 +444,7 @@ impl Map {
             motion,
             surprise,
             graph: std::sync::Arc::new(Graph::import(s)?),
+            ahead: Ahead::default(),
         };
         if out.potential.len() != count * width || out.clock.len() != count
             || out.doubt.len() != count || out.lost.len() != width
@@ -760,12 +779,62 @@ impl Map {
 
     // -- one moment
 
-    /// The sheet the map carries into the next moment (`_expected`).
-    fn expected(&self) -> Result<Vec<f64>, Error> {
-        match &self.physics {
-            Some(p) if p.taught() => Ok(self.forecast(1)?.potential),
-            _ => Ok(self.potential.clone()),
+    /// The sheet the map carries into the next moment (`_expected`): `forecast(1)`'s, lived
+    /// on the map kept for it, which takes this map's state over in its own room.
+    fn expected(&mut self) -> Result<Vec<f64>, Error> {
+        if !self.physics.as_ref().is_some_and(|p| p.taught()) {
+            return Ok(self.potential.clone());
         }
+        let mut ahead = match self.ahead.0.take() {
+            Some(mut held) => {
+                held.take_over(self);
+                held
+            }
+            None => Box::new(self.clone()),
+        };
+        // `forecast`: no surprise, no trace, the physics not learning, one moment, nothing seen
+        ahead.surprise = None;
+        ahead.trace = false;
+        if let Some(p) = ahead.physics.as_mut() {
+            p.learning = false;
+        }
+        ahead.moment(&[], &mut Lit::Nothing)?;
+        let expected = ahead.potential.clone();
+        self.ahead.0 = Some(ahead);
+        Ok(expected)
+    }
+
+    /// This map as `other.clone()` would make it, in this map's own room (a forecast's map;
+    /// the cells' surprise is left out, as a forecast drops it).
+    fn take_over(&mut self, other: &Map) {
+        let Map {
+            plane, nx, ny, width, units, kinds, groups, level, empty, reach, step, stride,
+            margin, floor, trace, codes, centers, low, size, offsets, density, potential, clock,
+            lost, doubt, reading, sensed, views, identity, work, physics, motion,
+            surprise: _, graph, ahead: _,
+        } = other;
+        (self.plane, self.nx, self.ny, self.width, self.units, self.kinds) =
+            (*plane, *nx, *ny, *width, *units, *kinds);
+        self.groups.clone_from(groups);
+        (self.level, self.empty, self.reach, self.step, self.stride, self.margin, self.floor,
+         self.trace) = (*level, *empty, *reach, *step, *stride, *margin, *floor, *trace);
+        self.codes.clone_from(codes);
+        self.centers.clone_from(centers);
+        (self.low, self.size) = (*low, *size);
+        self.offsets.clone_from(offsets);
+        self.density.clone_from(density);
+        self.potential.clone_from(potential);
+        self.clock.clone_from(clock);
+        self.lost.clone_from(lost);
+        self.doubt.clone_from(doubt);
+        self.reading.clone_from(reading);
+        self.sensed.clone_from(sensed);
+        self.views.clone_from(views);
+        (self.identity, self.work) = (*identity, *work);
+        self.physics.clone_from(physics);
+        self.motion.clone_from(motion);
+        self.surprise = None;
+        self.graph = graph.clone();
     }
 
     /// `forecast(moments)`: the map that many moments on as its physics predicts, with nothing
