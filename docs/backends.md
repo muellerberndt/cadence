@@ -93,9 +93,9 @@ a load to other last bits with the thread variables unset than at one thread, wh
 before the save read the same at either count, and each count repeated its own bits (#315). For
 a reloaded life that repeats to the bit on another run or machine, set
 `OMP_NUM_THREADS=OPENBLAS_NUM_THREADS=MKL_NUM_THREADS=1` before NumPy is imported. On the
-compiled kernel a life takes the same actions at any BLAS thread count, and on some machines its
-saved arrays differ in the last bits at two threads against one (Ubuntu with Python 3.12 on CI;
-#315). On some machines the compiled kernel also continues a brain with a held message from its
+compiled kernel a life takes the same actions and saves the same arrays at any BLAS thread count;
+on some machines one value of the saved report of the last learning step (`last_learning`)
+differs by one ulp at two threads against one (#315). On some machines the compiled kernel also continues a brain with a held message from its
 save in other last bits, with the same actions (#346). The NumPy loop at one BLAS thread
 repeats to the bit.
 
