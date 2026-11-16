@@ -232,3 +232,95 @@ pub unsafe extern "C" fn core_call(
         Err(_) => -3,
     }
 }
+
+// -- brains held between moments: a handle each, their state in the core ---------------------
+
+use std::sync::Mutex;
+
+static BRAINS: Mutex<Vec<Option<parts::brain::Brain>>> = Mutex::new(Vec::new());
+
+/// A brain from its state (named arrays, `cadence.core.parts.brain.state_of`): its handle (0 or
+/// more), or a negative code.
+///
+/// # Safety
+/// `state` is the caller's buffer of `len` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn core_brain_new(state: *const u8, len: usize) -> i64 {
+    let named = match Named::read(std::slice::from_raw_parts(state, len)) {
+        Ok(x) => x,
+        Err(_) => return -2,
+    };
+    let brain = match parts::brain::Brain::import(&named) {
+        Ok(x) => x,
+        Err(_) => return -3,
+    };
+    let mut held = BRAINS.lock().unwrap();
+    if let Some(free) = held.iter().position(|b| b.is_none()) {
+        held[free] = Some(brain);
+        return free as i64;
+    }
+    held.push(Some(brain));
+    held.len() as i64 - 1
+}
+
+/// One method of a held brain (`live`, ...) on named arguments; 0 and what it returned, or a
+/// negative code (-4 for a handle that holds no brain).
+///
+/// # Safety
+/// The pointers are the caller's buffers of the given lengths.
+#[no_mangle]
+pub unsafe extern "C" fn core_brain_call(
+    handle: i64, method: *const u8, method_len: usize, args: *const u8, args_len: usize,
+    out: *mut *mut u8, out_len: *mut usize,
+) -> i32 {
+    let method = match std::str::from_utf8(std::slice::from_raw_parts(method, method_len)) {
+        Ok(x) => x,
+        Err(_) => return -1,
+    };
+    let args = match Named::read(std::slice::from_raw_parts(args, args_len)) {
+        Ok(x) => x,
+        Err(_) => return -2,
+    };
+    let mut held = BRAINS.lock().unwrap();
+    let brain = match held.get_mut(handle as usize).and_then(|b| b.as_mut()) {
+        Some(b) if handle >= 0 => b,
+        _ => return -4,
+    };
+    let mut named = Named::new();
+    match brain.call(method, &args, &mut named) {
+        Ok(()) => {
+            give(named.write(), out, out_len);
+            0
+        }
+        Err(_) => -3,
+    }
+}
+
+/// A held brain's whole state (named arrays), for a checkpoint, an inheritance or a panel.
+///
+/// # Safety
+/// `out` and `out_len` receive the caller's bytes, released with `core_release`.
+#[no_mangle]
+pub unsafe extern "C" fn core_brain_export(handle: i64, out: *mut *mut u8, out_len: *mut usize) -> i32 {
+    let held = BRAINS.lock().unwrap();
+    match held.get(handle as usize).and_then(|b| b.as_ref()) {
+        Some(b) if handle >= 0 => {
+            let mut named = Named::new();
+            b.export(&mut named);
+            give(named.write(), out, out_len);
+            0
+        }
+        _ => -4,
+    }
+}
+
+/// Let a held brain go.
+#[no_mangle]
+pub extern "C" fn core_brain_drop(handle: i64) {
+    let mut held = BRAINS.lock().unwrap();
+    if handle >= 0 {
+        if let Some(slot) = held.get_mut(handle as usize) {
+            *slot = None;
+        }
+    }
+}

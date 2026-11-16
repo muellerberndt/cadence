@@ -90,6 +90,17 @@ class Core:
         lib.core_call.argtypes = [ctypes.c_char_p, ctypes.c_size_t] * 2 + [
             ctypes.c_char_p, ctypes.c_size_t] * 2 + [ctypes.POINTER(ctypes.c_void_p),
                                                      ctypes.POINTER(ctypes.c_size_t)]
+        lib.core_brain_new.restype = ctypes.c_int64
+        lib.core_brain_new.argtypes = [ctypes.c_char_p, ctypes.c_size_t]
+        lib.core_brain_call.restype = ctypes.c_int32
+        lib.core_brain_call.argtypes = [ctypes.c_int64, ctypes.c_char_p, ctypes.c_size_t,
+                                        ctypes.c_char_p, ctypes.c_size_t,
+                                        ctypes.POINTER(ctypes.c_void_p),
+                                        ctypes.POINTER(ctypes.c_size_t)]
+        lib.core_brain_export.restype = ctypes.c_int32
+        lib.core_brain_export.argtypes = [ctypes.c_int64, ctypes.POINTER(ctypes.c_void_p),
+                                          ctypes.POINTER(ctypes.c_size_t)]
+        lib.core_brain_drop.argtypes = [ctypes.c_int64]
         lib.core_probe.restype = ctypes.c_int32
         lib.core_probe.argtypes = [ctypes.c_char_p, ctypes.c_size_t, ctypes.c_char_p,
                                    ctypes.c_size_t, ctypes.POINTER(ctypes.c_void_p),
@@ -118,6 +129,27 @@ class Core:
         after = {k[6:]: v for k, v in both.items() if k.startswith("state:")}
         out = {k[4:]: v for k, v in both.items() if k.startswith("out:")}
         return after, out
+
+    def brain(self, state: Mapping[str, Any]) -> int:
+        """A brain held in the core from its state (``cadence.core.parts.brain.state_of``):
+        its handle."""
+        data = pack(state)
+        handle = int(self.lib.core_brain_new(data, len(data)))
+        if handle < 0:
+            raise RuntimeError(f"cadence core: the brain's state refused ({handle})")
+        return handle
+
+    def brain_call(self, handle: int, method: str, args: Mapping[str, Any]) -> dict[str, Any]:
+        """One method of a held brain (``live``, ...): what it returned."""
+        m, a = method.encode(), pack(args)
+        return unpack(self._taken(self.lib.core_brain_call, int(handle), m, len(m), a, len(a)))
+
+    def brain_state(self, handle: int) -> dict[str, np.ndarray]:
+        """A held brain's whole state."""
+        return unpack(self._taken(self.lib.core_brain_export, int(handle)))
+
+    def brain_drop(self, handle: int) -> None:
+        self.lib.core_brain_drop(int(handle))
 
     def probe(self, name: str, **named: Any) -> dict[str, np.ndarray]:
         """One of the core's primitives on named arrays (the checks against NumPy)."""

@@ -39,14 +39,31 @@ impl Brain {
         }
     }
 
-    pub fn call(&mut self, method: &str, _args: &Named, _out: &mut Named) -> Result<(), Error> {
+    /// `Brain.live(observations, reward=, done=, salience=, decision_id=)`: one moment of a
+    /// continuing life, the action per motor slot. Refused by name while the brain holds a
+    /// part the core does not.
+    pub fn live(&mut self, observations: &[f64], reward: Option<f64>, done: Option<bool>,
+                salience: Option<f64>, decision_id: Option<i64>) -> Result<Vec<i64>, Error> {
+        let _ = (observations, reward, done, salience, decision_id);
+        if !self.rest.order.is_empty() {
+            let first = self.rest.order[0].split('.').next().unwrap_or("").to_string();
+            return Err(Error::Missing(format!("the core holds no part {first}")));
+        }
+        Err(Error::Missing("the spine's moment".into()))
+    }
+
+    pub fn call(&mut self, method: &str, args: &Named, out: &mut Named) -> Result<(), Error> {
         match method {
             "live" => {
-                if !self.rest.order.is_empty() {
-                    let first = self.rest.order[0].split('.').next().unwrap_or("").to_string();
-                    return Err(Error::Missing(format!("the core holds no part {first}")));
-                }
-                Err(Error::Missing("the spine's moment".into()))
+                let one = |name: &str| -> Result<Option<f64>, Error> {
+                    if args.has(name) { Ok(Some(args.f64s(name)?[0])) } else { Ok(None) }
+                };
+                let done = if args.has("done") { Some(args.bools("done")?[0]) } else { None };
+                let decision = if args.has("decision_id") { Some(args.i64("decision_id")?) } else { None };
+                let action = self.live(&args.f64s("observations")?, one("reward")?, done,
+                                       one("salience")?, decision)?;
+                out.put("action", crate::state::Array::from_i64(&[action.len()], &action));
+                Ok(())
             }
             _ => Err(Error::Missing(method.to_string())),
         }
