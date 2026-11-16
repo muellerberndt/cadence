@@ -8,7 +8,8 @@ choice exposes that state; a separately trained decoder that produces the answer
 another model.
 
 Start with `Brain.compose`. The default **System 1** has reciprocal processing regions, local
-plasticity, a working trace, a recall memory and fast and persistent associative memory, and it can be deep.
+plasticity, a working trace, a heard history, a recall memory and fast and persistent associative
+memory ([the default brain](modules.md#the-default-brain)), and it can be deep.
 Optional **System 2** adds observing regions with returning feedback inside the same neural
 settlement. Biological names describe software roles.
 
@@ -146,7 +147,8 @@ The `Brain` provides a continuing equilibrium interpretation, action and memory.
 learned model of environmental transitions. For one creature, compose a brain with arousal and
 use `live` throughout its life: it receives the preceding action's measured outcome and chooses
 the next action, with arousal deciding when to explore and learn. This small loop keeps one
-stream and its memories (the working trace, the recall memory and the associative store) active:
+stream and its memories (the working trace, the heard history, the recall memory and the
+associative store) active:
 
 ```python
 import numpy as np

@@ -28,13 +28,9 @@ again, a little changed. The sections below take each step apart.
 `Brain.compose(inputs, actions)` builds a brain with `inputs` sensory neurons and one motor
 neuron per action. Between them sits an **association region** of 64 neurons, where the
 brain forms its interpretation of what it senses. Around that core the brain holds four
-memories, all on by default:
-
-- a **working trace**, which carries the last moment's interpretation into the next one;
-- a **heard history**, which carries what it heard a moment ago;
-- a **recall memory**, a notebook of the stream's recent moments that gives one back when the
-  present asks for it;
-- an **associative store**, which remembers which action paid in which situation.
+memories, all on by default: a working trace of what it was just thinking, a heard history of
+what it heard a moment ago, a recall memory of the stream's recent moments and an associative
+store of what paid where ([the default brain](modules.md#the-default-brain) lists each part).
 
 All of these settle together into one state, and that state is the brain's answer. This default
 brain is called **System 1**. Optional **System 2** observer regions can be added to the same
@@ -53,7 +49,7 @@ brain ([observers](life.md#add-optional-observers)). `arousal=True` gives the br
 `brain.describe()` lists every setting a brain holds, and
 [tune and read a living brain](tune.md#defaults-and-expert-overrides) explains them. To build a
 brain for a purpose of your own, [parts of a brain](modules.md) lists every part you can add
-(senses, regions, memories, ways to learn, modules that arrive as files) and composes five
+(senses, regions, memories, ways to learn, modules that arrive as files) and composes
 whole brains from them.
 
 ## 2. Observations, actions and streams
