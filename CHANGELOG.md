@@ -4,7 +4,7 @@
 
 - **Brains in a browser on the compiled path**: under Pyodide, where Numba is absent, the CPU
   kernels of `cadence.fused` come from one WebAssembly module built from `kernels/wasm`
-  (`cadence_kernel.wasm`, a release file of about 75 KB). A page opts in by naming the file in
+  (`cadence_kernel.wasm`, a release file of about 115 KB). A page opts in by naming the file in
   `CADENCE_WASM` before `cadence` is imported, or by `cadence._wasm.load(path)`; the module works
   inside Pyodide's memory, so arrays pass without a copy. Every kernel call equals `fused.py`'s own
   kernels to the bit in headless Chromium, and a life chooses the NumPy loop's action at every

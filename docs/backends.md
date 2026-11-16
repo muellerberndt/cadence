@@ -582,7 +582,7 @@ of one float per synapse, and in float32 a float64 copy of the blocks for the se
 Under Pyodide (the library in a web page: CPython and NumPy compiled to WebAssembly) Numba is
 absent, and the CPU path's kernels come from one WebAssembly module, `cadence_kernel.wasm`, built
 from [`kernels/wasm`](../kernels/wasm) by `python kernels/wasm/build.py` (Rust with the
-`wasm32-unknown-unknown` target; the file is a release artefact of about 75 KB). A page opts in:
+`wasm32-unknown-unknown` target; the file is a release artefact of about 115 KB). A page opts in:
 it writes the file into Pyodide's file system and names it in `CADENCE_WASM` before `cadence` is
 imported, or calls `cadence._wasm.load(path)` before its first brain.
 
