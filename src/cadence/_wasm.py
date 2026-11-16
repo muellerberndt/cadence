@@ -98,6 +98,14 @@ def load(source: str | bytes | None = None) -> bool:
     path ``CADENCE_WASM`` names) and give ``cadence.fused`` its kernels. Returns whether they are
     in use; outside Pyodide, without a file, or with ``CADENCE_FUSED=0`` nothing is loaded."""
     global _EXPORTS
+    if __name__ != "cadence._wasm":  # this file beside a wheel: the wheel's own loader, if any
+        inside: Any
+        try:
+            from cadence import _wasm as inside
+        except ImportError:  # a release before it: this file stands in
+            inside = None
+        if inside is not None:
+            return bool(inside.load(source))
     if _EXPORTS is not None:
         return True
     if sys.platform != "emscripten" or os.environ.get("CADENCE_FUSED", "1") == "0":
@@ -125,6 +133,12 @@ def load(source: str | bytes | None = None) -> bool:
     from cadence import brain, fused
 
     install(vars(fused))
+    try:
+        from cadence.space import compiled as space
+    except ImportError:  # a release before the map's kernel
+        space = None
+    if space is not None:
+        space._map_settle = _caller("map_settle")
     if not hasattr(fused, "_wasm"):  # a release before this file: its kernels assert Numba
         fused.njit = _no_numba
         fused._threads = lambda: False
@@ -167,6 +181,7 @@ _KINDS = {
     "tied": "diddfwwwq",
     "add_episode_terms": "wddbbiiinnnn",
     "clear_choice": "dfq",
+    "map_settle": "dqdqqqqq?dfffffbqqqqfffd?bdbddd?b?b?bdbqnw",
 }
 
 

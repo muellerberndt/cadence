@@ -21,6 +21,7 @@
 
 mod fast;
 mod lesson;
+mod map;
 mod settle;
 
 #[panic_handler]

@@ -46,3 +46,14 @@ def fit_32_bit_numpy() -> None:
     shim.repeat = lambda a, repeats, axis=None: np.repeat(  # type: ignore[attr-defined]
         a, np.asarray(repeats).astype(np.intp), axis=axis)
     learning.np = shim  # type: ignore[attr-defined]
+
+
+def finish(ok: bool) -> None:
+    """The script's verdict: its exit status natively; under Pyodide a failure raises, which the
+    page reports as the script's error."""
+    print("PASS" if ok else "FAIL", flush=True)
+    if BROWSER:
+        if not ok:
+            raise RuntimeError("the check failed")
+        return
+    sys.exit(0 if ok else 1)

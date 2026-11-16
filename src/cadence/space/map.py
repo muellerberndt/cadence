@@ -474,6 +474,20 @@ class Map:
         sweeps, kept by sweep."""
         from ..brain import BrainState
 
+        if not self.trace:  # the same settle in one compiled call, where the kernels run
+            from . import compiled
+
+            graph = self.graph if cue is not None else self._plain
+            if (compiled.available() and graph.backend == "cpu" and graph._solves_alone()
+                    and graph._fused_blocks() is not None):
+                runs = self.__dict__.get("_kernel_runs")
+                if runs is None:
+                    runs = self.__dict__["_kernel_runs"] = compiled.runs_of(self._runs)
+                if runs is not None:
+                    return compiled.map_settle(
+                        graph, runs, self.potential, self.clock if clock is None else clock,
+                        self.lost, self.doubt if doubt is None else doubt, write, carried,
+                        fresh, kept, sure, cue, 2 if cue is not None else 1)
         run = self._runs
         drive = np.zeros((1, self.neurons))
         held = self.potential if carried is None else self.potential * carried
