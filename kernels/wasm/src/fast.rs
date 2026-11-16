@@ -114,7 +114,8 @@ pub unsafe extern "C" fn fast_solve(
     let down = if rest > 0.0 { leak / rest } else { 0.0 };
     let mut scratch = match Scratch::new(
         room::<u8>(ranges) * 2 + room::<f64>(bn) * 5 + room::<f64>(batch * n.max(1))
-            + room::<usize>(batch),
+            + room::<usize>(batch)
+            + room::<u32>(n),
     ) {
         Some(x) => x,
         None => return NO_ROOM,
@@ -136,6 +137,7 @@ pub unsafe extern "C" fn fast_solve(
     let check = scratch.take::<f64>(bn);
     let product_room = scratch.take::<f64>(batch * n.max(1));
     let rows = scratch.take::<usize>(batch);
+    let keep = scratch.take::<u32>(n);
     let _ = widest;
     let mut m = batch;
     for b in 0..batch {
@@ -168,7 +170,7 @@ pub unsafe extern "C" fn fast_solve(
             let (a0, a1, b0, b1) = (start(a), start(a + 1), start(c), start(c + 1));
             let nb = b1 - b0;
             product(columns.add(batch * a0), flat.p.add(offset.get(q) as usize), product_room,
-                    batch, a1 - a0, nb);
+                    batch, a1 - a0, nb, keep);
             for b in 0..batch {
                 for i in 0..nb {
                     *total.add(b * n + b0 + i) += *product_room.add(b * nb + i);
@@ -214,7 +216,7 @@ pub unsafe extern "C" fn fast_solve(
                 if pair_post.get(q) as usize == r && *fed.add(a) != 0 {
                     let (a0, a1) = (start(a), start(a + 1));
                     product(columns.add(batch * a0), flat.p.add(offset.get(q) as usize),
-                            product_room, m, a1 - a0, nb);
+                            product_room, m, a1 - a0, nb, keep);
                     for k in 0..m * nb {
                         *check.add(k) += *product_room.add(k);
                     }
@@ -286,7 +288,7 @@ pub unsafe extern "C" fn fast_solve(
                     if pair_post.get(q) as usize == r && *fed.add(a) != 0 {
                         let (a0, a1) = (start(a), start(a + 1));
                         product(columns.add(batch * a0), flat.p.add(offset.get(q) as usize),
-                                product_room, m, a1 - a0, nb);
+                                product_room, m, a1 - a0, nb, keep);
                         for b in 0..m {
                             for i in 0..nb {
                                 *work_v.add(b * n + b0 + i) += *product_room.add(b * nb + i);

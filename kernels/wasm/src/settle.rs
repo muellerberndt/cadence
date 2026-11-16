@@ -87,27 +87,38 @@ unsafe fn softmax_groups(
 // -- the block transport
 
 /// `out[b, j] = sum_k src[b * na + k] * w[k * nb + j]` for the first `m` rows, each sum from
-/// 0.0 in the order of `k`: NumPy's matrix product without BLAS, two outputs to a lane.
+/// 0.0 in the order of `k`: NumPy's matrix product without BLAS, two outputs to a lane. A source
+/// entry of exactly zero adds a zero to every sum it reaches, which leaves a sum begun at 0.0
+/// as it was (it is never -0.0), so its row of the block is skipped: the weights of a graph are
+/// finite (``Brain`` refuses others). `keep` holds room for `na` indices.
 pub(crate) unsafe fn product(
     src: *const f64, w: *const f64, out: *mut f64, m: usize, na: usize, nb: usize,
+    keep: *mut u32,
 ) {
     for b in 0..m {
         let x = src.add(b * na);
         let o = out.add(b * nb);
+        let mut count = 0usize;
+        for k in 0..na {
+            if *x.add(k) != 0.0 {
+                *keep.add(count) = k as u32;
+                count += 1;
+            }
+        }
         let mut j = 0usize;
         while j + 8 <= nb {
             let mut c0 = f64x2_splat(0.0);
             let mut c1 = f64x2_splat(0.0);
             let mut c2 = f64x2_splat(0.0);
             let mut c3 = f64x2_splat(0.0);
-            let mut row = w.add(j);
-            for k in 0..na {
+            for q in 0..count {
+                let k = *keep.add(q) as usize;
                 let a = f64x2_splat(*x.add(k));
+                let row = w.add(k * nb + j);
                 c0 = f64x2_add(c0, f64x2_mul(a, v128_load(row as *const v128)));
                 c1 = f64x2_add(c1, f64x2_mul(a, v128_load(row.add(2) as *const v128)));
                 c2 = f64x2_add(c2, f64x2_mul(a, v128_load(row.add(4) as *const v128)));
                 c3 = f64x2_add(c3, f64x2_mul(a, v128_load(row.add(6) as *const v128)));
-                row = row.add(nb);
             }
             v128_store(o.add(j) as *mut v128, c0);
             v128_store(o.add(j + 2) as *mut v128, c1);
@@ -117,21 +128,19 @@ pub(crate) unsafe fn product(
         }
         while j + 2 <= nb {
             let mut c0 = f64x2_splat(0.0);
-            let mut row = w.add(j);
-            for k in 0..na {
+            for q in 0..count {
+                let k = *keep.add(q) as usize;
                 let a = f64x2_splat(*x.add(k));
-                c0 = f64x2_add(c0, f64x2_mul(a, v128_load(row as *const v128)));
-                row = row.add(nb);
+                c0 = f64x2_add(c0, f64x2_mul(a, v128_load(w.add(k * nb + j) as *const v128)));
             }
             v128_store(o.add(j) as *mut v128, c0);
             j += 2;
         }
         if j < nb {
             let mut c = 0.0f64;
-            let mut row = w.add(j);
-            for k in 0..na {
-                c += *x.add(k) * *row;
-                row = row.add(nb);
+            for q in 0..count {
+                let k = *keep.add(q) as usize;
+                c += *x.add(k) * *w.add(k * nb + j);
             }
             *o.add(j) = c;
         }
@@ -279,6 +288,7 @@ unsafe fn reusable(
 #[inline(always)]
 unsafe fn block_product(
     net: &Net, columns: *const f64, flat: View<f64>, k: usize, cache: *mut f64, c0: usize,
+    keep: *mut u32,
 ) {
     let a = net.pair_pre.get(k) as usize;
     let b = net.pair_post.get(k) as usize;
@@ -293,6 +303,7 @@ unsafe fn block_product(
         batch,
         na,
         nb,
+        keep,
     );
 }
 
@@ -701,7 +712,8 @@ pub(crate) unsafe fn settle(
         + 2 * room::<f64>(batch * ng)
         + room::<f64>(batch)
         + 2 * room::<u8>(batch * ranges)
-        + 4 * room::<u8>(ranges);
+        + 4 * room::<u8>(ranges)
+        + room::<u32>(n);
     let mut scratch = match Scratch::new(bytes) {
         Some(x) => x,
         None => return NO_ROOM,
@@ -751,6 +763,7 @@ pub(crate) unsafe fn settle(
     let moving = scratch.take::<u8>(ranges);
     let quiet = scratch.take::<u8>(ranges);
     let _spare = scratch.take::<u8>(ranges);
+    let keep = scratch.take::<u32>(n);
     let plain = !(net.has_nudge || net.has_adapt || net.masked || net.has_apical);
     if !(net.has_adapt || net.masked || plain) {
         for r in 0..ranges {
@@ -780,10 +793,10 @@ pub(crate) unsafe fn settle(
             let q = *todo.add(j);
             if q < np_ {
                 block_product(net, columns, net.flat, net.pairs.get(q) as usize, cache,
-                              *cache_offset.add(q));
+                              *cache_offset.add(q), keep);
             } else {
                 block_product(net, columns, net.flat_apical, net.apical_pairs.get(q - np_)
-                              as usize, cache_up, *cache_up_offset.add(q - np_));
+                              as usize, cache_up, *cache_up_offset.add(q - np_), keep);
             }
         }
         for r in 0..ranges {
@@ -860,7 +873,8 @@ pub(crate) unsafe fn residual(
         + 3 * room::<f64>(wide)
         + room::<f64>(batch * pools)
         + room::<f64>(batch * n.max(1))
-        + 2 * room::<f64>(batch * ng);
+        + 2 * room::<f64>(batch * ng)
+        + room::<u32>(n);
     let mut scratch = match Scratch::new(bytes) {
         Some(x) => x,
         None => return NO_ROOM,
@@ -874,6 +888,7 @@ pub(crate) unsafe fn residual(
     product_cache(net, net.apical_pairs, cache_up_offset, receives_up);
     let size = *cache_offset.add(np_);
     let size_up = *cache_up_offset.add(nq);
+    let keep = scratch.take::<u32>(n);
     let feeds = scratch.take::<u8>(ranges);
     for q in 0..np_ + nq {
         let k = if q < np_ { net.pairs.get(q) } else { net.apical_pairs.get(q - np_) } as usize;
@@ -908,13 +923,13 @@ pub(crate) unsafe fn residual(
         if q < np_ {
             let k = net.pairs.get(q) as usize;
             if *moved_range.add(net.pair_pre.get(k) as usize) != 0 {
-                block_product(net, columns, net.flat, k, cache, *cache_offset.add(q));
+                block_product(net, columns, net.flat, k, cache, *cache_offset.add(q), keep);
             }
         } else {
             let k = net.apical_pairs.get(q - np_) as usize;
             if *moved_range.add(net.pair_pre.get(k) as usize) != 0 {
                 block_product(net, columns, net.flat_apical, k, cache_up,
-                              *cache_up_offset.add(q - np_));
+                              *cache_up_offset.add(q - np_), keep);
             }
         }
     }
