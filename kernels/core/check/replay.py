@@ -36,14 +36,16 @@ module = part_module(a.part)
 kept: list = []
 for name, (arguments, result) in module.METHODS.items():
     method = getattr(module.CLASS, name)
+    read = isinstance(method, property)  # a property is recorded as a call of its getter
 
-    def recorded(self, *args, _m=method, _n=name, _a=arguments, _r=result, **kwargs):
+    def recorded(self, *args, _m=method.fget if read else method, _n=name, _a=arguments,
+                 _r=result, **kwargs):
         before = module.state_of(self) if len(kept) < a.calls else None
         value = _m(self, *args, **kwargs)
         if before is not None:
             kept.append((_n, before, _a(*args, **kwargs), _r(value), module.state_of(self)))
         return value
-    setattr(module.CLASS, name, recorded)
+    setattr(module.CLASS, name, property(recorded) if read else recorded)
 
 world = World(Rules(), seed=1)
 sim = Sim(world, minds=Host(world.rules.width, world.rules.height, world.seed, None, []))
