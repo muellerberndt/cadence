@@ -195,6 +195,19 @@ fn probe(name: &str, input: &Named) -> Result<Named, state::Error> {
             out.put("clip", Array::from_f64(&[n], &pick(&|i| np::clip(a[i], lo[i], hi[i]))));
             out.put("max", Array::scalar_f64(np::max(&a)));
         }
+        "einsum" => {  // each row of a against the same row of b, in both of einsum's orders
+            let (rows, cols) = (input.i64("rows")? as usize, input.i64("cols")? as usize);
+            let (a, b) = (input.f64s("a")?, input.f64s("b")?);
+            if a.len() != rows * cols || b.len() != rows * cols {
+                return Err(state::Error::Shape("einsum".into()));
+            }
+            let row = |x: &[f64], r: usize| x[r * cols..(r + 1) * cols].to_vec();
+            let dot: Vec<f64> = (0..rows).map(|r| np::einsum_dot(&row(&a, r), &row(&b, r))).collect();
+            let fused: Vec<f64> =
+                (0..rows).map(|r| np::einsum_fused(&row(&a, r), &row(&b, r))).collect();
+            out.put("dot", Array::from_f64(&[rows], &dot));
+            out.put("fused", Array::from_f64(&[rows], &fused));
+        }
         "argpartition" => {
             let (rows, cols) = (input.i64("rows")? as usize, input.i64("cols")? as usize);
             let v = input.f64s("v")?;
