@@ -47,11 +47,13 @@ core = Core() if a.stream else None
 kept: list = []
 tally = {"calls": 0, "bitwise": 0, "close": 0, "apart": 0, "worst": 0.0, "shown": 0}
 off: dict[str, list] = {}  # each entry not to the bit: the calls where it is not, its largest gap
+methods: dict[str, int] = {}  # the calls checked of each method
 
 
 def check(k, name, before, args, theirs_out, theirs_after):
     """One call made in the core on the state before, against what the Python did."""
     tally["calls"] += 1
+    methods[name] = methods.get(name, 0) + 1
     try:
         after, out = core.call(a.part, name, before, args)
     except RuntimeError as error:  # the core refused the call
@@ -137,6 +139,7 @@ if not recorded_calls:
 core = core or Core()
 for k, entry in enumerate(kept):
     check(k, *entry)
+print("  calls: " + ", ".join(f"{n} {k}" for k, n in sorted(methods.items())))
 for key, (calls, gap) in sorted(off.items()):
     print(f"  not to the bit: {key} in {calls} calls, largest {gap:.1e}")
 print(f"REPLAY {a.part}: {tally['calls']} calls, {tally['bitwise']} bitwise, {tally['close']} "
