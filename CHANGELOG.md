@@ -60,6 +60,20 @@ preferred; the reading is on the issue.
   load within 6.6e-12 of its settled activity on the compiled kernel, every action the same:
   #346, on the 0.102.0 milestone.
 
+### Documentation
+
+- **[Assemble a brain](docs/assembly.md)**, a new guide: senses by name, a map of things, the
+  memories, attention, learning and saving, put together into four whole brains (a plain one, one
+  with a map, one with an ear and a voice, and one with eyes, an ear, a voice and a map), with what
+  each part costs and what it does not do. Every block runs in the documentation test and in the
+  minimal-install job.
+- **The README's first screen** points to the guides in the order a newcomer needs them: start,
+  assemble a brain, space, sounds as symbols, the live demos and the reference; the documentation
+  index follows the same order.
+- **Corrections in the first guide** (`docs/start.md`): a new brain holds four memories, the
+  heard history of the moment before among them, and the surprise signal counts as tellings in a
+  memory's strength and in records of bound moments.
+
 ### Records of bound moments, a voice, and senses for things and sound (#342, #344)
 
 - **`Brain.compose(senses=..., code=units, bound=records)`** (opt-in): one `LongTermMemory` of
