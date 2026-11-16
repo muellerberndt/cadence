@@ -1,6 +1,6 @@
 """The thread counts the backends guide promises bits for (docs/backends.md): the compiled
 kernel settles a batch on Numba's threads to the same bits at any count, and acts alike at any
-BLAS thread count (its saved arrays can differ in the last bits on some machines, #315); the
+BLAS thread count (its saved learning report can differ by one ulp on some machines, #315); the
 recall memory's threaded products keep the summation of one
 thread; and the NumPy loop at one BLAS thread repeats a life, its save and its continuation
 after a load, to the bit. Each life runs in a child interpreter whose thread variables are set
@@ -135,10 +135,12 @@ def test_the_compiled_kernel_acts_alike_at_any_blas_thread_count():
     assert one["fused"] and two["fused"]
     assert one["acts"] == two["acts"]  # the same actions at either count, strictly
     if (one["saved"], one["continued"]) != (two["saved"], two["continued"]):
-        # some machines' compiled kernel saves other last bits at two BLAS threads than at one
+        # on some machines one value of the saved report of the last learning step differs in
+        # its last bit at two BLAS threads; every array reads the same
         pytest.xfail(
-            "#315: the compiled kernel's checkpoint at one and two BLAS threads differs in the "
-            "last bits on some machines (Ubuntu, Python 3.12 on CI), with the same actions"
+            "#315: on some machines (Ubuntu with OpenBLAS 0.3.31 on CI) the checkpoint's report "
+            "of the last learning step (last_learning) differs by one ulp at two BLAS threads "
+            "against one; the actions and every array read the same"
         )
 
 
