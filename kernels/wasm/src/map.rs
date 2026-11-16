@@ -30,20 +30,24 @@ pub unsafe extern "C" fn map_settle(
     doubt: usize, fresh: usize, has_fresh: i32, kept: usize, has_kept: i32, sure: usize,
     has_sure: i32, cue: usize, has_cue: i32, runs: usize, sweeps: i32, out: usize,
 ) -> i32 {
-    let flat = take!(flat, f64, FLOAT64, 0);
-    let pairs = take!(pairs, i64, INT64, 1);
-    let flat_apical = take!(flat_apical, f64, FLOAT64, 2);
-    let apical_pairs = take!(apical_pairs, i64, INT64, 3);
-    let starts = take!(starts, i64, INT64, 4);
-    let pair_pre = take!(pair_pre, i64, INT64, 5);
-    let pair_post = take!(pair_post, i64, INT64, 6);
-    let offset = take!(offset, i64, INT64, 7);
-    let freezable = take!(freezable, u8, BOOL, 8);
-    let bias = take!(bias, f64, FLOAT64, 9);
-    let pool_of = take!(pool_of, i64, INT64, 16);
-    let pool_index = take!(pool_index, i64, INT64, 17);
-    let pool_starts = take!(pool_starts, i64, INT64, 18);
-    let pool_run = take!(pool_run, i64, INT64, 19);
+    let graph = MapGraph {
+        flat: take!(flat, f64, FLOAT64, 0),
+        pairs: take!(pairs, i64, INT64, 1),
+        flat_apical: take!(flat_apical, f64, FLOAT64, 2),
+        apical_pairs: take!(apical_pairs, i64, INT64, 3),
+        starts: take!(starts, i64, INT64, 4),
+        pair_pre: take!(pair_pre, i64, INT64, 5),
+        pair_post: take!(pair_post, i64, INT64, 6),
+        offset: take!(offset, i64, INT64, 7),
+        freezable: take!(freezable, u8, BOOL, 8),
+        bias: take!(bias, f64, FLOAT64, 9),
+        dt, slope, threshold, rest, leak, has_apical,
+        pool_of: take!(pool_of, i64, INT64, 16),
+        pool_index: take!(pool_index, i64, INT64, 17),
+        pool_starts: take!(pool_starts, i64, INT64, 18),
+        pool_run: take!(pool_run, i64, INT64, 19),
+        fraction, floor2, tiny,
+    };
     let potential = take!(potential, f64, FLOAT64, 23);
     let carried = take!(carried, u8, BOOL, 24);
     let write = take!(write, f64, FLOAT64, 26);
@@ -56,6 +60,51 @@ pub unsafe extern "C" fn map_settle(
     let cue = take!(cue, f64, FLOAT64, 37);
     let runs = take!(runs, i64, INT64, 39);
     let out = take!(out, f64, FLOAT64, 41);
+    settle_map(&graph, potential, carried, has_carried, write, has_write, clock, lost, doubt, fresh,
+               has_fresh, kept, has_kept, sure, has_sure, cue, has_cue, runs, sweeps, out)
+}
+
+/// The arguments of `map_settle` a map's graph fixes (`compiled._graph_arrays`).
+#[derive(Clone, Copy)]
+pub(crate) struct MapGraph {
+    pub flat: View<f64>,
+    pub pairs: View<i64>,
+    pub flat_apical: View<f64>,
+    pub apical_pairs: View<i64>,
+    pub starts: View<i64>,
+    pub pair_pre: View<i64>,
+    pub pair_post: View<i64>,
+    pub offset: View<i64>,
+    pub freezable: View<u8>,
+    pub bias: View<f64>,
+    pub dt: f64,
+    pub slope: f64,
+    pub threshold: f64,
+    pub rest: f64,
+    pub leak: f64,
+    pub has_apical: i32,
+    pub pool_of: View<i64>,
+    pub pool_index: View<i64>,
+    pub pool_starts: View<i64>,
+    pub pool_run: View<i64>,
+    pub fraction: f64,
+    pub floor2: f64,
+    pub tiny: f64,
+}
+
+/// `map_settle` on views: the map's graph, its carried state and the moment's arrays.
+#[allow(clippy::too_many_arguments)]
+pub(crate) unsafe fn settle_map(
+    graph: &MapGraph, potential: View<f64>, carried: View<u8>, has_carried: i32, write: View<f64>,
+    has_write: i32, clock: View<f64>, lost: View<f64>, doubt: View<f64>, fresh: View<u8>,
+    has_fresh: i32, kept: View<u8>, has_kept: i32, sure: View<u8>, has_sure: i32, cue: View<f64>,
+    has_cue: i32, runs: View<i64>, sweeps: i32, out: View<f64>,
+) -> i32 {
+    let MapGraph {
+        flat, pairs, flat_apical, apical_pairs, starts, pair_pre, pair_post, offset, freezable,
+        bias, dt, slope, threshold, rest, leak, has_apical, pool_of, pool_index, pool_starts,
+        pool_run, fraction, floor2, tiny,
+    } = *graph;
     let ranges = if starts.len > 0 { starts.len - 1 } else { 0 };
     if ranges == 0 || runs.len != 16 {
         return refused(39);
@@ -421,7 +470,7 @@ pub(crate) unsafe fn pieces(
     pieces
 }
 
-fn pieces_room(count: usize) -> usize {
+pub(crate) fn pieces_room(count: usize) -> usize {
     room::<i64>(count.max(1)) * 4 + room::<i64>(count) * 2 + room::<i64>(16 * count + 32)
         + room::<i64>(count + 1) * 2 + room::<u8>(count) + 64
 }
@@ -487,6 +536,15 @@ pub unsafe extern "C" fn map_moves(
     let codes = take!(codes, f64, FLOAT64, 2);
     let centers = take!(centers, f64, FLOAT64, 3);
     let out = take!(out, f64, FLOAT64, 9);
+    moves(potential, expected, codes, centers, floor, stride, step, nx, ny, out)
+}
+
+/// `map_moves` on views.
+#[allow(clippy::too_many_arguments)]
+pub(crate) unsafe fn moves(
+    potential: View<f64>, expected: View<f64>, codes: View<f64>, centers: View<f64>, floor: f64,
+    stride: f64, step: f64, nx: i32, ny: i32, out: View<f64>,
+) -> i32 {
     let (nx, ny) = (nx.max(0) as usize, ny.max(0) as usize);
     let count = nx * ny;
     let width = potential.n1;
@@ -937,6 +995,21 @@ pub unsafe extern "C" fn map_report(
     let lost = take!(lost, f64, FLOAT64, 28);
     let near_cells = take!(near_cells, i64, INT64, 29);
     let near_bounds = take!(near_bounds, i64, INT64, 30);
+    report(kind, px, py, codes, centers, activity, doubt, motion, has_physics, hidden, ident, fields,
+           lowx, lowy, sizex, sizey, floor, step, stride, level, nx, ny, has_values, named,
+           named_mask, claimed, write, fresh, lost, near_cells, near_bounds)
+}
+
+/// `map_report` on views.
+#[allow(clippy::too_many_arguments)]
+pub(crate) unsafe fn report(
+    kind: i32, px: f64, py: f64, codes: View<f64>, centers: View<f64>, activity: View<f64>,
+    doubt: View<f64>, motion: View<f64>, has_physics: i32, hidden: i32, ident: i32, fields: i32,
+    lowx: f64, lowy: f64, sizex: f64, sizey: f64, floor: f64, step: f64, stride: f64, level: f64,
+    nx: i32, ny: i32, has_values: i32, named: View<f64>, named_mask: View<u8>, claimed: View<u8>,
+    write: View<f64>, fresh: View<u8>, lost: View<f64>, near_cells: View<i64>,
+    near_bounds: View<i64>,
+) -> i32 {
     let (nx, ny) = (nx.max(0) as usize, ny.max(0) as usize);
     let count = nx * ny;
     let width = activity.n1;
