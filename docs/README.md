@@ -1,7 +1,8 @@
 # Cadence documentation
 
 Welcome. This page is the way in: what Cadence is, how to install it, a first brain in ten lines,
-the handful of ideas everything else builds on, and a map of the guides.
+the guides to read in order, the handful of ideas everything else builds on, and a map of every
+guide.
 
 ## Cadence in one minute
 
@@ -14,8 +15,8 @@ Cadence is designed the same way: its connections change locally while the brain
 
 There is no separate training phase and no inference mode: the brain you train is the brain that
 acts, and it keeps its memories from one moment to the next. The default brain, **System 1**,
-has a processing region, a working trace, a recall memory of recent moments and an associative
-memory of what paid. Optional **System 2** observer regions settle in the same brain and add
+has a processing region, a working trace, a heard history of the moment before, a recall memory
+of recent moments and an associative memory of what paid. Optional **System 2** observer regions settle in the same brain and add
 recursive feedback.
 
 Cadence is research software. It is a good fit if you want to study or build agents that learn
@@ -58,7 +59,19 @@ action = brain.live(next_observation, reward=reward)      # it learns from the s
 assert brain.learner.updates > 0
 ```
 
-[Start here](start.md) takes this example apart, line by line.
+## Read next, in this order
+
+1. [Start here: your first brain](start.md): the brain above, line by line: settling, lessons
+   and rewards, the state it carries, saving.
+2. [Assemble a brain](assembly.md): senses by name, a map of things, memories, attention, an ear
+   and a voice, in four whole brains.
+3. [Space: tracking what is where](space.md): a map that keeps things out of view and follows a
+   hidden thing that moves.
+4. [Sounds as symbols](memory.md#records-of-bound-moments-opt-in): a sound heard alone brings its
+   thing back, a voice says it, a reward makes it the answer.
+5. [API reference](api.md): every public name, with its signature and refusals.
+
+The [live demos](https://cadence.floatingpragma.ai/) run brains in the browser.
 
 ## The ideas, in the order you need them
 
@@ -82,17 +95,16 @@ Each idea builds on the one before. [Start here](start.md) shows each with a run
    `Brain.load` continue the same life later
    ([reset](start.md#7-reset-start-a-new-stream), [save](start.md#8-save-and-load)).
 
-Then, in this order:
+Then, as your brain needs them:
 
-1. [Parts of a brain](modules.md): the catalogue of every part a brain can be built from, five
-   whole brains composed for a purpose, and the modules that arrive as files.
-2. [Train a brain](teach.md): lessons, rewards, distillation, rare classes, curricula, rates,
-   evaluation and what to do when training goes wrong.
-3. [Memory](memory.md): which memory serves which task, with a minimal example of each.
-4. [Learning from reward](reward.md): eligibility traces, the actor's rates, delayed credit,
-   maturity.
-5. [Tune and read a living brain](tune.md): every setting, `describe`, `retune`, larger brains.
-6. [API reference](api.md): every public name with its signature and refusals.
+- [Parts of a brain](modules.md): the catalogue of every part a brain can be built from, whole
+  brains composed for a purpose, and the modules that arrive as files.
+- [Train a brain](teach.md): lessons, rewards, distillation, rare classes, curricula, rates,
+  evaluation and what to do when training goes wrong.
+- [Memory](memory.md): which memory serves which task, with a minimal example of each.
+- [Learning from reward](reward.md): eligibility traces, the actor's rates, delayed credit,
+  maturity.
+- [Tune and read a living brain](tune.md): every setting, `describe`, `retune`, larger brains.
 
 ## Words used in these docs
 
@@ -115,6 +127,7 @@ Then, in this order:
 
 | You want | Use | Page |
 | --- | --- | --- |
+| To put a brain together from its parts: senses, a map, memories, attention, a voice | `senses=`, `trained=`, `code=`, `bound=`, `voice=`, `surprise=` | [Assemble a brain](assembly.md) |
 | To choose the parts of a brain for a purpose: a transcriber, an agent that remembers facts, a body that reaches | the catalogue of parts, each with how it joins a brain | [Parts of a brain](modules.md) |
 | To train on a dataset, a teacher, rewards or another brain | `lesson`, `step`, `targets=`, `weights=` | [Train a brain](teach.md) |
 | The world to pay for good actions | `step(reward=...)`, `live`, `actor_eta` | [Learning from reward](reward.md) |
