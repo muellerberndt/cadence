@@ -2,13 +2,17 @@
 //! methods by name (`call`), for the replay checks and for the moment that runs them.
 
 pub mod arousal;
+pub mod bound;
 pub mod brain;
 pub mod code;
 pub mod graph;
 pub mod hearing;
 pub mod history;
+pub mod longterm;
+pub mod memories;
 pub mod recall;
 pub mod surprise;
+pub mod synaptic;
 pub mod trace;
 
 use crate::state::{Array, Error, Named};
@@ -62,6 +66,26 @@ pub fn call(part: &str, method: &str, state: &Named, args: &Named) -> Result<Nam
         "graph" => {
             let mut held = graph::Graph::import(state)?;
             held.call(method, args, &mut out)?;
+            held.export(&mut after);
+        }
+        "longterm" => {
+            let mut held = longterm::LongTerm::import(state)?;
+            held.call(method, args, &mut out)?;
+            held.export(&mut after);
+        }
+        "bound" => {
+            let mut held = bound::Bound::import(state)?;
+            held.call(method, args, &mut out)?;
+            held.export(&mut after);
+        }
+        "synaptic" => {
+            let mut held = synaptic::Synaptic::import(state)?;
+            held.call(method, args, &mut out)?;
+            held.export(&mut after);
+        }
+        "memories" => {
+            let mut held = synaptic::Synaptic::import(state)?;
+            memories::call(&mut held, method, args)?;
             held.export(&mut after);
         }
         "brain" => {

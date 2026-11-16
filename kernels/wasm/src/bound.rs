@@ -2,7 +2,7 @@
 //! and `_agreed` of `cadence/bound.py` in one call, in the order NumPy sums them under Pyodide
 //! (a dot product and a vector's norm in order, a row's sum pairwise).
 
-use crate::{refused, room, sqrt, view, Scratch, BOOL, FLOAT64, INT64, NO_ROOM};
+use crate::{refused, room, sqrt, view, Scratch, View, BOOL, FLOAT64, INT64, NO_ROOM};
 
 macro_rules! take {
     ($id:expr, $t:ty, $num:expr, $k:expr) => {
@@ -89,6 +89,22 @@ pub unsafe extern "C" fn bound_recall(
     let fields = take!(fields, i64, INT64, 14);
     let out = take!(out, f64, FLOAT64, 22);
     let present = take!(present, i64, INT64, 23);
+    recall(slots, keys, code, deep, kept, has_keep, gone, has_forget, values, has_voice, v0, v1,
+           paid, refused_v, fields, voice_field, known_at, match_at, heads, near, agree, most,
+           out, present)
+}
+
+/// `bound_recall` on views of the arrays: the read itself, for a caller that holds the arrays
+/// (the native core) as for one that hands NumPy's objects over.
+#[allow(clippy::too_many_arguments)]
+#[inline(always)]
+pub(crate) unsafe fn recall(
+    slots: View<i64>, keys: View<f64>, code: View<f64>, deep: View<f64>, kept: View<u8>,
+    has_keep: i32, gone: View<u8>, has_forget: i32, values: View<f64>, has_voice: i32, v0: i32,
+    v1: i32, paid: View<f64>, refused_v: View<u8>, fields: View<i64>, voice_field: i32,
+    known_at: f64, match_at: f64, heads: i32, near: f64, agree: f64, most: f64, out: View<f64>,
+    present: View<i64>,
+) -> i32 {
     let cap = keys.n0;
     let kw = keys.n1;
     let inputs = values.n1;

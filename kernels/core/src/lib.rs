@@ -169,6 +169,19 @@ fn probe(name: &str, input: &Named) -> Result<Named, state::Error> {
             let draws: Vec<i64> = (0..n).map(|_| g.choice_p(&p) as i64).collect();
             out.put("draws", Array::from_i64(&[n], &draws));
         }
+        "seeded" => {  // `default_rng(tuple of integers)`: its state, then draws as "mixed"
+            let g0 = rng::Pcg64::from_entropy(&input.u64s("entropy")?);
+            out.put("state", Array::from_u64(&[2], &[(g0.state >> 64) as u64, g0.state as u64]));
+            out.put("inc", Array::from_u64(&[2], &[(g0.inc >> 64) as u64, g0.inc as u64]));
+            let mut g = g0;
+            let n = input.i64("n")? as usize;
+            let mut draws = Vec::new();
+            for k in 0..n {
+                draws.push(g.integers(0, (k % 9) as i64 + 1) as f64);
+                draws.push(g.random());
+            }
+            out.put("draws", Array::from_f64(&[draws.len()], &draws));
+        }
         "mixed" => {  // the draws a moment interleaves: random, integers, a 32-bit buffer
             let mut g = generator(input)?;
             let n = input.i64("n")? as usize;
