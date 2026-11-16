@@ -55,6 +55,7 @@ fn column<T>(x: &[T]) -> View<T> {
     seen(x, x.len(), 1)
 }
 
+
 fn no_nan(x: &[f64]) -> bool {
     x.iter().all(|v| !v.is_nan())
 }
@@ -777,17 +778,52 @@ impl Graph {
         Ok(())
     }
 
-    /// `Layout.flat(weights)`: the flat block array, parallel synapses summed at their entry.
-    fn flat_of(&self, weights: &[f64], parallel: bool) -> Vec<f64> {
-        let mut out = vec![0.0f64; self.size()];
-        for (k, &at) in self.edge_index.iter().enumerate() {
-            if parallel {
-                out[at as usize] += weights[k];
-            } else {
-                out[at as usize] = weights[k];
+    /// The weights' entries of the flat blocks (`Layout.flat` of the basal weights, and of the
+    /// apical ones into `flat_apical`), written in place: an entry no synapse of a compartment
+    /// holds stays the zero its blocks were made with, so each synapse writes its own
+    /// compartment's entry alone; parallel synapses sum at their entry from zero.
+    fn fill_flats(&mut self) {
+        let t = &mut self.tables;
+        let up = self.apical.as_ref().map(|a| a.synapses.as_slice());
+        let index = &self.edge_index;
+        if !self.parallel {
+            match (up, t.flat_apical.as_mut()) {
+                (Some(up), Some(top)) => {
+                    for ((&at, &w), &apical) in index.iter().zip(&t.weights).zip(up) {
+                        if apical {
+                            top[at as usize] = w;
+                        } else {
+                            t.flat[at as usize] = w;
+                        }
+                    }
+                }
+                _ => {
+                    for (&at, &w) in index.iter().zip(&t.weights) {
+                        t.flat[at as usize] = w;
+                    }
+                }
+            }
+            return;
+        }
+        // parallel synapses: every entry a synapse holds from zero, each synapse added in order
+        for &at in index {
+            t.flat[at as usize] = 0.0;
+            if let Some(f) = t.flat_apical.as_mut() {
+                f[at as usize] = 0.0;
             }
         }
-        out
+        for (k, &at) in index.iter().enumerate() {
+            let at = at as usize;
+            let w = t.weights[k];
+            let (basal, apical) = match up {
+                Some(up) if up[k] => (0.0, w),
+                _ => (w, 0.0),
+            };
+            t.flat[at] += basal;
+            if let Some(f) = t.flat_apical.as_mut() {
+                f[at] += apical;
+            }
+        }
     }
 
     /// The weights, the flat blocks, the compartment's blocks and pools: what the parameters,
@@ -798,36 +834,33 @@ impl Graph {
         if !all_finite(&weights) {
             return Err(refused("effective synaptic weights must be finite; reduce gain or efficacy"));
         }
-        self.set_weights(weights);
+        self.make_structure();
+        self.tables.weights = weights;
+        self.fill_flats();
         Ok(())
     }
 
-    /// The tables of the weights `weights` (finite, one per synapse).
-    fn set_weights(&mut self, weights: Vec<f64>) {
+    /// What the layout and the compartment determine, made once: the blocks each input sums,
+    /// the pools, the ranges no block lands on, and the flat blocks' room.
+    fn make_structure(&mut self) {
         let n = self.n();
         let pairs = self.pair_pre.len();
-        let parallel = self.parallel;
         let mut t = Tables::default();
         let mut fed = vec![false; self.ranges()];
         for &r in &self.pair_post {
             fed[r as usize] = true;
         }
         t.freezable = fed.iter().map(|&f| (!f) as u8).collect();
+        t.flat = vec![0.0f64; self.size()];
         match &self.apical {
             None => {
-                t.flat = self.flat_of(&weights, parallel);
                 t.flat_apical = None;
                 t.pairs = (0..pairs as i64).collect();
                 t.pool_of = vec![-1; n];
                 t.pool_starts = vec![0];
             }
             Some(ap) => {
-                let basal: Vec<f64> = weights.iter().zip(&ap.synapses)
-                    .map(|(&w, &up)| if up { 0.0 } else { w }).collect();
-                let top: Vec<f64> = weights.iter().zip(&ap.synapses)
-                    .map(|(&w, &up)| if up { w } else { 0.0 }).collect();
-                t.flat = self.flat_of(&basal, parallel);
-                t.flat_apical = Some(self.flat_of(&top, parallel));
+                t.flat_apical = Some(vec![0.0f64; self.size()]);
                 // `_apical_blocks`: the blocks holding a basal synapse, and an apical one
                 let mut basal_block = vec![false; pairs];
                 let mut apical_block = vec![false; pairs];
@@ -860,49 +893,72 @@ impl Graph {
                 }
             }
         }
-        t.weights = weights;
         self.tables = t;
     }
 
-    /// `with_parameters(efficacy=, bias=)` on the CPU backend (a learner's update): the new
-    /// efficacies and biases, the weights they make with the gains, the blocks made again.
-    pub fn with_parameters(&self, efficacy: Option<Vec<f64>>, bias: Option<Vec<f64>>)
-                           -> Result<Graph, Error> {
-        let mut new = self.clone();
-        if let Some(e) = efficacy {
-            if e.len() != self.synapses() || !all_finite(&e) {
+    /// `with_parameters(efficacy=, bias=)` on the CPU backend, in place (a learner's update):
+    /// the new efficacies and biases, the weights they make with the gains and the flat blocks
+    /// written again; the graph counts one generation on. `efficacy` and `bias` give their
+    /// values and take the graph's old ones back. A refusal changes nothing.
+    pub fn set_parameters(&mut self, efficacy: Option<&mut Vec<f64>>,
+                          bias: Option<&mut Vec<f64>>) -> Result<(), Error> {
+        if let Some(e) = efficacy.as_deref() {
+            if e.len() != self.synapses() || !all_finite(e) {
                 return Err(refused("efficacy must have one finite entry per synapse"));
             }
-            new.efficacy = e;
+            let finite = self.gain_pre.iter().zip(e).all(|(g, x)| (g * x).is_finite());
+            if !finite {
+                return Err(refused("effective synaptic weights must be finite; reduce gain or efficacy"));
+            }
         }
-        if let Some(b) = bias {
-            if b.len() != self.n() || !all_finite(&b) {
+        if let Some(b) = bias.as_deref() {
+            if b.len() != self.n() || !all_finite(b) {
                 return Err(refused("bias must have one finite entry per neuron"));
             }
-            new.bias = b;
         }
-        new.make_tables()?;
-        Ok(new)
+        if let Some(e) = efficacy {
+            std::mem::swap(&mut self.efficacy, e);
+            for ((w, g), x) in self.tables.weights.iter_mut().zip(&self.gain_pre)
+                .zip(&self.efficacy)
+            {
+                *w = g * x;
+            }
+            self.fill_flats();
+        }
+        if let Some(b) = bias {
+            std::mem::swap(&mut self.bias, b);
+        }
+        self.generation += 1;
+        Ok(())
     }
 
-    /// `_with_update`: the efficacies, the weights the update's pass made of them and the
-    /// biases, taken as they are.
-    pub fn with_update(&self, efficacy: Vec<f64>, weights: Vec<f64>, bias: Vec<f64>)
-                       -> Result<Graph, Error> {
-        if !all_finite(&efficacy) {
+    /// `_with_update`, in place: the efficacies, the weights the update's pass made of them and
+    /// the biases, taken as they are (each buffer given takes the graph's old one back), the
+    /// flat blocks written again; the graph counts one generation on. `finite` says whether the
+    /// efficacies and the weights are finite, as the pass found them. A refusal changes
+    /// nothing.
+    pub fn update(&mut self, efficacy: &mut Vec<f64>, weights: &mut Vec<f64>,
+                  bias: &mut Vec<f64>, finite: (bool, bool)) -> Result<(), Error> {
+        if !finite.0 {
             return Err(refused("efficacy must have one finite entry per synapse"));
         }
-        if !all_finite(&weights) {
+        if !finite.1 {
             return Err(refused("effective synaptic weights must be finite; reduce gain or efficacy"));
         }
-        if !all_finite(&bias) {
+        if !all_finite(bias) {
             return Err(refused("bias must have one finite entry per neuron"));
         }
-        let mut new = self.clone();
-        new.efficacy = efficacy;
-        new.bias = bias;
-        new.set_weights(weights);
-        Ok(new)
+        if efficacy.len() != self.synapses() || weights.len() != self.synapses()
+            || bias.len() != self.n()
+        {
+            return Err(Error::Shape("an update holds one entry per synapse and per neuron".into()));
+        }
+        std::mem::swap(&mut self.efficacy, efficacy);
+        std::mem::swap(&mut self.tables.weights, weights);
+        std::mem::swap(&mut self.bias, bias);
+        self.fill_flats();
+        self.generation += 1;
+        Ok(())
     }
 
     /// `_with_dt`: the same graph at another step.

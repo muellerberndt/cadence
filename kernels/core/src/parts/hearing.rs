@@ -49,19 +49,20 @@ pub struct Hearing {
     pub routes: Vec<Route>,
 }
 
-/// What a contrast reads of the graph: its weights, whether its efficacies rest on the host,
-/// whether its synapses come in pairs, and whether a device holds them.
-pub struct Graph {
-    pub weights: Vec<f64>,
+/// What a contrast reads of the graph: its weights (the graph's own, or a copy that crossed),
+/// whether its efficacies rest on the host, whether its synapses come in pairs, and whether a
+/// device holds them.
+pub struct Graph<'a> {
+    pub weights: std::borrow::Cow<'a, [f64]>,
     pub efficacy: bool,
     pub parallel: bool,
     pub device: bool,
 }
 
-impl Graph {
-    fn read(args: &Named) -> Result<Graph, Error> {
+impl Graph<'_> {
+    fn read(args: &Named) -> Result<Graph<'static>, Error> {
         Ok(Graph {
-            weights: args.f64s("weights")?,
+            weights: std::borrow::Cow::Owned(args.f64s("weights")?),
             efficacy: flag(args, "efficacy")?,
             parallel: flag(args, "parallel")?,
             device: flag(args, "device")?,
@@ -186,7 +187,7 @@ impl Hearing {
     /// `_contrast(graph, movement, rows, batch)`: `c` per row and route, the association's
     /// `movement` over the phases' span at `rows` of `batch` streams; a memory of another batch
     /// reads silence.
-    pub fn contrast(&self, movement: &Rows, rows: Option<&Named>, batch: i64, graph: &Graph)
+    pub fn contrast(&self, movement: &Rows, rows: Option<&Named>, batch: i64, graph: &Graph<'_>)
                     -> Result<Rows, Error> {
         if graph.device {
             return Err(Error::Shape("the synapses rest on a device".into()));
@@ -302,7 +303,7 @@ impl Hearing {
     }
 
     /// `contrast_rows(graph, plus, minus, beta)`: a sampled act's `c` per row and route.
-    pub fn contrast_rows(&self, plus: &Rows, minus: &Rows, beta: f64, graph: &Graph)
+    pub fn contrast_rows(&self, plus: &Rows, minus: &Rows, beta: f64, graph: &Graph<'_>)
                          -> Result<Rows, Error> {
         if plus.rows != minus.rows || plus.cols != minus.cols {
             return Err(Error::Shape("the two phases differ in shape".into()));

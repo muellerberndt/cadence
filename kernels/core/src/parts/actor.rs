@@ -1063,8 +1063,8 @@ impl ActorCritic {
 }
 
 /// What a carried route's contrast reads of the learner's graph (`hearing._graph`).
-fn heard_graph(graph: &Graph) -> Heard {
-    Heard { weights: graph.weights().to_vec(), efficacy: true,
+fn heard_graph(graph: &Graph) -> Heard<'_> {
+    Heard { weights: std::borrow::Cow::Borrowed(graph.weights()), efficacy: true,
             parallel: graph.parallel_synapses(), device: false }
 }
 

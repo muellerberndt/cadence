@@ -119,6 +119,41 @@ pub struct Labels {
     pub shape: Vec<usize>,
 }
 
+/// `np.abs(x).mean()`, the sizes written over `x`.
+fn mean_size(x: &mut [f64]) -> f64 {
+    x.iter_mut().for_each(|v| *v = v.abs());
+    np::mean(x)
+}
+
+/// The buffers an update reuses, which hold no state: the step, and the efficacies, weights and
+/// biases that go to the graph (and come back from it as its old ones). A copy starts without
+/// them, and any two compare equal.
+#[derive(Default)]
+pub struct Rooms {
+    d: Vec<f64>,
+    scale: Vec<f64>,
+    weights: Vec<f64>,
+    bias: Vec<f64>,
+}
+
+impl Clone for Rooms {
+    fn clone(&self) -> Rooms {
+        Rooms::default()
+    }
+}
+
+impl PartialEq for Rooms {
+    fn eq(&self, _: &Rooms) -> bool {
+        true
+    }
+}
+
+impl std::fmt::Debug for Rooms {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Rooms")
+    }
+}
+
 /// `Learner`: a graph's plastic parameters and the rule's step.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Learner {
@@ -148,6 +183,7 @@ pub struct Learner {
     members: Vec<usize>,
     member_groups: Vec<usize>,
     member_count: Vec<f64>,
+    rooms: Rooms,
 }
 
 impl Learner {
@@ -195,6 +231,7 @@ impl Learner {
             members: vec![],
             member_groups: vec![],
             member_count: vec![],
+            rooms: Rooms::default(),
         };
         learner.derive(graph)?;
         Ok(learner)
@@ -447,7 +484,10 @@ impl Learner {
         if all_trainable && self.synapse_rate.is_none() && self.members.is_empty() && e > 0 {
             return self.compiled_apply(graph, delta_scale, delta_bias);
         }
-        let mut d = delta_scale.to_vec();
+        let rooms = &mut self.rooms;
+        let mut d = std::mem::take(&mut rooms.d);
+        d.clear();
+        d.extend_from_slice(delta_scale);
         if !all_trainable {
             for (x, &plastic) in d.iter_mut().zip(&self.plastic_synapses) {
                 if !plastic {
@@ -486,26 +526,42 @@ impl Learner {
             }
         }
         if !d.iter().all(|x| x.is_finite()) {
+            self.rooms.d = d;
             return Err(refused("scaled and tied steps must remain finite"));
         }
         let cap = self.config.scale_cap;
-        let scale: Vec<f64> = (0..e).map(|k| {
+        let mut scale = std::mem::take(&mut self.rooms.scale);
+        scale.clear();
+        scale.extend((0..e).map(|k| {
             let s = graph.efficacy[k] + d[k];
             if self.plastic_synapses[k] { np::clip(s, -cap, cap) } else { s }
-        }).collect();
+        }));
         let held = self.held_neurons(graph);
         let step_bias: Vec<f64> = (0..n).map(|i| {
             let moves = self.plastic_neurons[i] && !held.as_ref().is_some_and(|h| h[i]);
             if moves { delta_bias[i] } else { 0.0 }
         }).collect();
-        let bias: Vec<f64> = graph.bias.iter().zip(&step_bias).map(|(b, x)| b + x).collect();
-        let generation = graph.generation + 1;
-        *graph = graph.with_parameters(Some(scale), Some(bias))?;
-        graph.generation = generation;
+        let mut bias = std::mem::take(&mut self.rooms.bias);
+        bias.clear();
+        bias.extend(graph.bias.iter().zip(&step_bias).map(|(b, x)| b + x));
+        let done = graph.set_parameters(Some(&mut scale), Some(&mut bias));
+        // the buffers hold the graph's old efficacies and biases now (or, refused, the new)
+        self.rooms.scale = scale;
+        self.rooms.bias = bias;
+        if let Err(e) = done {
+            self.rooms.d = d;
+            return Err(e);
+        }
         self.updates += 1;
-        let abs = |x: &[f64]| x.iter().map(|v| v.abs()).collect::<Vec<f64>>();
-        Ok(vec![("scale_step", if d.is_empty() { 0.0 } else { np::mean(&abs(&d)) }),
-                ("bias_step", np::mean(&abs(&step_bias)))])
+        let scale_step = if d.is_empty() { 0.0 } else { mean_size(&mut d) };
+        self.rooms.d = d;
+        Ok(vec![("scale_step", scale_step), ("bias_step", mean_size(&mut step_bias.clone()))])
+    }
+
+    /// The efficacies the graph held before the latest update (`apply`), which the update
+    /// replaced; empty before the first.
+    pub fn previous_efficacy(&self) -> &[f64] {
+        &self.rooms.scale
     }
 
     /// `_compiled_apply`: the pair tying, the bound and the effective weights in one pass
@@ -513,7 +569,11 @@ impl Learner {
     fn compiled_apply(&mut self, graph: &mut Graph, delta_scale: &[f64], delta_bias: &[f64])
                       -> Result<Vec<(&'static str, f64)>, Error> {
         let (n, e) = (self.n(), graph.synapses());
-        let (mut d, mut scale, mut weights) = (vec![0.0f64; e], vec![0.0f64; e], vec![0.0f64; e]);
+        let rooms = &mut self.rooms;
+        for room in [&mut rooms.d, &mut rooms.scale, &mut rooms.weights] {
+            room.resize(e, 0.0); // every entry is written by the pass
+        }
+        let (d, scale, weights) = (&mut rooms.d, &mut rooms.scale, &mut rooms.weights);
         let mut report = [0i64; 3];
         let seen = |x: &[f64]| View { p: x.as_ptr() as *mut f64, n0: x.len(), n1: 1, len: x.len() };
         let held = |x: &mut [f64]| View { p: x.as_mut_ptr(), n0: x.len(), n1: 1, len: x.len() };
@@ -521,8 +581,8 @@ impl Learner {
             let partner = Index::Wide(View { p: self.partner.as_ptr() as *mut i64, n0: e, n1: 1,
                                              len: e });
             lesson::tied_pass(seen(delta_scale), partner, seen(&graph.efficacy),
-                              seen(&graph.gain_pre), self.config.scale_cap, held(&mut d),
-                              held(&mut scale), held(&mut weights),
+                              seen(&graph.gain_pre), self.config.scale_cap, held(d),
+                              held(scale), held(weights),
                               View { p: report.as_mut_ptr(), n0: 3, n1: 1, len: 3 })
         };
         if code < 0 {
@@ -531,21 +591,16 @@ impl Learner {
         if report[0] != 0 {
             return Err(refused("scaled and tied steps must remain finite"));
         }
-        if report[1] != 0 {
-            return Err(refused("efficacy must have one finite entry per synapse"));
-        }
-        if report[2] != 0 {
-            return Err(refused("effective synaptic weights must be finite; reduce gain or efficacy"));
-        }
-        let step_bias: Vec<f64> = (0..n)
+
+        let mut step_bias: Vec<f64> = (0..n)
             .map(|i| if self.plastic_neurons[i] { delta_bias[i] } else { 0.0 }).collect();
-        let bias: Vec<f64> = graph.bias.iter().zip(&step_bias).map(|(b, x)| b + x).collect();
-        let generation = graph.generation + 1;
-        *graph = graph.with_update(scale, weights, bias)?;
-        graph.generation = generation;
+        let bias = &mut rooms.bias;
+        bias.clear();
+        bias.extend(graph.bias.iter().zip(&step_bias).map(|(b, x)| b + x));
+        // the graph takes the new efficacies, weights and biases; the rooms its old ones
+        graph.update(scale, weights, bias, (report[1] == 0, report[2] == 0))?;
         self.updates += 1;
-        let abs = |x: &[f64]| x.iter().map(|v| v.abs()).collect::<Vec<f64>>();
-        Ok(vec![("scale_step", np::mean(&abs(&d))), ("bias_step", np::mean(&abs(&step_bias)))])
+        Ok(vec![("scale_step", mean_size(d)), ("bias_step", mean_size(&mut step_bias))])
     }
 }
 
