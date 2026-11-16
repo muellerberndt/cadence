@@ -135,6 +135,7 @@ Then, as your brain needs them:
 | A memory for a task | the comparison table | [Memory](memory.md) |
 | Senses: images, continuous readings, codes | image `inputs`, `cd.PopulationCode`, `code=units`, `learned_code=units` | [Senses](senses.md) |
 | Several senses, each declared once and given by name; a brain that reads a map of things itself | `senses={name: width}`, `trained=["place"]` | [Senses by name](senses.md#senses-by-name), [a brain that knows where things are](modules.md#a-brain-that-knows-where-things-are) |
+| A body that acts on where things are from it (a bearing, a distance), its memories keyed on a fixed code | `code=units, cortex_reads="both"` (opt-in) | [What the cortex reads](senses.md#what-the-cortex-reads), [a body that acts on what it senses](assembly.md#a-body-that-acts-on-what-it-senses) |
 | A speech recogniser from recordings and transcripts, adapted to a speaker, on live audio | `cadence.speech` (opt-in) | [Speech](speech.md) |
 | To track where things are, in view and out of it, by kind and by place, and where a hidden thing that moves has gone | `cadence.space` (opt-in): `Map`, `Map(physics=True)`, `forecast` | [Space: tracking what is where](space.md) |
 | A signal for what a moment brought that the brain did not carry, and one focus drawn by it | `surprise=True` (opt-in): `brain.surprise`, `brain.focus`, `Map(surprise=True)` | [Surprise, and the focus it draws](life.md#surprise-and-the-focus-it-draws-opt-in) |

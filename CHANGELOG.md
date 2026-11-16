@@ -1,6 +1,32 @@
 # Changelog
 
-## Unreleased
+## 0.101.1 - 2026-11-16
+
+A cortex that reads the senses beside its fixed code. With `code=units` the memories of a brain
+key on a fixed sparse code where its senses meet, and a vector brain's cortex reads that code
+alone: what is on together, which records of bound moments and a heard name need, and a bearing
+or a distance less directly. `cortex_reads="both"` gives the cortex the senses themselves beside
+the code, and every memory keys on the code as before. Opt-in: a brain composed without it
+acts, learns, describes itself and saves as on 0.101.0, to the bit (the version string apart).
+
+```python
+import numpy as np
+from cadence import Brain
+
+senses = {"eyes": 32, "food": {"bearing": 8, "distance": 4}, "body": 8}
+body = Brain.compose(senses=senses, actions=5, code=128, cortex_reads="both", seed=0)
+food_left = {"food": {"bearing": np.eye(8)[[2]], "distance": np.eye(4)[[1]]}}
+body.lesson(food_left, np.array([2]))                       # a teacher shows: turn left
+assert len(body.connectome.populations["observation"]) == body.inputs == 52
+```
+
+The guide is [what the cortex reads](docs/senses.md#what-the-cortex-reads).
+
+### What the cortex reads (`cortex_reads`), an opt-in
+
+CHANGELOG-READINGS
+
+### Also in this release
 
 - **Corrections beside watched episodes, and many streams, on the brain's own path**
   (`benchmarks/coaching/cartpole.py`, twelve founders): each own episode corrected through
@@ -14,6 +40,13 @@
   as it ends.
 - The tuning guide shows how to change a teaching step under a named teaching point
   (`retune(learning=replace(config, eta=...))`).
+- **Tests** (#348): the option combinations, the saved files of earlier releases loaded and
+  continued, and a CI job in which the previous release reads this one's files. In this release
+  the released files gain 0.101.0's, a brain with bound records among them, and the job reads
+  with 0.101.0 and refuses a brain with `cortex_reads` by the feature's name.
+- **Documentation** (#350): the catalogue of parts complete, the settings table of the tuning
+  guide generated from `compose` (`tools/settings_table.py`), one home per concept, and a
+  runnable example in every guide.
 
 ## 0.101.0 - 2026-11-16
 

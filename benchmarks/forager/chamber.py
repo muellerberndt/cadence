@@ -164,6 +164,7 @@ def teacher_path(brain: cd.Brain, newborn: cd.Brain, founder: int, *, moments: i
     frozen.reset()
     infant.reset()
     agree: list[np.ndarray] = []
+    right = np.zeros((len(ACTIONS), 2))
     samples: dict[str, list] = {"turn": [], "observation": [], "code": [], "state": [],
                                 "newborn": []}
     for _ in range(moments):
@@ -172,6 +173,7 @@ def teacher_path(brain: cd.Brain, newborn: cd.Brain, founder: int, *, moments: i
         answered = np.asarray(frozen.act(sensed, greedy=True)).reshape(bodies)
         infant.act(sensed, greedy=True)
         agree.append(answered == shown)
+        np.add.at(right, (shown, (answered == shown).astype(int)), 1)
         seen, _, _ = world.food()
         toward = seen & (shown != BITE)
         if toward.any():
@@ -182,7 +184,10 @@ def teacher_path(brain: cd.Brain, newborn: cd.Brain, founder: int, *, moments: i
             samples["state"].append(association(frozen)[toward])
             samples["newborn"].append(association(infant)[toward])
         world.step(shown)
-    return {"agreement": round(float(np.mean(agree)), 3), "readout": readout(samples)}
+    total = right.sum(1)
+    return {"agreement": round(float(np.mean(agree)), 3), "readout": readout(samples),
+            "by_action": {ACTIONS[a]: (round(float(right[a, 1] / total[a]), 3), int(total[a]))
+                          for a in range(len(ACTIONS)) if total[a]}}
 
 
 def readout(samples: dict[str, list]) -> dict[str, float]:

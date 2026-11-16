@@ -23,6 +23,7 @@ every part below is added to it.
 | A seen thing's colour and form as inputs | a sense for things | `Things({"hue": (0.0, 1.0)})` |
 | A heard word as one code | an ear | `Ear(frames=16, bands=40)` |
 | Senses that count alike, whatever their width | equal senses | `code=512` beside `senses=` |
+| A body that acts on where things are from it (a bearing, a distance), its memories keyed on the code | [the senses beside the code](#a-body-that-acts-on-what-it-senses) | `code=128, cortex_reads="both"` |
 | An action with parts, or one choice per motor | [motor slots](#actions-and-a-voice) | `slots=(3, 2)` |
 | Where things are, in view and out of it | [the map of things](#the-map-of-things) | `trained=["place"]` |
 | A thing's colour kept with it on the map while it is hidden | values on the map | `trained=[Map(plane, values={"hue": 8})]` |
@@ -75,10 +76,35 @@ assert creature.inputs == 8 + 24 + 80                             # the senses s
   length, so a word of one input counts as much as a glimpse of fifty. Use it whenever senses
   differ in width or loudness, and always for records and a voice
   ([equal senses](senses.md#equal-senses-in-the-fixed-code)).
+- **The senses beside the code.** With `code=units` the cortex reads the code alone, which holds
+  what is on together and holds a bearing or a distance less directly. A body that acts on
+  where things are from it reads its senses beside the code (`cortex_reads="both"`, below).
 - **Other senses.** A few continuous readings go through `cd.PopulationCode`; an image is
   `inputs=(height, width)`, read best through `learned_fields`
   ([senses](senses.md)). `Things` and `Ear` learn nothing and are not saved with the
   brain: make them again with the same arguments.
+
+#### A body that acts on what it senses
+
+An animal's senses: eyes in eight sectors, ears, a call it heard, the thing it attends, the
+nearest food (what it is, its bearing, its distance) and its own body. The code of 128 units is
+where its records key; with `cortex_reads="both"` its cortex reads the senses beside the code,
+so a lesson to turn toward the food reaches the bearing itself
+([what the cortex reads](senses.md#what-the-cortex-reads)).
+
+```python
+animal = {"eyes": 32, "ears": 8, "heard": 16, "thing": 20,
+          "food": {"what": 8, "bearing": 8, "distance": 4}, "body": 8}
+forager = Brain.compose(senses=animal, actions=5, code=128, cortex_reads="both",
+                        modules=(32, 32), bound=16, voice="heard", arousal=True, seed=0)
+food_left = {"food": {"what": np.eye(8)[[0]], "bearing": np.eye(8)[[2]],
+                      "distance": np.eye(4)[[1]]}}
+forager.lesson(food_left, np.array([2]))                          # a teacher shows: turn left
+action = forager.live(food_left)
+assert len(forager.connectome.populations["observation"]) == forager.inputs == 104 + 16
+```
+
+The `observation` region holds every input, the voice the animal hears itself say among them.
 
 ### Actions and a voice
 

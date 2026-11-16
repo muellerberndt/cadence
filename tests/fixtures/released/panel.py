@@ -14,6 +14,7 @@ import numpy as np
 import cadence as cd
 
 SENSES = {"eyes": {"hue": 8, "shape": 8}, "ear": 16}
+EAR = 16  # the width of the bound brain's heard sense and of its voice
 
 
 def version(text: str) -> tuple[int, ...]:
@@ -63,6 +64,11 @@ PANEL: dict[str, tuple[str, dict[str, Any]]] = {
             "longterm_strength": True,
         },
     ),
+    "bound": (
+        "0.101.0",
+        {"senses": {"eyes": {"hue": 8, "shape": 8}, "ear": EAR}, "code": 64, "bound": 16,
+         "voice": "ear"},
+    ),
 }
 
 
@@ -109,6 +115,10 @@ def observation(brain: Any, name: str, moment: int) -> Any:
     if name == "senses":
         row = rng.random((1, 32))
         return {"eyes": {"hue": row[:, :8], "shape": row[:, 8:16]}, "ear": row[:, 16:]}
+    if name == "bound":  # one of three things, heard named at every other moment
+        thing = moment % 3
+        seen = {"hue": np.eye(8)[[thing]], "shape": np.eye(8)[[thing + 3]]}
+        return {"eyes": seen, "ear": np.eye(EAR)[[thing]]} if moment % 2 else {"eyes": seen}
     row = 0.2 * rng.random((1, brain.inputs))
     row[0, moment % 3] = 1.0  # one of three cues, the label a lesson gives it
     if name.startswith("records"):

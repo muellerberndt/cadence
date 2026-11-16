@@ -28,6 +28,7 @@ from cadence.space.map import Map
 FACTORS: dict[str, tuple[str, ...]] = {
     "layout": ("inputs", "senses"),
     "code": ("none", "fixed", "learned"),
+    "cortex": ("code", "both", "observation"),  # what the cortex reads beside a fixed code
     "recall": ("default", "off", "heads2", "strength"),
     "surprise": ("off", "on"),
     "bound": ("off", "voice"),
@@ -56,6 +57,8 @@ NEEDS = [
     ("longterm", "records", "message", ("on",)),  # long-term records key on the message
     ("longterm", "strength", "message", ("on",)),
     ("code", "learned", "recall", ("default", "heads2", "strength")),  # attention reads recall
+    ("cortex", "both", "code", ("fixed",)),  # what the cortex reads beside a fixed code
+    ("cortex", "observation", "code", ("fixed",)),
 ]
 
 # Pairs the library refuses with a ValueError that names the part ("What does not go
@@ -176,6 +179,8 @@ def options(cell: dict[str, str]) -> dict[str, Any]:
         kw["slots"] = (3, 2)
     if cell["code"] == "fixed":
         kw["code"] = 64
+        if cell["cortex"] != "code":
+            kw["cortex_reads"] = cell["cortex"]
     elif cell["code"] == "learned":
         kw.update(learned_code=16, attention=True)
     kw.update(
@@ -376,6 +381,7 @@ LIVES_CELLS = _distinct(
             "layout": "inputs",
             "trained": "off",
             "code": "none",
+            "cortex": "code",
             "message": "off",
             "longterm": "off",
             "bound": "off",

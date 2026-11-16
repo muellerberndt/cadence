@@ -1,12 +1,13 @@
 """Write the released files: every brain of the panel each release composes, saved by that
 release, with its continuation after a load as that release reads it.
 
-    python tests/fixtures/released/make.py --scratch DIR v0.99.0 v0.99.1 v0.100.0
+    python tests/fixtures/released/make.py --scratch DIR v0.99.0 v0.99.1 v0.100.0 v0.101.0
 
 Each tag's ``src`` is extracted with ``git archive`` into ``DIR`` (outside the repository), and
 an isolated child interpreter (``-I``) with that source first on its path writes ``<tag>/<brain>.npz`` here and
 the brain's continuation, once on the NumPy solver (``CADENCE_FUSED=0``) and once on the
-compiled kernel where Numba is installed, at one thread. ``released.json`` gathers them."""
+compiled kernel where Numba is installed, at one thread. ``released.json`` gathers them: the
+tags named replace their entries, and the entries of other tags stay."""
 
 from __future__ import annotations
 
@@ -95,7 +96,8 @@ def main() -> None:
     parser.add_argument("--scratch", type=Path, required=True)
     parser.add_argument("tags", nargs="+")
     args = parser.parse_args()
-    table: dict = {}
+    written = HERE / "released.json"
+    table: dict = json.loads(written.read_text()) if written.exists() else {}
     for tag in args.tags:
         source = extract(tag, args.scratch)
         out = HERE / tag

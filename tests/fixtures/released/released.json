@@ -434,6 +434,473 @@
   "tag": "v0.100.0",
   "written_by": "cadence-net 0.100.0 from the tag's src, on the NumPy solver (CADENCE_FUSED=0), one thread"
  },
+ "0.101.0": {
+  "brains": {
+   "arousal": {
+    "acts": {
+     "fused": [
+      1,
+      1,
+      2,
+      2,
+      1,
+      2,
+      2,
+      2
+     ],
+     "numpy": [
+      1,
+      1,
+      2,
+      2,
+      1,
+      2,
+      2,
+      2
+     ]
+    },
+    "features": [],
+    "format": "cadence-brain/1",
+    "learned": {
+     "fused": "7fe863f8a2ff962a9d1b849c8909c6c740313e5863d21223c588d8b1be1855f0",
+     "numpy": "be3d8c20aa486d27b65f13ea64763d5662ce31301ccc7089b78762ae2cfb8161"
+    }
+   },
+   "bound": {
+    "acts": {
+     "fused": [
+      1,
+      1,
+      1,
+      2,
+      1,
+      2,
+      2,
+      2
+     ],
+     "numpy": [
+      1,
+      1,
+      1,
+      2,
+      1,
+      2,
+      2,
+      2
+     ]
+    },
+    "features": [
+     "bound"
+    ],
+    "format": "cadence-brain/5",
+    "learned": {
+     "fused": "eec7f826bb4dd86042bdcc05133b57f03bcc8b3485933eefaa260df42c31698e",
+     "numpy": "bb26e41853df46c06a999f1d86d0400957d22a80bc9d4d8a8b597665b8a5a9e7"
+    }
+   },
+   "choice": {
+    "acts": {
+     "fused": [
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2
+     ],
+     "numpy": [
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2
+     ]
+    },
+    "features": [],
+    "format": "cadence-brain/1",
+    "learned": {
+     "fused": "524eb8783c9e4a50291a0a2aa9c3ada3668d64047a7f32f66cb1160a82649250",
+     "numpy": "5430a130aa56fa9ed5aad27add74d26c5fe9b6e46a3b8a5dc7888fc29fe49990"
+    }
+   },
+   "code": {
+    "acts": {
+     "fused": [
+      0,
+      1,
+      2,
+      2,
+      1,
+      2,
+      2,
+      2
+     ],
+     "numpy": [
+      0,
+      1,
+      2,
+      2,
+      1,
+      2,
+      2,
+      2
+     ]
+    },
+    "features": [],
+    "format": "cadence-brain/1",
+    "learned": {
+     "fused": "bb164eb2000d6c17577bbea1a0eab11385e671312f14e0c140cc3862df29f0ab",
+     "numpy": "b803ba10b7b1976fcaeab55525dc01f4b24bbf917b0349978a89dbd52797e893"
+    }
+   },
+   "default": {
+    "acts": {
+     "fused": [
+      1,
+      1,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2
+     ],
+     "numpy": [
+      1,
+      1,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2
+     ]
+    },
+    "features": [],
+    "format": "cadence-brain/1",
+    "learned": {
+     "fused": "b01434a6c65f1c137f4b5e2db1a7234b84b13262b495d2ef43f073b1693f7c42",
+     "numpy": "1fb5e90d9c234a761ad8b005f682a29175cdf3c8b6dd46b69c2ba644200ba084"
+    }
+   },
+   "heads": {
+    "acts": {
+     "fused": [
+      1,
+      1,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2
+     ],
+     "numpy": [
+      1,
+      1,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2
+     ]
+    },
+    "features": [],
+    "format": "cadence-brain/1",
+    "learned": {
+     "fused": "dd983ad2129d803235aac9e54555c78556ed9fc02e1e497613e33a6e2a43fbd0",
+     "numpy": "f913e8f75ed259cc841a21d795074faecc37c296346044a95a00a61fe081e517"
+    }
+   },
+   "map_by_hand": {
+    "acts": {
+     "fused": [
+      1,
+      1,
+      1,
+      2,
+      1,
+      2,
+      2,
+      2
+     ],
+     "numpy": [
+      1,
+      1,
+      1,
+      2,
+      1,
+      2,
+      2,
+      2
+     ]
+    },
+    "features": [],
+    "format": "cadence-brain/1",
+    "learned": {
+     "fused": "17dfddf8a628fdf5902a76db28d89734c2cd19eb8015fac932f3f7a491f30883",
+     "numpy": "19f094bef800233ea44d76744b3b09b0e62e1c749e46f143fe74a7b11a9a8464"
+    }
+   },
+   "map_named": {
+    "acts": {
+     "fused": [
+      1,
+      1,
+      1,
+      2,
+      1,
+      2,
+      2,
+      2
+     ],
+     "numpy": [
+      1,
+      1,
+      1,
+      2,
+      1,
+      2,
+      2,
+      2
+     ]
+    },
+    "features": [],
+    "format": "cadence-brain/1",
+    "learned": {
+     "fused": "cda6c4ab8ff1d9886def5185bc5e431fdc6a578c5c88080a974feb7eebaa8da4",
+     "numpy": "28f52ff71dc7612610b0105c54932d33a585f13e52596b7b6e29d9c4a4b75f83"
+    }
+   },
+   "map_values": {
+    "acts": {
+     "fused": [
+      0,
+      1,
+      2,
+      2,
+      1,
+      2,
+      2,
+      2
+     ],
+     "numpy": [
+      0,
+      1,
+      2,
+      2,
+      1,
+      2,
+      2,
+      2
+     ]
+    },
+    "features": [
+     "map",
+     "surprise"
+    ],
+    "format": "cadence-brain/5",
+    "learned": {
+     "fused": "f29eeac83fa9a60e0f334921f836da233ad1d5d39d5a8a7f200eda0670a1c966",
+     "numpy": "e0f3d03e7dd8250f1c72d3fc9159411bc65c6db2fcf04c734522e3c85f4bc27b"
+    }
+   },
+   "maturity": {
+    "acts": {
+     "fused": [
+      1,
+      1,
+      2,
+      2,
+      1,
+      2,
+      2,
+      2
+     ],
+     "numpy": [
+      1,
+      1,
+      2,
+      2,
+      1,
+      2,
+      2,
+      2
+     ]
+    },
+    "features": [],
+    "format": "cadence-brain/3",
+    "learned": {
+     "fused": "79565658c5d5af24035406375bbdb95156b0b07fde28bc935dc3ec42d6ccc181",
+     "numpy": "839611e4c1bead9c52c2ba36e09c3d93b19e181b9d27f8014faab02e8621ae14"
+    }
+   },
+   "recall_strength": {
+    "acts": {
+     "fused": [
+      1,
+      1,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2
+     ],
+     "numpy": [
+      1,
+      1,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2
+     ]
+    },
+    "features": [
+     "recall_strength"
+    ],
+    "format": "cadence-brain/5",
+    "learned": {
+     "fused": "b01434a6c65f1c137f4b5e2db1a7234b84b13262b495d2ef43f073b1693f7c42",
+     "numpy": "1fb5e90d9c234a761ad8b005f682a29175cdf3c8b6dd46b69c2ba644200ba084"
+    }
+   },
+   "records": {
+    "acts": {
+     "fused": [
+      1,
+      1,
+      1,
+      2,
+      1,
+      2,
+      2,
+      2
+     ],
+     "numpy": [
+      1,
+      1,
+      1,
+      2,
+      1,
+      2,
+      2,
+      2
+     ]
+    },
+    "features": [],
+    "format": "cadence-brain/4",
+    "learned": {
+     "fused": "03139bd0ec6bd61d12b783d3b0a67a7297ab720627e0527e2c9fcc9fd3a988e3",
+     "numpy": "3c628709d368791eef819d38cd621ee3cb3b55443e0939c64cd29632c07f52b8"
+    }
+   },
+   "records_strength": {
+    "acts": {
+     "fused": [
+      1,
+      1,
+      1,
+      2,
+      1,
+      2,
+      2,
+      2
+     ],
+     "numpy": [
+      1,
+      1,
+      1,
+      2,
+      1,
+      2,
+      2,
+      2
+     ]
+    },
+    "features": [
+     "strength"
+    ],
+    "format": "cadence-brain/5",
+    "learned": {
+     "fused": "03139bd0ec6bd61d12b783d3b0a67a7297ab720627e0527e2c9fcc9fd3a988e3",
+     "numpy": "3c628709d368791eef819d38cd621ee3cb3b55443e0939c64cd29632c07f52b8"
+    }
+   },
+   "senses": {
+    "acts": {
+     "fused": [
+      0,
+      1,
+      2,
+      2,
+      1,
+      2,
+      2,
+      2
+     ],
+     "numpy": [
+      0,
+      1,
+      2,
+      2,
+      1,
+      2,
+      2,
+      2
+     ]
+    },
+    "features": [],
+    "format": "cadence-brain/1",
+    "learned": {
+     "fused": "d441a98187e750711c9985842592fa58f598cfbbbc3dc6362d12838946190248",
+     "numpy": "c1431fedda0e825e58f7081a101ad44ddcda3fc3121b45458eaf53b60786b07e"
+    }
+   },
+   "surprise": {
+    "acts": {
+     "fused": [
+      1,
+      1,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2
+     ],
+     "numpy": [
+      1,
+      1,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2
+     ]
+    },
+    "features": [
+     "surprise"
+    ],
+    "format": "cadence-brain/5",
+    "learned": {
+     "fused": "b01434a6c65f1c137f4b5e2db1a7234b84b13262b495d2ef43f073b1693f7c42",
+     "numpy": "1fb5e90d9c234a761ad8b005f682a29175cdf3c8b6dd46b69c2ba644200ba084"
+    }
+   }
+  },
+  "tag": "v0.101.0",
+  "written_by": "cadence-net 0.101.0 from the tag's src, on the NumPy solver (CADENCE_FUSED=0), one thread"
+ },
  "0.99.0": {
   "brains": {
    "arousal": {
