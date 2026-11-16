@@ -115,19 +115,20 @@ getattr(module, "recording", lambda: None)()  # a part whose class checks its ow
 world = World(Rules(), seed=1)
 sim = Sim(world, minds=Host(world.rules.width, world.rules.height, world.seed, None, []))
 began = time.perf_counter()
-seen = 0
-lived = {"birth": 0, "death": 0}
+seen: set[int] = set()  # the events read, each once, by identity (Wild's list is rolling)
+held: list = []  # those events kept, so an identity is never reused
+lived = {"birth": 0, "death": 0}  # the world's birth and death events
 for step in range(a.steps):
     sim.step()
     # Wild catches a mind's error and the animal acts at random: a broken recording or state
     # shows only there, so the first one ends the check
-    events = getattr(world, "events", [])
-    seen = 0 if len(events) < seen else seen  # a world that clears its events each step
-    errors = [e for e in events[seen:] if e.get("what") == "brain_error"]
-    for e in events[seen:]:
+    fresh = [e for e in getattr(world, "events", []) if id(e) not in seen]
+    seen.update(id(e) for e in fresh)
+    held.extend(fresh)
+    for e in fresh:
         if e.get("what") in lived:
             lived[e["what"]] += 1
-    seen = len(events)
+    errors = [e for e in fresh if e.get("what") == "brain_error"]
     if errors:
         print(f"FAIL: a brain error at step {step}: {errors[0]}")
         sys.exit(2)
