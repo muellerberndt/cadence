@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 
 import cadence as cd
+from cadence import brain as kernel
 from cadence import generic
 from cadence.genome import Genome, develop
 from cadence.senses import Ear, Things
@@ -137,8 +138,20 @@ def test_a_brain_saves_what_its_cortex_reads_and_continues(tmp_path, reads):
     again = cd.Brain.load(path)
     assert again.describe() == brain.describe()
     assert life(again, 4) == life(brain, 4)
-    assert again.save(tmp_path / "again.npz").read_bytes() == brain.save(
-        tmp_path / "brain2.npz").read_bytes()
+    a, b = again.save(tmp_path / "again.npz"), brain.save(tmp_path / "brain2.npz")
+    if not kernel._FUSED:  # the NumPy loop continues to the bit
+        assert a.read_bytes() == b.read_bytes()
+        return
+    # the compiled kernel orders its sums by the machine's compiled code: the same acts above,
+    # and every array within its last bits (as #346 reads a held message's continuation)
+    with np.load(a, allow_pickle=False) as left, np.load(b, allow_pickle=False) as right:
+        assert left.files == right.files
+        for name in left.files:
+            x, y = left[name], right[name]
+            if x.dtype.kind in "fc":
+                assert np.allclose(x, y, rtol=1e-12, atol=1e-12), name
+            elif name != "brain":  # the record holds diagnostics read from the settles
+                assert np.array_equal(x, y), name
 
 
 def test_a_release_without_the_feature_refuses_the_file_by_its_name(tmp_path, monkeypatch):
