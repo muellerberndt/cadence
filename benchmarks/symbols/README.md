@@ -136,3 +136,42 @@ gates and bars as the first run (S1 to S7 above), one life a founder on the CPU.
 **Expectations.** S1, S4, S6 and S7 hold on 11 or 12 founders; S2 and S3 as in the first run
 (11 and 10 of 12); S5 on 11 or 12. A founder whose barred probe reads above .25 (two of the first
 run's twelve) misses S3, and S3 may fail on three.
+
+**Read: S2 fails (8 of 12); S1, S3, S4, S5, S6 and S7 hold** (12, 12, 12, 12, 12 and 11 of 12).
+
+| founder | S1 | S2 | barred | dealt | names (exchanges) | colours (exchanges) | unpaid names | unpaid colours | S6 | S7 in view | S7 screen | untaught | Y1h | s |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1010200 | 1.0 | 1.0 | 0.1 | 0.05 | [12, 8, 5, 6] | [11, 8, 17, 15] | 0.072 | 0.075 | 1.0 | 1.0 | 1.0 | 0.0 | 0.925 | 62.0 |
+| 1010201 | 1.0 | 1.0 | 0.025 | 0.025 | [8, 5, 4, 4] | [9, 21, 7, 8] | 0.062 | 0.059 | 1.0 | 1.0 | 1.0 | 0.0 | 0.95 | 63.2 |
+| 1010202 | 1.0 | 0.875 | 0.075 | 0.025 | [3, 6, 8, 3] | [17, 7, 11, 11] | 0.05 | 0.084 | 1.0 | .83 | 1.0 | 0.0 | 0.9 | 60.3 |
+| 1010203 | 1.0 | 1.0 | 0.15 | 0.0 | [11, 7, 8, 11] | [7, 4, 10, 18] | 0.072 | 0.066 | 1.0 | 1.0 | 1.0 | 0.0 | 0.9 | 57.6 |
+| 1010204 | 1.0 | 1.0 | 0.125 | 0.0 | [14, 7, 15, 12] | [16, 14, 19, 12] | 0.081 | 0.078 | 1.0 | .92 | 1.0 | 0.0 | 0.925 | 61.4 |
+| 1010205 | 1.0 | 0.975 | 0.1 | 0.0 | [9, 13, 7, 16] | [8, 17, 15, 14] | 0.066 | 0.069 | 1.0 | 1.0 | 1.0 | 0.0 | 0.875 | 57.5 |
+| 1010206 | 1.0 | 0.875 | 0.15 | 0.0 | [12, 13, 13, 4] | [17, 11, 7, 7] | 0.056 | 0.062 | 1.0 | 1.0 | .92 | 0.0 | 0.85 | 57.8 |
+| 1010207 | 1.0 | 1.0 | 0.125 | 0.075 | [13, 13, 4, 15] | [10, 7, 14, 18] | 0.087 | 0.056 | 1.0 | .92 | 1.0 | 0.0 | 0.85 | 58.1 |
+| 1010208 | 1.0 | 0.975 | 0.125 | 0.0 | [16, 16, 11, 4] | [15, 13, 12, 18] | 0.059 | 0.05 | 1.0 | 1.0 | 1.0 | 0.0 | 0.875 | 57.8 |
+| 1010209 | 1.0 | 0.875 | 0.05 | 0.025 | [4, 4, 12, 13] | [6, 18, 15, 5] | 0.107 | 0.047 | 1.0 | 1.0 | 1.0 | 0.0 | 0.8 | 50.4 |
+| 1010210 | 1.0 | 0.875 | 0.125 | 0.0 | [8, 6, 12, 10] | [18, 11, 6, 16] | 0.089 | 0.047 | 1.0 | .92 | 1.0 | 0.0 | 0.8 | 48.3 |
+| 1010211 | 1.0 | 1.0 | 0.25 | 0.1 | [15, 8, 5, 10] | [16, 16, 12, 15] | 0.037 | 0.084 | 1.0 | .92 | 1.0 | 0.0 | 0.925 | 54.0 |
+
+
+**Located (S2).** On every founder that misses S2 the records bring the right kind back (the
+records' own read, S1, is 1.00 on every founder) and the state's probe reads one kind as another
+on all five takes: an apple as a ball (three founders), an apple as a banana or a pear, a ball as
+an apple. The probe misreads the same kinds when they are seen (.925 to .975 on things seen
+alone, four founders): the 64 neurons of the association settle an apple and a ball, alike in
+form and both red, to states the probe does not tell apart. With 256 association neurons the
+probe reads things seen at 1.00 and a name heard alone at 1.00 (development founders 0 to 2).
+
+### The third declared run
+
+**What changed:** the chamber's brain has 256 association neurons (`modules=(256,)`, 7,180,417
+parameters in place of 5,128,321); the library is the second run's. Development, founders 0 to 2,
+the whole life: S1 1.00, S2 1.00, barred .025 to .15, dealt .00, S4 5 to 17 exchanges, S5 5 to 16,
+S6 1.00, S7 .83 to 1.00 in view and 1.00 behind a screen, 96 to 98 seconds a life.
+
+**Declared** on [#342](https://github.com/muellerberndt/cadence/issues/342) before the first life:
+founders **1010300 to 1010311**, twelve and fresh, the same gates and bars (S1 to S7 above).
+
+**Expectations.** Every gate on 11 or 12 founders; S3 and S7 may miss on one or two, as in the
+first two runs.

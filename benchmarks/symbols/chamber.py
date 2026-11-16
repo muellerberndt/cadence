@@ -61,6 +61,7 @@ import cadence as cd  # noqa: E402
 from cadence.senses import Ear  # noqa: E402
 
 CODE = 2048
+MODULES = (256,)  # the association: 64 neurons hold an apple and a ball alike (the second run)
 RECORDS = 4096
 ROUNDS = 8
 BUDGET = 80
@@ -86,7 +87,7 @@ def compose(founder: int, things: Any, ear: Ear, *, space: Any = None) -> cd.Bra
         options.update(trained=[space], surprise=True)
     return cd.Brain.compose(senses={"eyes": things.widths, "ear": ear.width}, actions=2,
                             code=CODE, bound=RECORDS, voice="ear", arousal=True,
-                            seed=founder, backend="cpu", **options)
+                            modules=MODULES, seed=founder, backend="cpu", **options)
 
 
 def seen(things: Any, thing: Thing) -> dict[str, np.ndarray]:
