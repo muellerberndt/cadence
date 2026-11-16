@@ -1,6 +1,7 @@
 //! The parts of a brain, one module each: a part's state from and to named arrays and its
 //! methods by name (`call`), for the replay checks and for the moment that runs them.
 
+pub mod actor;
 pub mod arousal;
 pub mod bound;
 pub mod brain;
@@ -8,6 +9,7 @@ pub mod code;
 pub mod graph;
 pub mod hearing;
 pub mod history;
+pub mod learner;
 pub mod longterm;
 pub mod memories;
 pub mod map;
@@ -93,6 +95,21 @@ pub fn call(part: &str, method: &str, state: &Named, args: &Named) -> Result<Nam
         "map" => {
             let mut held = map::Map::import(state)?;
             held.call(method, args, &mut out)?;
+            held.export(&mut after);
+        }
+        "learner" => {
+            let mut held = learner::LearnerPart::import(state)?;
+            held.call(method, args, &mut out)?;
+            held.export(&mut after);
+        }
+        "actor" => {
+            let mut held = actor::Reach::import(state)?;
+            held.call(method, args, &mut out)?;
+            held.export(&mut after);
+        }
+        "maturity" => {
+            let mut held = actor::Maturity::import(state)?;
+            held.call(method, &mut out)?;
             held.export(&mut after);
         }
         "brain" => {

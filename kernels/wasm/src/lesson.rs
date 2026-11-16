@@ -40,6 +40,17 @@ pub unsafe extern "C" fn trace_step(
     let delta = take!(delta, f64, FLOAT64, 8);
     let step_scale = take!(step_scale, f64, FLOAT64, 9);
     let step_bias = take!(step_bias, f64, FLOAT64, 10);
+    trace_pass(trace, trace_bias, decay, s_plus, s_minus, pre, post, span, delta, step_scale,
+               step_bias)
+}
+
+/// The pass of `trace_step` on its arrays: `trace` (batch, edges) and `trace_bias` (batch, n)
+/// in place, the step into `step_scale` and `step_bias`.
+pub(crate) unsafe fn trace_pass(
+    trace: View<f64>, trace_bias: View<f64>, decay: f64, s_plus: View<f64>, s_minus: View<f64>,
+    pre: Index, post: Index, span: f64, delta: View<f64>, step_scale: View<f64>,
+    step_bias: View<f64>,
+) -> i32 {
     let (batch, edges) = (trace.n0, trace.n1);
     let n = trace_bias.n1;
     if pre.len() != edges || post.len() != edges || s_plus.n0 != batch || s_plus.n1 != n
@@ -277,6 +288,14 @@ pub unsafe extern "C" fn tied(
     let out_scale = take!(out_scale, f64, FLOAT64, 6);
     let out_weight = take!(out_weight, f64, FLOAT64, 7);
     let report = take!(report, i64, INT64, 8);
+    tied_pass(delta, partner, efficacy, gain_pre, cap, out_delta, out_scale, out_weight, report)
+}
+
+/// The pass of `tied` on its arrays.
+pub(crate) unsafe fn tied_pass(
+    delta: View<f64>, partner: Index, efficacy: View<f64>, gain_pre: View<f64>, cap: f64,
+    out_delta: View<f64>, out_scale: View<f64>, out_weight: View<f64>, report: View<i64>,
+) -> i32 {
     let count = delta.len;
     if partner.len() < count || efficacy.len < count || gain_pre.len < count
         || out_delta.len < count || out_scale.len < count || out_weight.len < count
@@ -391,6 +410,12 @@ pub unsafe extern "C" fn add_episode_terms(
 pub unsafe extern "C" fn clear_choice(s: usize, temperature: f64, choice: usize) -> i32 {
     let s = take!(s, f64, FLOAT64, 0);
     let choice: View<i64> = take!(choice, i64, INT64, 2);
+    choose(s, temperature, choice)
+}
+
+/// The pass of `clear_choice` on its arrays: `s` (rows, width), each row's choice into
+/// `choice`; 1 where every row's stands clear.
+pub(crate) unsafe fn choose(s: View<f64>, temperature: f64, choice: View<i64>) -> i32 {
     let (rows, width) = (s.n0, s.n1);
     if choice.len < rows {
         return refused(2);
