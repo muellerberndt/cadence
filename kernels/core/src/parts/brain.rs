@@ -9,12 +9,14 @@
 //! all zeros, as the Python builds the row from the senses it is given by name. The parts are
 //! the core's own (`parts::*`); the state crosses as `cadence.core.parts.brain` writes it.
 
+use super::actor::{ActorCritic, Heat, Report};
 use super::arousal::Arousal;
 use super::bound::Bound;
 use super::code::Code;
 use super::graph::{self, Equilibrium, Graph, State};
 use super::hearing::Hearing;
 use super::history::History;
+use super::learner::Learner;
 use super::map::Map;
 use super::memories::{self, ORDER};
 use super::recall::{Recall, F};
@@ -31,9 +33,9 @@ const OPERATIONS: [&str; 4] = ["act", "wait", "predict", "answer"];
 /// `Brain.equilibrate`'s chunk of sweeps between checks, as the moment's solves take it.
 const CHUNK: i64 = 32;
 /// The attributes a brain's parts cross under, in their order.
-pub const PARTS: [&str; 13] = [
+pub const PARTS: [&str; 15] = [
     "arousal", "sparse_code", "working_memory", "efference", "history", "recall", "hippocampus",
-    "bound", "surprise", "orienting", "space", "brain", "hearing",
+    "bound", "surprise", "orienting", "space", "brain", "hearing", "learner", "basal_ganglia",
 ];
 /// `Orienting`'s senses (`surprise::SENSES`) as `_surprised` names its sources.
 const FROM_MAP: i64 = 2;
@@ -64,13 +66,12 @@ impl Sense {
 }
 
 /// The learner's settings a moment's settle reads.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Settle {
-    pub free_steps: i64,
-    pub tolerance: f64,
-    pub damping: i64,
-    pub qualified: bool,
-    pub fast: bool,
+struct Settle {
+    free_steps: i64,
+    tolerance: f64,
+    damping: i64,
+    qualified: bool,
+    fast: bool,
 }
 
 /// The action `live` issued that awaits its outcome (`Brain._lived`, while its free state is
@@ -140,7 +141,6 @@ pub struct Brain {
     pub surprise_private: bool,
     /// Whether the place records read the maturity's factor.
     pub hippocampus_maturity: bool,
-    pub settle: Settle,
     /// The map's value groups by name, in their order.
     pub map_values: Vec<String>,
 
@@ -160,6 +160,9 @@ pub struct Brain {
     pub hearing: Option<Hearing>,
     /// Each of the hearing's memories by its place in `Memories.ORDER`.
     pub hearing_memories: Vec<usize>,
+    pub learner: Option<Learner>,
+    /// The actor and critic, with the maturity (`basal_ganglia.maturity`).
+    pub basal_ganglia: Option<ActorCritic>,
 
     pub lived: Option<Lived>,
     /// A sampled moment's observations and action, for the outcome's record.
@@ -278,13 +281,6 @@ impl Brain {
             coded_keys: flag(s, "spine.coded_keys")?,
             surprise_private: flag(s, "spine.surprise_private")?,
             hippocampus_maturity: flag(s, "spine.hippocampus_maturity")?,
-            settle: Settle {
-                free_steps: s.i64("spine.settle.free_steps")?,
-                tolerance: s.f64("spine.settle.tolerance")?,
-                damping: s.i64("spine.settle.damping")?,
-                qualified: flag(s, "spine.settle.qualified")?,
-                fast: flag(s, "spine.settle.fast")?,
-            },
             map_values: map_values.into_iter().map(|(_, n)| n).collect(),
             arousal: part("arousal").map(|p| Arousal::import(&p)).transpose()?,
             sparse_code: part("sparse_code").map(|p| Code::import(&p)).transpose()?,
@@ -300,6 +296,8 @@ impl Brain {
             brain: part("brain").map(|p| Graph::import(&p)).transpose()?,
             hearing: None,
             hearing_memories: Vec::new(),
+            learner: None,
+            basal_ganglia: None,
             lived: None,
             moment: None,
             prepared: None,
@@ -317,6 +315,11 @@ impl Brain {
         if let Some(h) = part("hearing") {
             brain.import_hearing(&h)?;
         }
+        let graph = brain.brain.as_ref().unwrap();
+        let learner = Learner::import(&part("learner").ok_or_else(|| fault("no learner"))?, graph)?;
+        brain.basal_ganglia = Some(ActorCritic::import(
+            &part("basal_ganglia").ok_or_else(|| fault("no actor"))?, &learner, graph)?);
+        brain.learner = Some(learner);
         if s.has("spine.lived.x") {
             brain.lived = Some(Lived {
                 x: s.f64s("spine.lived.x")?,
@@ -522,12 +525,6 @@ impl Brain {
                           ("hippocampus_maturity", self.hippocampus_maturity)] {
             out.put(&format!("spine.{name}"), Array::from_bool(&[], &[x]));
         }
-        let c = &self.settle;
-        out.put("spine.settle.free_steps", Array::scalar_i64(c.free_steps));
-        out.put("spine.settle.tolerance", Array::scalar_f64(c.tolerance));
-        out.put("spine.settle.damping", Array::scalar_i64(c.damping));
-        out.put("spine.settle.qualified", Array::from_bool(&[], &[c.qualified]));
-        out.put("spine.settle.fast", Array::from_bool(&[], &[c.fast]));
         for (k, name) in self.map_values.iter().enumerate() {
             out.put(&format!("spine.map_value.{name}"), Array::scalar_i64(k as i64));
         }
@@ -631,6 +628,11 @@ impl Brain {
                     let codes: Vec<i64> = self.hearing_memories.iter().map(|&m| m as i64).collect();
                     part.put("memory_of", Array::from_i64(&[codes.len()], &codes));
                 },
+                "learner" => if let Some(p) = &self.learner { p.export(&mut part) },
+                "basal_ganglia" => if let (Some(a), Some(l), Some(g)) =
+                    (&self.basal_ganglia, &self.learner, &self.brain) {
+                    a.export(l, g, &mut part)
+                },
                 _ => {}
             }
             out.put_under(attribute, &part);
@@ -653,6 +655,18 @@ impl Brain {
 
     fn graph(&self) -> Result<&Graph, Error> {
         self.brain.as_ref().ok_or_else(|| fault("the brain holds no graph"))
+    }
+
+    fn settle(&self) -> Result<Settle, Error> {
+        let c = &self.learner.as_ref().ok_or_else(|| fault("the brain holds no learner"))?.config;
+        Ok(Settle {
+            free_steps: c.free_steps,
+            tolerance: c.tolerance
+                .ok_or_else(|| refused("Brain answers require a finite residual tolerance"))?,
+            damping: c.damping,
+            qualified: c.qualified,
+            fast: c.fast_settle,
+        })
     }
 
     /// `_observations` of one row of the whole width: checked, and given by name (`mapping`,
@@ -805,7 +819,7 @@ impl Brain {
     fn equilibrate(&self, drive: &graph::Rows, state: Option<&State>, budget: i64,
                    tolerance: f64) -> Result<Equilibrium, Error> {
         let graph = self.graph()?;
-        let c = &self.settle;
+        let c = self.settle()?;
         if c.qualified {
             return graph.equilibrate(drive, budget, CHUNK, tolerance, state, None, None,
                                      c.damping, false);
@@ -838,8 +852,8 @@ impl Brain {
     fn qualified(&mut self, drive: &[f64], state: Option<&State>, operation: &str)
                  -> Result<State, Error> {
         let rows = graph_rows(drive);
-        let (budget, tolerance, damping) =
-            (self.settle.free_steps, self.settle.tolerance, self.settle.damping);
+        let c = self.settle()?;
+        let (budget, tolerance, damping) = (c.free_steps, c.tolerance, c.damping);
         let mut phase = self.equilibrate(&rows, state, budget, tolerance)?;
         let mut rescue = None;
         if budget > 0 && !phase.qualified() && state_finite(&phase.state) {
@@ -1123,6 +1137,364 @@ impl Brain {
         self.bound.as_mut().unwrap().say(row, &keyed, 1)
     }
 
+    // -- the moment with the actor (`live`, `act`, `learn`, `_choose`)
+
+    fn actor(&self) -> Result<&ActorCritic, Error> {
+        self.basal_ganglia.as_ref().ok_or_else(|| fault("the brain holds no actor"))
+    }
+
+    /// The maturity's factor, where the brain holds one.
+    fn factor(&self) -> Option<f64> {
+        self.basal_ganglia.as_ref()?.maturity.as_ref().map(|m| m.factor())
+    }
+
+    fn offsets(&self) -> Vec<i64> {
+        self.learner.as_ref().map_or(vec![0], |l| l.slot_offsets.clone())
+    }
+
+    /// `pending_feedback`: whether an issued action owns the next outcome.
+    pub fn pending_feedback(&self) -> bool {
+        self.basal_ganglia.as_ref().is_some_and(|a| a.pending.is_some())
+            || self.lived.as_ref().is_some_and(|l| !l.aroused)
+    }
+
+    /// `decision_id`: the age of the stream when `live` issued the action that owns the next
+    /// outcome, or None.
+    pub fn decision_id(&self) -> Option<i64> {
+        if self.lived.is_none() || !self.pending_feedback() {
+            return None;
+        }
+        self.arousal.as_ref().map(|a| a.age)
+    }
+
+    /// `_owned(decision_id)`: refused for an outcome of an action other than the one awaiting.
+    fn owned(&self, decision_id: i64) -> Result<(), Error> {
+        if decision_id < 1 {
+            return Err(refused("decision_id must be a positive integer read from Brain.decision_id"));
+        }
+        match self.decision_id() {
+            None => Err(refused("the decision_id does not own an outcome: no action that live \
+                                 issued awaits one")),
+            Some(awaited) if awaited != decision_id => {
+                Err(refused("the decision_id does not own the next outcome"))
+            }
+            Some(_) => Ok(()),
+        }
+    }
+
+    /// `_choices(state)`: the greedy readout, one argmax per motor slot.
+    fn choices(&self, state: &State) -> Result<Vec<i64>, Error> {
+        let learner = self.learner.as_ref().ok_or_else(|| fault("the brain holds no learner"))?;
+        let n = state.activation.len() / state.batch.max(1);
+        let out: Vec<f64> = self.motor.iter().map(|&k| state.activation[k as usize]).collect();
+        let _ = n;
+        if learner.slot_count() > 1 {
+            let mut at = 0usize;
+            let mut choice = Vec::with_capacity(learner.slot_count());
+            for &size in &learner.slot_sizes {
+                let size = size as usize;
+                choice.push(np::argmax(&out[at..at + size]) as i64);
+                at += size;
+            }
+            return Ok(choice);
+        }
+        Ok(vec![np::argmax(&out) as i64])
+    }
+
+    /// `_choose(x, drive, free, greedy=, temperature=)`: the moment's state handed to the
+    /// actor, the surprise observed, the actor's choice, then the memories that follow it.
+    fn choose(&mut self, x: &[f64], drive: &[f64], free: State, greedy: bool,
+              temperature: Option<Heat>) -> Result<Vec<i64>, Error> {
+        let generation = self.graph()?.generation;
+        {
+            let actor = self.basal_ganglia.as_mut().ok_or_else(|| fault("no actor"))?;
+            actor.free = Some(free);
+            actor.free_generation = Some(generation);
+            actor.drive = Some(graph_rows(drive));
+        }
+        self.choosing(x)?;
+        self.hearing_in()?;
+        let action = {
+            let actor = self.basal_ganglia.as_mut().unwrap();
+            let learner = self.learner.as_ref().ok_or_else(|| fault("no learner"))?;
+            let graph = self.brain.as_ref().unwrap();
+            actor.act_held(learner, graph, self.recall.as_mut(), self.hearing.as_ref(),
+                           &graph_rows(drive), greedy, temperature.as_ref(), None)?.0
+        };
+        let state = self.actor()?.free.clone().ok_or_else(|| fault("the actor holds no state"))?;
+        let offsets = self.offsets();
+        self.chosen(x, &state, &action, greedy, &offsets)?;
+        Ok(action)
+    }
+
+    /// `learn(reward, done, next_observations, salience=)` inside `live`: the outcome of the
+    /// sampled action, its record, the actor's and critic's step, and the next moment's
+    /// surprise.
+    fn learn(&mut self, reward: f64, done: bool, row: &[f64], salience: Option<f64>)
+             -> Result<Report, Error> {
+        let following = self.observations(row, false)?;
+        if self.actor()?.pending.is_none() {
+            return Err(refused("learn needs a non-greedy act first"));
+        }
+        if done {
+            return Err(Error::Missing("the end of an attempt (done) in the core's learn".into()));
+        }
+        let importance = match salience {
+            None => reward.abs(),
+            Some(s) if s.is_finite() && s >= 0.0 => s,
+            Some(_) => return Err(refused(
+                "salience must be a finite nonnegative vector matching the batch")),
+        };
+        self.prepare(&following)?;
+        let kept = self.hippocampus.clone();
+        let found = self.learn_outcome(reward, done, &following, importance);
+        let report = match found {
+            Ok(r) => r,
+            Err(e) => {
+                if kept.is_some() {
+                    self.hippocampus = kept;
+                }
+                return Err(e);
+            }
+        };
+        self.moment = None;
+        self.prepared = Some(following.clone());
+        Ok(report)
+    }
+
+    fn learn_outcome(&mut self, reward: f64, done: bool, following: &[f64], importance: f64)
+                     -> Result<Report, Error> {
+        if self.hippocampus.is_some() {
+            if let Some((keys, action)) = self.moment.clone() {
+                let (factor, offsets) = (self.factor(), self.offsets());
+                self.record(&keys, &action, reward, importance, factor, &offsets)?;
+            }
+        }
+        let next_drive = self.moment_drive(following)?;
+        let carried = self.actor()?.free.clone();
+        let read = if self.surprise.is_some() && !self.surprise_private {
+            Some(self.residual_read(following, &next_drive, carried.as_ref(), Some(vec![!done]))?)
+        } else {
+            None
+        };
+        self.hearing_in()?;
+        let report = {
+            let actor = self.basal_ganglia.as_mut().unwrap();
+            actor.learn(self.learner.as_mut().ok_or_else(|| fault("no learner"))?,
+                        self.brain.as_mut().unwrap(), self.recall.as_mut(),
+                        self.hearing.as_mut(), &[reward], &[done], &graph_rows(&next_drive),
+                        None)?
+        };
+        self.hearing_out()?;
+        self.moment = None;
+        self.prepared = Some(following.to_vec());
+        if let Some(read) = read {
+            self.surprise_read = Some(read);
+            self.surprise_seen = None;
+            self.surprised(following)?;
+        }
+        Ok(report)
+    }
+
+    /// `live(observations, reward=, done=, salience=, decision_id=)`: one moment of a
+    /// continuing life, the row given by name as one row of the whole width (a silent sense
+    /// zeros); the action per motor slot.
+    pub fn live(&mut self, observations: &[f64], reward: Option<f64>, done: Option<bool>,
+                salience: Option<f64>, decision_id: Option<i64>) -> Result<Vec<i64>, Error> {
+        self.live_row(observations, true, reward, done, salience, decision_id)
+    }
+
+    /// `live` with the row given whole (`mapping` false: no completion by the bound records,
+    /// as the Python takes an array).
+    pub fn live_row(&mut self, observations: &[f64], mapping: bool, reward: Option<f64>,
+                    done: Option<bool>, salience: Option<f64>, decision_id: Option<i64>)
+                    -> Result<Vec<i64>, Error> {
+        let action = self.moment_of_life(observations, mapping, reward, done, salience,
+                                         decision_id)?;
+        // `_moment_of_life`: a moment has passed for the maturity
+        if let Some(m) = self.basal_ganglia.as_mut().and_then(|a| a.maturity.as_mut()) {
+            m.relax();
+        }
+        Ok(action)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn moment_of_life(&mut self, observations: &[f64], mapping: bool, reward: Option<f64>,
+                      done: Option<bool>, salience: Option<f64>, decision_id: Option<i64>)
+                      -> Result<Vec<i64>, Error> {
+        if self.arousal.is_none() {
+            return Err(refused("live needs arousal genes; construct the brain with arousal=True"));
+        }
+        let x = self.observations(observations, mapping)?;
+        if self.actor()?.free.as_ref().is_some_and(|f| f.batch != 1) {
+            return Err(refused("live follows one continuing stream; reset before changing streams"));
+        }
+        let lived = self.lived.clone();
+        let sampled = self.actor()?.pending.is_some();
+        let routine = lived.as_ref().is_some_and(|l| !l.aroused) && !sampled;
+        if let Some(id) = decision_id {
+            self.owned(id)?;
+        }
+        if !sampled && !routine && (reward.is_some() || done.is_some() || salience.is_some()) {
+            return Err(refused("feedback needs a preceding action; start with live(observations)"));
+        }
+        let r = reward.unwrap_or(0.0);
+        let ended = done.unwrap_or(false);
+        if !r.is_finite() {
+            return Err(refused("reward must be one finite value for the stream"));
+        }
+        if let Some(s) = salience {
+            if !s.is_finite() || s < 0.0 {
+                return Err(refused("salience must be a finite nonnegative vector matching the batch"));
+            }
+        }
+        if ended {
+            return Err(Error::Missing("the end of an attempt (done) in the core's live".into()));
+        }
+        let mut answer: Option<(Vec<f64>, State)> = None;
+        let (mut error, mut surprise, mut want) = (0.0, 0.0, 0.0);
+        let (mut sweeps, mut learning_sweeps) = (0i64, 0i64);
+        let (mut learned, mut recorded) = (false, false);
+        if sampled {
+            let report = self.learn(r, ended, &x, salience)?;
+            self.lived = None;
+            error = report.td_error();
+            learning_sweeps += report.free_steps() as i64;
+            learned = true;
+        } else if routine {
+            let activity = self.actor()?.free.clone();
+            let settled = self.settled(&x, activity.as_ref())?;
+            sweeps += self.last_settlement.as_ref().map_or(0, |s| s.steps);
+            let following = if ended { 0.0 } else { self.actor()?.value(&settled.1)[0] };
+            let gamma = self.actor()?.config.gamma;
+            error = (r + gamma * following - lived.as_ref().unwrap().value).abs();
+            answer = Some(settled);
+        }
+        if sampled || routine {
+            let own = lived.as_ref().is_none_or(|l| l.own);
+            match self.arousal.as_mut().unwrap().outcome(error, r, own, sampled) {
+                Some((s, w)) => (surprise, want) = (s, w),
+                None if sampled => return Err(refused(
+                    "feedback was accepted but arousal could not update; retry \
+                     live(observations) without reward or done or salience")),
+                None => {
+                    self.surprise_read = None;
+                    return Err(refused("arousal moments must remain finite"));
+                }
+            }
+            self.lived = None;
+            if reward.is_some() {
+                if let Some(b) = self.bound.as_mut() {
+                    b.pay(&[r]);
+                }
+            }
+            if routine && self.surprise.is_some() {
+                self.surprised(&x)?;
+            }
+            if routine {
+                // no end of an attempt here: the streams go on, the episodes' counts stay
+                self.basal_ganglia.as_mut().unwrap().fade(&[ended])?;
+            }
+            if routine && self.arousal.as_ref().unwrap().aroused() && self.hippocampus.is_some() {
+                let held = lived.as_ref().unwrap();
+                let importance = salience.unwrap_or(r.abs());
+                let (factor, offsets) = (self.factor(), self.offsets());
+                self.record(&held.x, &held.action, r, importance, factor, &offsets)?;
+                recorded = true;
+                // the record can change this moment's recall: settle again under it, warm
+                let (drive, free) = answer.take().unwrap();
+                let generation = self.graph()?.generation;
+                let actor = self.basal_ganglia.as_mut().unwrap();
+                actor.free = Some(free);
+                actor.free_generation = Some(generation);
+                actor.drive = Some(graph_rows(&drive));
+            }
+        }
+        let aroused = self.arousal.as_ref().unwrap().aroused();
+        let base = self.learner.as_ref().ok_or_else(|| fault("no learner"))?.config.temperature;
+        let temperature = aroused.then(|| base * self.arousal.as_ref().unwrap().heat());
+        if let Some(t) = temperature {
+            self.actor()?.temperature(self.learner.as_ref().unwrap(), t)?;
+        }
+        let (drive, free) = match answer {
+            Some(a) => a,
+            None => {
+                let activity = self.actor()?.free.clone();
+                let settled = self.settled(&x, activity.as_ref())?;
+                sweeps += self.last_settlement.as_ref().map_or(0, |s| s.steps);
+                settled
+            }
+        };
+        let slots = self.learner.as_ref().unwrap().slot_count();
+        let mut heat = temperature.map(Heat::One);
+        let mut heated_slot = None;
+        if let Some(t) = temperature.filter(|&t| t > base) {
+            let slot = if slots > 1 {
+                self.basal_ganglia.as_mut().unwrap().rng.integers(0, slots as i64)
+            } else {
+                0
+            };
+            heated_slot = Some(slot);
+            if slots > 1 {
+                let mut each = vec![base; slots];
+                each[slot as usize] = t;
+                heat = Some(Heat::Each(each));
+            }
+        }
+        let best = self.choices(&free)?;
+        let action = self.choose(&x, &drive, free, !aroused, heat.clone())?;
+        let actor = self.actor()?;
+        let state = actor.free.as_ref().ok_or_else(|| fault("the actor holds no state"))?;
+        if let Some(p) = &actor.pending {
+            learning_sweeps += p.plus.steps + p.minus.steps;
+        }
+        let value = actor.value(state)[0];
+        self.lived = Some(Lived { x: x.clone(), action: action.clone(), value, aroused,
+                                  own: best == action });
+        let arousal = self.arousal.as_mut().unwrap();
+        self.last_arousal = Some(LastArousal {
+            mode: MODES[arousal.aroused() as usize],
+            level: arousal.level,
+            error,
+            surprise,
+            want,
+            temperature,
+            temperatures: heat.map(|h| match h {
+                Heat::One(t) => vec![t; slots],
+                Heat::Each(v) => v,
+            }),
+            heated_slot,
+            learned,
+            recorded,
+            sweeps,
+            learning_sweeps,
+        });
+        arousal.lived(sweeps, learning_sweeps);
+        Ok(action)
+    }
+
+    /// `act(observations, greedy=, temperature=)`: the answer to a row given by name, with no
+    /// outcome taken; an action `live` issued before no longer awaits one.
+    pub fn act(&mut self, observations: &[f64], greedy: bool) -> Result<Vec<i64>, Error> {
+        self.act_row(observations, true, greedy, None)
+    }
+
+    pub fn act_row(&mut self, observations: &[f64], mapping: bool, greedy: bool,
+                   temperature: Option<f64>) -> Result<Vec<i64>, Error> {
+        let x = self.observations(observations, mapping)?;
+        if self.actor()?.free.as_ref().is_some_and(|f| f.batch != 1) {
+            return Err(refused("action batch must match the live streams; reset for new streams"));
+        }
+        if let Some(t) = temperature {
+            self.actor()?.temperature(self.learner.as_ref().ok_or_else(|| fault("no learner"))?, t)?;
+        }
+        let activity = self.actor()?.free.clone();
+        let (drive, free) = self.settled(&x, activity.as_ref())?;
+        let action = self.choose(&x, &drive, free, greedy, temperature.map(Heat::One))?;
+        self.lived = None;  // the actor's state is this answer's: what live issued is passed
+        Ok(action)
+    }
+
     // -- calls by name (the replay's)
 
     pub fn call(&mut self, method: &str, args: &Named, out: &mut Named) -> Result<(), Error> {
@@ -1137,7 +1509,24 @@ impl Brain {
         if args.has("given.filled") {  // the bound records' row of the moment, where it crosses
             self.given = Some((args.f64s("given.filled")?, args.f64s("given.row")?));
         }
+        let one_of = |name: &str| -> Result<Option<f64>, Error> {
+            if args.has(name) { Ok(Some(args.f64s(name)?[0])) } else { Ok(None) }
+        };
         match method {
+            "live" => {
+                let done = if args.has("done") { Some(args.bools("done")?[0]) } else { None };
+                let decision = if args.has("decision_id") { Some(args.i64("decision_id")?) }
+                               else { None };
+                let action = self.live_row(&row("observations")?, flag(args, "mapping")?,
+                                           one_of("reward")?, done, one_of("salience")?,
+                                           decision)?;
+                out.put("action", Array::from_i64(&[action.len()], &action));
+            }
+            "act" => {
+                let action = self.act_row(&row("observations")?, flag(args, "mapping")?,
+                                          flag(args, "greedy")?, one_of("temperature")?)?;
+                out.put("action", Array::from_i64(&[action.len()], &action));
+            }
             "_observations" => {
                 let x = self.observations(&row("observations")?, flag(args, "mapping")?)?;
                 out.put("x", Array::from_f64(&[1, x.len()], &x));
@@ -1147,11 +1536,7 @@ impl Brain {
                 out.put("said", Array::from_f64(&[1, said.len()], &said));
             }
             "_settled" => {
-                let activity = if args.has("activity.v") {
-                    Some(State::import(args, "activity", n)?)
-                } else {
-                    None
-                };
+                let activity = self.actor()?.free.clone();
                 let x = row("x")?;
                 let (drive, free) = self.settled(&x, activity.as_ref())?;
                 out.put("drive", Array::from_f64(&[1, n], &drive));
@@ -1159,12 +1544,15 @@ impl Brain {
             }
             "_surprised" => self.surprised(&row("x")?)?,
             "_choose" => {
-                // the actor's choice crosses as it was made (`chosen`)
                 let x = row("x")?;
                 let free = State::import(args, "free", n)?;
-                self.choosing(&x)?;
-                let action = args.i64s("chosen")?;
-                self.chosen(&x, &free, &action, flag(args, "greedy")?, &[0])?;
+                let heat = if args.has("temperature") {
+                    let t = args.f64s("temperature")?;
+                    Some(if t.len() == 1 { Heat::One(t[0]) } else { Heat::Each(t) })
+                } else {
+                    None
+                };
+                let action = self.choose(&x, &row("drive")?, free, flag(args, "greedy")?, heat)?;
                 out.put("action", Array::from_i64(&[action.len()], &action));
             }
             "state" => {}

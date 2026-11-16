@@ -47,6 +47,7 @@ PARTS = {
     "efference": "efference", "history": "history", "recall": "recall",
     "hippocampus": "synaptic", "bound": "bound", "surprise": "surprise",
     "orienting": "orienting", "space": "map", "brain": "graph", "hearing": "hearing",
+    "learner": "learner", "basal_ganglia": "actor",
 }
 MEMORIES = Memories.ORDER
 OPERATIONS = ("act", "wait", "predict", "answer")
@@ -152,12 +153,6 @@ def state_of(brain: Brain) -> dict[str, Any]:
     if memory is not None and memory.maturity is not None \
             and memory.maturity is not brain.basal_ganglia.maturity:
         raise ValueError("the place records read the actor's maturity")
-    cfg = brain.learner.config
-    out["spine.settle.free_steps"] = np.int64(cfg.free_steps)
-    out["spine.settle.tolerance"] = np.float64(cfg.tolerance)
-    out["spine.settle.damping"] = np.int64(cfg.damping)
-    out["spine.settle.qualified"] = np.bool_(cfg.qualified)
-    out["spine.settle.fast"] = np.bool_(cfg.fast_settle)
     space = getattr(brain, "space", None)
     if space is not None:
         for k, name in enumerate(space.values):
@@ -171,6 +166,14 @@ def state_of(brain: Brain) -> dict[str, Any]:
             state = _hearing(brain, state)
         elif attribute == "hippocampus":
             state.pop("maturity", None)
+        elif attribute == "learner":  # its graph is the brain's (``brain``)
+            state = {k: v for k, v in state.items() if not k.startswith("graph.")}
+        elif attribute == "basal_ganglia":  # its learner, memory and routes are the brain's
+            if held.learner is not brain.learner or held.memory is not brain.recall \
+                    or held.hearing is not brain.hearing:
+                raise ValueError("the actor reaches the brain's own learner, recall and hearing")
+            state = {k: v for k, v in state.items() if k != "hearing_routes"
+                     and not k.startswith(("learner.", "memory.", "hearing."))}
         for key, value in state.items():
             out[f"{attribute}.{key}"] = value
     agent = brain.basal_ganglia
@@ -207,6 +210,15 @@ def state_of(brain: Brain) -> dict[str, Any]:
     return out
 
 
+def _heard(brain: Brain, inner: dict[str, Any]) -> dict[str, Any]:
+    """The hearing's state as its part restores it: the gains as the memories, restored
+    before, hold them."""
+    out = {k: v for k, v in inner.items() if k != "memory_of"}
+    out["gains"] = np.array([part("hearing")._gain(r) for r in brain.hearing.routes],
+                            dtype=np.float64)
+    return out
+
+
 def _under(state: Mapping[str, Any], prefix: str) -> dict[str, Any]:
     lead = prefix + "."
     return {k[len(lead):]: v for k, v in state.items() if k.startswith(lead)}
@@ -219,10 +231,17 @@ def restore(brain: Brain, state: dict[str, Any]) -> None:
         inner = _under(state, attribute)
         if held is None or not inner:
             continue
-        if attribute == "hearing":  # the gains as the memories, restored before, hold them
-            module = part(name)
-            inner = {k: v for k, v in inner.items() if k != "memory_of"}
-            inner["gains"] = np.array([module._gain(r) for r in held.routes], dtype=np.float64)
+        if attribute == "hearing":
+            inner = _heard(brain, inner)
+        elif attribute == "learner":
+            inner = {**{f"graph.{k}": v for k, v in _under(state, "brain").items()}, **inner}
+        elif attribute == "basal_ganglia":  # what the actor reaches, as the brain holds it
+            reached = {f"learner.graph.{k}": v for k, v in _under(state, "brain").items()}
+            reached.update({f"learner.{k}": v for k, v in _under(state, "learner").items()})
+            reached.update({f"memory.{k}": v for k, v in _under(state, "recall").items()})
+            reached.update({f"hearing.{k}": v
+                            for k, v in _heard(brain, _under(state, "hearing")).items()})
+            inner = {**reached, **inner}
         part(name).restore(held, inner)
     agent = brain.basal_ganglia
     if "spine.lived.x" in state:
@@ -357,35 +376,14 @@ METHODS = {
 def calling(brain: Brain, method: str, args: tuple[Any, ...], kwargs: dict[str, Any]
             ) -> tuple[tuple[Any, ...], dict[str, Any], Any]:
     """A call's arguments as the Python takes them, and what the core reads besides: the senses
-    by name as the whole row (``observations``, ``mapping``); for the moment's parts, the
-    actor's free state (``activity.*``) and, for ``_choose``, the action the actor chose."""
+    by name as the whole row (``observations``, ``mapping``), and for a part of a moment the
+    row the bound records were given at it (``given.*``, ``Brain._bound_given``)."""
     named: dict[str, Any] = {}
     given = args[0] if args else kwargs.get("observations")
     if method in ("live", "act", "say", "_observations") and isinstance(given, Mapping):
         named["observations"] = whole_row(brain, given)
         named["mapping"] = np.bool_(True)
-    if method in ("_settled", "_choose"):
-        held = brain._activity()
-        if held is not None:
-            named.update(brain_state(held, "activity"))
     if method in ("_surprised", "_choose") and brain._bound_given is not None:
         named["given.filled"] = np.array(brain._bound_given[0], dtype=np.float64)
         named["given.row"] = np.array(brain._bound_given[1], dtype=np.float64)
-    if method != "_choose":
-        return args, kwargs, lambda: named
-    agent = brain.basal_ganglia
-    taken: dict[str, Any] = {}
-    act = agent.act
-
-    def acted(*a: Any, **k: Any) -> Any:
-        value = act(*a, **k)
-        taken["action"] = np.asarray(value, dtype=np.int64)
-        return value
-
-    agent.act = acted  # type: ignore[method-assign]
-
-    def after() -> dict[str, Any]:
-        agent.__dict__.pop("act", None)
-        return {**named, "chosen": taken["action"]}
-
-    return args, kwargs, after
+    return args, kwargs, lambda: named
