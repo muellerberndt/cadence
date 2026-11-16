@@ -33,9 +33,9 @@ jobs:
 
           # every page whose blocks need NumPy alone: anatomy imports the benchmark
           # instruments of a source checkout and backends needs PyTorch
-          for name in ("README.md", "docs/start.md", "docs/world-model.md", "docs/teach.md", "docs/reward.md",
-                       "docs/memory.md", "docs/senses.md", "docs/tune.md", "docs/evaluate.md",
-                       "docs/settling.md", "docs/api.md"):
+          for name in ("README.md", "docs/start.md", "docs/assembly.md", "docs/world-model.md",
+                       "docs/teach.md", "docs/reward.md", "docs/memory.md", "docs/senses.md",
+                       "docs/tune.md", "docs/evaluate.md", "docs/settling.md", "docs/api.md"):
               page = Path(name).read_text(encoding="utf-8")
               blocks = re.findall(r"(<!-- not-run[^\n]*-->\n)?```python\n(.*?)```", page, re.S)
               code = "\n\n".join(block for marker, block in blocks if not marker)
