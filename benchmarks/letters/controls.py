@@ -91,7 +91,7 @@ def build(model: str, width: int, inputs: int, classes: int, seed: int) -> Any:
 
         def forward(self, x: Any) -> Any:
             n = x.shape[1]
-            mask = torch.triu(torch.full((n, n), float("-inf")), diagonal=1)
+            mask = torch.triu(torch.full((n, n), float("-inf"), device=x.device), diagonal=1)
             h = self.inp(x) + self.position[:n]
             return self.out(self.body(h, mask=mask, is_causal=True))
 
@@ -143,21 +143,25 @@ def chunks(stream: dict[str, Any], words: int, letters: int) -> list[tuple[int, 
 
 
 class Learner:
+    """A control and its optimizer; ``device`` names where torch runs it (the CPU without it):
+    the net is built on the CPU from the seed, so its first weights are the same everywhere."""
+
     def __init__(self, model: str, loss: str, width: int, inputs: int, classes: int,
-                 seed: int, rate: float) -> None:
+                 seed: int, rate: float, device: str = "cpu") -> None:
         import torch
 
         self.torch = torch
         self.loss = loss
         self.classes = classes
-        self.net = build(model, width, inputs, classes, seed)
+        self.device = device
+        self.net = build(model, width, inputs, classes, seed).to(device)
         self.opt = torch.optim.Adam(self.net.parameters(), lr=rate)
         self.work = {"updates": 0, "frames": 0, "macs": 0, "seconds": 0.0}
 
     def update(self, x: np.ndarray, target: list[int] | np.ndarray) -> float:
         torch = self.torch
         started = time.monotonic()
-        logits = self.net(torch.from_numpy(x[None].astype(np.float32)))[0]
+        logits = self.net(torch.from_numpy(x[None].astype(np.float32)).to(self.device))[0]
         if self.loss == "ctc":
             logp = torch.log_softmax(logits, -1)[:, None]
             loss = torch.nn.functional.ctc_loss(
@@ -166,11 +170,12 @@ class Learner:
         elif self.loss == "split":  # the symbol heard and, apart, whether to say it
             pair = torch.from_numpy(np.asarray(target, dtype=np.int64))
             width = self.classes - 2
+            pair = pair.to(self.device)
             loss = (torch.nn.functional.cross_entropy(logits[:, :width], pair[:, 0])
                     + torch.nn.functional.cross_entropy(logits[:, width:], pair[:, 1]))
         else:
             loss = torch.nn.functional.cross_entropy(logits, torch.from_numpy(
-                np.asarray(target, dtype=np.int64)))
+                np.asarray(target, dtype=np.int64)).to(self.device))
         self.opt.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.net.parameters(), CLIP)
@@ -188,7 +193,8 @@ class Learner:
         with torch.no_grad():
             for start, end, _ in chunks(stream, words, letters):
                 logits = self.net(torch.from_numpy(
-                    stream["frames"][start:end][None].astype(np.float32)))[0].numpy()
+                    stream["frames"][start:end][None].astype(np.float32)).to(self.device)
+                )[0].cpu().numpy()
                 if self.loss == "split":
                     width = self.classes - 2
                     heard = np.argmax(logits[:, :width], -1)

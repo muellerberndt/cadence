@@ -15,6 +15,618 @@
 - The tuning guide shows how to change a teaching step under a named teaching point
   (`retune(learning=replace(config, eta=...))`).
 
+## 0.101.0 - 2026-11-16
+
+Sounds as symbols. A brain can hold on to what its senses took in together and get it back
+from a part: hear the word "cup" alone and the cup's form comes back into its senses; see the cup
+and its voice says the word it heard with it; ask it a question, pay it when it answers right,
+and the paid answer is the one it gives from then on; say a thing's name and its attention goes
+to that thing on its map, in view or hidden. Everything is opt-in: a brain composed without the
+new options is the brain of 0.100.0, to the bit.
+
+```python
+import numpy as np
+from cadence import Brain
+from cadence.senses import Ear, Things
+
+things = Things({"hue": (0.0, 1.0), "shape": [(0.0, 1.0)] * 3})     # the eyes: tuned cells
+ear = Ear(frames=8, bands=10)                                       # an utterance as one code
+brain = Brain.compose(senses={"eyes": things.widths, "ear": ear.width}, actions=2,
+                      code=512, bound=256, voice="ear", arousal=True, seed=0)
+cup = things.rows({"hue": [0.85], "shape": [[0.6, 0.3, 0.2]]})
+cup_word = ear.code(np.random.default_rng(0).normal(size=(20, 10)))  # "cup", as log-mel frames
+for _ in range(3):
+    brain.act({"eyes": cup, "ear": cup_word}, greedy=True)         # a cup, and "cup" heard
+assert brain.complete({"ear": cup_word})["eyes"]["shape"].any()    # "cup" alone: the cup's form
+said = brain.say({"eyes": cup})                                     # a cup alone: what it says
+assert float(said[0] @ cup_word[0]) > 0.9                            # the word it heard with it
+```
+
+The guide is [records of bound moments](docs/memory.md#records-of-bound-moments-opt-in).
+
+**Moved to 0.102.0.** Two items planned for this release (#344) are not in it:
+- **The sentence state (#308).** Its declared gate of parity with a matched LSTM and transformer
+  fails on paths in every design read so far (.07 to .31 against .81 and .83), for a reason the
+  planned design does not touch: when the brain's notes of a heard sentence are cleared at
+  `GO`, its recall read never learns to follow a path's hops. 0.102.0 starts from a development
+  reading of the planned design (the role of each heard word chosen by the brain) and of that
+  reason.
+- **Records at any size (#310).** Its branch rewrites the long-term store in the same places
+  where 0.100.0 added a record's strength and learned heads (25 conflicting places), and its
+  options are to fold into fewer names first; its declared run at a million records follows on
+  the merged code.
+
+The soft lesson for speech (#304) shipped in 0.100.0. Its round 5, read at its sixth pass on
+twelve founders: the letter from the sound within .021 of a CTC transformer trained offline (its
+gate holds), characters .048 under it (its gate fails), the gap in saying a letter once it is
+preferred; the reading is on the issue.
+
+### Fixes
+
+- **A held message emptied at a boundary continues after a load.** A brain composed with
+  `message=` and `message_boundary=` (without `message_boundary_holds`) raised `IndexError` at its
+  first moment after `Brain.load`, since 0.99.0: such a message saves no counts (every count is
+  zero without roles), and a load gave it none. A load rebuilds them; the files are as before.
+- **A checkpoint of a later format** is refused with the format found, the formats this release
+  reads and that the release that wrote it (or a newer one) reads it.
+- **`attention=True` with `recall_strength=True`** is refused with the reason in the user's own
+  settings: `attention=True` reads a window of two events, which a slot's strength does not
+  compose with (it named `recall_window`, which the user had not set).
+- **Known issue (#346, 0.102.0):** on the compiled kernel, a brain with a held message that holds
+  at a turn (`message_boundary_holds=True`, which `longterm_strength` also sets) can continue from
+  a save with last-bit differences in its arrays on some machines; its acts are unchanged.
+
+### Documentation
+
+- **[Assemble a brain](docs/assembly.md)**, a new guide: senses by name, a map of things, the
+  memories, attention, learning and saving, put together into four whole brains (a plain one, one
+  with a map, one with an ear and a voice, and one with eyes, an ear, a voice and a map), with what
+  each part costs and what it does not do. Every block runs in the documentation test and in the
+  minimal-install job.
+- **The README's first screen** points to the guides in the order a newcomer needs them: start,
+  assemble a brain, space, sounds as symbols, the live demos and the reference; the documentation
+  index follows the same order.
+- **Corrections in the first guide** (`docs/start.md`): a new brain holds four memories, the
+  heard history of the moment before among them, and the surprise signal counts as tellings in a
+  memory's strength and in records of bound moments.
+
+### Records of bound moments, a voice, and senses for things and sound (#342, #344)
+
+- **`Brain.compose(senses=..., code=units, bound=records)`** (opt-in): one `LongTermMemory` of
+  that many records (`brain.bound`, `cadence.bound.BoundRecords`). Every moment the brain lives
+  in which a sense holds something is written: its value what each sense gave, its key the
+  brain's fixed code of those senses with each sense at unit length and its fields alike within
+  it. A moment told again deepens its record and moves it toward the new take; the brain's
+  surprise counts as tellings; a record kept past 8 tellings stays, one told once is forgotten
+  in time (#336's strength law).
+- **A read by a part.** Before every settle each field the senses leave silent is given what
+  the nearest records that hold it hold alike (the heaviest group of the eight nearest), and the
+  brain settles on the moment so completed. `brain.complete(observations)` gives it, a pure read.
+- **`voice=sense`**: a sense `voice` of that sense's layout, what the brain says, heard by itself.
+  `brain.say(observations)` gives the sound that stands for the moment: among the paid records'
+  sounds, the one whose moments share fields nearest the moment's (a place where they differ
+  left out); else what was heard with it; else a sound drawn from the distinct sounds the records
+  hold, passing over sounds said at moments like this one and not paid.
+- **A reward** to `live` or `step` pays the record of the moment the brain acted at (4 tellings
+  a unit, counted as its pay); a said record answers only once paid, and a reward of zero or less
+  refuses it, its sound passed over at moments like it.
+- **A heard name draws the focus** (with a voice, `surprise=True` and a map whose values are
+  named as a sense's fields): the records read by the heard sound alone bring back a thing's fields, and the
+  matching things on the map take a salience in the focus's competition (`focus.sense ==
+  "named"`).
+- **`cadence.senses.Things`** (a seen thing as tuned cells a field) and **`Ear`** (an utterance as
+  one code from its log-mel frames, or from raw audio).
+- A brain with records saves as `cadence-brain/5` with the feature `bound`; `grow`, `graft` and
+  `Lives` refuse it. New public names: `bound` and `voice` in `compose`, `Brain.complete`,
+  `Brain.say`, the modules `cadence.bound` (`BoundRecords`) and `cadence.senses` (`Things`,
+  `Ear`).
+- **The symbols chamber** (`benchmarks/symbols`): a brain that starts with no words. On
+  twelve fresh founders of its fourth declared run (the code of this release) every gate holds:
+  a name heard alone brings its thing back from the records at 1.00 and into the settled state
+  at .975 to 1.00; a reward teaches names and "what colour is this" in 3 to 21 exchanges, at
+  chance unpaid; a paid name is said at new places at 1.00; a heard name draws the focus to its
+  thing at .83 to 1.00, in view and behind a screen. The first two declared runs failed (S5 and
+  S6, then S2), their terms located in the chamber's README: the voice read the whole code where
+  a place weighs as a form (the answer rule above), and 64 association neurons settle an apple
+  and a ball alike (the later runs' brain has 256). The third run held every gate before an
+  independent review's fixes; the fourth reads the code after them.
+
+## 0.100.0 - 2026-11-16
+
+The composite brain. Senses are declared once, by name; the map of things joins a brain as a
+module named in `trained=`, and the brain reads it itself; a thing carries its values on the map
+and is read whole from it; one surprise signal is read from the settle; several learned heads
+read the brain's records; and a memory's strength (repetition and surprise deepen a record, the
+unused fades) is a law of the long-term records and of the recall memory. No default changes:
+with every new option unset a brain is composed, acts, learns and saves as on 0.99.1, to the bit.
+
+The strength of the recall memory every new brain holds (#336) is an option and not the
+default. Composed by default it would save every new brain in `cadence-brain/5`, which 0.99.1
+refuses; `Lives`, the compiled write and a device's recall memory do not hold it, so every
+batched life of a new brain would be refused; and its read's renewal costs recent moments: a
+fact told once and asked for after seven eighths of the bank's capacity is answered at .33 and
+.25 against .93 and .96 without it (the recall-strength chamber, three seeds). It holds a fact
+past the bank where an answer needs one: in a paid `live` life whose question comes two
+capacities after its fact it answers .95, .79 and .51 against .48, .45 and .49. No recorded life
+the tests pin fills a bank, so none of them changes under it.
+
+### Senses by name, equal senses in the fixed code, and a name or a map in `trained=` (#342)
+
+A brain of several senses was composed as one row of inputs whose columns its caller kept
+track of, and a brain with the map of things was sized by hand (`inputs=place.count +
+place.units`), given its map by assignment and passed the map's read at every moment. These
+opt-in additions let a composite brain be declared in a few lines. A brain composed
+without `senses=` and without a name or a map in `trained=` is the brain of 0.99.1 to the bit:
+its parameters, its description, the acts of a short life and the contents of its checkpoint
+are pinned on that release's source for a default brain, a brain with `code=`, a brain around a
+trained module and a brain with a map assigned by hand.
+
+- **`Brain.compose(senses={name: width, ...})`** declares the senses by name, in place of
+  `inputs=`. A sense is a width, or a mapping of field to width (`{"eyes": {"hue": 12, "shape":
+  30}, "ear": 64}`); the inputs are their sum in the declared order. Every operation that takes
+  observations (`live`, `wait`, `step`, `act`, `lesson`, `learn`, `value`, `imagine`, `predict`,
+  `accuracy`, `fit`, `observation_code`, `stimulus`) also takes a dict of sense to rows; a sense
+  left out is silent, and rows of the summed width are taken as before. An unknown sense, a
+  wrong width and senses whose rows disagree are refused by name, before anything changes.
+  `brain.senses` gives each sense's columns, `describe()` names them under `layout`, and a
+  checkpoint keeps them under `senses` in its metadata, which 0.99.1 reads as the brain of the
+  summed width. A brain composed with `senses=` and no code is the brain composed with
+  `inputs=<the sum>` and the same seed: the same weights, acts and saved arrays. The sensory
+  region stays one population and the names are held beside it, since a population a sense
+  would cut the block layout and change the order the settle sums in. The guide is
+  [senses by name](docs/senses.md#senses-by-name).
+- **Equal senses.** With `code=units`, a brain composed with `senses=` gives every field of
+  every sense to the fixed sparse code at unit length (a field with nothing in it stays zero),
+  so each field moves the code alike whatever its width and the size of its values. In a code
+  of 64 units read from the row as it is, a word of length 1 beside a glimpse of length 5.1
+  changes 5.1 of the 24 active units; with equal senses it changes 16.5 (twelve seeds, a
+  reading of the code alone). A brain composed with `inputs=` keeps its code, and a learned code
+  takes the senses as they are given: its sensory region holds the observation itself and it
+  learns its own thresholds and fields
+  ([equal senses](docs/senses.md#equal-senses-in-the-fixed-code)).
+- **`trained=` takes a name and a map.** `trained=["place"]` loads the module the library ships
+  by that name. A map of things in `trained=`, by name or as an object, becomes `brain.space`,
+  and its read (`where` and `what`) joins the brain's senses as the sense `space`, after the
+  brain's own inputs: observations do not carry it, and the brain reads its map itself at every
+  operation that takes observations. `Brain.compose(senses={"touch": 8}, actions=2,
+  trained=["place"])` is the brain of `inputs=8 + place.count + place.units` with the map
+  assigned and its read passed by hand, to the bit, and that long form stays valid. A trained
+  module's inputs are a sense under the module's name in a brain composed with `senses=`. A
+  brain the default backend places at its first moment keeps the map object its caller holds.
+  Refused by name: two maps, a name the library ships no module by, image inputs beside a map,
+  and `senses=` or a map in `Lives`
+  ([a brain that knows where things are](docs/modules.md#a-brain-that-knows-where-things-are)).
+- **The refusals of a map and of a name in `trained=` are retired.** `Brain.compose(...,
+  trained=[a map])` and `trained=["place"]` were refused on 0.99.1 (a map joined a brain as `brain.space` alone, and
+  a name was no module); both compose a brain. `Brain.compose` takes `inputs` and `actions` as
+  optional in its signature and raises `TypeError` where neither `inputs` nor `senses`, or no
+  `actions`, is given.
+
+### Values carried with a thing on the map (#326)
+
+- **`Map(values=)`** (opt-in): `Map(plane, values={"colour": 6})` gives every cell one more unit a
+  value, after the kinds' units. A report may name values (`(kind, place, {"colour": 2})`); they
+  are written on its cells with its kind's weights, carried with the thing (a report with no
+  value takes the value of the thing it claims), moved with it by the near rule and by learned
+  physics, and read by settling: `values_at`, `where_is_value(group, value)`,
+  `what_is_at(None, cells=flags)` and the `values` of `things()` entries. Which report is which
+  thing reads the kinds' units alone. With `values` unset the map is as on 0.99.1, to the bit.
+  The guide is [values carried with a thing](docs/space.md#values-carried-with-a-thing).
+- **A value as a code.** A report's value is a number (a one on its unit) or a code: one amount
+  in 0 to 1 for each unit of its group, as a sense's tuned cells report a hue or a size. A code
+  is carried and moved with the thing, and what a thing holds on every value unit is read as
+  shares of its kind's own activity.
+- **`Map.thing_at(place, within=, cells=, body=, heading=)`**: the one thing at a place, read
+  whole for a brain that attends it: its kind, each group's amounts as reported, its place, and
+  that place from the body (`bearing` from the heading, `distance`). A brain whose attended thing
+  is read from the map in place of the eyes' report answers about a thing behind a screen as
+  about a thing in view (#342, one founder of a research chamber, development
+  readings: the thing's name .98 behind a screen against .00 through the eyes).
+
+### One surprise signal, read from the settle's own residual (#337)
+
+- **`Brain.compose(surprise=True)`** (opt-in; a mapping names the genes) gives a brain one
+  surprise signal, `brain.surprise`: each neuron's residual at the start of the moment's settle
+  (the potential equation's error at the state the stream carried in, under the moment's drive),
+  against the residual that neuron is used to, under the law of `Arousal.outcome` per neuron.
+  `last` holds it per stream and neuron and `moment` one finite number of zero or more per
+  stream, for whatever reads a moment's surprise. `act`, `step`, `live` and `wait` read it once,
+  at the moment's first settle; a stream that begins from rest reads none; `imagine`, lessons,
+  `predict`, `value` and a rehearsal's replays leave it as it was. It is saved and loaded with
+  the brain, named in `describe()`, kept by `grow` and `graft`, and reset with its streams, the
+  usual residuals staying. The option reads the settle and changes no action, weight or record:
+  with it unset a brain is as on 0.99.1 to the bit, and with it set the brain's actions, weights
+  and saved arrays are the same beside the signal's own. It runs on the CPU backend; another
+  backend and `Lives` refuse it by name. Why: attention, the strength of a memory and the rate
+  of learning are to read one signal, and the settle's first check measures what a moment brings
+  that the carried equilibrium does not hold. The strength of the long-term records and of the
+  recall memory reads it ([a record's strength](docs/memory.md#a-records-strength-opt-in)); the
+  arousal law and the learning gate do not.
+- **The focus** (`cadence.surprise.Orienting`, `Focus`; `brain.orienting`, `brain.focus`,
+  `brain.places`): one competition among the places of the sensory neurons and the cells of a
+  held map, with a hold and an inhibition of return; it offers a bearing and a gain and applies
+  neither.
+- **`Map(surprise=True)`** reads each thing's move from where the map carried it into the
+  moment, on the thing's cells, under the same law; with learned physics that has taken lessons
+  the carried place is the map's own `forecast(1)`. A map without the option keeps its bits.
+- **`NeuralGraph.residual(per_unit=True)`** gives each neuron's signed error of the potential
+  equation, on the float64 CPU reference.
+- **The surprise chamber** ([`benchmarks/surprise`](benchmarks/surprise/README.md)) reads the
+  residual beside a second measure, how far the moment moved each neuron's activity, on the same
+  brains and streams. The two read the same moments wherever a thing is new to the senses; the
+  residual reads no new arrangement of known inputs and costs one more evaluation a moment, and
+  neither reads a broken order. The guide is
+  [surprise, and the focus it draws](docs/start.md#surprise-and-the-focus-it-draws-opt-in).
+
+### Several heads into the brain's records (#325)
+
+- **`longterm_attention=rate`** (opt-in, with `longterm_distinct`): in one answer each of the
+  `longterm_heads` heads reads a record of its own. A head takes the question's next telling
+  word as its focus and reads the record about it whose key holds the most of the question's
+  context, each context word at the gate of the head's learned map; a head with no record
+  holds nothing; a head with no telling word left follows the head before it, a chain laid on
+  the regions from its end. `Brain.lesson` steps the maps (`heads_moved` in its report): each
+  choice a head could have made is scored, with the heads after it read again, against the
+  movement the lesson made. `cadence.record_heads.RecordHeads` holds the maps as
+  `brain.longterm.attended`. A head reads only the records that hold some of the question's
+  context, so a subject that lacks the one relation asked of it holds nothing.
+- **`RecordHeads.fetch(focus, context=(), row=0)`**: the heads' read with a cue from the brain's
+  own state (what it attends, as a moment or a codebook entry) in place of a heard question;
+  each head's record comes back with its content and its context, and nothing changes.
+- **`longterm_motor=scale`** (opt-in): a plastic projection from each head's region to the motor
+  region, so a motor slot learns to say what one region holds.
+- **`benchmarks/several`**: the chamber of questions whose one answer needs several of the
+  brain's own records (parts of 1 to 8 subjects, chains of 2 and 3 hops, parts and chains no
+  record answers), with a transformer and an LSTM that hold the records in their context.
+  On twelve fresh founders at 100,000 records the heads deliver the records of two, four and
+  eight parts at .995 to 1.000, say them at .996 to 1.000, .996 to 1.000 and .904 to .981, say
+  chains of two and three hops at .980 to 1.000 and .750 to 1.000, and stay silent where no
+  record answers at .997 to 1.000; every declared gate passes.
+- With both options unset a brain is composed, reads, learns and saves as it did.
+
+### A record's strength (#336)
+
+A long-term record grows strong when it comes up again and again or when it came with a large
+surprise, is kept for good past a threshold, and fades away below it. Every setting is off by
+default: without them `cadence.LongTermMemory` and `SynapticMemory` are what they were, to the
+bit. The guide is [docs/memory.md](docs/memory.md#a-records-strength-opt-in).
+
+- **`LongTermMemory.write(..., surprise=s)`**: a write counts `1 + s` tellings in its record's
+  depth. **`LongTermMemory(novelty=weight)`** reads the surprise of a write that gives none as
+  `weight` times how far its nearest record lies from the key (1 less their cosine, at most 1).
+- **`LongTermMemory(keep=depth)`**: a record whose depth (tellings, surprise and recall's
+  attention) reaches it is kept for good: it stops fading and is replaced last.
+- **`LongTermMemory(forget=fade)`**: a record below `keep` that fades that far is forgotten; no
+  read finds it and a new record takes its slot first.
+- **`LongTermMemory(blend=True)`** (with `cosine=True`): a take told again moves its record
+  toward it by `1 / (1 + deep)`, so the record holds the mean of its takes.
+- **`LongTermMemory(familiar=weight)`**: a read's score gains `weight * log(1 + deep)`, so the
+  deeper of two equal matches is read first.
+- **`SynapticMemory(fade_keep=depth)`**: with a fade, the records along a key coordinate whose
+  depth has reached it stop fading.
+- **In a brain**: `Brain.compose(longterm_strength=True)` gives each stream's records these
+  rules (kept past 8 tellings, forgotten after about 8 capacities' moments unused, a telling as
+  the record holds it counted, a read crediting only the record it delivers);
+  `Brain.compose(memory_fade=, memory_keep=depth)` keeps the place records used past that depth.
+- **Strength reads the brain's one surprise signal.** With `surprise=True` a record written at a
+  moment of the brain's own surprise (`brain.surprise.moment`, #337) counts the ratio of the most
+  surprised neuron's residual to its tolerated size, less one, as tellings more: nothing for a
+  moment the brain is used to, eight and more for one nine times the tolerated size.
+- **Strength with records read by what tells them apart.** `longterm_strength` composes with
+  `longterm_distinct` (turns) and with the learned heads (`longterm_attention`, #325): a read
+  deepens the record it delivers, a telling carries the moment's surprise, and a forgotten record
+  leaves the entries the reads look under. A read's deepening waits for its moment to be
+  accepted: a refused moment deepens no record, and a lesson's read before the act's is replaced
+  by it, so `step` deepens a record as `act` does.
+- **One file format that names its features.** A brain that 0.99.1 cannot continue saves
+  `cadence-brain/5`, whose record lists what the file needs (`features`: `strength`, `heads`,
+  `recall_strength`, `surprise`, and `map` for a held map that carries values or reads surprise).
+  `Brain.load` refuses a feature it does not hold by its name, and 0.99.1 refuses the format by
+  its name. A later option adds a name to that
+  list and no format name; every other brain keeps the format it had.
+- **A chamber**, `benchmarks/memory_strength/strength.py`: the dose curve, the one-shot write
+  and the clean form beside the store without the settings.
+
+### A slot's strength on the recall memory (#336)
+
+A new brain holds no long-term records, so a record's strength reaches none of its memories. The
+same law is an option of the recall memory every new brain holds. It is off unless set, and
+unset a brain acts, learns and saves as before, to the bit. The guide is
+[docs/memory.md](docs/memory.md#a-slots-strength-opt-in).
+
+- **`Brain.compose(recall_strength=True)`** (`Recall(strength=True)`): every slot keeps a depth
+  (`brain.recall.depth`), and a full bank gives up its weakest slot among those older than its
+  protected newest half (`brain.recall.protected`) in place of its oldest, the oldest among
+  equals. A slot is written one telling deep; a moment whose key lies at cosine `recall_again`
+  (.95) or above to held slots deepens the deepest of them by one telling and is a slot of its
+  own all the same; a read renews the slots it attends toward one telling by their share of it;
+  a depth below `recall_kept` (8) fades over eight capacities of moments, and one at or past it
+  stays whole. The read is unchanged.
+- **The brain's surprise counts as tellings.** With `surprise=True` a slot is written at one
+  telling plus the moment's surprise (`Recall.witness(..., surprise=)`), the count the records
+  take: a moment nine times what its neuron tolerates is kept at once.
+- **Refused attempts and imagination leave the bank as it was.** `snapshot`, `restore` and
+  `branch` hold the depths, and a slot that leaves the middle of the order moves the bank into
+  new arrays. A read that writes nothing changes no depth.
+- **What it does not hold with, by name.** `recall_heads` above 1, `recall_window` above 1,
+  `recall_action`, `recall_when` and `Lives` are refused beside it. Its bank stays on the host:
+  the compiled moment takes its moments in turn, and a torch device runs the solve alone.
+- **The file.** A brain with the option saves `cadence-brain/5` with the feature
+  `recall_strength` and each slot's depth; every other brain keeps the format it had.
+- **A chamber**, `benchmarks/recall_strength/strength.py`: the dose, the one shot, the use, the
+  cost and a paid life under `live` beside the same brain without the option, with the readings
+  a change of the default needs. The cost is recent moments: a read renews the slots it attends,
+  so a fact told once and never read leaves a full bank sooner than without the option.
+
+### A lesson can leave a motor slot open (#302)
+
+- **`brain.lesson(observations, labels)` and `step(teacher=labels)`** take a label of `-1`
+  (`cadence.learning.OPEN`) in a brain of several motor slots: the lesson leaves that slot open at
+  that row. The slot is not judged (under `learning_surprise` a row is taught where a labelled
+  slot differs) and not pulled (its target in the nudged phases is what it says in the lesson's
+  own free phase, so the pull on it is zero there). A row labels at least one slot. A brain with
+  `recall_tokens` or `memory_choice=True` refuses open slots, and `accuracy`, `fit` and the
+  batched lives take a label for every slot. A lesson that labels every slot keeps its bits; the
+  guide is [a slot the lesson leaves open](docs/teach.md#a-slot-the-lesson-leaves-open).
+- **The grammar chamber's motor of parts** (`benchmarks/grammar/meaning.py`, `"parts": "open"`)
+  leaves the form of a word without a number open. Protocol 7 taught that form as a third class,
+  `none`, on every such word; the lessons of that class raise the learned gains of the carried
+  routes (the trace's .18 against .10 for a motor of whole words, the heard history's 2.18
+  against 1.55, 42 development founders), and three hops, whose third `near` no lesson reaches,
+  fall with the louder trace.
+
+### Speech: the soft lesson (#304)
+
+No default changes: every existing call reads, learns and saves as before.
+
+- **`cadence.speech.align.soft_path(log_beliefs, transcript, sharpness=1.0)`**: a distribution
+  per step in place of the forced path's one symbol, the share of the transcript's paths that
+  say each symbol at that step, each path weighed by the brain's beliefs along it (CTC's
+  occupation shares). Taught as a lesson's `targets`, the pull on the motor neurons is the
+  descent of CTC's loss on the brain's beliefs, computed outside the brain from the beliefs
+  alone. `sharpness` above 1 weighs the better paths more; at a large value the rows are the
+  forced path's symbols.
+- **`soft_step(brain, rows, targets)`**: one moment of the soft lesson, `Brain.lesson(targets=)`
+  then a greedy act, the learned fields taking their step at the act.
+- **`log_beliefs(brain, rows, hold=True)`**: a brain reads its own beliefs between two batches,
+  its learned fields held and its streams at rest afterwards, so no copy is loaded.
+- **`Alignments.realign(..., soft=True, sharpness=)`** holds a soft path and
+  **`Alignments.targets(keys, steps, symbols)`** gives the distributions of hearings heard side
+  by side; `Alignments.lesson` refuses a hearing that holds a soft path.
+- `LearnedFields.learn` with its tables held reads no patches (the same result with less work).
+
+### Benchmarks
+
+- **The letters chamber, round 4** (`benchmarks/letters/`, #304). `fields256_p` read after every
+  pass on the 2.5-hour on-list set, twelve fresh founders, beside CTC controls at its parameter
+  count. At pass 6 it reads characters .384, level with the CTC transformer heard online (.388)
+  and under the online LSTM (.433) and the offline learners (.469 to .481). Its gap to the
+  offline transformer holds at -.08 from pass 3 on: the letter from the sound is the term. On
+  7.1 hours heard once it reads as on 2.5 hours heard three times. A life continues from its
+  brain saved at every re-alignment, and a control from its last pass.
+
+## 0.99.1 - 2026-11-15
+
+A fix release. A learned code under several modules is read at unit length by the first module
+(#339), and two tests close the checkpoint files they compare, so they pass on Windows (#340).
+Learned physics on the map (#324) ships as an opt-in addition, `Map(physics=True)`. No default
+changes: a brain without `learned_code`, a brain composed with `learned_code` and one module,
+and a map with physics unset are as on 0.99.0, to the bit.
+
+### Fixed
+
+- **A learned code under several modules is read at unit length** (#339). With
+  `learned_code=units` the first module reads the rectified code at unit length
+  (`LearnedCode.code_of`), the region's output gain. The term that carries it was held on the
+  association region, which is the first module only in a brain of one module. With
+  `modules=(a, b, ...)` the code projects to `module_0`, no code unit reaches the association
+  region, and the first module read the code units' activations as they are: the read the
+  readings had retired (`learned_code_output`). In a brain of 32 inputs, a code of 32 and
+  modules of 32 the first module's input from the code read .32 after 50 acts where the
+  unit-length read gives 1.05. The term is carried on the neurons the code projects to, at any
+  depth. A composed brain of one module is unchanged to the bit, and so is every brain without
+  `learned_code`. A brain with `learned_code` and several modules settles and learns otherwise
+  than on 0.99.0; a checkpoint of such a brain loads, and its first module, trained under the
+  weaker read, then receives the code at unit length. In a hand-built connectome whose code
+  units project to more than one region, every region they reach reads the code at unit length
+  (on 0.99.0: the association region alone).
+- **Two founder-to-the-bit tests on Windows** (#340). `test_off_is_the_founder_to_the_bit` in
+  `tests/test_maturity.py` and in `tests/test_memory_fade.py` compared two saved checkpoints
+  and left both files open. Windows refuses to remove an open file, so each test failed with
+  `PermissionError` at the end of its temporary directory, after the comparison had passed.
+  Both tests open the checkpoints in a `with` statement and compare the same arrays. The
+  library is unchanged by this fix. The Windows reading is the pull request's (Windows 10,
+  Python 3.12); CI's test jobs run on Ubuntu and macOS.
+
+### Learned physics on the map (#324), an opt-in
+
+Spatial object tracking gains prediction. The guide is
+[docs/space.md](docs/space.md#learned-physics-on-the-map), which opens as the page on
+tracking what is where.
+
+- **`Map(physics=True)`**: the map predicts where a moving thing it cannot see has gone, by how
+  it has seen things move. Four numbers are learned by watching (`rest`, `leave`, `ahead`,
+  `aside`: how often a moving thing comes to rest or leaves its line, and how far ahead and aside
+  a thing that left goes), from imagined lessons: every few moments of a thing in view the brain
+  imagines it out of view and compares the imagined line with where it is seen. A thing out of
+  view that moves is held as a core on its line, a trail where it may have come to rest and a
+  tail where it may have left its line; sight takes away what it sees of each. A fresh physics
+  answers as the map, and a thing seen at rest stays the map's to hold.
+- **Readings.** On twelve fresh founders, after 400 scenes watched, a person's hand out of view
+  reads 9.4 cm against the map's 22.9 (10.3 after 25), stops 10.6 against 21.1, straight movement
+  2.9 against the Kalman filter's 1.65; the area at .90 holds .87 (its gate is .90: hands that
+  turn out of view fall outside it). Two hands moving out of view: 9.1 ms a moment under Pyodide.
+- **`Map.forecast(moments)`**: the map that many moments on as its physics predicts, a copy;
+  the map is left as it is and nothing is learned from it. `things()` reads a thing out of view
+  as `"moving"`, with its `velocity`, while half of it or more moves.
+- **Several things and other senses.** Each thing has an identity of its own from its first
+  report; a report takes the carried thing it claims and leaves another of its kind. The motion
+  line is the camera's: a heard or felt place moves a thing on the map and takes no part in its
+  line. `empty="keep"` holds for a thing the physics carries.
+- **`cadence.space.physics.Physics`**: the learned part, shareable by several maps, kept in a
+  map's file with its `learning` setting.
+- No default changes: with physics unset the map is as on 0.99.0, to the bit.
+
+## 0.99.0 - 2026-11-13
+
+A map of what is where, held in the brain's own carried activity (`cadence.space.map.Map`,
+the built-in module `cadence.modules.load("place")`, `brain.space`), modules that arrive
+as files (a map file, or a trained brain's regions written by `Brain.save_module` and built
+into a new brain by `Brain.compose(trained=)` or `Brain.graft(module)`), and the catalogue of
+every part a brain is built from ([docs/modules.md](docs/modules.md)). No default changes:
+with every new option unset a brain is composed, acts, learns and saves as on 0.98.0.
+
+### Space: a map of what is where (#320)
+
+`cadence.space` is imported by name, and `import cadence` loads none of it. The guide is
+[docs/space.md](docs/space.md).
+
+- **`cadence.space.map.Map`**: a map of things held in a sheet's own settled activity, cells of
+  a plane by units of a kind's code. No list of things is given to it and none is kept beside
+  it. A thing enters when a sense reports it (`moment(seen=, heard=, felt=, lit=)`), the sheet's
+  potentials are the next moment's drive on the same neurons, and with no sensory information
+  the last known place stays to the bit: eight things, two of one kind, read within 0.0035 cm
+  after 1,000 moments unseen. `where_is(kind)` and `what_is_at(place)` ask by settling,
+  `things()` reads the inventory (kind, place, cells, pieces, moments since sensed, state),
+  `area(kind, rate)` the smallest set of cells holding that share, and `save`, `Map.load` and
+  `reset` keep and empty the carried state.
+- **Sight that only takes away.** A thing whose held place the camera sees, with no report of its
+  kind, is driven once onto the cells out of sight within `reach` (0.15 m) of where it was held
+  (`empty="near"`, the founder; `"clear"` and `"keep"` are the other rules); after that, sight
+  only takes cells away from it, and with none left it is "not known where". A place reported
+  the moment before is seen empty where the camera sees all it saw around it (within
+  `margin`, the camera's error); any other held place where the camera sees all of it within the
+  margin, so a camera turning past a thing at rest leaves it held. A report of a kind finds a
+  thing of it that is in doubt. On the chamber's two recorded scenes of a hand that rests behind
+  a pillar the map reads 10.7 cm over the hidden moments, where last seen reads 15.5 cm
+  ([`benchmarks/tracking/mapped.py`](benchmarks/tracking/mapped.py)). The map's graph has no
+  taught synapse.
+- **A brain that holds a map** (`brain.space = Map(...)`): `Brain.save` writes it under `space/`
+  and `Brain.load` restores it; `Map.observation()` gives the brain `where` and `what`. A brain
+  without a map saves the same keys as before.
+- **The map as a module**: map files hold a checksum of every array and a card, and are refused
+  by name for a pickled object, a changed array or arrays that do not fit; `cadence.load_module`
+  and `cadence.modules.load("place")` read a map file as a `Map` (the built-in `place.npz`, 2.0
+  KB). `Lives(trained=)` is refused by name.
+- **The chamber**: hands that visit a shadow and come back, pause, hop and go slowly
+  (`kind="visit"`, `"pause"`, `"hops"`, `"slowhand"`), the recorded scene with the arm folded
+  (`scenes/promise-folded.json`); `mapped.py` scores scene files with the map beside last seen
+  and the Kalman filter (the arm's own hand fed its joint readings by kinematics), and reads a
+  thing at rest out of view and a thing heard; `rooms.py` reads rooms of things whose camera
+  turns (kinds, a thing moved unseen, many things, things that arrive and leave, the state);
+  `hosts.py` the map in a host brain; `gates_map.py` the declared gates.
+
+#### The baseline: places held by a program
+
+`Space` is the earlier form, kept as the baseline. A module file states whether its regions
+were raised with joint readings, and a space of a file raised without them leaves joint
+readings out.
+
+- **`Space`**: a program beside a brain that holds a place for every thing between moments, one
+  row a thing. A camera's report writes the place; a thing at rest takes the mean of its reports;
+  a row with no report, no command, no seen movement and no cue is left as it is, and the brain
+  is not asked. `where()` gives each place and the radius of its area at .90.
+- **A place brain** (`Interface`, `anatomy`, `compose`): named regions for the held place, the
+  copy of the arm's command, the thing's last seen movement, the moments since it was seen, a
+  cue's sheet and the joints' sheet, a hidden region, and three answers, each one softmax:
+  `shift` (how far the place moves in this step), `spread` (how far off) and `found` (the place a
+  cue or a posture names). Every synapse runs from the inputs toward the outputs.
+- **Lessons that hold only reports** (`advance(..., learn=True)`): the movement the camera
+  reports teaches `shift`, the distance from a predicted place to the report that followed
+  teaches `spread`, and a thing heard while seen teaches `found`. The space leaves reports unread
+  over spans (`practice`, `span`) and is taught there by the reports it did not read.
+- **Several things**: reports carry a position and a look and no name. `assign` gives each
+  report to a row of its look, `hear` each cue; `where_is(kind)` answers a kind with its places
+  and `what_is_at(point)` a place with the kind held there; `records=n` files things at rest in
+  a `cadence.LongTermMemory` by what they look like.
+- **Readable state**: `state()` gives every region's activity and every answer's belief as plain
+  arrays, and `Space(track=True)` the synapses each lesson moved.
+
+### Trained modules (#321)
+
+- **A module file** (`cadence-module/1`): arrays and one JSON record (the regions and their
+  sizes, the inputs, the published regions, the module's own record, a card, the library
+  version and a checksum for every array), floats in 32 bits, no pickled object. Loading runs no
+  code from the file and refuses a malformed one by what is wrong with it.
+- **`cadence.load_module(path)`**, **`cadence.modules.names()`** and
+  **`cadence.modules.load(name)`** read a module; **`Brain.save_module(path, name=, inputs=,
+  published=, regions=, interface=, card=)`** writes one.
+- **`Brain.compose(..., trained=[module])`** (opt-in) builds a brain around a module: the
+  module's regions stand beside the brain's own as `name/region`, its inputs follow the brain's
+  own in the observation, the first module region reads what it publishes through one-way
+  synapses that start at zero, and its synapses are grafted in and held.
+  **`Brain.graft(module)`** grafts a module into a brain that holds its regions and refuses a
+  brain that lacks one by that region's name. `graft`'s `freeze` is off for a brain and on for a
+  module unless given.
+- `Space.save(path)` writes a trained place brain as a module and `Space.load(module,
+  brain=host)` runs a space on the regions inside a host.
+
+### The tracking chamber (#320)
+
+[`benchmarks/tracking`](benchmarks/tracking/README.md): a plane with an arm, things, a camera
+with a blind spot and an ear, in plain NumPy; scenes of the arm's own hand, a person's hand and
+rooms of several things; a scene file (`cadence-tracking-scene/1`) scored as a generated scene
+is; the controls (last seen, a constant-velocity Kalman filter, the arm's true kinematics, a
+matched LSTM and transformer) and the floors (a default brain asked the position at every step).
+
+### Fixed
+
+- **`grow` and `retune` name a construction setting as one** (#322): `grow` answers a setting a
+  brain is composed with and keeps (`message`, `longterm`, `learned_fields`, `ports`,
+  `fields_motor`, `carried_gain`, the `message_*` and `longterm_*` settings,
+  `learned_code_fields`, `dense_limit`, `precision`) with `<name> is a construction choice grow
+  does not add; compose the brain with it`, and `trained` with the same sentence and a pointer
+  to `graft(module)`; it keeps its pointer to `retune` for the settings `retune` changes. `retune(learned_fields=...)`, `retune(ports=...)`, `retune(fields_motor=...)`,
+  `retune(features=...)`, `retune(field=...)` and `retune(trained=...)` raise `ValueError` as
+  construction settings, in place of `TypeError: unknown brain setting`. What either call accepts is unchanged.
+- **The acquisition protocol's tests read the same case on a loaded machine** (#317): the
+  fixture runs of `benchmarks/acquisition/test_protocol.py` take the protocol's largest budget
+  (300 seconds) in place of ten. They end at their first stage in about a second, so the cases
+  they write follow their updates whatever the machine's speed, and the fixture asserts the
+  case it wrote.
+
+### Documentation
+
+- **A reloaded brain and BLAS threads** (#315): the backends guide and the save section of
+  the first guide state that on the NumPy path (`CADENCE_FUSED=0`) a reloaded brain's
+  continued life repeats to the bit at one BLAS thread count, with the reading that located
+  it (four compositions of 35 continue to other last bits with the thread variables unset
+  than at one thread), and that the thread variables at 1 give a reloaded life that repeats
+  on another run or machine.
+
+- **[Parts of a brain](docs/modules.md)** (#321): the catalogue of every part a brain is built
+  from, in tables by role (senses, association regions, the motor, short-term state, memories,
+  learning, many lives, the speech pieces, the space pieces, growing and grafting, an anatomy of
+  your own). Each part has its purpose, the option or call that joins it, what it holds between
+  moments, whether it learns, how it arrives, what `grow` and `graft` do with it, and a reading
+  with its benchmark or issue. Every group has a runnable example, and five brains are composed
+  for a purpose: a transcriber, an agent that answers from facts it read once, a body taught by a
+  demonstrator, a creature that lives on reward and a brain that knows where things are while
+  its camera looks away. The refusals between parts are listed as the library states them.
+- **Modules: parts that arrive as files**
+  ([docs/modules.md](docs/modules.md#modules-parts-that-arrive-as-files), #320, #321): the map
+  of things in the space pieces (a thing enters when it is sensed; with no sensory input its last
+  known place stays; sight, sound and the body's own readings update a place; a place seen empty
+  sends a thing out of sight near where it was last seen; learned physics follows in the next
+  release); the two kinds of module file, a map file and a trained brain's regions with their
+  interface, both read by `cadence.load_module(path)`, and why loading one runs no code;
+  `cadence.modules.names()` and `cadence.modules.load("place")`; a trained module made with
+  `save_module` and built into a new brain with `compose(..., trained=[module])`, its skill
+  arriving before any lesson; what a hosted module does (held unless `freeze=False`, read by the
+  host through synapses that start at zero, untouched by the host's lessons) and `graft(module)`;
+  a brain that holds the map (`brain.space`, saved and loaded with it, its `observation()` the
+  brain's input); every refusal by name. The API reference gains `trained=`, `save_module`,
+  `graft(module)` and a section for `cadence.modules`.
+
+- **Corrections to the guides, read against the code**: `retune` changes a tied brain's settings
+  and refuses only `retune(tied=...)`; the `Brain(connectome, ...)` signature lists `longterm`
+  and the `ActorCriticConfig` signature `hold` and `entropy`; what `Lives` refuses includes a
+  held message, long-term records, tied projections, `actor_entropy` and the read's cortex at
+  unit norm; `grow(recall=True)` also gives a brain without a heard history the one block a new
+  brain's memory holds, and `recall_founder=True` grows the memory without it; the API
+  reference gains a section for `cadence.speech.frontend`, `align` and `decode`, and the speech
+  guide a line each for `LogMel`, `mel_bank`, `windows`, `even_path` and `greedy`.
+
 ## 0.98.0 - 2026-11-12
 
 A recogniser trained from recordings and their transcripts (`cadence.speech`), the read-speech

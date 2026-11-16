@@ -1,70 +1,83 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/muellerberndt/cadence/main/docs/assets/cadence-logo.png" alt="Cadence: a continuing brain with local state, memory and repair" width="100%">
+  <a href="https://cadence.floatingpragma.ai/"><img src="https://raw.githubusercontent.com/muellerberndt/cadence/main/docs/assets/cadence-logo.png" alt="Cadence: a continuing brain with local state, memory and repair. Try the brains live at cadence.floatingpragma.ai" width="100%"></a>
 </p>
 
 # Cadence
 
-[Pragma Research](https://floatingpragma.ai/) · [Documentation](https://github.com/muellerberndt/cadence/blob/main/docs/README.md) · [Application demos](https://github.com/muellerberndt/cadence-demos) · [Paper](https://philpapers.org/rec/MUECAP-2) · [PyPI](https://pypi.org/project/cadence-net/)
+[**Live demos**](https://cadence.floatingpragma.ai/) · [Pragma Research](https://floatingpragma.ai/) · [Documentation](https://github.com/muellerberndt/cadence/blob/main/docs/README.md) · [Application demos](https://github.com/muellerberndt/cadence-demos) · [Paper](https://philpapers.org/rec/MUECAP-2) · [PyPI](https://pypi.org/project/cadence-net/)
 
 [![CI](https://github.com/muellerberndt/cadence/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/muellerberndt/cadence/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](https://github.com/muellerberndt/cadence/blob/main/LICENSE)
 
 **One continuing equilibrium brain: learn a world, act in it, repair what fails.**
 
-Cadence is a Python library (NumPy, Python 3.11 or later) for brains that settle rather than
-compute a pass: a graph of rate neurons relaxes to an equilibrium under the observation, the
-action is read from that equilibrium, and every synapse learns from the difference between two
-settles, with no backward pass and no training/inference switch.
+Cadence is a Python library for brains that learn while they live. Animal and human brains learn
+from experience and not by backpropagation with gradient descent. Cadence is designed the same
+way: its connections change locally while the brain keeps running.
+
+## Install
 
 ```sh
-python -m pip install cadence-net==0.98.0
+python -m pip install cadence-net==0.101.0
 ```
+
+Python 3.11 or later and NumPy. `"cadence-net[fast]==0.101.0"` adds Numba and SciPy for speed
+(recommended); `[apple]` adds MLX for Apple silicon GPUs and `[accel]` PyTorch for NVIDIA GPUs.
+
+## A first brain
 
 ```python
 import numpy as np
 from cadence import Brain
 
-brain = Brain.compose(inputs=4, actions=2, arousal=True)
-observation = np.array([[1.0, 0.0, 0.0, 0.0]])
-action = brain.live(observation)
-
-# A tiny environment rewards action 0 and supplies the next observation.
-reward = (action == 0).astype(float)
+brain = Brain.compose(inputs=4, actions=2, arousal=True)  # 4 senses, 2 possible actions
+observation = np.array([[1.0, 0.0, 0.0, 0.0]])            # what it senses at this moment
+action = brain.live(observation)                          # it settles and chooses an action
+reward = (action == 0).astype(float)                      # your world scores that action
 next_observation = np.array([[0.0, 1.0, 0.0, 0.0]])
-action = brain.live(next_observation, reward=reward)
-assert action.shape == (1,)
+action = brain.live(next_observation, reward=reward)      # it learns from the score, acts again
 ```
 
-By default `Brain.compose` builds one association region of 64 neurons between the senses and
-the motor choice, settling together with them; a working trace that carries the last
-interpretation into the next settle; and an associative store that keeps each situation's
-outcomes. Under `live` the brain learns while young (its first 100 moments) or aroused by
-surprise or want, and otherwise answers greedily from one settle; under `step` it learns from
-every outcome and from `teacher=` labels. It also holds a recall memory of its recent moments
-(`recall=False` builds it without one). Everything else is opt-in: System 2 observers, the
-episodic memory, a learned code, images.
+The brain settles: its neurons drive each other until their activity comes to rest, the action
+is read from that state, and every synapse learns from the difference between two settles. There
+is no backward pass and no switch between training and use.
 
-| You want to | Read |
-| --- | --- |
-| learn the ideas step by step | [The documentation](https://github.com/muellerberndt/cadence/blob/main/docs/README.md) |
-| run a creature that lives, acts and learns | [Start here: your first brain](https://github.com/muellerberndt/cadence/blob/main/docs/start.md) |
-| train a brain on data, a teacher, rewards or another brain | [Train a brain](https://github.com/muellerberndt/cadence/blob/main/docs/teach.md) |
-| let the world pay for good acts | [Learning from reward](https://github.com/muellerberndt/cadence/blob/main/docs/reward.md) |
-| give the brain a memory for a task | [Memory](https://github.com/muellerberndt/cadence/blob/main/docs/memory.md) |
-| read or change a living brain | [Tune and read a living brain](https://github.com/muellerberndt/cadence/blob/main/docs/tune.md) |
-| a signature | [API reference](https://github.com/muellerberndt/cadence/blob/main/docs/api.md) |
+## Read next, in this order
 
-The [documentation index](https://github.com/muellerberndt/cadence/blob/main/docs/README.md)
-lists the rest: wide inputs, growing and grafting, evaluation, your own anatomy, how the
-brain settles, backends; the
-[released documentation](https://github.com/muellerberndt/cadence/blob/v0.98.0/docs/README.md)
-describes the APIs of the installed package. Integrated learned world prediction, repair
-localized to what failed and cheap stable operation are work in progress; Cadence is alpha
-research software.
+| | Guide | What it gives you |
+| --- | --- | --- |
+| 1 | [Start here: your first brain](https://github.com/muellerberndt/cadence/blob/main/docs/start.md) | the brain above, line by line: settling, lessons and rewards, the state it carries, saving |
+| 2 | [Assemble a brain](https://github.com/muellerberndt/cadence/blob/main/docs/assembly.md) | senses by name, a map of things, memories, attention, an ear and a voice, in four whole brains |
+| 3 | [Space: tracking what is where](https://github.com/muellerberndt/cadence/blob/main/docs/space.md) | a map that keeps things out of view and follows a hidden thing that moves |
+| 4 | [Sounds as symbols](https://github.com/muellerberndt/cadence/blob/main/docs/memory.md#records-of-bound-moments-opt-in) | a sound heard alone brings its thing back, a voice says it, a reward makes it the answer |
+| | [Live demos](https://cadence.floatingpragma.ai/) | brains that see, move, play and keep learning, in the browser |
+| | [API reference](https://github.com/muellerberndt/cadence/blob/main/docs/api.md) | every public name, with its signature and refusals |
+
+More guides: [train a brain](https://github.com/muellerberndt/cadence/blob/main/docs/teach.md), [learning from reward](https://github.com/muellerberndt/cadence/blob/main/docs/reward.md),
+[memory](https://github.com/muellerberndt/cadence/blob/main/docs/memory.md), [tune and read a living brain](https://github.com/muellerberndt/cadence/blob/main/docs/tune.md),
+[backends](https://github.com/muellerberndt/cadence/blob/main/docs/backends.md); the [documentation index](https://github.com/muellerberndt/cadence/blob/main/docs/README.md) lists them all. The
+[released documentation](https://github.com/muellerberndt/cadence/blob/v0.101.0/docs/README.md)
+describes the installed package. Integrated learned world prediction, repair localized to what
+failed and cheap stable operation are work in progress; Cadence is alpha research software.
+
+<p align="center">
+  <a href="https://cadence.floatingpragma.ai/"><img src="https://raw.githubusercontent.com/muellerberndt/cadence/main/docs/assets/cadence-live-demos.jpg" alt="Cadence live demos: one brain design that sees, moves, plays and keeps learning. Robot arm, robot arena, Atari, Castlevania, Patch World and Tron, all running live in the browser. 363 of 400 games won against the perfect Connect Four solver." width="100%"></a>
+</p>
+<h3 align="center">▶ <a href="https://cadence.floatingpragma.ai/">Try the brains live: cadence.floatingpragma.ai</a></h3>
 
 <a id="get-started"></a>
 
 ## Start with System 1
+
+By default `Brain.compose` builds one association region of 64 neurons between the senses and
+the motor choice, settling together with them; a working trace that carries the last
+interpretation into the next settle; a heard history of the moment before; a recall memory of
+the stream's recent moments (`recall=False` builds it without one); and an associative store that
+keeps each situation's outcomes. Under `live` the brain learns while young (its first 100
+moments) or aroused by an outcome's surprise or by want, and otherwise answers greedily from one settle; under
+`step` it learns from every outcome and from `teacher=` labels. Everything else is opt-in: System
+2 observers, the episodic memory, a learned code, images, senses by name, the map of things,
+records of bound moments and a voice.
 
 `live` takes the **preceding action's** measured reward, then chooses the next
 action for one continuing stream; supply one observation row per call. It needs

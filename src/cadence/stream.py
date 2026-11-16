@@ -1365,8 +1365,26 @@ class Recall:
     the actor's eligibility, ``contrast_rows``, ``propose``, ``accept``), ``tokens`` (which
     actions are tokens a slot can hold), ``gain`` (a learned gain per port on those tokens),
     ``drive_gain`` (the read's drive is one more route of ``Hearing``: one learned gain on every
-    port, at most 1) and ``cortex_norm`` (every map reads the cortex of the moment before at unit
-    norm).
+    port, at most 1), ``cortex_norm`` (every map reads the cortex of the moment before at unit
+    norm) and ``strength`` (every slot keeps a depth, and a full bank gives up its weakest slot
+    in place of its oldest, below).
+
+    **A slot's strength (``strength``, cadence#336).** Every slot keeps one number, its depth
+    (``depth``, one per stream and slot). A slot is written one telling deep, and ``1 +
+    surprise`` deep where ``witness`` is given the moment's surprise in tellings. Each written
+    moment acts on the slots held before it, in this order. A depth below ``kept`` is kept at
+    ``1 - 1 / (HOLD * capacity)``, and one at or past ``kept`` stays whole. A slot the moment's
+    read attended with weight ``p`` moves toward one telling, ``depth + p * max(1 - depth, 0)``:
+    use renews a slot and deepens none past a telling. The deepest held slot whose key lies at
+    cosine ``again`` or above to the moment's key gains one telling, and the moment is a slot
+    of its own all the same. A full bank gives up the slot of least depth among those older
+    than its protected newest share (``protected`` slots, ``PROTECT`` of the capacity), the
+    oldest among equals: a bank whose slots were each told once, without surprise, and read
+    alike gives up its oldest slot, as a bank without ``strength`` does. The other slots keep
+    their order, so a slot's age is its time within the protected share and its rank past it,
+    and every term that reads an age reads that. The read is the read of a memory without
+    ``strength``; ``heads`` above 1, ``window`` above 1, ``action`` and ``when`` are refused
+    beside it, and its bank stays on the host, outside the compiled moment.
 
     A retired setting (``RETIRED``) is refused at construction, under
     ``Brain.retune`` and on load with one sentence naming the release that retired it and what
@@ -1428,11 +1446,20 @@ class Recall:
     gain_after: int = 0
     gain_next: float = 0.0
     gain_lessons: int = 0
+    # every slot keeps a depth, and a full bank gives up its weakest slot outside the protected
+    # newest share in place of its oldest (the class's text gives the law)
+    strength: bool = False
+    # with ``strength``: the cosine at or past which a moment's key is a held slot's told again,
+    # and the depth at or past which a slot is kept whole
+    again: float = 0.95
+    kept: float = 8.0
     keys: np.ndarray = field(init=False, repr=False)
     values: np.ndarray = field(init=False, repr=False)
     nexts: np.ndarray = field(init=False, repr=False)
     held: np.ndarray = field(init=False, repr=False)
     previous: np.ndarray = field(init=False, repr=False)
+    # with ``strength`` each slot's depth, ``(streams, slots)``; None without
+    depth: np.ndarray | None = field(init=False, repr=False)
 
     # the constants of the memory: settings of 0.92.1 that every reading took at one value,
     # retired as genes in 0.93.0 (``RETIRED`` refuses the names and keeps the saved values)
@@ -1454,11 +1481,11 @@ class Recall:
         "address_reward", "position_reward", "window", "heads", "position",
         "position_rate", "boundary", "tokens", "action", "anchor",
         "relative", "slope", "when", "gain", "grid", "drive_gain", "cortex_norm",
-        "gain_after", "gain_next",
+        "gain_after", "gain_next", "strength", "again", "kept",
     )
     CONSTRUCTION_OPTIONS = ("window", "heads", "position", "tokens", "action", "anchor",
                             "relative", "slope", "when", "gain", "grid", "drive_gain",
-                            "cortex_norm", "gain_after", "gain_next")
+                            "cortex_norm", "gain_after", "gain_next", "strength")
     # what ``Brain.compose(..., recall=True)`` gives a new brain's memory over the founders above,
     # ordinary settings a caller's value overrides. The founder stays what a saved memory without
     # the setting means, so a saved brain keeps the values it was saved with
@@ -1479,6 +1506,11 @@ class Recall:
     # a row taught alone moves its own drive on a motor neuron by at most this many times the
     # neuron's movement between the nudged phases
     GAIN_BOUND = 5.0
+    # the strength law's constants: the capacities of moments a depth below ``kept`` is kept
+    # over (``LongTermMemory.hold`` is eight of its own), and the newest share of the capacity
+    # no drop reaches
+    HOLD = 8.0
+    PROTECT = 0.5
     # the kinds of a head's maps beside its address map (``map_names``), in the order a
     # checkpoint keeps them, each kept with its option, and the per-stream state each reads,
     # kept before its maps: the reads' focus for the relative maps, the moments told for the
@@ -1569,11 +1601,18 @@ class Recall:
             return number
         if name in (
             "next", "boundary", "action", "anchor", "relative", "when", "drive_gain",
-            "cortex_norm",
+            "cortex_norm", "strength",
         ):
             if not isinstance(value, bool):
                 raise ValueError(f"{name} must be boolean")
             return value
+        if name == "again":
+            return real(name, value, low=0, high=1)
+        if name == "kept":
+            number = real(name, value, low=0)
+            if number <= 0:
+                raise ValueError("kept must be positive: the depth at which a slot is kept whole")
+            return number
         if name == "gain_after":
             if (
                 isinstance(value, (bool, np.bool_))
@@ -1723,6 +1762,16 @@ class Recall:
                 "position_rate above 0"
             )
 
+    @staticmethod
+    def _law(strength: bool, again: float, kept: float) -> None:
+        """``again`` and ``kept`` are the strength law's numbers: away from their founders they
+        need ``strength``. Refused at construction and by ``Brain.retune``."""
+        founders = Recall.options()
+        if not strength and (again != founders["again"] or kept != founders["kept"]):
+            raise ValueError(
+                "again and kept are the numbers of a slot's strength: they need strength"
+            )
+
     def __post_init__(self) -> None:
         self._device: _RecallOnDevice | None = None  # what rests on a device (``reside``)
         # the brain's ``learning_compiled_moment``, set by the brain at each read (``_compiles``)
@@ -1730,6 +1779,14 @@ class Recall:
         self._actor: Any = None  # the actor that keeps the read's eligibility
         for name in (*self.RUNTIME, *self.CONSTRUCTION, *self.OPTIONS):
             setattr(self, name, self.setting(name, getattr(self, name)))
+        self._law(self.strength, self.again, self.kept)
+        for name, given in (("heads", self.heads > 1), ("window", self.window > 1),
+                            ("action", self.action), ("when", self.when)):
+            if self.strength and given:
+                raise ValueError(
+                    f"strength and {name} do not compose: a slot's strength holds for one head "
+                    "over single events, without the command and without the read of when"
+                )
         populations = self.connectome.populations
         if self.target != "recall" and self.heads > 1:
             raise ValueError("a recall memory of several heads reads into the recall regions")
@@ -1888,7 +1945,7 @@ class Recall:
         return (
             self.heads == 1 and self.window == 1 and not self.action and not self.when
             and not self.gain and self.tokens is None and self.target == "recall"
-            and not self.cortex_norm
+            and not self.cortex_norm and not self.strength
         )
 
     def reside(self, kernel: Any) -> None:
@@ -2011,8 +2068,16 @@ class Recall:
         return int(self.keys.shape[1]) if held is None else held.slots
 
     def ages(self) -> np.ndarray:
-        """Moments since each slot was written: ``slots - 1`` for the oldest, 0 the latest."""
+        """Moments since each slot was written: ``slots - 1`` for the oldest, 0 the latest. With
+        ``strength`` a slot older than the protected share holds its rank among the slots held,
+        which is its age where no younger slot was given up."""
         return np.arange(self.slots - 1, -1, -1, dtype=float)
+
+    @property
+    def protected(self) -> int:
+        """With ``strength``: the newest slots of a full bank that no drop reaches, ``PROTECT``
+        of the capacity. Within them a slot's age is its time."""
+        return int(np.ceil(self.PROTECT * self.capacity))
 
     def within_table(self, rows: np.ndarray) -> np.ndarray:
         """Per stream of ``rows``, whether the slope maps step on its lesson: its own slots
@@ -2186,6 +2251,8 @@ class Recall:
         self.values = np.zeros((batch, slots, self.value_width))
         self.nexts = np.zeros((batch, slots, self.value_width))
         self.held = np.ones((batch, slots), dtype=bool)
+        # with ``strength`` a boundary is one telling deep, as a written moment is
+        self.depth = np.ones((batch, slots)) if self.strength else None
         self.previous = np.zeros((batch, len(self.association)))
         # per stream with ``action``: the command it executed at the moment before
         self.acted = np.zeros((batch, self.command_width))
@@ -2238,6 +2305,13 @@ class Recall:
         # slots no stream holds any more are dropped from the oldest end
         lead = held.any(axis=0)
         first = int(np.argmax(lead)) if lead.any() else held.shape[1]
+        if self.depth is not None:
+            # a slot a stream gave up holds no depth, and its boundary is one telling deep
+            depth = np.zeros(held.shape)
+            if self.depth.shape == held.shape:
+                depth[keep] = self.depth[keep]
+            depth[held & chosen[:, None]] = 1.0
+            self.depth = depth[:, first:]
         self.keys, self.values, self.nexts, self.held = (
             a[:, first:].copy() for a in (keys, values, nexts, held)
         )
@@ -2290,6 +2364,10 @@ class Recall:
                     held = self.held.copy()
                     held[silent, -1] = False
                     self.held = held
+                    if self.depth is not None:  # and holds no depth
+                        depth = self.depth.copy()
+                        depth[silent, -1] = 0.0
+                        self.depth = depth
                 self._append(np.zeros((batch, self.address_width)), np.ones(batch, dtype=bool))
             self.ended = np.zeros(batch, dtype=bool)
         else:
@@ -2317,11 +2395,16 @@ class Recall:
     def keep(self, rows: np.ndarray) -> None:
         """Keep the memories of ``rows`` only (streams that ended are dropped)."""
         rows = _stream_rows(rows, self.streams)
-        for name in self._STATE:
+        for name in self._states():
             state = getattr(self, name)
             if len(state):  # the window's events and the command may hold no stream
                 setattr(self, name, state[rows])
         self._unread()
+
+    def _states(self) -> tuple[str, ...]:
+        """The names of every stream's state: ``_STATE``, and with ``strength`` the slots'
+        depths."""
+        return (*self._STATE, "depth") if self.strength else self._STATE
 
     def snapshot(self) -> dict[str, Any]:
         """The per-stream state, to restore after a refused operation. The next write starts
@@ -2330,7 +2413,7 @@ class Recall:
         if held is not None:
             return held.snapshot()
         self._rooms = {}
-        return {name: getattr(self, name) for name in self._STATE}
+        return {name: getattr(self, name) for name in self._states()}
 
     def restore(self, snapshot: dict[str, Any]) -> None:
         """Return to a ``snapshot``; the next moment is addressed afresh. A snapshot of the host's
@@ -2440,6 +2523,8 @@ class Recall:
                 out.update(zip(self.map_names(kind, h), maps, strict=True))
         if self.gain:  # the gains, one per read port, saved only with the option
             out["gains"] = self.gains
+        if self.depth is not None:  # each slot's depth, saved only with ``strength``
+            out["depth"] = self.depth
         return out
 
     @staticmethod
@@ -2634,13 +2719,15 @@ class Recall:
     def _compiles(self, rows: int, begun: bool = True) -> bool:
         """Whether this read and its lesson run as the compiled moment
         (``learning_compiled_moment``, ``cadence._moment``): a brain's option, on the host, for one
-        head of one event per moment without a command, the features of when or the gains, at
-        streams of the bank's batch that hold slots, with every map on the host. Without
-        ``begun`` the streams may also begin at this moment (no slot yet, or another batch)."""
+        head of one event per moment without a command, the features of when, the gains or a
+        slot's strength, at streams of the bank's batch that hold slots, with every map on the
+        host. Without ``begun`` the streams may also begin at this moment (no slot yet, or another
+        batch)."""
         if not self.__dict__.get("compiled_moment", False):
             return False
         if (
             self.heads != 1 or self.window != 1 or self.action or self._whens or self.gain
+            or self.strength
             or (begun and (not self.slots or self.streams != rows))
             or not isinstance(self.head_maps[0][0], np.ndarray)
         ):
@@ -2891,20 +2978,35 @@ class Recall:
         return np.asarray(settled[:, cols], dtype=float).copy()
 
     def witness(
-        self, observations: np.ndarray, state: BrainState, command: np.ndarray | None = None
+        self, observations: np.ndarray, state: BrainState, command: np.ndarray | None = None,
+        surprise: np.ndarray | None = None,
     ) -> None:
         """After the settle: the ``(batch, inputs)`` observations the streams acted on join
         their slots under the moment's key, the slot before learns them as its next, and the
         settled cortex of ``state`` and the window move on to this moment. With ``action``
         ``command`` is the ``(batch, actions)`` command each stream executed at this moment
         (None for a moment without one, which carries zeros); it joins the slot's key and
-        value and becomes the command of the moment before. Another batch size begins the
+        value and becomes the command of the moment before. With ``strength`` ``surprise`` is
+        the moment's surprise per stream in tellings, 0 or more (None for none): its slot is
+        written that much deeper than one telling. Another batch size begins the
         streams with empty memories first. An imagined branch moves the cortex, the window
         and the command only."""
         if self._device is not None:
             self._device.witness(observations, state, command)
             return
         x = self._port(observations)
+        if surprise is not None:
+            if not self.strength:
+                raise ValueError("a moment's surprise deepens its slot: it needs strength")
+            surprise = np.asarray(surprise, dtype=float)
+            if (
+                surprise.shape != (len(x),) or not np.isfinite(surprise).all()
+                or (surprise < 0).any()
+            ):
+                raise ValueError(
+                    "a surprise is one finite number of 0 or more per stream: the tellings it "
+                    "counts as"
+                )
         moment = self.last
         if moment is None or moment.event.shape != x.shape or not np.array_equal(moment.event, x):
             moment = self._moment(x)
@@ -2923,7 +3025,7 @@ class Recall:
             key = np.concatenate([key[:, : -self.command_width], done], axis=1)
             value = np.concatenate([value, done], axis=1)
         if not self._private:
-            self._observe(key, value)
+            self._observe(key, value, surprise)
             self.writes += len(x)
         if self.action:  # after the write, which begins streams of another batch afresh
             self.acted = done.copy()
@@ -2936,9 +3038,13 @@ class Recall:
             self.past = np.concatenate([moment.event[:, None, :], past[:, :-1]], axis=1)
         self.last = None
 
-    def _observe(self, key: np.ndarray, value: np.ndarray) -> None:
+    def _observe(
+        self, key: np.ndarray, value: np.ndarray, surprise: np.ndarray | None = None
+    ) -> None:
         """Write one moment per stream: the latest slot learns what followed it, a new slot
-        holds this moment; beyond ``capacity`` the oldest slot is dropped. A stream that began
+        holds this moment; beyond ``capacity`` the oldest slot is dropped, or with ``strength``
+        the weakest outside the protected share (``_weakest``), after the moment has acted on
+        the depths (``_deepened``); its own slot is ``1 + surprise`` deep. A stream that began
         since the others (``reset`` of its rows) holds fewer slots: its latest held slot,
         wherever it lies, learns this moment as its next. A stream whose latest slot closed
         an episode (``end``) teaches it nothing, and its new slot is open again."""
@@ -2974,9 +3080,81 @@ class Recall:
             focus = np.where(seen, self.ages()[read].astype(np.int64) + 1, -1)
         else:
             focus = np.where(self.focus >= 0, self.focus + 1, -1)
-        self._append(key, np.ones(len(key), dtype=bool), value, successor)
+        born = None
+        if self.depth is not None:
+            self.depth = self._deepened(key)
+            born = np.ones(len(key)) if surprise is None else 1.0 + surprise
+        slots = self.slots
+        gone = self._append(key, np.ones(len(key), dtype=bool), value, successor, born)
         self.told = self.told + 1
+        if gone is not None:
+            # a stream that gave up a slot from the middle: the slots older than it keep their
+            # ages, so a focus among them is not a moment older, and a focus on it is none
+            at = slots - focus  # the place of the focus's slot before the write
+            stays = (gone > 0) & (focus >= 0) & (at <= gone)
+            focus = np.where(stays, np.where(at == gone, -1, focus - 1), focus)
         self.focus = focus
+
+    def _deepened(self, key: np.ndarray) -> np.ndarray:
+        """With ``strength``, the depths of the slots held after one written moment of ``key``,
+        before its own slot joins them, as a new array (the class's text gives the law): a
+        depth below ``kept`` kept at ``1 - 1 / (HOLD * capacity)``; then a slot the moment's
+        read attended with weight ``p`` (the read the focus is taken from) moved toward one
+        telling by ``p``; then the deepest held slot whose key lies at cosine ``again`` or
+        above to ``key`` one telling deeper, the oldest among equals."""
+        depth = self.depth
+        assert depth is not None
+        if not self.slots:
+            return depth
+        stay = 1.0 - 1.0 / (self.HOLD * self.capacity)
+        depth = np.where(depth >= self.kept, depth, depth * stay)
+        attended = self._attended
+        if attended is not None and attended.shape == depth.shape:
+            depth += attended * np.maximum(1.0 - depth, 0.0)
+        lengths = np.sqrt(_einsum("bmk,bmk->bm", self.keys, self.keys))
+        lengths *= np.linalg.norm(key, axis=1)[:, None]
+        told = self.held & (lengths > 0) & (
+            _einsum("bk,bmk->bm", key, self.keys) >= self.again * lengths
+        )
+        rows = np.flatnonzero(told.any(axis=1))
+        if len(rows):
+            deepest = np.argmax(np.where(told[rows], depth[rows], -np.inf), axis=1)
+            depth[rows, deepest] += 1.0
+        return depth
+
+    def _weakest(self) -> np.ndarray | None:
+        """With ``strength``, the slot each stream of a full bank gives up: the one of least
+        depth among the slots older than the protected newest share, the oldest among equals,
+        and a slot the stream does not hold before any it holds. None where every stream gives
+        up its oldest slot, as a bank without ``strength`` does."""
+        assert self.depth is not None
+        open_ = self.slots - self.protected  # the slots a drop can reach
+        if open_ < 2:
+            return None
+        depth = np.where(self.held[:, :open_], self.depth[:, :open_], -1.0)
+        weakest = np.argmin(depth, axis=1)
+        return np.asarray(weakest) if weakest.any() else None
+
+    def _without(
+        self, name: str, old: np.ndarray, gone: np.ndarray, new: np.ndarray | None
+    ) -> np.ndarray:
+        """The slots ``old`` less each stream's slot ``gone``, the others in their order, with
+        a new latest slot of ``new`` (zero without one). A slot leaves the middle of the order,
+        so the slots move into a new array with room behind them (``_longer``), and ``old`` is
+        left as it was."""
+        kept = old.shape[1] - 1
+        size = min(2 * self.capacity, max(16, 2 * kept + 2))
+        room = np.empty((old.shape[0], size, *old.shape[2:]), dtype=old.dtype)
+        for row, slot in enumerate(gone.tolist()):
+            room[row, :slot] = old[row, :slot]
+            room[row, slot:kept] = old[row, slot + 1:]
+        if new is None:
+            room[:, kept] = 0
+        else:
+            room[:, kept] = new
+        out = room[:, : kept + 1]
+        self._rooms[name] = (room, out, 0, kept + 1)
+        return out
 
     def _longer(
         self, name: str, old: np.ndarray, drop: int, new: np.ndarray | None
@@ -3017,17 +3195,51 @@ class Recall:
         held: np.ndarray,
         value: np.ndarray | None = None,
         successor: tuple[Any, ...] | None = None,
-    ) -> None:
+        born: np.ndarray | None = None,
+    ) -> np.ndarray | None:
         """A new latest slot for every stream, of ``key`` and ``value`` (zero without one) and
         no successor yet, held by the streams ``held`` marks; beyond ``capacity`` the oldest
         slot is dropped. ``successor`` is what the slots before learn as their next
         (``_observe``): ``(slice(None), value)`` for every stream's latest slot, or ``(rows,
         slots, values)``. The arrays are new views of the slots (``_longer``): a caller that holds
-        the old ones to restore them says so (``snapshot``)."""
+        the old ones to restore them says so (``snapshot``). With ``strength`` the new slot is
+        ``born`` deep (one telling without it), and a full bank gives up each stream's weakest
+        slot (``_weakest``): where that is not every stream's oldest, the slots given up are
+        returned and every array is a new one (``_without``); None otherwise."""
         if value is None:
             value = np.zeros((len(key), self.value_width))
         kept = self.keys.shape[1]
         drop = max(kept + 1 - self.capacity, 0)
+        gone = self._weakest() if self.depth is not None and drop else None
+        if self.depth is not None:
+            deep = np.ones((len(key), 1)) if born is None else born[:, None]
+            if gone is None:
+                self.depth = np.concatenate([self.depth[:, drop:], deep], axis=1)
+            else:  # each stream's depths less the one given up, in their order
+                order = np.arange(kept - 1)[None, :]
+                order = order + (order >= gone[:, None])
+                self.depth = np.concatenate(
+                    [np.take_along_axis(self.depth, order, axis=1), deep], axis=1
+                )
+        if gone is not None:
+            nexts = self._without("nexts", self.nexts, gone, None)
+            if successor is not None:
+                if len(successor) == 2:
+                    rows, values = np.arange(len(key)), successor[1]
+                    slots = np.full(len(key), kept - 1)
+                else:
+                    rows, slots, values = successor
+                # the slot that learns its successor, at its place once the weakest has left
+                there = slots != gone[rows]
+                at = slots - (slots > gone[rows])
+                nexts[rows[there], at[there]] = values[there]
+            self.keys = self._without("keys", self.keys, gone, key)
+            self.values = self._without("values", self.values, gone, value)
+            self.nexts = nexts
+            self.held = self._without("held", self.held, gone, held)
+            self._contents = []
+            self._content_keys = None
+            return gone
         nexts = self._longer("nexts", self.nexts, drop, None)
         if successor is not None and kept:
             if len(successor) == 2:
@@ -3043,6 +3255,7 @@ class Recall:
         self.held = self._longer("held", self.held, drop, held)
         self._contents = []
         self._content_keys = None
+        return None
 
     # -- the address lesson
 

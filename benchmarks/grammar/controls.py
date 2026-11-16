@@ -221,6 +221,11 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
     import torch
 
     torch.set_num_threads(1)
+    lexicon = spec.get("lexicon")  # a plan made for one lexicon is refused under another
+    if lexicon is not None and tuple(lexicon) != (gr.NOUNS, gr.VERBS):
+        raise ValueError(
+            f"this life is planned for a lexicon of {lexicon[0]} nouns and {lexicon[1]} verbs; "
+            f"the chamber holds {gr.NOUNS} and {gr.VERBS} (CADENCE_GRAMMAR_LEXICON)")
     model, mode, founder = spec["model"], spec["mode"], int(spec["founder"])
     phases = [(str(g), int(n)) for g, n in spec.get("phases", [["g1", 2000]])]
     target = int(spec.get("parameters") or brain_parameters(founder))

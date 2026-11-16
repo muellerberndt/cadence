@@ -47,6 +47,7 @@ the brain issued (`efference_amplitude`) and the **held message**, the whole epi
 | Associative store | a ledger of what paid where | yes, averaging its outcomes (`memory_rate=0.2`) | which action pays in a situation, with quick reversal | `episodic=False` removes it; `memory_rate=1.0` keeps the last outcome |
 | Episodic memory | one-shot records that vote | no | a demonstration shown once, a chain paid at its end, a cue that is gone | `memory_choice=True` |
 | Long-term memory | a library of records kept by use | no | thousands of facts asked long after they were told, facts that change, a fixed budget of slots | `longterm=records` with a held message ([long-term records](#long-term-records)), or `cd.LongTermMemory` beside the brain ([a large memory](#a-large-memory)) |
+| Records of bound moments | what the senses held together, read back by a part | no | a sound must bring back the thing it was heard with, and a voice say what the records bind to a thing | `bound=records` with `senses=` and `code=` ([records of bound moments](#records-of-bound-moments-opt-in)) |
 | Efference copy | what I just did | no | sequencing the brain's own actions under identical input | `efference_amplitude=1.0` |
 | Heard history | what I just heard | one block, the moment before | the same observation needs different answers after different earlier observations | `history_decays=(0.2, 0.8)` for slower blocks; `history_decays=()` removes it |
 | No memory | the control | | always measure a memory against the brain without it | `recall=False, episodic=False, working_memory_amplitude=0.0` |
@@ -166,6 +167,7 @@ a training setting ([curriculum and rehearsal](teach.md#curriculum-and-rehearsal
 | A position nothing marks, past the table: a period of 40, n-back at 400 | `recall_capacity` about 2.5 times the distance: a new brain holds the grid and 128 slots | [reads over long context](#reads-over-long-context) |
 | Thousands of facts, asked long after they were told | `cd.LongTermMemory` beside the brain; or `recall_position=0, recall_temperature=0.05` and a `recall_capacity` that holds them | [a large memory](#a-large-memory) |
 | Two or more facts in one answer | `recall_heads=2` | [several heads](#several-heads-opt-in) |
+| One answer needs several of the brain's long-term records | `longterm_heads=k, longterm_attention=1.0, longterm_motor=0.05` | [several heads, each with a record of its own](#several-heads-each-with-a-record-of-its-own-opt-in) |
 | A read that depends on what another read found | a "think" moment between the two reads | [several heads](#several-heads-opt-in) |
 | "How long ago?", "was A told before B?" | `recall_when=True` | [when a read item happened](#when-a-read-item-happened-opt-in) |
 | The answer is the token the read found, tokens no lesson used included | `recall_tokens=..., recall_gain=1.0` | [the learned value path](#the-learned-value-path-opt-in) |
@@ -349,7 +351,8 @@ synapses of initial magnitude 1.2 (a constant).
 
 After each act, and after each moment `wait` senses, every stream writes one slot and the
 slot before learns the new value as its next. Beyond `recall_capacity` the oldest slot is
-dropped. Imagination writes none. The slot arrays (`recall.keys`, `recall.values`, `recall.nexts` and the
+dropped (with `recall_strength` the weakest outside the newest half:
+[a slot's strength](#a-slots-strength-opt-in)). Imagination writes none. The slot arrays (`recall.keys`, `recall.values`, `recall.nexts` and the
 others) are views that a write changes in place; code that holds them across a write takes
 `recall.snapshot()`, whose arrays the next write leaves alone.
 
@@ -491,6 +494,9 @@ only where they differ from their founder. A saved brain keeps its genes, slots 
 | `recall_boundary` | `False` | retune | Each stream that begins holds a silent boundary slot whose next the first event teaches ([the episode's boundary](#episodes-keys-and-windows)); a retune applies from the next stream that begins |
 | `recall_tokens` | `None` | construction | Per action the observation coordinate of the same token (`-1` for none). No synapse is added: a lesson whose answer has no token leaves the read's maps as they are, and `recall_gain` reads the tokens ([declared tokens](#declared-tokens)) |
 | `recall_action` | `False` | construction | Every slot carries the executed command in its key and value, and the maps read the command of the moment before ([its own actions](#its-own-actions-in-the-slots-opt-in)) |
+| `recall_strength` | `False` | construction | Every slot keeps a depth, and a full bank gives up its weakest slot outside the protected newest half in place of its oldest ([a slot's strength](#a-slots-strength-opt-in)) |
+| `recall_again` | `0.95` | retune | With `recall_strength`, the cosine at or past which a moment's key is a held slot's told again |
+| `recall_kept` | `8.0` | retune | With `recall_strength`, the depth at or past which a slot is kept whole |
 
 The [API reference](api.md#recall-memory-genes) gives the `Recall` class signature.
 
@@ -1382,6 +1388,89 @@ import cadence as cd
 brain = cd.Brain.compose(20, 12, recall=True, recall_cortex_norm=True)
 ```
 
+### A slot's strength (opt-in)
+
+A full memory drops its oldest slot, whatever that slot holds. With `recall_strength=True` every
+slot keeps a depth, and a full bank gives up its weakest slot in place of its oldest: a moment
+that came up again and again, one that came with a large surprise and one the reads keep
+fetching outlive the moments beside them
+([#336](https://github.com/muellerberndt/cadence/issues/336)). It is the law of
+[a record's strength](#a-records-strength-opt-in) on the memory every new brain holds. It is off
+unless you set it, and off a brain is the brain without it, to the bit. The read is unchanged:
+the option decides which moments a full bank holds.
+
+**A slot's depth** is one number, in `brain.recall.depth` per stream and slot, oldest first.
+
+| What happens | Its depth |
+| --- | --- |
+| The slot is written | One telling, 1. In a brain composed with `surprise=True`, 1 plus the brain's surprise at the moment in tellings: the ratio of the most surprised neuron's residual to its tolerated size, less one ([surprise](start.md#surprise-and-the-focus-it-draws-opt-in)). A moment nine times the tolerated size is written at 9 |
+| A later moment tells it again | Plus 1. A moment tells a slot again where their keys lie at cosine `recall_again` (.95) or above; where several slots hold the moment, the deepest gains the telling. The moment is a slot of its own all the same, so the bank keeps its order |
+| A later moment's read attends it with weight `p` | `depth + p * max(1 - depth, 0)`: a read renews a slot that has faded, by its share of the read, and deepens none past one telling |
+| A later moment is written | Times `1 - 1 / (8 * capacity)` below `recall_kept` (8), the time scale of a record's depth; at or past `recall_kept` the depth stays whole |
+
+A written moment acts on the depths: first the fade, then its read, then its telling. A read that
+writes nothing (`stimulus`, `predict`, a lesson, imagination) and a refused attempt leave every
+depth as it was.
+
+**The drop.** A full bank gives up the slot of least depth among the slots older than its
+protected newest half (`brain.recall.protected` slots, 64 of a new brain's 128), the oldest among
+equals.
+
+- A moment told once, without surprise and unread, is held for at least half the capacity. Past
+  that half it leaves when it is the weakest slot there: at the capacity where the other slots are
+  no stronger, as without the option, and sooner where they are.
+- A moment told n times in a row is held for about `8 ln(n / 0.9)` capacities of other moments:
+  6 for two tellings, 12 for four. Past `recall_kept` tellings it is kept. A kept slot leaves only
+  where every slot outside the protected half is kept, and then the weakest kept one goes.
+- A slot's age is its place in the order held. Within the protected half that is its time, as
+  without the option. Past it a slot that outlived a younger one sits at its rank, and every term
+  that reads an age reads the rank (the position table, the slope, the grid, the anchor, the
+  relative read). An episode shorter than the protected half reads every place as without the
+  option.
+
+```python
+import numpy as np
+from cadence import Brain
+
+def life(brain):
+    rng = np.random.default_rng(0)
+    fact = np.eye(12)[[0]] + np.eye(12)[[7]]         # a name (0) stated with a value (7)
+    for _ in range(3):
+        brain.act(fact, greedy=True)                 # told three times
+    for _ in range(24):                              # three capacities of other moments
+        brain.act(rng.standard_normal((1, 12)), greedy=True)
+    return (brain.recall.keys[0] == fact[0]).all(axis=1)
+
+deep = Brain.compose(inputs=12, actions=2, modules=(16,), seed=1, recall_capacity=8,
+                     recall_strength=True)
+held = life(deep)
+assert held[:4].any() and deep.recall.protected == 4   # held, outside the newest half
+assert deep.recall.depth[0, held].max() > 1.5          # deeper than a moment told once
+plain = Brain.compose(inputs=12, actions=2, modules=(16,), seed=1, recall_capacity=8)
+assert not life(plain).any()                           # without the option the oldest left first
+```
+
+**What it buys and what it costs.** The chamber
+[`benchmarks/recall_strength`](../benchmarks/recall_strength/README.md) reads a new brain's bank
+of 128 slots with and without the option. Without it no fact outlives one capacity of other
+moments, however often it was told. With it a fact told twice is held about 6 capacities, four
+times about 12 and sixteen times for good, and read right while held; one told at a large
+surprise is kept at once; one asked for again and again by parts of its name stays. The price is
+recent moments. Every read renews the slots it attends, so an older slot a read touched outlives
+a younger one no read touched: in a life where no moment comes up again the bank holds 84 to 89
+in a hundred of its last 128 moments, and a taught answer about a fact told once and never read
+since falls from .93 to .33 right at a gap of 0.875 of the capacity. Within the protected half
+the answers are those of the bank without the option.
+
+**Where it holds.** The law holds for a memory of one head over single events: `recall_heads`
+above 1, `recall_window` above 1 (so `attention=True`), `recall_action` and `recall_when` are
+refused beside it by name, and so is `Lives`. Its bank stays on the host. With
+`learning_compiled_moment` its moments run in turn on the general path, and on a torch device
+the solve runs there and the bank beside it on the host. `recall_again` and `recall_kept` retune
+in a life; `recall_strength` is a construction setting. A brain with the option saves checkpoint
+format `cadence-brain/5` with the feature `recall_strength` in its record and each slot's depth
+in `memories/recall/depth`, which 0.99.1 and earlier refuse by the format's name.
+
 ### Recall cost
 
 The two regions add one neuron per value coordinate each: `compose(250, 2)` grows from 380 to
@@ -1722,6 +1811,7 @@ recall memory's read.
 | `longterm_pairs` | `0`, off | construction | Files each record under the pairs of this many units: [a million records](#a-million-records-opt-in) |
 | `longterm_expansion`, `longterm_winners`, `longterm_candidates` | the store's own | construction | The address's units, a cue's winners and the slots a read scores |
 | `longterm_fade` | `True` | construction | `False` for records written once: the fading touches every slot each moment |
+| `longterm_strength` | `False` | construction | Records grow strong: kept for good past 8 tellings, the rest forgotten in time, the brain's surprise counted as tellings: [a record's strength](#a-records-strength-opt-in) |
 
 **A stream of a million records.** A stream of more than 16,384 records reads through an
 address. `longterm_pairs=16, longterm_expansion=16384, longterm_winners=256,
@@ -1849,9 +1939,216 @@ one fact and that record is the chain.
 | `longterm_distinct` | `None`, off | construction | A cue keeps its entries of at least this share of its heaviest weight |
 | `longterm_best` | `False` | construction | The read takes the record holding the most of the cue's weight; needs `longterm_distinct` |
 | `longterm_rest` | `False` | construction | A second read takes what the question asks beyond the first record; the answering record on `longterm`; needs `longterm_distinct` |
+| `longterm_attention` | `None`, off | construction | The rate of the heads' lesson: each head reads a record of its own in one answer ([below](#several-heads-each-with-a-record-of-its-own-opt-in)); needs `longterm_distinct` |
+| `longterm_motor` | `0.0`, off | construction | The scale of a plastic projection from each head's region to the motor region |
+
+### Several heads, each with a record of its own (opt-in)
+
+A transformer answers from several places of its context at once: each attention head reads a
+position of its own. `longterm_attention=rate` gives the brain's records the same: in one
+answer each of the `longterm_heads` heads reads a record of its own, and what each head holds
+to is learned by the brain's lessons. "What is the home of ada and bo and cy ?" reads three
+records in one settle, ada's on the first head's region, bo's on the second's, cy's on the
+third's, and the brain says the three places with three motor slots.
+
+- **Each head takes the question's next telling word.** A word few records hold (a name) tells
+  records apart; a word many records hold (a relation) is context. The heads read in turn, and
+  each takes as its focus the first telling word of the question, in the order heard, that no
+  head before it took. Its records are those whose key holds that word, and a record is read
+  once. A record is found by its key, what was heard before its turn, so a record that only
+  says a name as its value is no record about that name.
+- **Gates say which context a head holds to.** A head holds one gate per place in the question,
+  counted from the question's first word and from its last, read from a map of the question's
+  key. A record's level is the share its key holds of what the head looks for: the focus and
+  the context words, each at its gate. The head takes the record of the highest level and holds
+  it where the level reaches `longterm_match`. The maps start at zero, so a newborn head weighs
+  every context word alike.
+- **A head with no record holds nothing.** A word no record holds and few questions hold is a
+  telling word with no record: its head stays silent and the next head reads the next word. A
+  head reads only the records that hold some of the question's context, so a subject that lacks
+  the one relation asked of it is silent as well: its other records answer other questions.
+- **A chain.** A head with no telling word of the question left takes what the head before it
+  read as its focus. "The home of the boss of ada" reads ada's boss on the first head, then
+  the boss's home on the second. A chain lies on its regions from its end, the record that
+  answers on the first, as `longterm_rest` lays its chain.
+- **The lesson.** After each lesson every head's choice is scored against what the lesson moved:
+  for each record the head could have taken, and for taking none, the heads after it read again
+  as they would have, and the records the regions would then hold are scored against the
+  movement of the neurons the regions reach, read back through their synapses. The head's map
+  steps toward the choices that score above its own. In a chain this teaches each head which
+  relation to follow: the word before the subject for the first head, the word before that for
+  the second.
+- **A pathway to the motor region (`longterm_motor=scale`).** Each head's region also projects
+  to the motor region through plastic synapses of that initial scale, taught by the same
+  lessons, so a motor slot learns to say what one region holds. With it the heads' lesson reads
+  the movement back through these synapses alone.
+
+```python
+asker = Brain.compose(inputs=15, actions=10, slots=2, modules=(32,), seed=0, message=70,
+                      longterm=64, longterm_turn=TURN, longterm_distinct=0.1,
+                      longterm_match=0.6, longterm_heads=2, longterm_attention=1.0,
+                      longterm_motor=0.05)
+for verb in (6, 7):                                     # two relations of six subjects
+    for agent in range(6):
+        asker.reset()
+        for on in (verb, agent, TURN, 10 + (agent + verb) % 4):
+            asker.act(seen(on), greedy=True)
+asker.reset()
+for on in (6, 0, 3, TURN):                              # relation 6 of subjects 0 and 3
+    asker.act(seen(on), greedy=True)
+drive = asker.stimulus(np.zeros((1, 15)))
+assert asker.longterm.read_slots[0].tolist() == [0, 3]  # a record a head, in the order asked
+assert np.allclose(drive[0, asker.connectome.populations["longterm_1"]], 3.0 * seen(11)[0])
+report = asker.lesson(np.zeros((1, 15)), np.array([[0, 1]]))   # a lesson also steps the heads
+assert "heads_moved" in report
+```
+
+`brain.longterm.attended` is a `RecordHeads` (`cadence.record_heads`): `maps` (one per head),
+`last` (each stream's latest read: its question, each head's record and levels) and
+`parameters`. `brain.longterm.work` counts the accumulates of the latest read, and
+`brain.longterm.questions` and `asked_in` the questions heard and how many of them held each
+entry. A checkpoint keeps the maps and the counts.
+
+**A cue from the brain's own state (`fetch`).** A turn's question is one cue; what the brain
+attends is another. `brain.longterm.attended.fetch(focus, context=(), row=0)` reads the
+records with the learned heads where `focus` is what the brain attends, given as a moment the
+way the brain hears it (one row of its inputs) or as a codebook entry, and `context` holds
+further moments or entries the record looked for holds (a relation, a place). Head 0 reads the
+record about the focus among those holding some of the context, at its gates; each further
+head follows the head before it. Each head's record comes back as a `Fetched`: its `slot`
+(-1 for none), its `level`, its `content` (the moment after its turn, as heard: one row of the
+inputs) and its `context` (the entries of its key). A fetch changes nothing: no region, count,
+depth or last read. A record holds one moment as its content; a word heard as several frames
+is several moments.
+
+```python
+found = asker.longterm.attended.fetch(seen(3)[0], context=[seen(6)[0]])
+assert found[0].slot == 3                               # subject 3's record of relation 6
+assert np.array_equal(found[0].content, seen(11)[0])    # what it says, as heard
+assert [f.slot for f in found[1:]] == [-1]              # nothing for the second head
+```
+
+Limits: a relation word few records hold reads as a telling word; a question naming two
+relations of one subject reads one of them, since a telling word is read once; and the order in
+which the heads take the telling words is the order heard, which no lesson changes.
+
+The [several-records chamber](../benchmarks/several/README.md) reads these settings on
+questions of two, four and eight parts and on chains of two and three hops, beside a
+transformer that holds the records in its context.
 
 The [encyclopedia chamber](../benchmarks/encyclopedia/README.md) reads these settings on facts
 from Wikidata.
+
+## Records of bound moments (opt-in)
+
+A brain whose senses are declared by name and coded where they meet (`senses=`, `code=units`)
+can keep records of what its senses held together: `bound=records` gives it one store of that
+many records, read back by a part. A sound heard with a thing in view is one record; the sound
+heard alone brings the thing back, and the brain settles on it. With `voice=sense` the brain
+also says, in that sense's format, the sound its records bind to what it senses, and a reward
+that follows makes a said sound the answer. Without the option a brain is as it was, to the bit.
+
+```python
+import numpy as np
+from cadence import Brain
+from cadence.senses import Ear, Things
+
+things = Things({"hue": (0.0, 1.0), "shape": [(0.0, 1.0)] * 3}, per=8)
+ear = Ear(frames=8, bands=10)
+brain = Brain.compose(senses={"eyes": things.widths, "ear": ear.width}, actions=2,
+                      code=512, bound=256, voice="ear", arousal=True, seed=0)
+cup = things.rows({"hue": [0.85], "shape": [[0.6, 0.3, 0.2]]})
+said_cup = np.random.default_rng(0).normal(size=(20, 10))       # the word's log-mel frames
+for _ in range(3):
+    brain.act({"eyes": cup, "ear": ear.code(said_cup)}, greedy=True)   # a cup, and "cup"
+back = brain.complete({"ear": ear.code(said_cup)})              # "cup" heard alone
+assert back["eyes"]["shape"].any()                               # the cup's form comes back
+said = brain.say({"eyes": cup})                                 # a cup in view: what it says
+assert float(said[0] @ ear.code(said_cup)[0]) > 0.9 and brain.bound.said_from == ["heard"]
+```
+
+**A record.** At every moment the brain lives (`act`, `step`, `live`, `wait`) in which a sense
+holds something, the moment is written: its value is what each sense gave (not what the records
+brought back), its key the brain's fixed code of those senses, each sense at unit length and its
+fields alike within it, so a sense of one field and a sense of five weigh alike. The map's read
+(`trained=[map]`) is left out: the map is its own store. A moment told again (a key the store
+holds at cosine .95) moves its record toward the new take and deepens it; with `surprise=True`
+the brain's surprise counts as tellings; a record told past 8 tellings is kept for good, one
+told once fades and is forgotten in time (the [strength law](#a-records-strength-opt-in) of
+`LongTermMemory(blend=True, keep=8, forget=...)`).
+
+**A read by a part.** Before every settle the brain reads its records with the code of what its
+senses given by name hold (rows of the whole width are taken as given and not completed). The
+records read are the known ones: a record at depth .5 or kept for good, a record of something
+said only once a reward paid or refused it, none forgotten, at a cosine of .15 or more to the
+moment's code. For each field (a sense, or a field of a sense) the eight nearest records that
+hold it, those within .7 of the nearest's cosine, form groups that hold the field alike (cosine
+.8), weighed by their cosines, and the heaviest group comes back where it weighs more than .3 of
+them. A field the senses leave silent is given what came back (the voice apart), and the brain
+settles on the moment so completed. `brain.complete(observations)` gives what comes back, sense
+by sense, and changes nothing.
+
+**A voice.** `voice="ear"` adds a sense `voice` of the ear's layout: what the brain says, heard
+by itself. `brain.say(observations)` gives, one row a stream, the sound that stands for the
+moment. The paid records the read reaches fall into groups by the sound they hold, and a group
+stands for what its moments share: the fields every one of its records holds alike, a field where
+they differ (a place) left out. The group whose shared fields lie nearest the moment's (a mean
+cosine of .5 or more, above every other group's) answers (`"said"`); a record said at a moment
+like this one and not paid refuses its group for it. Where no group answers and the moment holds
+no sound, the heard sound the nearest records hold alike is said (`"heard"`), else a sound drawn
+from the distinct sounds the records hold, passing over sounds said at moments like this one and
+not paid (`"babble"`); zeros where no record holds a sound. A moment like another is one where
+more than half of the fields it holds are held alike. `brain.bound.said_from` names each choice.
+Pass the sound back under `"voice"` at the moment it is said, so the moment's record binds it.
+
+**A reward.** A reward given to `live` or `step` pays the record of the moment the brain acted
+at (a moment `wait` sensed in between is written and is not the one paid): it deepens by 4
+tellings a unit of reward, counted as its pay (`brain.bound.paid`). A record of something said
+answers only once paid; a reward of zero or less refuses it (`brain.bound.refused`), and its
+sound is passed over at moments like it until a reward pays it. Telling a said moment again, or
+the brain's surprise at it, deepens its record and pays nothing. A life with no reward given
+pays and refuses nothing.
+
+```python
+for word in (said_cup, np.random.default_rng(1).normal(size=(20, 10))):
+    brain.act({"ear": ear.code(word)}, greedy=True)             # sounds heard alone
+question = {"eyes": cup, "ear": ear.code(np.random.default_rng(2).normal(size=(20, 10)))}
+said = brain.say(question)                                      # a guess, or a sound it knows
+brain.live({**question, "voice": said})                         # it says it, and hears itself
+brain.live({"eyes": cup}, reward=[1.0])                         # paid: that is the answer
+assert np.allclose(brain.say(question), said) and brain.bound.said_from == ["said"]
+```
+
+**A heard name draws the focus.** With a voice, `surprise=True` and a map of things whose values
+are named as the fields of a sense (`Map(values={"hue": 8, "shape": 24})` beside eyes of fields
+`hue` and `shape`), a heard sound is read alone at every moment: where its records bring back a
+thing's fields, each thing on the map whose values hold more than half of them alike takes a
+salience of 8 times their mean cosine in the focus's competition
+([the focus](start.md#surprise-and-the-focus-it-draws-opt-in)), at its place, in view or out
+of it. `brain.focus.sense` is then `"named"`.
+
+| Setting | Founder | Changed by | What it sets |
+| --- | --- | --- | --- |
+| `bound` | `None`, off | construction | The records of bound moments a brain keeps; needs `senses=` and `code=`, no learned code |
+| `voice` | `None` | construction | The declared sense whose format the brain speaks in; adds the sense `voice` |
+
+The rule's constants are `cadence.bound.BoundRecords`'s (`HEADS`, `NEAR`, `MATCH`, `AGREE`,
+`MOST`, `ANSWER`, `KNOWN`, `PAY`, `NAMED`). A checkpoint keeps the records and saves as
+`cadence-brain/5` with the feature `bound`, which 0.100.0 refuses by name; `describe()` names
+them under `bound` and `voice`. A voice takes a sense of one field. `grow`, `graft` and `Lives` refuse a brain with records.
+
+**What it reads.** In the [symbols chamber](../benchmarks/symbols/README.md) (a brain that
+starts with no words: eight kinds of things in two colours, seventeen words said by a speaker),
+on twelve fresh founders of its fourth declared run (256 association neurons, the code of this
+release): a kind's name heard alone brings back its kind from the records at 1.00 and in the
+settled state at .975 to 1.00 on every founder (.05 to .175 with the records barred, .00 to .125
+with their values dealt to other keys); a reward teaches each of four things' names in 3 to 18
+exchanges and the answer to "what colour is this" in 4 to 21, at chance unpaid; a name paid at a
+few places is said for the thing at places no exchange used at 1.00; and a heard name draws the
+focus to its thing on the map at .83 to 1.00 in view and .92 to 1.00 behind a screen, never after
+listening alone. A thing seen alone is named from moments of naming alone, with no reward, at
+.80 to .95: those moments do not tell the read which fields a name follows. The first two
+declared runs failed (S5 and S6, then S2), each located in the chamber's readings.
 
 ## How strongly a carried region is heard
 
@@ -2110,8 +2407,10 @@ billionth of itself a moment. One left alone for about fifteen thousand moments 
 is shallow and far more slowly once its depth passes 2,000. Each stream keeps its residual
 around the shared records. No count is kept anywhere: both sums are leaky integrals of
 activity, as [maturity](reward.md#maturity-opt-in)'s use is. The constants are
-`SynapticMemory.FADE_SCALE`, `FADE_ORDER`, `FADE_IDLE` and `FADE_FLOOR`. `memory_fade` is a
-construction setting: `retune` refuses it, and `grow`, `graft`, `save` and `load` keep it with
+`SynapticMemory.FADE_SCALE`, `FADE_ORDER`, `FADE_IDLE` and `FADE_FLOOR`. A standalone
+`SynapticMemory(fade=..., fade_keep=depth)` keeps for good the records along a coordinate whose
+depth has reached `fade_keep` ([a record's strength](#a-records-strength-opt-in)); no
+`Brain.compose` setting passes it. `memory_fade` is a construction setting: `retune` refuses it, and `grow`, `graft`, `save` and `load` keep it with
 its sums. A brain with the setting saves checkpoint format `cadence-brain/3`, which 0.95.2 and
 earlier refuse ([checkpoint format](api.md#checkpoint-format)); without it a brain saves the
 format it saved before.
@@ -2617,6 +2916,11 @@ copy stays behind to split the read.
 | `cosine` | `False` | Scores the fine read and a write's recognition by the cosine in place of the dot product |
 | `pairs` | `0`, off | Files a record under the pairs of its `pairs` most driven units: [a million records](#a-million-records-opt-in) |
 | `apart` | `0`, off | The width of a fact's source, whose signature tells two facts with one key apart: [keys held apart](#keys-held-apart-opt-in) |
+| `blend` | `False` | A record told again moves toward the new take, so it holds the mean of its takes (needs `cosine=True`): [a record's strength](#a-records-strength-opt-in) |
+| `familiar` | `0.0`, off | A read's score gains `familiar * log(1 + deep)`: the deeper of two equal matches is read first |
+| `keep` | `0.0`, off | The depth at which a record is kept for good: it stops fading and is replaced last |
+| `forget` | `0.0`, off | The fade at which a record below `keep` is forgotten: no read finds it, and it is replaced first |
+| `novelty` | `0.0`, off | The tellings a write of a wholly new key counts as, where the caller gives no `surprise` |
 
 `read(cue, heads=1, credit=True)` returns a `LongTermRead` (`slots`, `weights`, `first(head)`,
 `mass(slot, head)`); `value(read, head)` is what a head holds; `write(key, value)` returns the
@@ -2731,6 +3035,93 @@ assert np.array_equal(facts.value(facts.read(key, source=second, credit=False)),
 slot, revised = facts.write(key, paris, source=first)         # the first fact, told again
 assert revised and facts.count == 2
 ```
+
+#### A record's strength (opt-in)
+
+A record grows strong in two ways: it comes up again and again, or it came with a large surprise.
+Its depth sums both. Every write adds one telling, a told-again write lands on the same record,
+and every read adds the attention it gave. `write(key, value, surprise=s)` adds `s` more
+tellings, for the caller's measure of how surprising the moment was (a prediction error, a
+salience). Without it, a store with `novelty` reads the surprise itself: `novelty` times how far
+its nearest record lies from the new key (1 less their cosine, at most 1). Five settings act on
+the depth. Each is off unless you set it, and off the memory is the memory it was, to the bit.
+
+- **`keep=depth`: kept for good.** A record whose depth reaches it is consolidated: it stops
+  fading and is replaced only when every slot is kept (then the shallowest kept record goes).
+  One write at surprise 7 reaches `keep=8` at once, as eight tellings do.
+- **`forget=fade`: the rest fades away.** A record below `keep` that fades that far is
+  forgotten: no read finds it, and its slot is the first a new record takes. A record told n
+  times and never read is forgotten after about `forget * (1 + (n / depth) ** 4)` moments, so
+  each doubling of the tellings keeps it about sixteen times longer.
+- **`blend=True`: a clean form.** A take told again moves its record toward it by
+  `1 / (1 + deep)`, so a record told n times and never read holds the mean of its n takes. Ten
+  noisy takes of one sound settle on a record nearer the clean sound than any one take. The
+  read is by cosine (`cosine=True`), since a mean of noisy takes is shorter than a take.
+- **`familiar=weight`: the stronger first.** A read's score gains `weight * log(1 + deep)`, so
+  of two records that match a cue as well, the deeper one is read. A small weight (0.01 to
+  0.05 on a cosine) decides near ties and leaves clear matches alone.
+- **`revise`** decides what counts as told again: two noisy takes of one pattern meet at a
+  cosine well under the founder's 0.9, so a sensory store sets it lower (0.6 in the example).
+
+```python
+import numpy as np
+import cadence as cd
+
+rng = np.random.default_rng(3)
+clean = rng.standard_normal(32)
+clean /= np.linalg.norm(clean)
+
+def take():                                          # a noisy hearing, cosine about .86
+    t = clean + 0.6 * rng.standard_normal(32) / np.sqrt(32)
+    return t / np.linalg.norm(t)
+
+sounds = cd.LongTermMemory(width=32, value_width=4, capacity=100, cosine=True, revise=0.6,
+                           blend=True, keep=8.0, forget=50.0, familiar=0.02)
+heard = [take() for _ in range(10)]
+for t in heard:
+    sounds.write(t, np.eye(4)[0])                    # one word, heard ten times
+best_take = max(t @ clean for t in heard)
+assert sounds.count == 1 and sounds.kept[0]          # told often enough: kept for good
+assert sounds.keys[0] @ clean / np.linalg.norm(sounds.keys[0]) > best_take   # the clean form
+sounds.write(rng.standard_normal(32), np.eye(4)[1], surprise=7.0)  # one shock: kept at once
+sounds.write(rng.standard_normal(32), np.eye(4)[2])                # heard once, no surprise
+for _ in range(100):
+    sounds.moment()                                  # a hundred idle moments
+assert sounds.kept[:3].tolist() == [True, True, False] and sounds.gone[2]  # it is forgotten
+```
+
+The [strength chamber](../benchmarks/memory_strength/README.md) reads the dose curve (a record
+told 1, 2 and 4 times and never read is forgotten after 54, 100 and 850 idle moments at
+`forget=50`; one told 8 and 16 times is kept), the one-shot write (one write at surprise 7 is
+kept as eight tellings are; at surprise 0 to 3 it is forgotten) and the clean form (the record's
+cosine to the clean pattern .99 after 16 takes, the nearest take's .90).
+
+**In a brain.** `Brain.compose(longterm_strength=True)` gives the brain's own records (with
+`longterm_fade`, the founder) these rules as born ones: each stream's store keeps a record for
+good past 8 tellings (`LongTermRecords.KEEP`) and forgets one below it once it has faded for as
+long as the store keeps its depth (`hold`, eight capacities), so a fact told once and never used
+is gone after about eight times as many moments as the store has slots. A fact told again as the record holds it (which writes nothing) counts
+one more telling, and a read deepens the record only where it delivers it, once its moment is
+accepted: a refused moment deepens none. In a brain composed
+with `surprise=True` ([surprise](start.md#surprise-and-the-focus-it-draws-opt-in)) the brain's
+own surprise at the moment a record is written counts as tellings: `brain.surprise.moment` is the
+log of how many times its tolerated size the most surprised neuron's residual was, and the write
+counts that ratio less one. A moment within what every neuron is used to adds nothing, and one
+nine times the tolerated size counts as eight tellings more, so its record is kept at once.
+Without `surprise` the brain counts each telling as one. The recall memory every new brain holds
+takes the same law with `recall_strength=True`: [a slot's strength](#a-slots-strength-opt-in).
+
+Records read by what tells them apart (`longterm_distinct`, with turns, and the learned heads of
+`longterm_attention`) grow strong too. There every telling is a record of its own, so a record
+deepens by the reads that deliver it and by the surprise at its write; a record the store
+forgets leaves the entries the reads look under, and no head finds it.
+
+The associative store's place records have the same threshold: `SynapticMemory(fade_keep=depth)`,
+and in a brain `Brain.compose(memory_fade=..., memory_keep=depth)`, keeps the records along a
+key coordinate whose [fade](#records-that-fade-with-disuse-opt-in) depth has reached it, so they
+stop fading. Repetition sums in its slow matrix, and `salience` raises its slow write rate. A
+brain with either setting saves checkpoint format `cadence-brain/5` with the feature `strength`
+in its record, which 0.99.1 and earlier refuse by the format's name.
 
 **Beside a brain.** The memory's read of a moment's key is held on input coordinates of its own,
 as a recall port is held through a settle, and lessons teach the brain to answer from it:

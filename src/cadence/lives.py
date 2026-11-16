@@ -32,8 +32,9 @@ and its heard history among them, with or without the store (``episodic=False``)
 (``history_decays=()``), the recall memory, the carried gains, arousal, ``memory_fade``, maturity
 and ``actor_hold``, at any teaching point. ``Lives`` refuses a learned or fixed code, an apical
 compartment, rehearsal, qualified teaching, the efference copy, a held message, long-term
-records, ``actor_entropy`` and a recall memory with several heads, a window, the command, the
-read of when or tokens, each by name. A moment any life refuses is refused for every life.
+records, ``actor_entropy``, ``surprise`` and a recall memory with several heads, a window, the
+command, the read of when, tokens or a slot's strength, each by name. A moment any life refuses
+is refused for every life.
 """
 
 from __future__ import annotations
@@ -1776,8 +1777,9 @@ class _LivesRandom:
         return np.stack([self.generators[i].random(tuple(shape)) for i in rows])
 
 
-def _supported(brain: Any) -> None:
-    """Refuse a composition with a part the lives axis does not cover, naming it."""
+def _supported(brain: Any, backend: str = "cpu") -> None:
+    """Refuse a composition with a part the lives axis does not cover, naming it; ``backend``
+    the lives' backend (a part the device's lives do not cover is refused there)."""
 
     def refuse(what: str) -> ValueError:
         return ValueError(f"Lives holds the parts its lives axis covers: {what}")
@@ -1806,7 +1808,7 @@ def _supported(brain: Any) -> None:
     if recall is not None and not recall.resides:
         raise refuse(
             "a recall memory of one head, without a window, the command, the read of when, "
-            "tokens, their gain or the cortex at unit norm"
+            "tokens, their gain, the cortex at unit norm or a slot's strength (recall_strength)"
         )
     learner, graph = brain.learner, brain.brain
     cfg = learner.config
@@ -1819,6 +1821,14 @@ def _supported(brain: Any) -> None:
         raise refuse("no salience")
     if agent.config.entropy:
         raise refuse("no actor entropy (actor_entropy=0)")
+    if getattr(brain, "surprise", None) is not None:
+        raise refuse("no surprise (a lone brain reads it: Brain.compose(surprise=True))")
+    if getattr(brain, "_senses", None) is not None or getattr(brain, "space", None) is not None:
+        raise refuse("one row of inputs per life: senses by name and a map belong to a lone "
+                     "brain")
+    if backend != "cpu" and isinstance(store, SynapticMemory) and store.fade_keep:
+        raise refuse("on a device, place records that all fade (no memory_keep): the device's "
+                     "store holds no kept depth")
 
 
 def _takes_outcome(brain: Any) -> bool:
@@ -1888,13 +1898,21 @@ class Lives:
         if not isinstance(inputs, (int, np.integer)):
             raise ValueError("Lives takes a vector of inputs, its length")
         options = dict(options)  # the default composition, the store among it (``Brain.compose``)
+        if options.get("trained"):
+            raise ValueError("Lives composes no brain around a trained module or a map "
+                             "(trained=): its lives step one anatomy together, and a module's "
+                             "regions and a map belong to a lone brain; compose each brain "
+                             "with Brain.compose")
+        if options.get("senses") is not None:
+            raise ValueError("Lives takes one row of inputs per life: senses by name (senses=) "
+                             "belong to a lone brain; compose each brain with Brain.compose")
         self.inputs, self.actions, self.backend = int(inputs), int(actions), backend
         self._options = options
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             lone = [Brain.compose(inputs, actions, seed=s, backend="cpu", **options)
                     for s in self.seeds]
-        _supported(lone[0])
+        _supported(lone[0], backend)
         topology = lone[0].connectome
         self._topology = topology
         self._parts = {part: getattr(lone[0], part) is not None
@@ -2498,6 +2516,7 @@ class Lives:
         composition of these lives' anatomy and options."""
         if not 0 <= i < self.lives:
             raise ValueError(f"life {i} is not one of these {self.lives} lives")
+        _supported(brain, self.backend)  # a part the lives do not cover is refused as at birth
         if not (np.array_equal(brain.connectome.pre, self._topology.pre)
                 and np.array_equal(brain.connectome.post, self._topology.post)):
             raise ValueError("a joining brain has the lives' anatomy")

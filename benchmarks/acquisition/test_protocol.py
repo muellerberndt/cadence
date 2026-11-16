@@ -14,6 +14,10 @@ import pytest
 from cadence import Brain, BrainState, LearnerConfig
 
 ROOT = Path(__file__).parent
+# The fixture runs end at their first stage (a refused lesson, or its one update) in about a
+# second; their budget is the protocol's largest, which no load reaches, so the cases they
+# write do not depend on the machine's speed (#317).
+BUDGET = "300"
 
 
 def load_script(name):
@@ -207,13 +211,16 @@ def refused_artifact(tmp_path_factory):
             "--nudged-steps",
             "1",
             "--seconds",
-            "10",
+            BUDGET,
         ],
         check=True,
         capture_output=True,
         text=True,
-        timeout=120,  # the run budgets its own ten seconds; a loaded host is given more
+        timeout=600,
     )
+    summary = json.loads((folder / "summary.json").read_text())
+    stages = [stage["examples"] for stage in summary["outcomes"][0]["stages"]]
+    assert stages == [2] and (folder / "qualified-2/receipt.json").is_file()
     return folder
 
 
@@ -311,13 +318,15 @@ def test_verifier_requires_all_centered_phases_for_an_accepted_lesson(tmp_path):
             "--check-every",
             "1",
             "--seconds",
-            "10",
+            BUDGET,
         ],
         check=True,
         capture_output=True,
         text=True,
-        timeout=120,  # the run budgets its own ten seconds; a loaded host is given more
+        timeout=600,
     )
+    summary = json.loads((folder / "summary.json").read_text())
+    assert [stage["examples"] for stage in summary["outcomes"][0]["stages"]] == [2]
     receipt_path = folder / "finite-2/receipt.json"
     receipt = json.loads(receipt_path.read_text())
     del receipt["updates"][0]["phases"]["opposite"]

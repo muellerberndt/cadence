@@ -395,3 +395,86 @@ def test_the_cost_of_a_pass_is_read_per_learner(tmp_path):
     import cadence.fused as fused
 
     assert not hasattr(fused.fused_fast_solve, "__wrapped__")  # restored
+
+
+def _episodes_digest(founder: int = 0) -> str:
+    import hashlib
+
+    h = hashlib.sha256()
+    split = gr.Split.of(founder)
+    h.update(repr((split.triples, split.pair)).encode())
+    tests = gr.panels(founder, 1)
+    for name in sorted(tests):
+        for rows in tests[name]:
+            for r in rows:
+                h.update(np.asarray(r.pre).tobytes() if r.pre else b"-")
+                h.update(repr((r.family, r.target, r.force)).encode())
+    rng = np.random.default_rng(np.random.SeedSequence([founder, gr.SEEDS["train"]]))
+    for _ in range(12):
+        for r in gr.train_batch(rng, split, "g1") + gr.train_batch(rng, split, "g2"):
+            h.update(np.asarray(r.pre).tobytes())
+            h.update(repr(r.target).encode())
+    return h.hexdigest()
+
+
+def test_the_default_lexicon_keeps_its_episodes():
+    # the split, the panels and the lessons of founder 0 as the chamber made them before the
+    # lexicon had a size to name (protocols 1 to 8 read this language)
+    assert (gr.NOUNS, gr.VERBS, gr.INPUTS, gr.ACTIONS, gr.SCALED) == (4, 2, 35, 18, False)
+    assert _episodes_digest() == (
+        "151764940ae403db6d20404ce00c8b601edd736a359eeb8fc1a7c444b9c8dfef")
+
+
+SCALED_CHECK = """
+import warnings
+import numpy as np
+warnings.simplefilter("ignore")
+import grammar as gr
+assert (gr.NOUNS, gr.VERBS, gr.SCALED) == (16, 8, True)
+assert gr.ACTIONS == 2 * 16 + 2 * 8 + 6 and gr.INPUTS == gr.ACTIONS + 16 + 8 + 11
+assert gr.WORDS[gr.verb(3, 0)] == "v3s" and gr.WORDS[gr.noun(5, 1)] == "n5s"
+assert gr.WORDS[gr.NEAR] == "near" and gr.WORDS[gr.END] == "end" and gr.is_verb(gr.verb(7, 1))
+split = gr.Split.of(0)
+assert split.triples == () and len(split.trained) == 16 * 2 * 2  # a quarter of the triples
+for plural in (0, 1):
+    for v in range(gr.VERBS):  # every verb form is taught with four agents
+        assert sum(1 for t in split.trained if t[1:] == (plural, v)) == 4
+    for agent in range(gr.NOUNS):  # and every agent form with two verbs
+        assert sum(1 for t in split.trained if t[:2] == (agent, plural)) == 2
+tests = gr.panels(0, 1)
+for name, batches in tests.items():
+    for rows in batches:
+        for r in rows:
+            if r.pre and not r.meta.get("removed"):
+                assert gr.solve(r.pre) == r.target, name
+            assert gr.score(r, r.target[r.force:])["exact"]
+assert all(split.held(tuple(r.meta["agent"]), tuple(r.meta["patient"]), r.meta["verb"])
+           for rows in tests["clause_held"] for r in rows)
+assert not any(split.held(tuple(r.meta["agent"]), tuple(r.meta["patient"]), r.meta["verb"])
+               for rows in tests["clause"] for r in rows)
+rng = np.random.default_rng(0)
+for _ in range(20):
+    for r in gr.train_batch(rng, split, "g1"):
+        assert gr.solve(r.pre) == r.target
+        if r.family == "clause":
+            assert not split.held_triple(tuple(r.meta["agent"]), r.meta["verb"])
+print("scaled lexicon ok")
+"""
+
+
+def test_a_scaled_lexicon_keeps_the_grammar_and_holds_most_triples_out():
+    import os
+    import subprocess
+
+    found = subprocess.run(
+        [sys.executable, "-c", SCALED_CHECK], cwd=Path(__file__).parent,
+        env={**os.environ, "CADENCE_GRAMMAR_LEXICON": "16x8"}, capture_output=True, text=True,
+        check=False,
+    )
+    assert found.returncode == 0 and "scaled lexicon ok" in found.stdout, found.stderr[-2000:]
+    refused = subprocess.run(
+        [sys.executable, "-c", "import grammar"], cwd=Path(__file__).parent,
+        env={**os.environ, "CADENCE_GRAMMAR_LEXICON": "many"}, capture_output=True, text=True,
+        check=False,
+    )
+    assert refused.returncode != 0 and "CADENCE_GRAMMAR_LEXICON" in refused.stderr

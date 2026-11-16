@@ -27,10 +27,11 @@ again, a little changed. The sections below take each step apart.
 
 `Brain.compose(inputs, actions)` builds a brain with `inputs` sensory neurons and one motor
 neuron per action. Between them sits an **association region** of 64 neurons, where the
-brain forms its interpretation of what it senses. Around that core the brain holds three
+brain forms its interpretation of what it senses. Around that core the brain holds four
 memories, all on by default:
 
 - a **working trace**, which carries the last moment's interpretation into the next one;
+- a **heard history**, which carries what it heard a moment ago;
 - a **recall memory**, a notebook of the stream's recent moments that gives one back when the
   present asks for it;
 - an **associative store**, which remembers which action paid in which situation.
@@ -43,13 +44,17 @@ brain ([observers](#add-optional-observers)). `arousal=True` gives the brain the
 | Setting | What it sets |
 | --- | --- |
 | `inputs` | the observation's width, or an image shape ([wide inputs](senses.md#image-inputs)) |
+| `senses` | in place of `inputs`: several senses by name, each a width, given by name at every moment ([senses by name](senses.md#senses-by-name)) |
 | `actions` | the number of actions to choose from |
 | `arousal` | `True` for a brain that `live` drives |
 | `seed` | the random draw of the newborn brain; the same seed gives the same brain |
 | `modules` | the sizes of the processing regions, `(64,)` by default ([larger brains](tune.md#larger-brains)) |
 
 `brain.describe()` lists every setting a brain holds, and
-[tune and read a living brain](tune.md#defaults-and-expert-overrides) explains them.
+[tune and read a living brain](tune.md#defaults-and-expert-overrides) explains them. To build a
+brain for a purpose of your own, [parts of a brain](modules.md) lists every part you can add
+(senses, regions, memories, ways to learn, modules that arrive as files) and composes five
+whole brains from them.
 
 ## 2. Observations, actions and streams
 
@@ -209,6 +214,9 @@ assert same.pending_feedback                 # the loaded brain awaits the same 
 
 ## Where to go next
 
+- [Assemble a brain](assembly.md): senses by name, a map of things, memories, attention, an ear
+  and a voice, put together into four whole brains.
+- [Parts of a brain](modules.md): the catalogue of every part, and brains composed for a purpose.
 - [Train a brain](teach.md): every way to train, rates, evaluation and failure modes.
 - [Memory](memory.md): which memory to use for which task.
 - [Learning from reward](reward.md): eligibility traces, the actor's rates, delayed credit.
@@ -460,6 +468,110 @@ for trial in range(24):  # arm 0 pays for twelve trials, then arm 1; failures pa
 assert bandit.last_arousal is not None
 ```
 
+### Surprise, and the focus it draws (opt-in)
+
+`Brain.compose(surprise=True)` gives a brain one surprise signal, read from the settle it runs
+at every moment. A stream carries its settled state from one moment into the next, and the
+moment's settle starts from it. Under the moment's drive that carried state is off its equations
+by a residual, which the settle then repairs. A neuron's surprise is the size of its residual at
+the start of the settle, against the size that neuron is used to:
+
+```text
+r         = |synaptic input + drive + bias - v|     of the carried state, a neuron
+surprise  = log(r / (tolerance * usual + floor))    where that is positive, else 0
+usual    += adapt * (r - usual)  where r > usual,   else  recover * (r - usual)
+```
+
+`r` is the residual of the potential equation, the one a settle's qualification checks; the
+largest `r` over the neurons is the residual the settle starts from.
+
+```python
+import numpy as np
+from cadence import Brain
+
+watcher = Brain.compose(4, 2, seed=0, backend="cpu", surprise=True)
+light = np.array([[1.0, 0.0, 0.0, 0.0]])
+for _ in range(8):
+    watcher.act(light, greedy=True)
+assert watcher.surprise.moment[0] == 0.0     # an input held: the settle has nothing to repair
+watcher.act(np.array([[0.0, 0.0, 1.0, 0.0]]), greedy=True)
+assert watcher.surprise.moment[0] > 2.9      # a change: the carried state is off its equations
+senses = watcher.surprise.last[0, watcher.sensory_index]
+# the light that went out and the light that came on
+assert (senses > 0).tolist() == [True, False, True, False]
+```
+
+| Read | What it holds |
+| --- | --- |
+| `brain.surprise.last` | Each neuron's surprise at the latest moment, `(streams, neurons)` |
+| `brain.surprise.moment` | One number per stream, `(streams,)`: the largest of its neurons'. 0: every neuron's residual lies within what it is used to. `k`: the most surprised neuron's residual was `exp(k)` times its tolerated size (`tolerance * usual + floor`) |
+| `brain.surprise.usual` | Each neuron's learned usual residual. It is saved with the brain and kept by `reset()` |
+
+**What the residual reads.** For a state that settled within the tolerance, under synapses
+unchanged since, a neuron's residual is the change of its drive since that settle: at a sensory
+neuron the change of its input, at a neuron a memory drives the change of what the memory reads.
+A neuron that no drive enters carries no residual at the start of a settle and reads no
+surprise: the association region, and the motor region wherever no record of the place store
+reads into it.
+So an input held reads nothing at the senses, and nothing anywhere once the memories' own
+traces have come to rest with it (the working trace and the heard history are part of the drive
+and take a few moments). A change reads at the neurons whose drive changed, and at the
+neurons the memories drive one moment later, as the traces take the change in. A change that
+recurs becomes usual within a few comings (`adapt`), and after a long rest it surprises again
+(`recover`). A lesson taught between two moments adds what the changed synapses move; an outcome
+is learned inside its own moment, whose act settles again under the new synapses. `moment` is
+the largest over every neuron; `last[:, brain.sensory_index]` is the part the senses bring.
+
+The brain forecasts no next input: what it carries into a moment is its last equilibrium. A
+known element in an unknown order therefore reads little, and so does a new arrangement of
+inputs whose changes are usual. The [surprise chamber](../benchmarks/surprise/README.md) gives
+the readings, beside a second measure (how far the settle moved each neuron's activity).
+
+**Which moments read it.** `act`, `step`, `live` and `wait` are a stream's moments: each reads
+the residual once, at its first settle from the carried state (under `step` and an aroused
+`live` that is the settle of the outcome, before the outcome moves the synapses), and observes
+it before the moment's lesson and its memories' writes. A stream that begins from rest carries
+no equilibrium, so its first moment, the moment after `reset()` and a row whose episode ended
+read no surprise and teach the usual nothing. `lesson`, `predict`, `value`, `imagine` and a
+rehearsal's replays leave the signal as it was, and so does a moment whose settle is refused.
+
+**The focus.** `brain.places` gives each sensory neuron a place in one frame, such as a map's
+plane: an array `(sensory neurons, d)` the program sets as its body moves, in the frame of a
+held map's cells (places of another frame are refused when set beside a map; give the brain its
+map before its places). Every moment then
+draws one focus among those places, and among the cells of a held map with surprise
+([surprise on the map](space.md#surprise-on-the-map-opt-in)). The place of the largest
+surprise wins, the winner keeps `hold` of its salience from moment to moment, and a place the
+focus leaves is inhibited for a while before it can win again. `brain.focus` is the `Focus`
+(`place`, `sense`, `index`, `salience`, `held`, `turned`) or `None`;
+`brain.orienting.bearing(origin)` is the direction to turn to and
+`brain.orienting.gains(places)` a gain around the attended place. The library applies neither:
+turning the body and weighting a sense are the program's.
+
+```python
+watcher.places = np.array([[-1.0, 0.0], [-0.3, 0.0], [0.3, 0.0], [1.0, 0.0]])
+watcher.act(np.array([[0.0, 0.0, 0.0, 1.0]]), greedy=True)
+focus = watcher.focus
+assert focus is not None and focus.sense == "senses" and focus.turned
+assert focus.index == 3                      # the light that came on, for the first time
+assert watcher.orienting.bearing([0.0, 0.0]) == 0.0
+```
+
+`surprise` also takes the genes by name, such as `surprise={"tolerance": 3.0, "hold": 0.5}`.
+The founders: `tolerance=2.0`, `floor=0.05`, `adapt=0.5` and `recover=0.01` for the signal;
+`hold=0.8`, `least=0.5`, `reach=0.1`, `inhibit=1.0`, `release=0.95` and `gain=1.0` for the
+focus ([the reference](api.md#surprise-and-the-focus-cadencesurprise)).
+
+**What it changes and costs.** In a brain without a memory's strength and without records of
+bound moments the option reads the settle and changes no action, weight or record: such a brain
+chooses, learns and saves as the brain without it, to the bit, beside the signal's own arrays.
+With `recall_strength`, `longterm_strength` or `bound=`, a moment's surprise counts as tellings
+of the record or slot it writes, so those records differ; the focus a heard name draws reads it
+too. The arousal law and the rate of learning take none of it: arousal's surprise is an outcome
+measured against the critic's forecast, a measure of its own. Each moment costs one more evaluation of the residual, one
+product of the weights with the carried activity; the chamber's table gives the milliseconds.
+It runs on `backend="cpu"`: another backend, and `Lives`, refuse the option by name.
+
 ### Private imagination
 
 ```python
@@ -510,8 +622,11 @@ sweep.
 
 A save carries parameters, critic, the learner's optimizer, random state, every trace and
 memory, arousal, an action awaiting feedback and what a waiting stream has sensed; load
-validates them ([formats](api.md#brain-cadence)). Resume the same rows, supply the pending
-outcome once and save the environment separately. If `live` refuses an answer, the
+validates them ([formats](api.md#brain-cadence)). On the CPU the resumed brain continues to
+the same bits; on the NumPy path that holds at one BLAS thread count, so a reloaded life
+compared to the bit runs with the thread variables at 1
+([a reloaded brain and BLAS threads](backends.md#a-reloaded-brain-and-blas-threads)).
+Resume the same rows, supply the pending outcome once and save the environment separately. If `live` refuses an answer, the
 [qualification rules](#qualification-and-refusal) say how to retry without reporting an outcome
 twice.
 
@@ -559,7 +674,7 @@ covers modules and observers.
 | Mechanism | Default in `Brain.compose` | Advances on |
 | --- | --- | --- |
 | Neural activity | retained | each accepted action and each `wait` |
-| Memories | working trace, recall memory and associative store on, the rest opt-in | as listed in [memory](memory.md#memory-in-the-composed-brain); `wait` advances the working trace, heard history and recall slots |
+| Memories | working trace, heard history, recall memory and associative store on, the rest opt-in | as listed in [memory](memory.md#memory-in-the-composed-brain); `wait` advances the working trace, heard history and recall slots |
 | Reward plasticity and demonstrations | `step`, `learn`, `lesson`, aroused `live` | actual outcomes and supplied labels |
 | Arousal | off unless `arousal=True` | each outcome `live` receives |
 | Observers | none unless requested | the same neural solve |
@@ -591,7 +706,7 @@ The composed brain integrates no learned model of environmental transitions
 | --- | --- |
 | Present interpretation and action | `Brain.act` qualifies the whole neural graph's residual with the trace and memory reads held as drive. With `memory_choice=True` the episodic vote joins the motor readout after the settle. The memory stores do not equilibrate jointly with the graph. |
 | Settling work | `Brain.last_settlement` reports free-answer residuals, sweeps, checks and qualification, refused attempts included. Eligibility, teaching, feedback, imagination and memory work are excluded; [`record_settlements`](api.md#record-every-settling-step) records every settlement, learning and imagination included, at a memory and copy cost. |
-| Memories | Working trace, associative store and recall memory on; efference copy, heard history and episodic memory opt-in. Each is read as held drive (the episodic vote joins after the settle) and written after the settle. [Memory](memory.md#memory-in-the-composed-brain). |
+| Memories | Working trace, heard history, associative store and recall memory on; efference copy and episodic memory opt-in. Each is read as held drive (the episodic vote joins after the settle) and written after the settle. [Memory](memory.md#memory-in-the-composed-brain). |
 | Local correction | Teacher labels change graph parameters, the address map of a recall memory and, with `memory_choice=True`, the episodic records. Chosen-action outcomes drive reward plasticity and associative writes. A label credits no earlier action. |
 | Routine and repair | `Brain.live`, for a brain built with `arousal`, answers greedily from one qualified settle while calm and changes no parameter or associative record; the trace, heard history and recall slots advance. Surprise, a reward shortfall or an unmet `need` (founder 0) or `need_scale` (0.1, a constant) raises arousal, and the outcome that wakes the brain is written to its associative store. The first `youth` moments (100) and aroused moments sample, keep eligibility and learn, from success too. One stream; the law's constants are genes. [Routine and repair](#routine-and-repair-live). |
 | Private imagination | `Brain.imagine` settles **supplied** observation sequences with a private trace and read-only durable memory. It learns nothing and generates no environmental transition. [Private imagination](#private-imagination). |
