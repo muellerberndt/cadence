@@ -1472,7 +1472,7 @@ impl Brain {
     }
 
     /// `act(observations, greedy=, temperature=)`: the answer to a row given by name, with no
-    /// outcome taken; an action `live` issued before no longer awaits one.
+    /// outcome taken; the action an earlier `live` issued awaits no outcome after it.
     pub fn act(&mut self, observations: &[f64], greedy: bool) -> Result<Vec<i64>, Error> {
         self.act_row(observations, true, greedy, None)
     }
