@@ -252,7 +252,7 @@ timed.step(last, reward=np.array([0.5, 0.0]), done=cut, bootstrap=bootstrap)
 the row with the working trace, the efference copy, the heard history, the recall memory's slots
 and the place records as they stand, settled from the stream's activity (from rest before the
 brain has acted), and the critic's value of that state. The memories enter because the episode
-was cut, not ended: had it gone on, its next state would have read them. The read writes nothing
+was cut before its end: had it gone on, its next state would have read them. The read writes nothing
 and leaves the streams, traces, pending action, records, parameters and random generators as they
 were. Without the store a truncated row bootstrapped this way takes the dopamine of a row that goes
 on, to the bit. With the store the two part by the outcome's own record: `learn` writes the
@@ -504,7 +504,7 @@ def walk_school(rate, steps=600):
     rng = np.random.default_rng(1)
     place = np.full(4, cells // 2)                  # four streams, each walking from the middle
     walker.step(np.eye(cells)[place])
-    for _ in range(steps):                          # the demonstrator's steps run, not the brain's
+    for _ in range(steps):                          # the demonstrator's steps run
         place = place + rng.choice([-1, 1], size=4)
         reward = np.select([place == cells - 1, place == 0], [1.0, -1.0], 0.0)
         done = (place == 0) | (place == cells - 1)
@@ -554,7 +554,7 @@ Teach the outcome slot 1 for a moment of a game that was won and 0 for one lost 
   shuffled outcomes too, so the cost is the second slot's. On varied outcomes the brain played
   slightly better against fixed opponents.
 
-The composed critic reads the association region, not the slot; `probabilities` reads the
+The composed critic reads the association region; `probabilities` reads the
 slot's choice among its two outcomes.
 
 ## A reward many moments after the decision

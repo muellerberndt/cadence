@@ -6,9 +6,13 @@ keyword.
 
 | Section | Names |
 | --- | --- |
-| [Brain](#brain-cadence) | `Brain`, its methods, attributes and checkpoint formats |
+| [Brain](#brain-cadence) | `Brain`, its methods (`complete` and `say` among them), attributes and checkpoint formats |
+| [Lives](#lives-cadence) | `Lives`: many brains of one anatomy stepped together |
 | [Arousal](#arousal-cadencearousal) | `ArousalConfig`, `Arousal` |
 | [Surprise and the focus](#surprise-and-the-focus-cadencesurprise) | `Surprise`, `Orienting`, `Focus` |
+| [The memories](#the-memories-cadencememories) | `Memories`, `Moment`, `EpisodicRecords` |
+| [Records of bound moments](#records-of-bound-moments-cadencebound), [senses for things and sound](#senses-for-things-and-sound-cadencesenses) | `BoundRecords`; `Things`, `Ear` |
+| [The learned code](#the-learned-code-cadencecode) | `LearnedCode` |
 | [Streams](#streams-cadencestream) | `Trace`, `Efference`, `History`, `Message`, `Recall`, `FastSynapses`, `SynapticMemory`, `PatternSeparator`, `LongTermMemory` |
 | [Learning](#learning-cadencelearning), [checkpoints](#checkpoints-cadencecheckpoint), [reward](#the-agent-cadenceplasticity) | `LearnerConfig`, `Learner`, `GraphHolder`, `LearningPhaseError`, graph factories and diagnostics, `save`, `load`, `ActorCritic`, `ActorCriticConfig`, `Maturity` |
 | [The graph](#neuralgraph-cadence) | `NeuralGraph`, `BrainState`, `Equilibrium`, `Nudge`, `Connectome`, `NeuronModel`, `Adaptation`, blocks, `Certificate`, the neuron-by-neuron reference |
@@ -16,6 +20,7 @@ keyword.
 | [Recording](#record-every-settling-step) | `record_settlements` |
 | [Population code](#population-code-cadencetuning) | `PopulationCode` |
 | [Modules](#modules-cadencemodules), [the map of things](#the-map-of-things-cadencespacemap) | `load_module`, `Module`, `modules.names`, `modules.load`, `modules.save`, `modules.host`, `Map`, `Sense`, `sparse_codes` |
+| [Hearing, alignment and decoding](#hearing-alignment-and-decoding-cadencespeechfrontend-cadencespeechalign-cadencespeechdecode), [corrections and streaming](#corrections-and-streaming-cadencespeechcorrect-cadencespeechstream) | `log_mel`, `Hearing`, `LogMel`, `Alignments`, `soft_path`, `soft_step`, `log_beliefs`, `Alphabet`, `collapse`, `greedy`, `WordBeam`, `Rehearsal`, `StreamReader` |
 
 `cadence.__version__` is the installed release string.
 

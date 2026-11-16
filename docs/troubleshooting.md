@@ -37,6 +37,11 @@ lessons and acts take that many rows until `reset()`
 `step` or `live`, or replace the action with a greedy `act`
 ([supervised lessons](teach.md#supervised-lessons)).
 
+**`RuntimeError: feedback needs a preceding action` from `live(..., reward=...)`.** A reward pays
+the action the brain sampled at its previous `live`; a greedy `act` samples nothing and awaits no
+outcome. Call `live(observation)` once, then pass each reward with the next observation
+([which call](start.md#5-which-call-should-i-use)).
+
 **Every answer is the commoner class.** Class imbalance; weigh the rows and read per-class
 accuracy ([the fix](teach.md#every-answer-is-the-majority-class)).
 
