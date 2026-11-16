@@ -21,7 +21,7 @@ way: its connections change locally while the brain keeps running.
 python -m pip install cadence-net==0.101.0
 ```
 
-Python 3.11 or later and NumPy. `"cadence-net[fast]==0.101.0"` adds Numba for speed
+Python 3.11 or later and NumPy. `"cadence-net[fast]==0.101.0"` adds Numba and SciPy for speed
 (recommended); `[apple]` adds MLX for Apple silicon GPUs and `[accel]` PyTorch for NVIDIA GPUs.
 
 ## A first brain
@@ -50,8 +50,8 @@ is no backward pass and no switch between training and use.
 | 2 | [Assemble a brain](https://github.com/muellerberndt/cadence/blob/main/docs/assembly.md) | senses by name, a map of things, memories, attention, an ear and a voice, in four whole brains |
 | 3 | [Space: tracking what is where](https://github.com/muellerberndt/cadence/blob/main/docs/space.md) | a map that keeps things out of view and follows a hidden thing that moves |
 | 4 | [Sounds as symbols](https://github.com/muellerberndt/cadence/blob/main/docs/memory.md#records-of-bound-moments-opt-in) | a sound heard alone brings its thing back, a voice says it, a reward makes it the answer |
-| 5 | [API reference](https://github.com/muellerberndt/cadence/blob/main/docs/api.md) | every public name, with its signature and refusals |
 | | [Live demos](https://cadence.floatingpragma.ai/) | brains that see, move, play and keep learning, in the browser |
+| | [API reference](https://github.com/muellerberndt/cadence/blob/main/docs/api.md) | every public name, with its signature and refusals |
 
 More guides: [train a brain](https://github.com/muellerberndt/cadence/blob/main/docs/teach.md), [learning from reward](https://github.com/muellerberndt/cadence/blob/main/docs/reward.md),
 [memory](https://github.com/muellerberndt/cadence/blob/main/docs/memory.md), [tune and read a living brain](https://github.com/muellerberndt/cadence/blob/main/docs/tune.md),
@@ -74,7 +74,7 @@ the motor choice, settling together with them; a working trace that carries the 
 interpretation into the next settle; a heard history of the moment before; a recall memory of
 the stream's recent moments (`recall=False` builds it without one); and an associative store that
 keeps each situation's outcomes. Under `live` the brain learns while young (its first 100
-moments) or aroused by surprise or want, and otherwise answers greedily from one settle; under
+moments) or aroused by an outcome's surprise or by want, and otherwise answers greedily from one settle; under
 `step` it learns from every outcome and from `teacher=` labels. Everything else is opt-in: System
 2 observers, the episodic memory, a learned code, images, senses by name, the map of things,
 records of bound moments and a voice.

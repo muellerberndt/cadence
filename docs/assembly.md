@@ -36,7 +36,7 @@ every part below is added to it.
 | A sound heard alone that brings its thing back | [records of bound moments](#symbols) | `bound=4096` with `senses=` and `code=` |
 | A voice that says the sound standing for what it sees | a voice | `voice="ear"`, `brain.say(...)` |
 | A said sound that becomes the answer once paid | a reward | `brain.live(..., reward=[1.0])` |
-| A heard name that draws the focus to its thing | the named focus | `voice=`, `surprise=True` and a map with values |
+| A heard name that draws the focus to its thing | the named focus | `bound=`, `voice=`, `surprise=True` and a map with values |
 | Learning while young, surprised or in want, calm answers otherwise | [arousal](#learning) | `arousal=True`, then `brain.live(...)` |
 | A teacher who shows the answer | lessons | `brain.lesson(observations, labels)` |
 | The same brain tomorrow | [save and load](#saving-and-loading) | `brain.save(path)`, `Brain.load(path)` |
@@ -128,7 +128,7 @@ A new brain holds four memories without being asked. Two more are opt-in.
 | Memory | Holds | In a brain |
 | --- | --- | --- |
 | Working trace | what the brain was just thinking | every brain |
-| Heard history | what it heard a moment ago | every new brain |
+| Heard history | what it heard a moment ago | every new brain; `history_decays=()` builds none, and `recall=False` leaves it out with the recall memory |
 | Recall memory | 128 recent moments a stream, back by their content | every new brain; `recall=False` builds none |
 | Associative store | what paid in each situation | every brain; `episodic=False` builds none |
 | Long-term records | facts told once and asked long after, read by several learned heads | `longterm=records` with a held message ([long-term records](memory.md#long-term-records)) |
@@ -168,7 +168,8 @@ The focus's rules (how long it holds, how long a place it left stays inhibited) 
 
 A brain learns while it lives. A lesson shows the right answer; a reward scores the brain's own
 last action. With `arousal=True`, `live` learns while the brain is young (its first 100 moments),
-surprised or wanting, and answers calmly from one settle otherwise.
+surprised by an outcome (arousal's own measure, apart from `surprise=True`) or wanting, and
+answers calmly from one settle otherwise.
 
 ```python
 pupil = Brain.compose(senses={"eyes": eyes.widths}, actions=2, arousal=True, seed=0)
@@ -197,8 +198,9 @@ changes nothing.
 With `voice="ear"`, `brain.say(observations)` gives the sound that stands for the moment, in the
 ear's format. Pass it back under `"voice"` at the moment it is said, so the moment's record holds
 it. A reward then pays that record: a said sound becomes the answer only once paid, and a reward
-of zero refuses it. `brain.bound.said_from` names where each sound came from: `"said"` (a paid
-answer), `"heard"` (what was heard with things like this) or `"babble"` (a sound it knows, tried).
+of zero or less refuses it. `brain.bound.said_from` names where each sound came from: `"said"` (a
+paid answer), `"heard"` (what was heard with things like this), `"babble"` (a sound it knows,
+tried) or `None` (no sound held yet).
 The [memory guide](memory.md#records-of-bound-moments-opt-in) gives the rules of the read, the
 answer and the pay.
 
@@ -366,13 +368,15 @@ brain.live({"eyes": apple}, reward=[1.0])                         # paid
 assert brain.bound.paid.max() > 0
 ```
 
-The [symbols chamber](../benchmarks/symbols/README.md) measures a brain of these parts on
-twelve fresh founders.
+The [symbols chamber](../benchmarks/symbols/README.md) measures these parts on twelve fresh
+founders in a larger brain (`code=2048`, `bound=4096`, `modules=(256,)`): with the default 64
+association neurons an apple and a ball, alike in form and both red, settle alike.
 
 ## What each part costs
 
-Measured on an Apple M4 shared with other work, one thread, the CPU backend, the median of 30 to
-60 moments. A `live` moment here learns (the brain is young); a calm one costs about an `act`.
+Measured on an Apple M4 shared with other work, one thread, the CPU backend with Numba installed
+(`[fast]`; with NumPy alone a moment takes about three times as long), the median of 30 to 60
+moments. A `live` moment here learns (the brain is young); a calm one costs about an `act`.
 
 | Brain | An `act` | A `live` that learns | Parameters | Saved file |
 | --- | --- | --- | --- | --- |
@@ -401,7 +405,7 @@ Measured on an Apple M4 shared with other work, one thread, the CPU backend, the
   ([#342](https://github.com/muellerberndt/cadence/issues/342)). The records of bound moments do
   it: a name heard alone brings its thing back at 1.00 in the symbols chamber.
 - **Names from looking alone are partial.** A thing seen alone is named from moments of naming
-  without reward at .725 to .975 in the symbols chamber; those moments do not tell the records
+  without reward at .80 to .95 in the symbols chamber; those moments do not tell the records
   which fields a name follows. A reward does.
 - **The voice says sounds it has heard.** `say` picks among the sounds its records hold; it forms
   no new sound.
@@ -410,6 +414,7 @@ Measured on an Apple M4 shared with other work, one thread, the CPU backend, the
 - **What refuses what.** `grow`, `graft` and `Lives` refuse a brain with records; `Lives` takes
   no senses by name and no map; `surprise=True` runs on the CPU. The whole list is
   [what does not go together](modules.md#what-does-not-go-together).
-- **Sentences and records at any size are 0.102.0 work.** A sentence held in the state (#308)
-  and long-term records past a machine's memory (#310) are planned for the next release
-  ([changelog](../CHANGELOG.md)).
+- **Sentences and records at any size are 0.102.0 work.** A sentence held in the state
+  ([#308](https://github.com/muellerberndt/cadence/issues/308)) and long-term records past a
+  machine's memory ([#310](https://github.com/muellerberndt/cadence/issues/310)) are planned for
+  the next release ([changelog](../CHANGELOG.md)).

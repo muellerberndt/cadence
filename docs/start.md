@@ -562,11 +562,13 @@ The founders: `tolerance=2.0`, `floor=0.05`, `adapt=0.5` and `recover=0.01` for 
 `hold=0.8`, `least=0.5`, `reach=0.1`, `inhibit=1.0`, `release=0.95` and `gain=1.0` for the
 focus ([the reference](api.md#surprise-and-the-focus-cadencesurprise)).
 
-**What it changes and costs.** The option reads the settle and changes no action, weight or
-record: a brain with it chooses, learns and saves as the brain without it, to the bit, beside
-the signal's own arrays. The strength of a memory reads it (a record or slot written at a
-surprising moment counts more tellings), and so do records of bound moments and the focus a
-heard name draws; the arousal law and the rate of learning take none of it. Each moment costs one more evaluation of the residual, one
+**What it changes and costs.** In a brain without a memory's strength and without records of
+bound moments the option reads the settle and changes no action, weight or record: such a brain
+chooses, learns and saves as the brain without it, to the bit, beside the signal's own arrays.
+With `recall_strength`, `longterm_strength` or `bound=`, a moment's surprise counts as tellings
+of the record or slot it writes, so those records differ; the focus a heard name draws reads it
+too. The arousal law and the rate of learning take none of it: arousal's surprise is an outcome
+measured against the critic's forecast, a measure of its own. Each moment costs one more evaluation of the residual, one
 product of the weights with the carried activity; the chamber's table gives the milliseconds.
 It runs on `backend="cpu"`: another backend, and `Lives`, refuse the option by name.
 
@@ -672,7 +674,7 @@ covers modules and observers.
 | Mechanism | Default in `Brain.compose` | Advances on |
 | --- | --- | --- |
 | Neural activity | retained | each accepted action and each `wait` |
-| Memories | working trace, recall memory and associative store on, the rest opt-in | as listed in [memory](memory.md#memory-in-the-composed-brain); `wait` advances the working trace, heard history and recall slots |
+| Memories | working trace, heard history, recall memory and associative store on, the rest opt-in | as listed in [memory](memory.md#memory-in-the-composed-brain); `wait` advances the working trace, heard history and recall slots |
 | Reward plasticity and demonstrations | `step`, `learn`, `lesson`, aroused `live` | actual outcomes and supplied labels |
 | Arousal | off unless `arousal=True` | each outcome `live` receives |
 | Observers | none unless requested | the same neural solve |
