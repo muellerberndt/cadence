@@ -142,3 +142,21 @@ def test_a_brain_with_bound_records_names_the_feature_the_previous_release_refus
     saved = panel.record(brain.save(tmp_path / "bound.npz"))
     assert saved["format"] == "cadence-brain/5"
     assert "bound" in saved["features"] and "bound" not in PREVIOUS_FEATURES
+
+
+def test_the_previous_release_job_saves_brains_that_continue_as_recorded(tmp_path):
+    """The CI job's script (tests/compat/previous_release.py): what it saves, this version
+    reads back with the continuation it recorded."""
+    spec = importlib.util.spec_from_file_location(
+        "previous_release", Path(__file__).resolve().parent / "compat" / "previous_release.py"
+    )
+    assert spec is not None and spec.loader is not None
+    job = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(job)
+    job.save(tmp_path)
+    table = json.loads((tmp_path / "saved.json").read_text())
+    assert set(table["brains"]) == set(panel.PANEL)
+    for name in ("default", "records", "map_values"):
+        brain = _load(tmp_path / f"{name}.npz")
+        assert panel.continuation(brain, name) == table["brains"][name]["acts"]
+    assert "bound" in panel.record(tmp_path / "refused-bound.npz")["features"]

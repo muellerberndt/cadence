@@ -47,6 +47,30 @@ jobs:
       - name: Exercise the continuing brain
         run: |
           python examples/continuing_brain.py
+  previous-release:
+    # brains this checkout saves without its new options load and continue, to the bit, in the
+    # release before it, and a brain with a new feature is refused there by the feature's name
+    runs-on: ubuntu-latest
+    env:
+      PREVIOUS_RELEASE: "0.100.0"
+      CADENCE_FUSED: "0"
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Save the panel with this checkout
+        run: |
+          python -m venv current
+          current/bin/python -m pip install .
+          current/bin/python tests/compat/previous_release.py save saved
+      - name: Load it with the previous release
+        run: |
+          python -m venv previous
+          previous/bin/python -m pip install "cadence-net==${PREVIOUS_RELEASE}"
+          previous/bin/python tests/compat/previous_release.py load saved
   test:
     runs-on: ${{ matrix.os }}
     strategy:
