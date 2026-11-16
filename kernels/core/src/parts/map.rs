@@ -219,10 +219,10 @@ impl Graph {
     }
 }
 
-/// The activity above rest of a potential: `max(tanh(v / 2), 0)`.
+/// The activity above rest of a potential: `max(tanh(v / 2), 0)`, with NumPy's `tanh`.
 #[inline]
 fn lit_up(v: f64) -> f64 {
-    np::maximum(np::tanh(v / 2.0), 0.0)
+    np::maximum(np::tanh_ufunc(v / 2.0), 0.0)
 }
 
 /// NumPy's sort order of floats: NaN after every number.
@@ -244,15 +244,21 @@ fn lexsort_last(secondary: &[f64], primary: &[f64]) -> usize {
     best
 }
 
-/// A sum over the first axis of rows of `n`: the rows added in order to zeros.
+/// Each column's pairwise sum (`a.sum(axis=0)` of an array in Fortran's order, as NumPy lays out
+/// `a[:, index]`: each column one run).
+fn sums_by_column(a: &[f64], cols: usize) -> Vec<f64> {
+    (0..cols)
+        .map(|j| np::sum(&a.iter().skip(j).step_by(cols.max(1)).copied().collect::<Vec<_>>()))
+        .collect()
+}
+
+/// A sum over the first axis of rows of `n` (`a.sum(axis=0)`, `np::sum_rows`).
 fn column_sums(rows: impl Iterator<Item = Vec<f64>>, n: usize) -> Vec<f64> {
-    let mut out = vec![0.0; n];
-    for row in rows {
-        for (o, x) in out.iter_mut().zip(row) {
-            *o += x;
-        }
+    let flat: Vec<f64> = rows.flatten().collect();
+    if flat.is_empty() {
+        return vec![0.0; n];
     }
-    out
+    np::sum_rows(&flat, n)
 }
 
 /// The largest of values, a NaN where one is (`np.max`).
@@ -685,14 +691,14 @@ impl Map {
     fn amounts_of(&self, kind: usize, cells: &[usize], activity: &[f64]) -> Vec<f64> {
         let own = self.of_kind(kind, activity);
         let width = self.width;
-        let held = column_sums(
-            cells.iter().map(|&c| {
-                let mut row = vec![own[c]];
-                row.extend((self.units..width).map(|u| activity[c * width + u]));
-                row
-            }),
-            1 + self.valued(),
-        );
+        // np.column_stack([own[cells], activity[cells][:, valued]]): in Fortran's order
+        let rows: Vec<f64> = cells.iter()
+            .flat_map(|&c| {
+                std::iter::once(own[c]).chain((self.units..width).map(move |u| activity[c * width + u]))
+            })
+            .collect();
+        let held = if cells.is_empty() { vec![0.0; 1 + self.valued()] }
+                   else { sums_by_column(&rows, 1 + self.valued()) };
         if !(held[0] > self.floor) {
             return vec![0.0; self.valued()];
         }
@@ -1113,12 +1119,14 @@ impl Map {
                 .flat_map(|c| units.iter().map(move |&u| (c, u)))
                 .map(|(c, u)| if mine[c * width + u] { self.potential[c * width + u] } else { 0.0 })
                 .collect();
-            let field: Vec<f64> =
-                (0..count).map(|c| np::sum(&field_units[c * nu..(c + 1) * nu])).collect();
+            // np.where(mine[:, units], potential[:, units], 0.0): in Fortran's order, so a
+            // row's sum adds its units in order and a column's sum is the column's run
+            let field: Vec<f64> = (0..count)
+                .map(|c| field_units[c * nu..(c + 1) * nu].iter().fold(0.0, |s, &x| s + x))
+                .collect();
             let whole = np::sum(&field);
-            let profile: Vec<f64> = column_sums(
-                (0..count).map(|c| field_units[c * nu..(c + 1) * nu].to_vec()), nu)
-                .into_iter().map(|x| x / whole).collect();
+            let profile: Vec<f64> =
+                sums_by_column(&field_units, nu).into_iter().map(|x| x / whole).collect();
             let (mut cm, mut tm) = (rec[CORE + 7], rec[TAIL + 3]);
             let mut trail: Vec<f64>;
             if k == 0 {

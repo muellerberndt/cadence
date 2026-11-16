@@ -252,6 +252,19 @@ fn probe(name: &str, input: &Named) -> Result<Named, state::Error> {
             out.put("clip", Array::from_f64(&[n], &pick(&|i| np::clip(a[i], lo[i], hi[i]))));
             out.put("max", Array::scalar_f64(np::max(&a)));
         }
+        "sum_rows" => {  // a.sum(axis=0) of rows of `cols`
+            let a = input.f64s("a")?;
+            let cols = input.i64("cols")? as usize;
+            let sums = np::sum_rows(&a, cols);
+            out.put("sums", Array::from_f64(&[sums.len()], &sums));
+        }
+        "tanh" => {  // np.tanh as NumPy's ufunc computes it, and the C library's
+            let a = input.f64s("a")?;
+            let ufunc: Vec<f64> = a.iter().map(|&x| np::tanh_ufunc(x)).collect();
+            let libm: Vec<f64> = a.iter().map(|&x| np::tanh(x)).collect();
+            out.put("ufunc", Array::from_f64(&[a.len()], &ufunc));
+            out.put("libm", Array::from_f64(&[a.len()], &libm));
+        }
         "einsum" => {  // each row of a against the same row of b, in both of einsum's orders
             let (rows, cols) = (input.i64("rows")? as usize, input.i64("cols")? as usize);
             let (a, b) = (input.f64s("a")?, input.f64s("b")?);

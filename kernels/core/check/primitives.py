@@ -152,6 +152,30 @@ for run in (np.array([-0.0]), np.full(9, -0.0), np.zeros(0), np.array([-0.0, 0.0
     same(f"sum of {run.tolist()}", np.atleast_1d(core.probe("sum", a=run)["sum"]),
          np.atleast_1d(np.sum(run)))
 
+# a sum over the first axis (``a.sum(axis=0)``): the rows added in order, a single column summed
+# pairwise
+rng = np.random.default_rng(4)
+for cols in (1, 2, 3, 5, 9):
+    ok = True
+    for rows in (1, 2, 7, 8, 9, 64, 70, 300):
+        for _ in range(20):
+            a = rng.standard_normal((rows, cols)) * 10.0 ** rng.integers(-8, 3, (rows, cols))
+            got = core.probe("sum_rows", a=a, cols=np.int64(cols))["sums"]
+            ok &= got.tobytes() == a.sum(axis=0).tobytes()
+    same(f"sum over rows of {cols} columns", np.array([ok]), np.array([True]))
+
+# np.tanh as NumPy's ufunc computes it (its own routine where it has a fused multiply-add), over
+# every interval of its table, beyond it, and at zeros, infinities and NaN; and the C library's,
+# which the compiled kernels call (math.tanh)
+rng = np.random.default_rng(3)
+spread = np.concatenate([rng.standard_normal(20000) * 10.0 ** rng.integers(-9, 2, 20000),
+                         rng.uniform(-30.0, 30.0, 4000), [0.0, -0.0, np.inf, -np.inf, np.nan,
+                                                          1e-300, -5e-324, 19.0, 20.5, 400.0]])
+got = core.probe("tanh", a=spread)
+same("tanh, NumPy's ufunc", got["ufunc"], np.tanh(spread))
+same("tanh, the C library's", got["libm"], np.array([np.float64(__import__("math").tanh(x))
+                                                     for x in spread]))
+
 # einsum's sums of products on ARM: rows against rows (``bj,bj->b``), and a sparse code's
 # gather against its weights (``bek,ek->be``) at a batch of one and of several
 for seed in range(300):
