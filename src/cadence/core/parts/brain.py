@@ -330,7 +330,7 @@ def _rows(observations: Any) -> dict[str, Any]:
 
 
 def _live(observations: Any, *, reward: Any = None, done: Any = None, salience: Any = None,
-          decision_id: Any = None) -> dict[str, Any]:
+          decision_id: Any = None, lesson: Any = None) -> dict[str, Any]:
     out = _rows(observations)
     for name, value in (("reward", reward), ("salience", salience)):
         if value is not None:
@@ -339,6 +339,11 @@ def _live(observations: Any, *, reward: Any = None, done: Any = None, salience: 
         out["done"] = np.asarray(done).reshape(-1)
     if decision_id is not None:
         out["decision_id"] = np.int64(decision_id)
+    if lesson is not None:  # the moment's lesson, (targets, weights)
+        targets, weights = lesson
+        out["lesson.targets"] = np.atleast_2d(np.asarray(targets, dtype=np.float64))
+        if weights is not None:
+            out["lesson.weights"] = np.asarray(weights, dtype=np.float64).reshape(-1)
     return out
 
 

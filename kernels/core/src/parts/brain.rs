@@ -88,6 +88,14 @@ pub struct Lived {
     pub own: bool,
 }
 
+/// The lesson a moment of `live` takes (`lesson=(targets, weights)`): one row of the outputs'
+/// targets, each slot's summing to one, and the row's weight (none: one).
+#[derive(Clone, Copy, Debug)]
+pub struct Lesson<'a> {
+    pub targets: &'a [f64],
+    pub weights: Option<&'a [f64]>,
+}
+
 /// `Brain.last_arousal`: the readings of the latest `live` moment.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LastArousal {
@@ -1332,16 +1340,27 @@ impl Brain {
     /// zeros); the action per motor slot.
     pub fn live(&mut self, observations: &[f64], reward: Option<f64>, done: Option<bool>,
                 salience: Option<f64>, decision_id: Option<i64>) -> Result<Vec<i64>, Error> {
-        self.live_row(observations, true, reward, done, salience, decision_id)
+        self.live_row(observations, true, reward, done, salience, decision_id, None)
+    }
+
+    /// `live(observations, reward=, done=, salience=, decision_id=, lesson=(targets,
+    /// weights))`: `live` with the moment's lesson (`Lesson`), taught after the preceding
+    /// action's outcome is taken and before the moment's act, which settles afresh under the
+    /// taught parameters; validated with the feedback, before anything changes.
+    pub fn live_with_lesson(&mut self, observations: &[f64], reward: Option<f64>,
+                            done: Option<bool>, salience: Option<f64>, decision_id: Option<i64>,
+                            lesson: Option<Lesson>) -> Result<Vec<i64>, Error> {
+        self.live_row(observations, true, reward, done, salience, decision_id, lesson)
     }
 
     /// `live` with the row given whole (`mapping` false: no completion by the bound records,
     /// as the Python takes an array).
+    #[allow(clippy::too_many_arguments)]
     pub fn live_row(&mut self, observations: &[f64], mapping: bool, reward: Option<f64>,
-                    done: Option<bool>, salience: Option<f64>, decision_id: Option<i64>)
-                    -> Result<Vec<i64>, Error> {
+                    done: Option<bool>, salience: Option<f64>, decision_id: Option<i64>,
+                    lesson: Option<Lesson>) -> Result<Vec<i64>, Error> {
         let action = self.moment_of_life(observations, mapping, reward, done, salience,
-                                         decision_id)?;
+                                         decision_id, lesson)?;
         // `_moment_of_life`: a moment has passed for the maturity
         if let Some(m) = self.basal_ganglia.as_mut().and_then(|a| a.maturity.as_mut()) {
             m.relax();
@@ -1351,8 +1370,8 @@ impl Brain {
 
     #[allow(clippy::too_many_arguments)]
     fn moment_of_life(&mut self, observations: &[f64], mapping: bool, reward: Option<f64>,
-                      done: Option<bool>, salience: Option<f64>, decision_id: Option<i64>)
-                      -> Result<Vec<i64>, Error> {
+                      done: Option<bool>, salience: Option<f64>, decision_id: Option<i64>,
+                      lesson: Option<Lesson>) -> Result<Vec<i64>, Error> {
         if self.arousal.is_none() {
             return Err(refused("live needs arousal genes; construct the brain with arousal=True"));
         }
@@ -1379,6 +1398,11 @@ impl Brain {
                 return Err(refused("salience must be a finite nonnegative vector matching the batch"));
             }
         }
+        // the moment's lesson (`_live_lesson`), validated before anything changes
+        let shown = match lesson {
+            Some(l) => Some(self.lesson_arguments(l.targets, l.weights)?),
+            None => None,
+        };
         if ended {
             return Err(Error::Missing("the end of an attempt (done) in the core's live".into()));
         }
@@ -1440,6 +1464,16 @@ impl Brain {
                 actor.free_generation = Some(generation);
                 actor.drive = Some(graph_rows(&drive));
             }
+        }
+        if let Some((target, weights)) = shown {
+            // the moment's lesson, its outcome taken and nothing pending: the act below settles
+            // afresh under the taught parameters
+            if self.actor()?.pending.is_some() {
+                return Err(refused("a sampled action awaits its outcome; report it with step or \
+                                    learn first"));
+            }
+            self.teach(&x, &target, weights.as_deref())?;
+            answer = None;
         }
         let aroused = self.arousal.as_ref().unwrap().aroused();
         let base = self.learner.as_ref().ok_or_else(|| fault("no learner"))?.config.temperature;
@@ -1538,8 +1572,24 @@ impl Brain {
     pub fn lesson_row(&mut self, observations: &[f64], mapping: bool, targets: &[f64],
                       weights: Option<&[f64]>) -> Result<(), Error> {
         let x = self.observations(observations, mapping)?;
+        let (target, weights) = self.lesson_arguments(targets, weights)?;
+        if self.actor()?.free.as_ref().is_some_and(|f| f.batch != 1) {
+            return Err(refused("lesson batch must match the live streams; reset for new streams"));
+        }
+        if self.actor()?.pending.is_some() {
+            return Err(refused("a sampled action awaits its outcome; report it with step or \
+                                learn first"));
+        }
+        self.teach(&x, &target, weights.as_deref())
+    }
+
+    /// `_lesson_arguments(x, None, targets, weights)`: a lesson's targets (one row of the
+    /// outputs) as the targets over every neuron and its weights, refused before anything
+    /// changes; a weight of one is the lesson without weights.
+    fn lesson_arguments(&self, targets: &[f64], weights: Option<&[f64]>)
+                        -> Result<(Vec<f64>, Option<Vec<f64>>), Error> {
         let learner = self.learner.as_ref().ok_or_else(|| fault("no learner"))?;
-        // `soft_targets`, refused before anything changes; one row, as the observations
+        // `soft_targets`; one row, as the observations
         let target = learner.soft_targets(targets, 1, targets.len())?;
         if learner.config.rehearsal != 0.0 {
             return Err(refused("learning_rehearsal replays the labels of lessons; teach targets \
@@ -1555,14 +1605,7 @@ impl Brain {
             }
             None => None,
         };
-        if self.actor()?.free.as_ref().is_some_and(|f| f.batch != 1) {
-            return Err(refused("lesson batch must match the live streams; reset for new streams"));
-        }
-        if self.actor()?.pending.is_some() {
-            return Err(refused("a sampled action awaits its outcome; report it with step or \
-                                learn first"));
-        }
-        self.teach(&x, &target, weights.as_deref())
+        Ok((target, weights))
     }
 
     /// `_teach(x, None, targets=, weights=)`: the moment's drive as an act reads it, the
@@ -1624,9 +1667,18 @@ impl Brain {
                 let done = if args.has("done") { Some(args.bools("done")?[0]) } else { None };
                 let decision = if args.has("decision_id") { Some(args.i64("decision_id")?) }
                                else { None };
+                let targets = if args.has("lesson.targets") { Some(row("lesson.targets")?) }
+                              else { None };
+                let weights = if args.has("lesson.weights") {
+                    Some(args.f64s("lesson.weights")?)
+                } else {
+                    None
+                };
+                let lesson = targets.as_deref().map(|t| Lesson { targets: t,
+                                                                 weights: weights.as_deref() });
                 let action = self.live_row(&row("observations")?, flag(args, "mapping")?,
                                            one_of("reward")?, done, one_of("salience")?,
-                                           decision)?;
+                                           decision, lesson)?;
                 out.put("action", Array::from_i64(&[action.len()], &action));
             }
             "act" => {
