@@ -29,6 +29,10 @@ what it published (``_keep_published``), so a launch from it makes no activation
 Every kernel above keeps the NumPy loop's bits. ``_fast_solve``, under ``learning_fast_settle``, is
 another solve of the same equations and does not: rows that stop apart and an activation that
 vectorizes.
+
+Under Pyodide, where Numba is not available, the same kernels come from a WebAssembly module
+built from ``kernels/wasm`` (``cadence._wasm``): a function of each kernel's name and arguments
+takes its place here, the Python of this file stays the glue, and the rows run on one thread.
 """
 
 from __future__ import annotations
@@ -51,6 +55,8 @@ try:
 except ImportError:  # pragma: no cover
     _numba = njit = None
     prange = range
+
+from . import _wasm
 
 if TYPE_CHECKING:
     from .blocks import Layout
@@ -113,15 +119,17 @@ def _unreferenced(kernel: _Kernel) -> _Kernel:
 
 
 def available() -> bool:
-    return njit is not None
+    """Whether the kernels are here: compiled by Numba, or under Pyodide from the WebAssembly
+    module (``cadence._wasm``)."""
+    return njit is not None or _wasm.available()
 
 
 def compiled() -> bool:
-    """Whether the compiled passes are in use: Numba is installed and ``CADENCE_FUSED`` is not
+    """Whether the compiled passes are in use: the kernels are here and ``CADENCE_FUSED`` is not
     ``0`` (``Brain``'s switch for the fused kernels, read at call time)."""
     from . import brain
 
-    return njit is not None and bool(brain._FUSED)
+    return available() and bool(brain._FUSED)
 
 
 # A process forked from one whose GNU OpenMP threads had started cannot start them again
@@ -158,8 +166,9 @@ _PARALLEL_WORK = 1 << 16
 
 
 def _threads() -> bool:
-    """Whether Numba runs more than one thread here. ``NUMBA_NUM_THREADS=1`` never starts them."""
-    if _FORKED_FROM_OPENMP or int(_numba.config.NUMBA_NUM_THREADS) < 2:
+    """Whether Numba runs more than one thread here. ``NUMBA_NUM_THREADS=1`` never starts them,
+    and the WebAssembly kernels run on one."""
+    if _numba is None or _FORKED_FROM_OPENMP or int(_numba.config.NUMBA_NUM_THREADS) < 2:
         return False
     return bool(_numba.get_num_threads() > 1)
 
@@ -2027,7 +2036,7 @@ def fused_settle(
     the first sweep reads them where they hold; the products returned are the last state's
     (at no sweeps, the given ones).
     """
-    assert njit is not None
+    assert available()
     batch, n = v.shape
     if keep is None:
         masked = False
@@ -2132,7 +2141,7 @@ def fused_solve(
     checks, the last chunk's sweeps and activity change and the products; None for adaptation,
     rows that settle on Numba's threads, or a state in another memory order, which the launches
     serve."""
-    assert njit is not None
+    assert available()
     batch, n = v.shape
     if (
         neuron_model.adaptation is not None
@@ -2180,7 +2189,7 @@ def fused_fast_solve(
     (``_fast_solve``). Returns each row's error, the sweeps, the checks, the last chunk's sweeps,
     the sweeps over the rows and what the state keeps; None under adaptation or another ``dt``,
     which take the ordinary solve."""
-    assert njit is not None
+    assert available()
     batch, n = v.shape
     if (
         neuron_model.adaptation is not None
@@ -2221,7 +2230,7 @@ def fused_residual(
     The transport reads the products the state keeps (``products``) where they hold and makes
     the rest; the products returned are all current. Nothing is changed.
     """
-    assert njit is not None
+    assert available()
     batch, n = v.shape
     dt, slope, threshold, rest, leak, strength, _ = _rule(neuron_model)
     if keep is None:
@@ -2341,7 +2350,7 @@ def trace_step(
     delta: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Fused three-factor step: returns ``(step_scale, step_bias)``; traces are updated in place."""
-    assert njit is not None
+    assert available()
     step_scale = np.empty(trace.shape[1])
     step_bias = np.empty(trace_bias.shape[1])
     _trace_step(
@@ -2415,7 +2424,7 @@ if njit is not None:
 
 def scatter(size: int, index: np.ndarray, values: np.ndarray) -> np.ndarray:
     """``out = zeros(size); out[index] = values`` for distinct indices, in one compiled pass."""
-    assert njit is not None
+    assert available()
     out = np.zeros(size)
     count = len(index)
     kernel = _place_parallel if _elements_in_parallel(count) else _place
@@ -2425,7 +2434,7 @@ def scatter(size: int, index: np.ndarray, values: np.ndarray) -> np.ndarray:
 
 def gather(values: np.ndarray, index: np.ndarray, divisor: float = 1.0) -> np.ndarray:
     """``values[index] / divisor`` in one compiled pass."""
-    assert njit is not None
+    assert available()
     out = np.empty(len(index))
     kernel = _pick_parallel if _elements_in_parallel(len(index)) else _pick
     kernel(np.ascontiguousarray(values, dtype=float), index, float(divisor), out)
@@ -2438,7 +2447,7 @@ def relative_floor(
     """``values + share * sqrt(power / count)[group] + tiny``, ``power`` and ``count`` each
     group's ``np.bincount`` of ``values ** 2`` and of members (at least one): the divisor of a
     projection-relative floor, to the bit."""
-    assert njit is not None
+    assert available()
     values = np.ascontiguousarray(values, dtype=float)
     power, count = _group_power(values, group, int(size))
     root = np.sqrt(power / count)
@@ -2627,7 +2636,7 @@ def add_episode_terms(
 ) -> None:
     """The recall read's anchored and relative position terms added to ``term``, a new array
     (``_add_episode_terms``)."""
-    assert njit is not None
+    assert available()
     _add_episode_terms(
         term, _NO_TERM if anchored is None else anchored,
         _NO_TERM if relative is None else relative, anchored is not None, relative is not None,
@@ -2671,7 +2680,7 @@ if njit is not None:
 def clear_choice(s: np.ndarray, temperature: float) -> np.ndarray | None:
     """The greedy choice of one slot's activations ``(rows, width)`` where every row's largest
     stands clear of the rest, which is ``np.argmax`` of their softmax; None where one does not."""
-    assert njit is not None
+    assert available()
     choice, clear = _clear_choice(np.ascontiguousarray(s, dtype=float), float(temperature))
     return choice if clear else None
 
@@ -2697,7 +2706,7 @@ def optimizer_step(
     and the rate. Returns ``(velocity, second moment, step)``; the moments a setting leaves off
     come back as given. One pass without the relative floor; with it, a second after every
     projection's mean square is summed."""
-    assert njit is not None
+    assert available()
     count = len(raw)
     raw = np.ascontiguousarray(raw, dtype=float)
     has_momentum, has_normalize = momentum > 0, rho > 0
@@ -2739,7 +2748,7 @@ def tied_step(
     is ``gain_pre`` times it (the product ``Brain`` takes). Returns ``(step, efficacy, weights,
     finite)``, ``finite`` saying whether every step, every efficacy and every weight is finite,
     as ``np.isfinite(...).all()`` would."""
-    assert njit is not None
+    assert available()
     count = len(delta)
     out_delta, out_scale, out_weight = np.empty(count), np.empty(count), np.empty(count)
     bad = (_tied_parallel if _elements_in_parallel(count) else _tied)(
@@ -2748,3 +2757,7 @@ def tied_step(
         float(cap), out_delta, out_scale, out_weight,
     )
     return out_delta, out_scale, out_weight, (bad[0] == 0, bad[1] == 0, bad[2] == 0)
+
+
+if njit is None:  # under Pyodide: the kernels of the WebAssembly module, where a page loads it
+    _wasm.load()

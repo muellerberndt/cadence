@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>cadence browser kernel</title>
+<script type="module">
+// ?script=PATH&arg=...&workers=K: run a script of the bundle under Pyodide, here or in K workers
+// (an argument "{k}" becomes the worker's number), and leave its output in window.__out.
+const params = new URLSearchParams(location.search);
+const out = [];
+window.__out = out;
+const workers = +(params.get('workers') || 0);
+const job = { script: params.get('script'), args: params.getAll('arg'), pyodide: params.get('pyodide') };
+if (!workers) {
+  const { run } = await import('./run.js');
+  window.__done = await run(job, (line) => out.push(line));
+} else {
+  const runs = [];
+  for (let i = 0; i < workers; i++) {
+    const worker = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
+    runs.push(new Promise((resolve) => {
+      worker.onmessage = ({ data }) => {
+        if (data.line !== undefined) out.push(`[${i + 1}] ${data.line}`);
+        if (data.done) { worker.terminate(); resolve(data.done); }
+      };
+    }));
+    worker.postMessage({ ...job, args: job.args.map((a) => a.replace('{k}', String(i + 1))) });
+  }
+  const done = await Promise.all(runs);
+  window.__done = done.every((d) => d === 'ok') ? 'ok' : 'error';
+}
+</script>

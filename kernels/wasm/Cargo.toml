@@ -1,0 +1,18 @@
+[package]
+name = "cadence-kernel"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "The compiled kernels of cadence.fused as one WebAssembly module for Pyodide"
+license = "GPL-3.0-only"
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+panic = "abort"
+codegen-units = 1
+debug = false

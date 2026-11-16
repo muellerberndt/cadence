@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Brains in a browser on the compiled path**: under Pyodide, where Numba is absent, the CPU
+  kernels of `cadence.fused` come from one WebAssembly module built from `kernels/wasm`
+  (`cadence_kernel.wasm`, a release file of about 75 KB). A page opts in by naming the file in
+  `CADENCE_WASM` before `cadence` is imported, or by `cadence._wasm.load(path)`; the module works
+  inside Pyodide's memory, so arrays pass without a copy. Every kernel call equals `fused.py`'s own
+  kernels to the bit in headless Chromium, and a life chooses the NumPy loop's action at every
+  moment ([backends](docs/backends.md#in-a-browser)). Wild's pocket brain takes 25.2 ms a moment
+  in Chromium against 43.8 ms on the NumPy loop; demo-sized brains three to five times less.
+
 - **Corrections beside watched episodes, and many streams, on the brain's own path**
   (`benchmarks/coaching/cartpole.py`, twelve founders): each own episode corrected through
   `cadence.speech.correct.Rehearsal` beside three watched episodes at weight 0.25 puts ten founders
