@@ -478,6 +478,14 @@ impl Brain {
 
     /// The hearing reads its memories as they stand: their gains and traces.
     pub fn hearing_in(&mut self) -> Result<(), Error> {
+        self.hearing_read(true)
+    }
+
+    /// The hearing reads its memories' gains, and with `traces` their traces and amplitudes,
+    /// each into the room the hearing holds it in. The traces it holds are its copies, which a
+    /// contrast reads (an act's) and the state leaves out: an outcome's step reads the gains
+    /// alone.
+    fn hearing_read(&mut self, traces: bool) -> Result<(), Error> {
         let Some(hearing) = &self.hearing else { return Ok(()) };
         let routes: Vec<(usize, i64)> = hearing.routes.iter()
             .map(|r| (self.hearing_memories[r.memory], r.slot)).collect();
@@ -485,14 +493,38 @@ impl Brain {
         for (memory, slot) in routes {
             gains.push(self.gain_of(memory, slot)?);
         }
-        let mut traces = Vec::new();
-        for &memory in &self.hearing_memories {
-            traces.push(self.trace_of(memory)?);
-        }
-        let hearing = self.hearing.as_mut().unwrap();
+        let Brain { hearing, hearing_memories, working_memory, efference, history, recall, .. } =
+            self;
+        let hearing = hearing.as_mut().expect("a hearing");
         hearing.gains = gains;
-        for (held, (trace, amplitude)) in hearing.memories.iter_mut().zip(traces) {
-            held.trace = trace;
+        if !traces {
+            return Ok(());
+        }
+        let missing = || fault("a route's memory is not the brain's");
+        for (held, &memory) in hearing.memories.iter_mut().zip(hearing_memories.iter()) {
+            let (rows, cols, data, amplitude) = match ORDER[memory] {
+                "working_memory" | "efference" => {
+                    let t = if memory == 0 { &*working_memory } else { &*efference };
+                    let t = t.as_ref().ok_or_else(missing)?;
+                    (t.trace.rows, t.trace.cols, &t.trace.data, t.amplitude)
+                }
+                "history" => {
+                    let h = history.as_ref().ok_or_else(missing)?;
+                    (h.trace.rows, h.trace.cols, &h.trace.data, h.amplitude)
+                }
+                "recall" => {
+                    let r = recall.as_ref().ok_or_else(missing)?;
+                    let (rows, cols) = match r.trace.shape.as_slice() {
+                        [a, b] => (*a, *b),
+                        _ => return Err(fault("the recall memory's trace")),
+                    };
+                    (rows, cols, &r.trace.v, r.config.amplitude)
+                }
+                _ => return Err(missing()),
+            };
+            held.trace.rows = rows;
+            held.trace.cols = cols;
+            held.trace.data.clone_from(data);
             held.amplitude = amplitude;
         }
         Ok(())
@@ -1275,7 +1307,7 @@ impl Brain {
         } else {
             None
         };
-        self.hearing_in()?;
+        self.hearing_read(false)?;
         let report = {
             let actor = self.basal_ganglia.as_mut().unwrap();
             actor.learn(self.learner.as_mut().ok_or_else(|| fault("no learner"))?,
