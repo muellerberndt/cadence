@@ -3,9 +3,15 @@
 //! Every part of the core sums through these, so the core has one reduction order everywhere
 //! and a moment is the same bits in the browser and natively.
 
-/// NumPy's sum of a contiguous run (`pairwise_sum`): under eight in order from -0.0, up to 128
-/// with eight running sums combined in pairs, longer runs halved at a multiple of eight.
+/// NumPy's sum of a contiguous run: its pairwise sum added to the reduction's identity, +0.0,
+/// so a sum of negative zeros (or of nothing) is +0.0.
 pub fn sum(a: &[f64]) -> f64 {
+    0.0 + pairwise(a)
+}
+
+/// NumPy's `pairwise_sum`: under eight in order from -0.0, up to 128 with eight running sums
+/// combined in pairs, longer runs halved at a multiple of eight.
+pub fn pairwise(a: &[f64]) -> f64 {
     let n = a.len();
     if n < 8 {
         let mut res = -0.0f64;
@@ -33,7 +39,7 @@ pub fn sum(a: &[f64]) -> f64 {
     }
     let mut half = n / 2;
     half -= half % 8;
-    sum(&a[..half]) + sum(&a[half..])
+    pairwise(&a[..half]) + pairwise(&a[half..])
 }
 
 /// The sum of the squares of a run, in `sum`'s order (`np.sum(x ** 2)`).
@@ -90,41 +96,49 @@ pub fn argmin(a: &[f64]) -> usize {
     best
 }
 
-/// `np.maximum(a, b)`: a NaN on either side is the answer.
+/// `np.maximum(a, b)`: a NaN on either side is the answer; between zeros, +0.0 is the larger
+/// (NumPy's maximum on ARM, natively, whatever the order; under Pyodide NumPy keeps the first
+/// of two zeros, the same value).
 #[inline]
 pub fn maximum(a: f64, b: f64) -> f64 {
     if a.is_nan() || b.is_nan() {
         f64::NAN
-    } else if a >= b {
+    } else if a == b {
+        if a.is_sign_negative() { b } else { a }
+    } else if a > b {
         a
     } else {
         b
     }
 }
 
-/// `np.minimum(a, b)`: a NaN on either side is the answer.
+/// `np.minimum(a, b)`: a NaN on either side is the answer; between zeros, -0.0 is the smaller
+/// (as `maximum`).
 #[inline]
 pub fn minimum(a: f64, b: f64) -> f64 {
     if a.is_nan() || b.is_nan() {
         f64::NAN
-    } else if a <= b {
+    } else if a == b {
+        if a.is_sign_negative() { a } else { b }
+    } else if a < b {
         a
     } else {
         b
     }
 }
 
-/// `np.clip(x, lo, hi)`: the larger of x and lo (a NaN kept), then the smaller of that and hi.
+/// `np.clip(x, lo, hi)`: a NaN in `x` or in either bound is the answer; `x` where it lies within
+/// the bounds (a bound equal to it leaves it, its sign of zero kept), else the bound it passed.
 #[inline]
 pub fn clip(x: f64, lo: f64, hi: f64) -> f64 {
-    if x.is_nan() {
-        return x;
+    if x.is_nan() || lo.is_nan() || hi.is_nan() {
+        return f64::NAN;
     }
-    let m = if x > lo { x } else { lo };
-    if m < hi {
-        m
-    } else {
+    let m = if x < lo { lo } else { x };
+    if m > hi {
         hi
+    } else {
+        m
     }
 }
 
@@ -330,9 +344,8 @@ pub fn matmul(a: &[f64], n: usize, k: usize, b: &[f64], m: usize) -> Vec<f64> {
     out
 }
 
-/// `np.max` of a run (`maximum.reduce`): a NaN anywhere is the answer, else the largest entry.
-/// Between zeros of either sign it keeps the first (NumPy's sign of a zero maximum follows its
-/// SIMD routine).
+/// `np.max` of a run (`maximum.reduce`): a NaN anywhere is the answer, else the largest entry
+/// (+0.0 over -0.0, as `maximum`).
 pub fn max(a: &[f64]) -> f64 {
     let mut m = a[0];
     for &x in &a[1..] {

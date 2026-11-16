@@ -185,6 +185,16 @@ fn probe(name: &str, input: &Named) -> Result<Named, state::Error> {
             out.put("dot", Array::scalar_f64(np::dot(&a, &a)));
             out.put("mean", Array::scalar_f64(np::mean(&a)));
         }
+        "elementwise" => {
+            let (a, b) = (input.f64s("a")?, input.f64s("b")?);
+            let (lo, hi) = (input.f64s("lo")?, input.f64s("hi")?);
+            let n = a.len();
+            let pick = |f: &dyn Fn(usize) -> f64| -> Vec<f64> { (0..n).map(f).collect() };
+            out.put("maximum", Array::from_f64(&[n], &pick(&|i| np::maximum(a[i], b[i]))));
+            out.put("minimum", Array::from_f64(&[n], &pick(&|i| np::minimum(a[i], b[i]))));
+            out.put("clip", Array::from_f64(&[n], &pick(&|i| np::clip(a[i], lo[i], hi[i]))));
+            out.put("max", Array::scalar_f64(np::max(&a)));
+        }
         "argpartition" => {
             let (rows, cols) = (input.i64("rows")? as usize, input.i64("cols")? as usize);
             let v = input.f64s("v")?;

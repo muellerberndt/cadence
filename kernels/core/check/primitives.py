@@ -71,6 +71,22 @@ for n in (1, 3, 7, 8, 9, 16, 31, 128, 129, 200, 1000, 4099):
     same(f"dot of {n} (in order)", np.atleast_1d(got["dot"]), np.atleast_1d(seq))
     blas = abs(float(got["dot"]) - float(np.dot(a, a))) / max(abs(float(np.dot(a, a))), 1e-300)
     print(f"  numpy's dot of {n} (BLAS natively): relative gap {blas:.1e}")
+# zeros of either sign and NaN in sums, maximum, minimum and clip (NumPy on ARM: between zeros
+# maximum gives +0.0 and minimum -0.0 in either order; clip keeps x at a bound; a NaN bound is
+# the answer; a sum starts from +0.0)
+zeros = np.array([-0.0, 0.0, -0.0, 0.0, 1.5, np.nan, -0.0, 0.5, 0.5, 0.5])
+others = np.array([0.0, -0.0, -0.0, 0.0, -2.0, 1.0, 0.0, 0.5, 0.5, 0.5])
+lo = np.array([0.0, -1.0, 0.0, -0.0, 0.0, 0.0, -0.0, np.nan, 0.0, 0.5])
+hi = np.array([1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, np.nan, 0.5])
+got = core.probe("elementwise", a=zeros, b=others, lo=lo, hi=hi)
+same("maximum, zeros and NaN", got["maximum"], np.maximum(zeros, others))
+same("minimum, zeros and NaN", got["minimum"], np.minimum(zeros, others))
+same("clip, zeros and NaN bounds", got["clip"], np.array([np.clip(x, a, b) for x, a, b in
+                                                          zip(zeros, lo, hi, strict=True)]))
+for run in (np.array([-0.0]), np.full(9, -0.0), np.zeros(0), np.array([-0.0, 0.0])):
+    same(f"sum of {run.tolist()}", np.atleast_1d(core.probe("sum", a=run)["sum"]),
+         np.atleast_1d(np.sum(run)))
+
 # the selection of the sparse code: rows full of ties (zeros and repeated values), any kth
 for seed in range(400):
     rng = np.random.default_rng(seed)
