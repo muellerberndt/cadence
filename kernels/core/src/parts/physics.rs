@@ -148,7 +148,7 @@ impl Physics {
         let pv = if 1e-12 > pv { 1e-12 } else { pv };
         let v0 = speed * speed / 2.0;
         let vv = np::dot(&velocity, &velocity);
-        let lbf = 0.5 * vv / pv * (v0 / (v0 + pv)) - libm::log1p(v0 / pv);
+        let lbf = 0.5 * vv / pv * (v0 / (v0 + pv)) - np::log1p(v0 / pv);
         1.0 / (1.0 + np::exp(-np::clip(lbf, -50.0, 50.0)))
     }
 

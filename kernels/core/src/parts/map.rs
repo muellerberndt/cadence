@@ -207,20 +207,10 @@ impl Graph {
     }
 }
 
-/// `np.maximum(x, 0.0)` as NumPy's vector loop gives it: a NaN kept, zero for -0.0.
-#[inline]
-fn above_zero(x: f64) -> f64 {
-    if x.is_nan() || x > 0.0 {
-        x
-    } else {
-        0.0
-    }
-}
-
 /// The activity above rest of a potential: `max(tanh(v / 2), 0)`.
 #[inline]
 fn lit_up(v: f64) -> f64 {
-    above_zero(np::tanh(v / 2.0))
+    np::maximum(np::tanh(v / 2.0), 0.0)
 }
 
 /// NumPy's sort order of floats: NaN after every number.
@@ -1106,8 +1096,8 @@ impl Map {
                 .map(|(c, u)| if mine[c * width + u] { self.potential[c * width + u] } else { 0.0 })
                 .collect();
             let field: Vec<f64> =
-                (0..count).map(|c| 0.0 + np::sum(&field_units[c * nu..(c + 1) * nu])).collect();
-            let whole = 0.0 + np::sum(&field);
+                (0..count).map(|c| np::sum(&field_units[c * nu..(c + 1) * nu])).collect();
+            let whole = np::sum(&field);
             let profile: Vec<f64> = column_sums(
                 (0..count).map(|c| field_units[c * nu..(c + 1) * nu].to_vec()), nu)
                 .into_iter().map(|x| x / whole).collect();
@@ -1136,7 +1126,7 @@ impl Map {
                     + (k * k) as f64 * rec[CORE + 6];
                 let core = self.bump([rec[CORE], rec[CORE + 1]], spread, cm);
                 let tail = self.bump([rec[TAIL], rec[TAIL + 1]], rec[TAIL + 2], tm);
-                trail = (0..count).map(|c| above_zero(field[c] - core[c] - tail[c])).collect();
+                trail = (0..count).map(|c| np::maximum(field[c] - core[c] - tail[c], 0.0)).collect();
             }
             k += 1;
             let mut cx = [rec[CORE], rec[CORE + 1]];
@@ -1211,7 +1201,7 @@ impl Map {
                 tx = x3;
                 tvar = v3;
             }
-            let left = 0.0 + np::sum(&trail) + cm + tm;
+            let left = np::sum(&trail) + cm + tm;
             if !(left > 1e-12) && k == 1 {
                 // reported the moment before, and sight finds no part of it now
                 rec[CORE..TAIL + 4].iter_mut().for_each(|x| *x = 0.0);
@@ -1403,7 +1393,7 @@ impl Map {
     /// The kind whose code a pattern over the units matches best (`kind_of`).
     fn kind_of(&self, code: &[f64]) -> Option<usize> {
         let held: Vec<f64> = if code.len() == self.width { &code[..self.units] } else { code }
-            .iter().map(|&x| above_zero(x)).collect();
+            .iter().map(|&x| np::maximum(x, 0.0)).collect();
         let top = largest(held.iter().copied());
         if !(top > 0.0) {
             return None;
@@ -1413,7 +1403,7 @@ impl Map {
             .map(|k| {
                 let row = &self.codes[k * self.units..(k + 1) * self.units];
                 let off: Vec<f64> = row.iter().map(|x| 1.0 - x).collect();
-                (np::dot(row, &held) - np::dot(&off, &held)) / (0.0 + np::sum(row))
+                (np::dot(row, &held) - np::dot(&off, &held)) / (np::sum(row))
             })
             .collect();
         Some(np::argmax(&score))
@@ -1453,7 +1443,7 @@ impl Map {
         let own = least(self.kind_units(kind).into_iter().map(|u| what[u]));
         let xs: Vec<f64> = (0..count).map(|c| self.centers[2 * c]).collect();
         let ys: Vec<f64> = (0..count).map(|c| self.centers[2 * c + 1]).collect();
-        let total = 0.0 + np::sum(&where_);
+        let total = np::sum(&where_);
         let at = [np::dot(&where_, &xs) / total, np::dot(&where_, &ys) / total];
         let offset = [at[0] - body[0], at[1] - body[1]];
         let turn = libm::atan2(offset[1], offset[0]) - heading;
@@ -1470,7 +1460,7 @@ impl Map {
         match kind {
             Some(k) if k < self.kinds => Ok(self.of_kind(k, &activity)),
             Some(_) => Err(refused("no such kind on this map")),
-            None => Ok(activity.chunks_exact(self.width).map(|row| 0.0 + np::sum(row)).collect()),
+            None => Ok(activity.chunks_exact(self.width).map(|row| np::sum(row)).collect()),
         }
     }
 
@@ -1492,9 +1482,9 @@ impl Map {
         let (core, tail) = (record[CORE + 7], record[TAIL + 3]);
         let parts: Vec<f64> = cells.iter()
             .flat_map(|&c| units.iter().map(move |&u| (c, u)))
-            .map(|(c, u)| above_zero(self.potential[c * width + u]))
+            .map(|(c, u)| np::maximum(self.potential[c * width + u], 0.0))
             .collect();
-        let whole = 0.0 + np::sum(&parts);
+        let whole = np::sum(&parts);
         if core + tail < 0.5 * whole {
             return None;
         }
@@ -1553,7 +1543,7 @@ impl Map {
                     let weights: Vec<f64> = held.iter().map(|&c| own[c]).collect();
                     let xs: Vec<f64> = held.iter().map(|&c| self.centers[2 * c]).collect();
                     let ys: Vec<f64> = held.iter().map(|&c| self.centers[2 * c + 1]).collect();
-                    let total = 0.0 + np::sum(&weights);
+                    let total = np::sum(&weights);
                     let found = self.values_of(&held, &activity);
                     let values = self.groups.iter()
                         .map(|&(a, b)| found.iter().find(|&&u| a <= u && u < b).map(|&u| (u - a) as i64))
