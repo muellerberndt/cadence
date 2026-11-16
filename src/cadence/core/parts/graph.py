@@ -14,6 +14,7 @@ products only save work; the core makes them again, to the same bits.
 
 from __future__ import annotations
 
+import weakref
 from typing import Any
 
 import numpy as np
@@ -140,6 +141,23 @@ def brain_state(state: BrainState, prefix: str = "state") -> dict[str, Any]:
         out[f"{prefix}.activity_change"] = np.array(state.activity_change, dtype=np.float64)
     out[f"{prefix}.published"] = np.bool_(published(state))
     return out
+
+
+def state_from(named: dict[str, Any], prefix: str, model: NeuronModel) -> BrainState:
+    """The settled state ``brain_state`` crossed: a published one keeps the record the kernels
+    read its activations by (``fused._publish``), under ``model``'s rule, and no products."""
+    v = np.array(named[f"{prefix}.v"], dtype=np.float64)
+    s = np.array(named[f"{prefix}.activation"], dtype=np.float64)
+    change = named.get(f"{prefix}.activity_change")
+    state = BrainState(v, s, np.array(named[f"{prefix}.adaptation"], dtype=np.float64),
+                       int(np.asarray(named[f"{prefix}.steps"]).reshape(())),
+                       activity_change=None if change is None else np.array(change, dtype=float))
+    if bool(np.asarray(named[f"{prefix}.published"]).reshape(())):
+        record = [1.0, float(v.size), model.slope, model.threshold, model.rest_emission, model.leak]
+        kept = np.concatenate([v.ravel(), s.ravel(), record])
+        gone = weakref.ref(np.zeros(1))  # no blocks: the products are made again
+        state.__dict__["_products"] = (gone, gone, len(np.atleast_2d(v)), kept)
+    return state
 
 
 def nudge_arrays(nudge: Nudge, prefix: str = "nudge") -> dict[str, Any]:

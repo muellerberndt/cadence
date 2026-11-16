@@ -573,6 +573,9 @@ pub struct Graph {
     pub neuron: Neuron,
     pub apical: Option<Apical>,
     tables: Tables,
+    /// Which of a life's graphs this is: an update that replaces the graph counts one on
+    /// (`Learner::apply`), the Python's identity of a `Brain`; not part of the state.
+    pub generation: u64,
 }
 
 impl Graph {
@@ -601,6 +604,12 @@ impl Graph {
     }
     pub fn weights(&self) -> &[f64] {
         &self.tables.weights
+    }
+    /// `layout.parallel_synapses`: whether two synapses share an entry of a block.
+    pub fn parallel_synapses(&self) -> bool {
+        let mut sorted = self.edge_index.clone();
+        sorted.sort_unstable();
+        sorted.windows(2).any(|w| w[0] == w[1])
     }
 
     pub fn import(s: &Named) -> Result<Graph, Error> {
@@ -649,6 +658,7 @@ impl Graph {
             },
             apical,
             tables: Tables::default(),
+            generation: 0,
         };
         graph.validate()?;
         graph.make_tables()?;
