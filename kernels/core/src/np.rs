@@ -310,3 +310,85 @@ fn introselect(v: &[f64], t: &mut [usize], kth: usize) {
         t.swap(high, low);
     }
 }
+
+// -- the orders the recall memory reads (`cadence.stream.Recall`)
+
+/// `a @ b` without BLAS, `a` of `n` rows by `k` and `b` of `k` rows by `m`, both row-major:
+/// each entry a dot product in order from 0.0, as `dot` sums it (NumPy's `matmul`, and an
+/// `einsum` of one contraction, under Pyodide). A `b` of one column is a vector.
+pub fn matmul(a: &[f64], n: usize, k: usize, b: &[f64], m: usize) -> Vec<f64> {
+    let mut out = vec![0.0f64; n * m];
+    for i in 0..n {
+        let row = &mut out[i * m..(i + 1) * m];
+        for l in 0..k {
+            let x = a[i * k + l];
+            for (o, &y) in row.iter_mut().zip(&b[l * m..(l + 1) * m]) {
+                *o += x * y;
+            }
+        }
+    }
+    out
+}
+
+/// `np.max` of a run (`maximum.reduce`): a NaN anywhere is the answer, else the largest entry.
+/// Between zeros of either sign it keeps the first (NumPy's sign of a zero maximum follows its
+/// SIMD routine).
+pub fn max(a: &[f64]) -> f64 {
+    let mut m = a[0];
+    for &x in &a[1..] {
+        m = maximum(m, x);
+    }
+    m
+}
+
+/// `np.cumsum` of a run (`add.accumulate`): each entry the running sum from the first, in order.
+pub fn cumsum(a: &[f64]) -> Vec<f64> {
+    let mut out = Vec::with_capacity(a.len());
+    let mut s = 0.0f64;
+    for (i, &x) in a.iter().enumerate() {
+        s = if i == 0 { x } else { s + x };
+        out.push(s);
+    }
+    out
+}
+
+/// `np.argsort(v, kind="stable")` of one row: ascending, NaN after every number, equal entries
+/// (zeros of either sign among them) in their order.
+pub fn argsort_stable(v: &[f64]) -> Vec<usize> {
+    let mut idx: Vec<usize> = (0..v.len()).collect();
+    idx.sort_by(|&i, &j| {
+        if less(v[i], v[j]) {
+            std::cmp::Ordering::Less
+        } else if less(v[j], v[i]) {
+            std::cmp::Ordering::Greater
+        } else {
+            std::cmp::Ordering::Equal
+        }
+    });
+    idx
+}
+
+/// `np.logaddexp(x, y)`, NumPy's `npy_logaddexp`: `x + log(2)` where the two are equal (the
+/// infinities of one sign among them), else the larger plus `log1p(exp(-|x - y|))`, a NaN kept.
+pub fn logaddexp(x: f64, y: f64) -> f64 {
+    if x == y {
+        return x + std::f64::consts::LN_2;
+    }
+    let tmp = x - y;
+    if tmp > 0.0 {
+        x + log1p(exp(-tmp))
+    } else if tmp <= 0.0 {
+        y + log1p(exp(tmp))
+    } else {
+        tmp
+    }
+}
+
+#[inline]
+pub fn log1p(x: f64) -> f64 {
+    libm::log1p(x)
+}
+#[inline]
+pub fn log2(x: f64) -> f64 {
+    libm::log2(x)
+}

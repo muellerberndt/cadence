@@ -86,5 +86,39 @@ for seed in range(400):
     if not ok:
         print(f"argpartition, seed {seed}: APART")
 print("argpartition: 400 rows of ties against NumPy's introselect")
+# the recall memory's orders: the product in order (BLAS natively, its gap shown), a run's
+# maximum, running sum and stable order (ties, zeros of both signs, infinities and NaN), and
+# logaddexp (the C library's log1p and exp, its gap shown)
+for n, k, m in ((1, 128, 128), (1, 30, 19), (3, 7, 1), (2, 129, 5)):
+    rng = np.random.default_rng(n * k * m)
+    a, b = rng.normal(size=(n, k)), rng.normal(size=(k, m))
+    seq = np.zeros((n, m))
+    for i in range(n):
+        for j in range(m):
+            for t in range(k):
+                seq[i, j] += a[i, t] * b[t, j]
+    got = core.probe("matmul", a=a, b=b)["product"]
+    same(f"matmul {n}x{k} @ {k}x{m} (in order)", got, seq)
+    print(f"  numpy's matmul (BLAS natively): largest gap {np.max(np.abs(got - a @ b)):.1e}")
+for seed in range(200):
+    rng = np.random.default_rng(seed)
+    v = rng.choice([0.0, -0.0, 1.5, -2.0, np.inf, -np.inf, np.nan, 0.25], size=int(
+        rng.integers(1, 40)), p=[0.2, 0.1, 0.2, 0.15, 0.05, 0.1, 0.05, 0.15])
+    v = np.where(rng.random(len(v)) < 0.5, v, rng.normal(size=len(v)))
+    x, y = rng.normal(size=50) * 30, rng.normal(size=50) * 30
+    x[:5], y[:5] = (-np.inf, np.inf, 1.0, -np.inf, np.nan), (-np.inf, np.inf, 1.0, 3.0, 0.0)
+    got = core.probe("orders", v=v, x=x, y=y)
+    ok = (got["cumsum"].tobytes() == np.cumsum(v).tobytes()
+          and np.array_equal(got["argsort"], np.argsort(v, kind="stable"))
+          and (np.isnan(got["max"]) == np.isnan(np.max(v)))
+          and (np.isnan(got["max"]) or got["max"] == np.max(v)))
+    failures += not ok
+    if not ok:
+        print(f"orders, seed {seed}: APART")
+    theirs = np.logaddexp(x, y)
+    if not np.array_equal(got["logaddexp"], theirs, equal_nan=True):
+        gap = np.nanmax(np.abs(got["logaddexp"] - theirs))
+        print(f"  logaddexp, seed {seed}: largest gap {gap:.1e} (the C library's)")
+print("orders: 200 runs of ties, signed zeros, infinities and NaN against NumPy")
 print("PASS" if not failures else f"FAIL ({failures})")
 sys.exit(1 if failures else 0)

@@ -196,6 +196,25 @@ fn probe(name: &str, input: &Named) -> Result<Named, state::Error> {
             }
             out.put("index", Array::from_i64(&[rows, cols], &all));
         }
+        "matmul" => {
+            let (a, b) = (input.get("a")?, input.get("b")?);
+            let (n, k, m) = match (a.shape.as_slice(), b.shape.as_slice()) {
+                (&[n, k], &[k2, m]) if k == k2 => (n, k, m),
+                _ => return Err(state::Error::Shape("matmul".into())),
+            };
+            let product = np::matmul(&input.f64s("a")?, n, k, &input.f64s("b")?, m);
+            out.put("product", Array::from_f64(&[n, m], &product));
+        }
+        "orders" => {  // the recall memory's: a run's maximum, running sum and stable order
+            let v = input.f64s("v")?;
+            let (x, y) = (input.f64s("x")?, input.f64s("y")?);
+            out.put("max", Array::scalar_f64(np::max(&v)));
+            out.put("cumsum", Array::from_f64(&[v.len()], &np::cumsum(&v)));
+            let order: Vec<i64> = np::argsort_stable(&v).into_iter().map(|i| i as i64).collect();
+            out.put("argsort", Array::from_i64(&[v.len()], &order));
+            let both: Vec<f64> = x.iter().zip(&y).map(|(&a, &b)| np::logaddexp(a, b)).collect();
+            out.put("logaddexp", Array::from_f64(&[both.len()], &both));
+        }
         _ => return Err(state::Error::Missing(name.to_string())),
     }
     Ok(out)
