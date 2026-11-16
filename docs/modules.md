@@ -1,11 +1,12 @@
 # Parts of a brain: the catalogue
 
-A Cadence brain is assembled from parts: senses, regions, a motor, short-term state, memories
-and ways to learn. This page lists every part the library ships, in tables grouped by role, with
-a small example per group and five whole brains built for a purpose. Scan for the parts your
-purpose needs, then follow a part's name to the guide that owns it.
+A Cadence brain is assembled from parts: senses, regions, a motor, short-term state, memories,
+attention and ways to learn. This page lists every part the library ships, in tables grouped by
+role, with a small example per group and whole brains built for a purpose. Scan for the parts
+your purpose needs, then follow a part's name to the guide that owns it.
+[Assemble a brain](assembly.md) puts the parts together step by step.
 
-A part joins a brain in one of five ways:
+A part joins a brain in one of these ways:
 
 | Way | When | Looks like |
 | --- | --- | --- |
@@ -23,7 +24,7 @@ the association regions, one row of the tables below, and has nothing to do with
 | You want | Section |
 | --- | --- |
 | To see what a brain holds with nothing named | [the default brain](#the-default-brain) |
-| A part by its role | [senses](#senses), [association regions](#association-regions), [the motor](#the-motor), [short-term state](#short-term-state), [memories](#memories), [learning](#learning), [many lives](#many-lives-and-where-they-run), [speech](#speech-pieces), [space](#space-pieces), [growing and grafting](#growing-and-grafting), [an anatomy of your own](#parts-for-an-anatomy-of-your-own) |
+| A part by its role | [senses](#senses), [association regions](#association-regions), [the motor](#the-motor), [short-term state](#short-term-state), [memories](#memories), [attention](#attention), [learning](#learning), [many lives](#many-lives-and-where-they-run), [speech](#speech-pieces), [space](#space-pieces), [growing and grafting](#growing-and-grafting), [an anatomy of your own](#parts-for-an-anatomy-of-your-own) |
 | A whole brain for a task | [brains for a purpose](#brains-for-a-purpose) |
 | A module from a file: the built-in map, or a file of your own | [modules](#modules-parts-that-arrive-as-files) |
 | To know which parts refuse each other | [what does not go together](#what-does-not-go-together) |
@@ -64,6 +65,11 @@ assert genes["teaching"] == "deep" and genes["learning_surprise"] is True
 | An actor and a critic | learning from rewards through `step`, `learn` and `live` | [learning](#learning) |
 | Lessons | at the `"deep"` teaching point, taught where the answer is wrong | [learning](#learning) |
 | A place to run | the fastest backend the machine has for its size | [many lives](#many-lives-and-where-they-run) |
+
+This is the one list of what a new brain holds; the other guides link here. It learns from every
+outcome under `step` and from every lesson. Everything else is named at `compose`: the arousal
+that decides when `live` learns (`arousal=True`, which `live` needs), surprise and the focus,
+records, a voice, a map, observers, a code, images.
 
 ## How to read the tables
 
@@ -115,6 +121,8 @@ continuous readings, an image, a wide vector.
 | [Ports beside the screen](senses.md#ports-beside-the-screen) | A body's own readings beside an image: health, a joint, the last action | `ports=k` with `learned_fields` | nothing | no: the values are read as given | fixed | at birth; refused, with the fields | |
 | [A fixed sparse code](senses.md#the-observation-code) | Wide observations: the code bounds the size of every memory's key | `code=units` | nothing | no | fixed | at birth; by region (`sensory`, which is the code) | At 12,824 inputs the recall memory's address map takes 1,322 MB uncoded and 8.9 MB at `code=1024` ([recall cost](memory.md#recall-cost)) |
 | [A learned code](senses.md#the-learned-code) | Observations met in the same contexts are read alike, so a lesson on some reaches the rest | `learned_code=units`, with `learned_code_fields` for independent channels | the stream's code, which the next settle starts from | yes, by local rules at accepted acts and aroused `live` moments | blank | at birth; `graft` takes other regions of the brain and never the `code` region | Held-out members of a group answered at 1.000 on 12 of 12 fresh founders, where the raw observation answers at chance ([the learned code](senses.md#what-the-code-is-for)) |
+| [A sense for things](senses.md#a-sense-for-things-and-an-ear) | A seen thing's colour, form or place as inputs, each reading spread over tuned cells | `things = cadence.senses.Things({"hue": (0.0, 1.0)})`, then `senses={"eyes": things.widths}` and `things.rows(readings)` | nothing | no | fixed | beside the brain; a checkpoint does not hold it | The symbols chamber's eyes ([symbols chamber](../benchmarks/symbols/README.md)) |
+| [An ear](senses.md#a-sense-for-things-and-an-ear) | A heard utterance, onset to the quiet after it, as one code from its log-mel frames | `ear = cadence.senses.Ear(frames=16, bands=40)`, then `senses={"ear": ear.width}` and `ear.code(frames)` or `ear.hear(audio)` | nothing | no | fixed | beside the brain; a checkpoint does not hold it | The symbols chamber's ear: a name heard alone brings its thing back at 1.00 on 12 of 12 fresh founders ([symbols chamber](../benchmarks/symbols/README.md)) |
 
 Audio reaches a brain as an image through the speech front end
 ([speech pieces](#speech-pieces)).
@@ -173,6 +181,7 @@ What the brain can do. The action is read from the motor neurons of the settled 
 | [A planning window](tune.md#a-planning-window) | The next k actions settled together, where two of them constrain each other | `actions=k * menu, slots=k` | as above | yes | blank | at birth | It is no lookahead: a sliding window of three chooses a route's first step at .31, against .33 word by word ([routes with a goal](../benchmarks/grammar/README.md#routes-with-a-goal-does-planning-pay-257), [#257](https://github.com/muellerberndt/cadence/issues/257)) |
 | [Lateral competition](tune.md#operating-point-and-motor-competition) | A signed weight between the motor neurons of a slot | `lateral=w` (0.0 builds none) | nothing | yes: the lateral synapses are plastic | blank | at birth; by region (`motor`) | At -0.5 the undamped solve oscillates from 4 actions on ([motor competition](tune.md#operating-point-and-motor-competition)) |
 | [A pathway from the fields to the motor](senses.md#spoken-words-a-spectrogram-as-an-image) | The motor reads the pooled fields directly, beside the association | `fields_motor=scale` with `learned_fields` | nothing | yes, by the same lessons | blank | at birth; refused, with the fields | Read speech: the letter said, given the letter held, rises from .42 to .78 with every row taught ([letters chamber](../benchmarks/letters/README.md), [#304](https://github.com/muellerberndt/cadence/issues/304)) |
+| [A voice](memory.md#records-of-bound-moments-opt-in) | Say, in a sense's format, the sound that stands for the moment, and hear what it says | `voice="ear"` with `bound=records`; `brain.say(observations)`, passed back under `"voice"` at the moment it is said | nothing beyond the records | the records it reads: a reward pays what was said, and a paid sound becomes the answer | empty: it says only sounds its records hold | at birth; refused, with the records | A name paid at a few places is said for the thing at places no exchange used at 1.00, twelve fresh founders ([symbols chamber](../benchmarks/symbols/README.md)) |
 
 ```python
 arm = Brain.compose(inputs=4, actions=5, slots=(3, 2), seed=0)   # a motor of three, a grip of two
@@ -236,6 +245,8 @@ associative store. The weights themselves are the long-term skill, and
 | [The address of pairs](memory.md#a-million-records-opt-in) | A read whose cost grows far slower than the records | `pairs=16, expansion=16384, winners=256, candidates=4096` on the store; `longterm_pairs=16` and its settings in a brain | a table of the pairs each record is filed under | no | empty | beside the brain; at birth in a brain | A read among 1,000,000 records takes 3.4 ms on one core, 1.3 to 1.5 times its time at 100,000 ([#310](https://github.com/muellerberndt/cadence/issues/310)). A brain with it answers .960 to 1.000 of 100,000 facts heard once, twelve fresh founders ([the fifth declaration](../benchmarks/memory_scale/README.md#the-fifth-declaration-a-brain-with-its-own-records-at-100000)) |
 | [Heads, parts and chains](memory.md#a-million-records-opt-in) | Several records in one read, a question of several parts, a chain of facts | `read(cue, heads=k)`, `read_each(cues)`, `chain(cue, links)` | nothing more | no | | beside the brain | Among 1,000,000 facts: four parts with a head each 1.000, eight facts about one subject .994 to 1.000 ([#310](https://github.com/muellerberndt/cadence/issues/310)) |
 | [Keys held apart](memory.md#keys-held-apart-opt-in) | Two facts whose keys are one key keep two records | `apart=width`, then `write(key, value, source=row)` | a signature per record | no | | beside the brain | 1,000,000 facts, 4 in 100 sharing their key: found at 1.000 with it and .978 to .980 without ([memory scale](../benchmarks/memory_scale/README.md#facts-whose-keys-are-one-key), [#310](https://github.com/muellerberndt/cadence/issues/310)) |
+| [Records of bound moments](memory.md#records-of-bound-moments-opt-in) | What the senses held together, read back by any part: a sound heard alone brings back the thing it was heard with | `bound=records` with `senses=` and `code=units`; `brain.complete(observations)` shows what comes back | one store all streams share, which `reset()` keeps | the records are written at every moment a sense holds something; a reward pays the moment it follows | empty | at birth; refused | A name heard alone brings its thing back from the records at 1.00 and into the settled state at .975 to 1.00, twelve fresh founders ([symbols chamber](../benchmarks/symbols/README.md)) |
+| [A memory's strength](memory.md#a-records-strength-opt-in) | Repetition and surprise deepen a memory; one deep enough is kept for good, and one never used fades | `recall_strength=True` for the recall memory, `longterm_strength=True` for long-term records, `memory_keep=depth` beside `memory_fade`; always on for records of bound moments | a depth per slot or record | no: a law of the store | | at birth | A fact told once and asked two capacities later in a paid life: .95, .79 and .51 with it against .48, .45 and .49 without, three seeds ([recall strength](../benchmarks/recall_strength/README.md)) |
 
 The recall memory's position code (`recall_position`, `recall_anchor`, `recall_relative`,
 `recall_slope`, `recall_grid`), its episode boundary (`recall_boundary`), a key over the last k
@@ -261,6 +272,28 @@ library.write(np.eye(16)[3], np.eye(4)[2])                             # a key w
 slot, revised = library.write(np.eye(16)[3], np.eye(4)[1])             # the fact changed
 assert revised and library.count == 1
 assert library.value(library.read(np.eye(16)[3]))[1] == 1.0            # the record is current
+```
+
+## Attention
+
+What the brain notices. One surprise signal is read from the settle at every moment, and one
+focus is drawn by it. The library reports the focus; turning the body toward it is the program's.
+
+| Part | For | Joins by | Holds between moments | Learns | Arrives | Grow and graft | Reading |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| [Surprise](start.md#surprise-and-the-focus-it-draws-opt-in) | What a moment brought that the carried state did not hold, per neuron and per stream; it deepens the records written at that moment | `surprise=True`; `brain.surprise.last`, `brain.surprise.moment` | each neuron's usual residual, which `reset()` keeps | its usual residual adapts; the brain's weights do not read it | blank | at birth; `grow` and `graft` keep it; `backend="cpu"` only | A deviant pattern one moment in 60: told apart from the standard moments at an area of .70 ([surprise chamber](../benchmarks/surprise/README.md)) |
+| [The focus](start.md#surprise-and-the-focus-it-draws-opt-in) | One attended place, drawn by the largest surprise among the senses' places and a map's cells | `brain.places = array`; `brain.focus`, `brain.orienting.bearing(origin)` | the attended place, its hold and the places it left | no | | with surprise | |
+| [Surprise on the map](space.md#surprise-on-the-map-opt-in) | A thing's move from where the map carried it, as surprise at its cells | `Map(plane, surprise=True)` in `trained=` | each cell's usual move | no | | held with the map | |
+| [A name that draws the focus](memory.md#records-of-bound-moments-opt-in) | A heard name turns the focus to its thing on the map, in view or behind a screen | `surprise=True`, `voice=`, records and a map whose values are named as a sense's fields | nothing more | no | | with the records | The focus within 0.25 of the named thing at .83 to 1.00 in view and .92 to 1.00 behind a screen, 10 of 12 fresh founders ([symbols chamber](../benchmarks/symbols/README.md)) |
+
+```python
+watcher = Brain.compose(inputs=4, actions=2, seed=0, surprise=True)
+watcher.places = np.array([[-1.0, 0.0], [-0.3, 0.0], [0.3, 0.0], [1.0, 0.0]])   # where each sense is
+for _ in range(8):
+    watcher.act(np.eye(4)[[0]], greedy=True)              # a light held: nothing new
+assert watcher.surprise.moment[0] == 0.0
+watcher.act(np.eye(4)[[3]], greedy=True)                  # another light: a surprise
+assert watcher.surprise.moment[0] > 0.0 and watcher.focus.sense == "senses"
 ```
 
 ## Learning
@@ -379,6 +412,7 @@ the thing is, in the settled activity of a sheet of neurons. Its graph has no ta
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | [The place module, a `Map`](space.md#a-first-map) | Where things are, held while they are out of view: "where is the apple?" and "what is at this place?" | `trained=["place"]` or `trained=[Map(plane)]` for a brain that holds it and reads it as the sense `space`; `cd.modules.load("place")` or `Map(plane)` alone; `moment(seen=, heard=, felt=, lit=)` at each moment | every thing the senses reported: its kind, its last known place, the moments since a sense wrote it, and the doubt of a thing seen missing | no | empty | held by the brain object: `grow`, `graft`, `retune`, `save` and `load` keep it | A hand that rests behind a pillar, on the two recorded scenes: 10.7 cm out of view, where its last seen place reads 15.5 cm; 1.2 cm in view, the camera's own error ([`mapped.py`](../benchmarks/tracking/mapped.py)) |
 | [Learned physics on the map](space.md#learned-physics-on-the-map) | A hidden thing that moves is followed, not left where it vanished: "where is the hand now?" and "where will it be?" | `Map(plane, physics=True)`; the same `moment(...)` calls; `forecast(moments)` for the map a few moments on | what the brain knows of each thing's motion, at the thing's cells; out of view, the share that kept its line, the share at rest and the share that left its line | yes, while things move in view: four numbers (how often a moving thing comes to rest or leaves its line, how far ahead and aside it then goes), by imagined lessons | untaught: it answers as the map until it has watched things move | held with the map: `save`, `load` and a brain's `space` keep what it learned | A person's hand out of view, twelve founders: 9.4 cm, where the map without physics reads 22.9; 10.3 after 25 scenes watched ([`mapped.py --physics`](../benchmarks/tracking/mapped.py)) |
+| [Values carried with a thing](space.md#values-carried-with-a-thing) | Each thing's colour, form or other values held with it while it is out of view, and the one thing at a place read whole | `Map(plane, values={"hue": 8})`; a report `(kind, place, {"hue": code})`; `values_at`, `where_is_value`, `thing_at(place)` | each thing's values on its cells | no | empty | held with the map | |
 
 How the senses change the map ([space](space.md#how-a-position-travels)):
 
@@ -544,7 +578,7 @@ assert custom.act(np.eye(6)[[0]], greedy=True).shape == (1,)
 
 ## Brains for a purpose
 
-Five whole brains, each taken from a guide or a benchmark, so every figure has a receipt. Each
+Whole brains, each taken from a guide or a benchmark, so every figure has a receipt. Each
 lists the parts it uses and why. The code is small enough to run in seconds; the readings come
 from the full runs named beside them.
 
@@ -798,11 +832,13 @@ which skills come and go, add `maturity=True` and `memory_fade`
 ([maturity](reward.md#maturity-opt-in),
 [records that fade](memory.md#records-that-fade-with-disuse-opt-in)).
 
+<a id="a-brain-that-holds-the-map"></a>
+
 ### A brain that knows where things are
 
-A brain whose camera looks at a kitchen and then turns away, from the
-[space guide](space.md#a-brain-that-holds-a-map). The map it holds keeps where each thing was
-last seen, and answers where a thing is and what is at a place.
+A brain whose camera looks at a kitchen and then turns away. The map it holds keeps where each
+thing was last seen, and answers where a thing is and what is at a place. This section is the
+one home of a map held in a brain; the [space guide](space.md) holds the map itself.
 
 | Part | Why |
 | --- | --- |
@@ -844,7 +880,7 @@ The camera sees none of the places where the apple and the bread were last seen,
 at its last known place for any number of moments. The brain reads `where` and `what` at every
 moment; what it does with them is its own task, taught by lessons or rewards as any brain's is.
 
-The long form, as on 0.99.1, sizes the inputs by hand, assigns the map and passes its read:
+The long form sizes the inputs by hand, assigns the map and passes its read:
 
 ```python
 place = cd.modules.load("place")                         # the built-in map
@@ -880,6 +916,29 @@ assert float(bare[0] @ row[0]) / np.linalg.norm(row) > 0.9997
 apple = coded.observation_code({"touch": touch})
 assert abs(float(empty[0] @ apple[0]) - 0.56) < 0.02     # at unit length the map moves the code
 ```
+
+What holding a map means:
+
+- **Held by the brain.** A map in `trained=`, by the name the library ships it under
+  (`trained=["place"]`) or as an object (`trained=[map]`), becomes `brain.space`; `brain.space
+  = map` assigns one by hand. The map is a graph of its own inside the brain object, beside the
+  brain's connectome. A brain holds one map.
+- **Saved with the brain.** `brain.save` writes the map's settings, codes and carried state
+  under `space/`, and `Brain.load` restores them. A brain without a map saves no `space/` key.
+- **What the brain reads.** `brain.space.observation()` gives `where`, one value a cell (832
+  for the built-in map), and `what`, one a code unit (16), as the latest moment settled them.
+  With the map in `trained=` the read is the sense `space`, after the brain's own inputs
+  (`brain.senses["space"]`): an observation carries the brain's own senses, as a dict or as
+  rows of their width, and the brain reads its map at every operation that takes observations.
+  A row of the whole width (`brain.inputs`) is taken as it is, the map's part as given: the
+  form of a recorded row, and of a read the caller imagines. A brain composed with
+  `inputs=map.count + map.units` and `brain.space = map` takes the read from its caller (the
+  long form above).
+- **Beside trained modules.** `trained=[module, "place"]` builds the brain around the module
+  with the map among its senses: the brain's own inputs, the map's read, then the module's
+  inputs. `module.columns(brain)` gives the module's columns of the whole row.
+- **Only the senses change it.** The map has no taught synapse, so the brain's lessons and
+  rewards do not reach it: `moment` alone writes it.
 
 ## Modules: parts that arrive as files
 
@@ -1018,29 +1077,6 @@ assert "'association' holds 16 neurons and the module's 'association' 32" in ref
 assert "records its construction" in refused(lambda: host.grow(slots=(2, 2)))
 ```
 
-### A brain that holds the map
-
-- **Held by the brain.** A map in `trained=`, by the name the library ships it under
-  (`trained=["place"]`) or as an object (`trained=[map]`), becomes `brain.space`; `brain.space
-  = map` assigns one by hand. The map is a graph of its own inside the brain object, beside the
-  brain's connectome. A brain holds one map.
-- **Saved with the brain.** `brain.save` writes the map's settings, codes and carried state
-  under `space/`, and `Brain.load` restores them. A brain without a map saves no `space/` key.
-- **What the brain reads.** `brain.space.observation()` gives `where`, one value a cell (832
-  for the built-in map), and `what`, one a code unit (16), as the latest moment settled them.
-  With the map in `trained=` the read is the sense `space`, after the brain's own inputs
-  (`brain.senses["space"]`): an observation carries the brain's own senses, as a dict or as
-  rows of their width, and the brain reads its map at every operation that takes observations.
-  A row of the whole width (`brain.inputs`) is taken as it is, the map's part as given: the
-  form of a recorded row, and of a read the caller imagines. A brain composed with
-  `inputs=map.count + map.units` and `brain.space = map` takes the read from its caller
-  ([a brain that knows where things are](#a-brain-that-knows-where-things-are)).
-- **Beside trained modules.** `trained=[module, "place"]` builds the brain around the module
-  with the map among its senses: the brain's own inputs, the map's read, then the module's
-  inputs. `module.columns(brain)` gives the module's columns of the whole row.
-- **Only the senses change it.** The map has no taught synapse, so the brain's lessons and
-  rewards do not reach it: `moment` alone writes it.
-
 ### Modules the library ships
 
 | Module | What it holds | Size | Status |
@@ -1065,7 +1101,7 @@ Each row below was read from the library's own refusal.
 | `grow` | New slots where a memory is laid out per action (`recall_action`, `recall_tokens`, `memory_choice`), where a tie cuts the motor region into blocks, or where observers sit above the motor of a deep brain | Compose the slots at birth |
 | `grow` | A recall memory with `recall_tokens`, and heads for a brain with them | Compose the memory with its tokens |
 | `grow` | A brain that records no construction (`compose(connectome=...)`), and rates set by hand | Graft a custom anatomy into a larger one; set the rates on the grown brain |
-| `grow`, `graft` | A brain with a held message, long-term records or learned fields, as host or as donor | Compose the brain that needs them, and teach it |
+| `grow`, `graft` | A brain with a held message, long-term records, records of bound moments or learned fields, as host or as donor | Compose the brain that needs them, and teach it |
 | `graft` | A brain with tied projections or rates set by hand, as host or as donor | Graft untied brains |
 | `graft` | A learned code's `code` region, or a joint that lands on it | Graft the regions above the code |
 | `graft` | Regions that share no synapse; regions of different sizes; a donor synapse the host lacks; another neuron model or apical compartment | Graft the regions a trained pathway runs through, into a host laid out alike |
@@ -1091,6 +1127,9 @@ Each row below was read from the library's own refusal.
 | `save_module` | A name that is empty or holds `/`; a region that is no population of the brain; no inputs or no published regions; an input region that is no input of the brain; a donor with a learned code | Name populations of the brain's own senses as inputs |
 | `compose(..., trained=)` with a trained module | Image `inputs` or `ports`; `code`, `learned_code`, `learned_fields`, `tied` or `connectome=` beside it; `message`; anything in `trained` that is no trained module, map or name of a module the library ships; two modules of one name; a module named as a region of the brain or as a sense; a module whose donor has an apical compartment | A vector brain with inputs of its own, or `graft(module)` into an anatomy of your own |
 | `compose(..., trained=)` with a map | Two maps; image `inputs`, `learned_fields` or `ports`; a brain without an input of its own; a name the library ships no module by | One map a brain, beside `inputs=count` or `senses=` |
+| `compose(bound=)` | A brain without `senses=` and `code=units`; a learned code beside it | `senses={...}, code=units, bound=records` |
+| `compose(voice=)` | A voice without `bound=`; a sense with fields; a name that is no declared sense | `voice="ear"` naming a declared sense of one width, beside `bound=` |
+| `say`, `complete` | `say` on a brain without a voice; `complete` on a brain without records | `voice=` and `bound=` at `compose` |
 | `compose(senses=)` | `inputs=` beside it; a sense or a field without a name or with a width below 1; a sense without a field; the name `space`; `learned_fields` or `ports` | `senses={name: width}` alone; an image brain takes `inputs=(height, width)` |
 | Observations by name | A dict for a brain composed without `senses=`; a sense or a field the brain does not have; another width than the sense declared; senses that give different numbers of rows; `space`, which the brain reads from its map; with a map, rows that are neither the brain's own senses nor the whole row; a brain whose `space` holds no map, or a map of another size | A dict of the declared senses, or rows of their summed width |
 | `compose(..., trained=)`, `graft(module)` | A module whose donor held a message or tied projections | A donor without them |
