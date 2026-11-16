@@ -22,8 +22,23 @@ const APICAL_TINY: f64 = 1e-24;
 /// `fused._FAST_SETTLED`: a fast solve's row stops within this.
 const FAST_SETTLED: f64 = 1e-5;
 
+/// What the Python refuses with a `ValueError`.
 fn refused(text: &str) -> Error {
+    Error::Refused(text.to_string())
+}
+
+/// A kernel that would not take the arrays handed to it: a fault, never the Python's refusal.
+fn fault(text: &str) -> Error {
     Error::Shape(text.to_string())
+}
+
+/// `np.ldexp(x, -halvings)`: `x` halved `halvings` times, exactly.
+fn halved(x: f64, halvings: i64) -> f64 {
+    let mut out = x;
+    for _ in 0..halvings {
+        out *= 0.5;
+    }
+    out
 }
 
 /// A view of a run the kernels only read.
@@ -1105,7 +1120,7 @@ impl Graph {
                            held(&mut change, batch, 1), held(&mut kept, length, 1)) as i64
         };
         if taken < 0 {
-            return Err(refused("the settle kernel refused its arrays"));
+            return Err(fault("the settle kernel refused its arrays"));
         }
         let published = !k.masked && no_nan(&v) && no_nan(&s);
         Ok(State { batch, v, activation: s, adaptation: a, steps: taken,
@@ -1128,7 +1143,7 @@ impl Graph {
             return self.local(drive, state, budget, chunk, tolerance, mask, nudge, false, fast);
         }
         let attempts = (damping + 1).min(budget.max(1));
-        self.neuron.check_at(libm::scalbn(self.neuron.dt, -(attempts as i32 - 1)))?;
+        self.neuron.check_at(halved(self.neuron.dt, attempts - 1))?;
         let (mut used, mut checks, mut stagnation) = (0i64, 0i64, 0i64);
         let mut current = state.cloned();
         let mut result = None;
@@ -1138,7 +1153,7 @@ impl Graph {
             let graph = if halving == 0 {
                 self
             } else {
-                candidate = self.with_dt(libm::scalbn(self.neuron.dt, -(halving as i32)));
+                candidate = self.with_dt(halved(self.neuron.dt, halving));
                 &candidate
             };
             let phase = graph.local(drive, current.as_ref(), portion, chunk, tolerance, mask,
@@ -1243,7 +1258,7 @@ impl Graph {
                            held(&mut report, 4, 1), held(&mut kept, length, 1))
             };
             if code < 0 {
-                return Err(refused("the fast solve refused its arrays"));
+                return Err(fault("the fast solve refused its arrays"));
             }
             let published = no_nan(&v) && no_nan(&s);
             return Ok(Some(Equilibrium {
@@ -1267,7 +1282,7 @@ impl Graph {
                           held(&mut kb, length, 1), held(&mut report, 4, 1))
         };
         if code < 0 {
-            return Err(refused("the solve kernel refused its arrays"));
+            return Err(fault("the solve kernel refused its arrays"));
         }
         let published = no_nan(&v) && no_nan(&s);
         Ok(Some(Equilibrium {
@@ -1325,7 +1340,7 @@ impl Graph {
                              held(&mut kept, length, 1))
         };
         if code < 0 {
-            return Err(refused("the residual kernel refused its arrays"));
+            return Err(fault("the residual kernel refused its arrays"));
         }
         state.published = !k.masked && no_nan(&v)
             && s.iter().zip(&state.activation).all(|(x, y)| x == y);

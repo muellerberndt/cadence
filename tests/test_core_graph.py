@@ -14,7 +14,7 @@ import pytest
 import cadence as cd
 from cadence.brain import Brain, Nudge
 from cadence.connectome import Connectome
-from cadence.core import Core, _default_library, pack
+from cadence.core import Core, Refused, _default_library, pack
 from cadence.core.parts import part
 from cadence.neuron import Adaptation, NeuronModel
 
@@ -177,16 +177,16 @@ def test_the_core_refuses_what_the_python_refuses():
     ):
         with pytest.raises(ValueError):
             graph.settle_batch(drive, **kwargs)
-        with pytest.raises(RuntimeError):
+        with pytest.raises(Refused):
             core.call("graph", "settle_batch", state, SETTLE[0](drive, **kwargs))
     held = Nudge(np.zeros(n), np.ones(n), 0.1, apical_gain=np.ones((1, 5)))
     with pytest.raises(ValueError):
         graph.settle_batch(np.zeros((1, n)), steps=1, nudge=held)
-    with pytest.raises(RuntimeError):
+    with pytest.raises(Refused):
         core.call("graph", "settle_batch", state,
                   SETTLE[0](np.zeros((1, n)), steps=1, nudge=held))
-    with pytest.raises(RuntimeError):
+    with pytest.raises(Refused):
         core.call("graph", "equilibrate", state, SOLVE[0](np.zeros((1, n)), chunk=0))
     bad = {**state, "efficacy": np.full_like(state["efficacy"], np.inf)}
-    with pytest.raises(RuntimeError):
+    with pytest.raises(Refused):
         core.call("graph", "state", bad, {})
