@@ -1185,9 +1185,7 @@ impl Brain {
     /// `_choices(state)`: the greedy readout, one argmax per motor slot.
     fn choices(&self, state: &State) -> Result<Vec<i64>, Error> {
         let learner = self.learner.as_ref().ok_or_else(|| fault("the brain holds no learner"))?;
-        let n = state.activation.len() / state.batch.max(1);
         let out: Vec<f64> = self.motor.iter().map(|&k| state.activation[k as usize]).collect();
-        let _ = n;
         if learner.slot_count() > 1 {
             let mut at = 0usize;
             let mut choice = Vec::with_capacity(learner.slot_count());
@@ -1559,5 +1557,15 @@ impl Brain {
             _ => return Err(Error::Missing(method.to_string())),
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// A world's animals live on threads of their own (`rayon` across animals natively).
+    #[test]
+    fn a_brain_moves_between_threads() {
+        fn sent<T: Send + Sync>() {}
+        sent::<super::Brain>();
     }
 }

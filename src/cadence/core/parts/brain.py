@@ -22,9 +22,14 @@ without its memories' traces, and names each memory's attribute (``hearing.memor
 in ``Memories.ORDER``); the place records cross without the maturity's factor, which is the
 maturity's.
 
+The learner crosses without its graph (the brain's, ``brain``), and the actor and critic
+(``basal_ganglia``, with the maturity as ``basal_ganglia.maturity.*``) without the learner, the
+recall memory and the hearing it reaches, which are the brain's own.
+
 The core holds the brain a Wild animal lives with: senses by name, a sparse code, the working
 trace, the heard history, the recall memory, place records, bound records, surprise with its
-focus, a map, arousal. ``state_of`` refuses a brain with another part by name."""
+focus, a map, arousal, the learner and the actor and critic with a maturity. ``state_of``
+refuses a brain with another part by name."""
 
 from __future__ import annotations
 
@@ -93,8 +98,10 @@ def _unheld(brain: Brain) -> None:
 def _hearing(brain: Brain, state: dict[str, Any]) -> dict[str, Any]:
     """The hearing's state without what its memories hold: the gains and the traces."""
     out = {k: v for k, v in state.items() if k != "gains" and not k.startswith("memory.")}
+    hearing = brain.hearing
+    assert hearing is not None
     held: list[Any] = []
-    for route in brain.hearing.routes:
+    for route in hearing.routes:
         if not any(route["memory"] is m for m in held):
             held.append(route["memory"])
     codes = []
@@ -184,8 +191,8 @@ def state_of(brain: Brain) -> dict[str, Any]:
             raise ValueError("the core holds no learned code")
         out.update({"spine.lived.x": np.array(x, dtype=np.float64),
                     "spine.lived.action": np.array(action, dtype=np.int64),
-                    "spine.lived.value": np.float64(value), "spine.lived.aroused": np.bool_(aroused),
-                    "spine.lived.own": np.bool_(own)})
+                    "spine.lived.value": np.float64(value),
+                    "spine.lived.aroused": np.bool_(aroused), "spine.lived.own": np.bool_(own)})
     if brain._moment is not None:
         out["spine.moment.x"] = np.array(brain._moment[0], dtype=np.float64)
         out["spine.moment.action"] = np.array(brain._moment[1], dtype=np.int64)
@@ -213,8 +220,10 @@ def state_of(brain: Brain) -> dict[str, Any]:
 def _heard(brain: Brain, inner: dict[str, Any]) -> dict[str, Any]:
     """The hearing's state as its part restores it: the gains as the memories, restored
     before, hold them."""
+    hearing = brain.hearing
+    assert hearing is not None
     out = {k: v for k, v in inner.items() if k != "memory_of"}
-    out["gains"] = np.array([part("hearing")._gain(r) for r in brain.hearing.routes],
+    out["gains"] = np.array([part("hearing")._gain(r) for r in hearing.routes],
                             dtype=np.float64)
     return out
 
@@ -239,12 +248,14 @@ def restore(brain: Brain, state: dict[str, Any]) -> None:
             reached = {f"learner.graph.{k}": v for k, v in _under(state, "brain").items()}
             reached.update({f"learner.{k}": v for k, v in _under(state, "learner").items()})
             reached.update({f"memory.{k}": v for k, v in _under(state, "recall").items()})
-            reached.update({f"hearing.{k}": v
-                            for k, v in _heard(brain, _under(state, "hearing")).items()})
+            if brain.hearing is not None:
+                reached.update({f"hearing.{k}": v
+                                for k, v in _heard(brain, _under(state, "hearing")).items()})
             inner = {**reached, **inner}
         part(name).restore(held, inner)
     agent = brain.basal_ganglia
     if "spine.lived.x" in state:
+        assert agent.state is not None  # a lived action's free state is the actor's
         brain._lived = (np.array(state["spine.lived.x"], dtype=np.float64),
                         np.array(state["spine.lived.action"], dtype=np.int64),
                         float(state["spine.lived.value"]), bool(state["spine.lived.aroused"]),
