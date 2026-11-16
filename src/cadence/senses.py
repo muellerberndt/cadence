@@ -57,6 +57,7 @@ class Things:
 
     @property
     def width(self) -> int:
+        """The sense's width: every field's cells."""
         return int(sum(self.widths.values()))
 
     def rows(self, readings: Mapping[str, Any]) -> dict[str, np.ndarray]:
@@ -94,6 +95,7 @@ class Ear:
 
     @property
     def width(self) -> int:
+        """The sense's width: ``frames`` times ``bands``."""
         return self.frames * self.bands
 
     def code(self, frames: Any) -> np.ndarray:

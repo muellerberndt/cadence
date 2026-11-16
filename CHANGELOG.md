@@ -2,20 +2,48 @@
 
 ## 0.101.0 - 2026-11-16
 
-Sounds as symbols. A brain whose senses are declared by name keeps records of what its senses
-held together and reads them back by a part: a sound heard alone brings back the thing it was
-heard with, a voice says the sound its records bind to what it sees, a reward makes a said sound
-the answer, and a heard name draws the focus to its thing on the map. With the new options unset
-a brain is composed, acts, learns and saves as on 0.100.0, to the bit.
+Sounds as symbols. A brain can hold on to what its senses took in together and get it back
+from a part: hear the word "cup" alone and the cup's form comes back into its senses; see the cup
+and its voice says the word it heard with it; ask it a question, pay it when it answers right,
+and the paid answer is the one it gives from then on; say a thing's name and its attention goes
+to that thing on its map, in view or hidden. Everything is opt-in: a brain composed without the
+new options is the brain of 0.100.0, to the bit.
 
-Two items of the plan (#344) move to 0.102.0. **Sentences (#308):** the sentence state's
-declared parity gate fails on paths in every arm read so far (.07 to .31 against .81 and .83 for
-the matched LSTM and transformer), on a term the role design does not touch: under the bar that
-empties a heard sentence's recall slots, the recall read never learns a path's hops. **Records at
-any size (#310):** its branch rewrites the long-term store where 0.100.0's record strength and
-learned heads do (25 conflicting places), and its options fold into fewer names before its
-sixth declaration runs on the code that ships. The reading of the soft lesson's round 5 (#304),
-which shipped in 0.100.0, is posted on its issue.
+```python
+import numpy as np
+from cadence import Brain
+from cadence.senses import Ear, Things
+
+things = Things({"hue": (0.0, 1.0), "shape": [(0.0, 1.0)] * 3})     # the eyes: tuned cells
+ear = Ear(frames=8, bands=10)                                       # an utterance as one code
+parrot = Brain.compose(senses={"eyes": things.widths, "ear": ear.width}, actions=2,
+                       code=512, bound=256, voice="ear", arousal=True, seed=0)
+cup = things.rows({"hue": [0.85], "shape": [[0.6, 0.3, 0.2]]})
+cup_word = ear.code(np.random.default_rng(0).normal(size=(20, 10)))  # "cup", as log-mel frames
+for _ in range(3):
+    parrot.act({"eyes": cup, "ear": cup_word}, greedy=True)         # a cup, and "cup" heard
+assert parrot.complete({"ear": cup_word})["eyes"]["shape"].any()    # "cup" alone: the cup's form
+said = parrot.say({"eyes": cup})                                     # a cup alone: what it says
+assert float(said[0] @ cup_word[0]) > 0.9                            # the word it heard with it
+```
+
+The guide is [records of bound moments](docs/memory.md#records-of-bound-moments-opt-in); the
+parrot demo, a parrot that learns words from a trainer and pistachios, is the example of symbols
+learned by reward ([cadence-demos: parrot](https://github.com/muellerberndt/cadence-demos/tree/main/parrot)).
+
+**Moved to 0.102.0.** Two items planned for this release (#344) are not in it:
+- **The sentence state (#308).** Its declared gate of parity with a matched LSTM and transformer
+  fails on paths in every design read so far (.07 to .31 against .81 and .83), for a reason the
+  planned design does not touch: when the brain's notes of a heard sentence are cleared at
+  `GO`, its recall read never learns to follow a path's hops. 0.102.0 starts from a development
+  reading of the planned design (the role of each heard word chosen by the brain) and of that
+  reason.
+- **Records at any size (#310).** Its branch rewrites the long-term store in the same places
+  where 0.100.0 added a record's strength and learned heads (25 conflicting places), and its
+  options are to fold into fewer names first; its declared run at a million records follows on
+  the merged code.
+The soft lesson for speech (#304) shipped in 0.100.0; the reading of its round 5 is posted on
+its issue.
 
 ### Records of bound moments, a voice, and senses for things and sound (#342, #344)
 
@@ -48,14 +76,15 @@ which shipped in 0.100.0, is posted on its issue.
   `Brain.say`, the modules `cadence.bound` (`BoundRecords`) and `cadence.senses` (`Things`,
   `Ear`).
 - **The symbols chamber** (`benchmarks/symbols`): the parrot that starts with no words. On
-  twelve fresh founders of its third declared run every gate holds: a name heard alone brings its
-  thing back from the records and into the settled state at 1.00; a reward teaches names and
-  "what colour is this" in 4 to 19 exchanges, at chance unpaid; a paid name is said at new
-  places at 1.00; a heard name draws the focus to its thing at .83 to 1.00, in view and behind a
-  screen. The first two declared runs failed (S5 and S6, then S2), their terms located in the
-  chamber's README: the voice read the whole code where a place weighs as a form (the answer
-  rule above), and 64 association neurons settle an apple and a ball alike (the third run's brain
-  has 256).
+  twelve fresh founders of its fourth declared run (the code of this release) every gate holds:
+  a name heard alone brings its thing back from the records at 1.00 and into the settled state
+  at .975 to 1.00; a reward teaches names and "what colour is this" in 3 to 21 exchanges, at
+  chance unpaid; a paid name is said at new places at 1.00; a heard name draws the focus to its
+  thing at .83 to 1.00, in view and behind a screen. The first two declared runs failed (S5 and
+  S6, then S2), their terms located in the chamber's README: the voice read the whole code where
+  a place weighs as a form (the answer rule above), and 64 association neurons settle an apple
+  and a ball alike (the later runs' brain has 256). The third run held every gate before an
+  independent review's fixes; the fourth reads the code after them.
 
 ## 0.100.0 - 2026-11-16
 

@@ -4149,7 +4149,10 @@ class Brain:
         if self.message is not None:
             raise ValueError("a brain with a message is not grown in this version")
         if self.bound is not None:
-            raise ValueError("a brain with bound records is not grown in this version")
+            raise ValueError(
+                "a brain with bound records is not grown in this version: compose a new brain "
+                "with the parts it needs"
+            )
         if self.fields is not None:
             raise ValueError("grow and graft take a brain without learned fields in this version")
         return _grow(self, parts)
@@ -4211,7 +4214,10 @@ class Brain:
         if self.message is not None or getattr(donor, "message", None) is not None:
             raise ValueError("a brain with a message is not grafted in this version")
         if self.bound is not None or getattr(donor, "bound", None) is not None:
-            raise ValueError("a brain with bound records is not grafted in this version")
+            raise ValueError(
+                "a brain with bound records is not grafted in this version: compose a new brain "
+                "with the parts it needs"
+            )
         if self.fields is not None or getattr(donor, "fields", None) is not None:
             raise ValueError("grow and graft take a brain without learned fields in this version")
         return _graft(self, donor, regions, into, joints, freeze)
@@ -4631,7 +4637,10 @@ class Brain:
         held = self.bound
         assert held is not None
         if held.voice is None:
-            raise ValueError("say needs a voice: compose the brain with voice=<the heard sense>")
+            raise ValueError(
+                "say needs a voice: compose the brain with voice= naming the sense it hears in, "
+                "such as voice=\"ear\""
+            )
         return held.say(rows, self._bound_keyed(rows))
 
     def observation_code(self, observations: Any) -> np.ndarray:
@@ -9150,9 +9159,15 @@ def _bound_senses(declared: dict[str, Any] | None, records: Any, voice: Any, cod
             "senses={...} and code=units"
         )
     if records is None:
-        raise ValueError("voice= says what the brain's records hold: compose it with bound=records")
+        raise ValueError(
+            "voice= says what the brain's records hold: compose it with bound=records too, "
+            "such as bound=4096"
+        )
     if isinstance(records, bool) or not isinstance(records, (int, np.integer)) or records < 1:
-        raise ValueError("bound is the records a brain keeps: a positive integer")
+        raise ValueError(
+            "bound is how many records the brain keeps: pass a positive integer, such as "
+            "bound=4096"
+        )
     if code is None or learned_code is not None:
         raise ValueError(
             "bound records key on the fixed code where the senses meet: compose the brain with "
@@ -9170,7 +9185,8 @@ def _bound_senses(declared: dict[str, Any] | None, records: Any, voice: Any, cod
         )
     if isinstance(declared[voice], Mapping):
         raise ValueError(
-            f"voice speaks in the format of a sense of one field: {voice!r} has fields"
+            f"voice speaks in the format of a sense of one field, and {voice!r} has fields: "
+            f"declare it by its width, such as senses={{{voice!r}: 640}}"
         )
     return {**declared, _VOICE: declared[voice]}
 

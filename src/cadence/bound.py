@@ -104,7 +104,9 @@ class BoundRecords:
                  voice: str | None = None, heard: str | None = None, seed: int = 0) -> None:
         if isinstance(capacity, bool) or not isinstance(capacity, (int, np.integer)) or (
                 capacity < 1):
-            raise ValueError("bound is the records a brain keeps: a positive integer")
+            raise ValueError(
+                "bound is how many records the brain keeps: pass a positive integer, such as "
+                "bound=4096")
         self.capacity = int(capacity)
         self.voice, self.heard, self.seed = voice, heard, int(seed)
         self.fields = _fields(named, self.SKIP)
@@ -126,13 +128,18 @@ class BoundRecords:
     # -- what a description and a file hold
 
     def settings(self) -> dict[str, Any]:
+        """The records' construction: ``records``, the ``voice`` sense, the ``heard`` sense it
+        takes its format from, and the ``seed`` of the store's address."""
         return {"records": self.capacity, "voice": self.voice, "heard": self.heard,
                 "seed": self.seed}
 
     def to_dict(self) -> dict[str, Any]:
+        """What a checkpoint's metadata keeps: the settings and the babbles drawn."""
         return {**self.settings(), "draws": int(self.draws)}
 
     def arrays(self) -> dict[str, np.ndarray]:
+        """What a checkpoint's arrays keep: the store's (``store/<name>``), the moment a reward
+        pays (``written``), the refused records and each record's pay."""
         out = {f"store/{name}": value for name, value in self.store.arrays().items()}
         out["written"] = self.written.copy()
         out["refused"] = self.refused.copy()
@@ -142,6 +149,8 @@ class BoundRecords:
     @classmethod
     def from_parts(cls, named: Mapping[str, Any], key_width: int, inputs: int,
                    record: Mapping[str, Any], arrays: Mapping[str, Any]) -> BoundRecords:
+        """The records a checkpoint kept (``to_dict`` and ``arrays``), for a brain of the senses
+        ``named``; refused by name where they do not fit."""
         try:
             out = cls(named, key_width, inputs, int(record["records"]),
                       voice=record.get("voice"), heard=record.get("heard"),
@@ -441,7 +450,7 @@ class BoundRecords:
 
     def pay(self, reward: Any) -> None:
         """A reward for the moment the brain acted at: each stream's record of it deepens by
-        ``PAY`` tellings a unit of reward, counted as its pay, and is no longer refused; a
+        ``PAY`` tellings a unit of reward, counted as its pay, and its refusal is lifted; a
         reward of zero or less refuses a record of something said (it then answers nothing and
         its sound is passed over at moments like it, until a reward pays it)."""
         r = np.asarray(reward, dtype=np.float64).reshape(-1)
