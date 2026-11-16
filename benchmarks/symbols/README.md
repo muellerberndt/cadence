@@ -175,3 +175,34 @@ founders **1010300 to 1010311**, twelve and fresh, the same gates and bars (S1 t
 
 **Expectations.** Every gate on 11 or 12 founders; S3 and S7 may miss on one or two, as in the
 first two runs.
+
+**Read: every gate holds.**
+
+| founder | S1 | S2 | barred | dealt | names (exchanges) | colours (exchanges) | unpaid names | unpaid colours | S6 | S7 in view | S7 screen | untaught | Y1h | s |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1010300 | 1.0 | 1.0 | 0.05 | 0.0 | [7, 7, 19, 10] | [10, 7, 16, 15] | 0.072 | 0.091 | 1.0 | 1.0 | 1.0 | 0.0 | 0.85 | 86.7 |
+| 1010301 | 1.0 | 1.0 | 0.05 | 0.075 | [16, 4, 16, 16] | [9, 10, 11, 16] | 0.084 | 0.074 | 1.0 | 1.0 | 1.0 | 0.0 | 0.825 | 85.5 |
+| 1010302 | 1.0 | 1.0 | 0.05 | 0.0 | [5, 8, 13, 9] | [7, 14, 19, 9] | 0.072 | 0.066 | 1.0 | 1.0 | 1.0 | 0.0 | 0.9 | 88.6 |
+| 1010303 | 1.0 | 1.0 | 0.3 | 0.0 | [5, 5, 12, 17] | [6, 17, 15, 5] | 0.072 | 0.05 | 1.0 | .92 | 1.0 | 0.0 | 0.975 | 99.3 |
+| 1010304 | 1.0 | 1.0 | 0.1 | 0.0 | [18, 4, 13, 6] | [7, 16, 10, 11] | 0.075 | 0.062 | 1.0 | .92 | 1.0 | 0.0 | 0.95 | 98.0 |
+| 1010305 | 1.0 | 1.0 | 0.05 | 0.05 | [4, 11, 16, 4] | [15, 6, 16, 17] | 0.075 | 0.047 | 1.0 | .92 | .92 | 0.0 | 0.875 | 101.3 |
+| 1010306 | 1.0 | 1.0 | 0.1 | 0.0 | [5, 15, 16, 8] | [9, 8, 7, 5] | 0.056 | 0.05 | 1.0 | .92 | 1.0 | 0.0 | 0.9 | 117.2 |
+| 1010307 | 1.0 | 1.0 | 0.1 | 0.0 | [10, 9, 4, 10] | [5, 11, 6, 16] | 0.081 | 0.072 | 1.0 | .83 | 1.0 | 0.0 | 0.9 | 108.0 |
+| 1010308 | 1.0 | 1.0 | 0.0 | 0.0 | [7, 8, 12, 4] | [5, 6, 17, 5] | 0.078 | 0.066 | 1.0 | 1.0 | 1.0 | 0.0 | 0.9 | 106.0 |
+| 1010309 | 1.0 | 1.0 | 0.025 | 0.0 | [15, 6, 13, 18] | [12, 10, 11, 16] | 0.056 | 0.069 | 1.0 | 1.0 | 1.0 | 0.0 | 0.725 | 102.9 |
+| 1010310 | 1.0 | 1.0 | 0.225 | 0.0 | [9, 10, 13, 16] | [9, 16, 13, 16] | 0.107 | 0.062 | 1.0 | .92 | 1.0 | 0.0 | 0.85 | 102.3 |
+| 1010311 | 1.0 | 1.0 | 0.1 | 0.0 | [12, 6, 15, 5] | [16, 16, 12, 12] | 0.059 | 0.066 | 1.0 | .92 | 1.0 | 0.0 | 0.875 | 105.6 |
+
+
+| Gate | Founders that hold it | |
+| --- | --- | --- |
+| S1, a name brings its thing back from the records | 12 of 12 (1.00 each) | holds |
+| S2, the thing in the settled state | 12 of 12 (1.00 each) | holds |
+| S3, controls: barred .00 to .30, dealt .00 to .075 | 11 of 12 | holds |
+| S4, names learned by reward | 12 of 12 (4 to 19 exchanges a thing; unpaid .056 to .107) | holds |
+| S5, "what colour is this" learned by reward | 12 of 12 (5 to 19; unpaid .047 to .091) | holds |
+| S6, the named things at new places | 12 of 12 (1.00 each) | holds |
+| S7, a heard name draws the focus | 11 of 12 (.83 to 1.00 in view, .92 to 1.00 behind a screen, .00 after listening alone) | holds |
+
+Beside them, without a bar: a thing named from the naming moments alone (Y1h) .725 to .975; the
+lookup table and the delta-rule readout given the same exchanges are in each life's record.

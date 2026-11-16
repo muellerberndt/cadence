@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.101.0 - 2026-11-16
 
 Sounds as symbols. A brain whose senses are declared by name keeps records of what its senses
 held together and reads them back by a part: a sound heard alone brings back the thing it was
@@ -46,8 +46,15 @@ which shipped in 0.100.0, is posted on its issue.
   `Lives` refuse it. New public names: `bound` and `voice` in `compose`, `Brain.complete`,
   `Brain.say`, the modules `cadence.bound` (`BoundRecords`) and `cadence.senses` (`Things`,
   `Ear`).
-- **The symbols chamber** (`benchmarks/symbols`): the parrot that starts with no words, its
-  declared protocol on #342.
+- **The symbols chamber** (`benchmarks/symbols`): the parrot that starts with no words. On
+  twelve fresh founders of its third declared run every gate holds: a name heard alone brings its
+  thing back from the records and into the settled state at 1.00; a reward teaches names and
+  "what colour is this" in 4 to 19 exchanges, at chance unpaid; a paid name is said at new
+  places at 1.00; a heard name draws the focus to its thing at .83 to 1.00, in view and behind a
+  screen. The first two declared runs failed (S5 and S6, then S2), their terms located in the
+  chamber's README: the voice read the whole code where a place weighs as a form (the answer
+  rule above), and 64 association neurons settle an apple and a ball alike (the third run's brain
+  has 256).
 
 ## 0.100.0 - 2026-11-16
 

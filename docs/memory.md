@@ -2133,12 +2133,16 @@ the settings under `bound`. `grow`, `graft` and `Lives` refuse a brain with reco
 
 **What it reads.** In the [symbols chamber](../benchmarks/symbols/README.md) (the parrot that
 starts with no words: eight kinds of things in two colours, seventeen words said by a speaker),
-on development founders a kind's name heard alone brings back its kind from the records at 1.00
-and in the settled state at .68 to 1.00 (.03 to .28 with the records barred); a reward teaches
-each thing's name and the answer to "what colour is this" in 4 to 71 exchanges, at chance unpaid;
-and a heard name draws the focus to its thing on the map at .83 to 1.00, in view and behind a
-screen. A thing seen alone is named from moments of naming alone at .82 to .90: the read weighs a
-thing's place and colour as it weighs its form, which decides its name.
+on twelve fresh founders of its third declared run (256 association neurons): a kind's name
+heard alone brings back its kind from the records at 1.00 and in the settled state at 1.00 on
+every founder (.00 to .30 with the records barred, .00 to .075 with their values dealt to other
+keys); a reward teaches each of four things' names in 4 to 19 exchanges and the answer to "what
+colour is this" in 5 to 19, at chance unpaid; a name paid at a few places is said for the thing at
+places no exchange used at 1.00; and a heard name draws the focus to its thing on the map at .83
+to 1.00 in view and .92 to 1.00 behind a screen, never after listening alone. A thing seen alone
+is named from moments of naming alone, with no reward, at .725 to .975: those moments do not tell
+the read which fields a name follows. The first two declared runs failed S5 and S6, then S2 (64
+association neurons settle an apple and a ball alike), each located in the chamber's readings.
 
 ## How strongly a carried region is heard
 
