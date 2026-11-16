@@ -3,8 +3,24 @@
 This page covers the mechanics below [`Brain.compose`](tune.md), for building or debugging a
 `NeuralGraph` or `Learner` directly. Learning rules live in
 [learning](#learning-the-freenudged-rule) and [reward](reward.md);
-[orientation](../README.md#where-the-learning-signal-comes-from) says where each family's
+[orientation](../README.md#where-the-learning-signal-comes-from) says where each part's
 teaching signal comes from.
+
+A graph of neurons settles under a drive: every neuron updates from its inputs until the
+equations hold everywhere, and the outputs are read from the settled state.
+
+```python
+import numpy as np
+import cadence as cd
+
+connectome = cd.layered(4, 16, 2, seed=0)                       # 4 inputs, 16 hidden, 2 outputs
+graph = cd.NeuralGraph(connectome, cd.learning_neuron_model())
+drive = np.zeros((1, connectome.n))
+drive[0, 0] = 1.0                                               # the first input is on
+settled = graph.equilibrate(drive, tolerance=1e-6)              # sweep until the equations hold
+assert settled.converged[0] and graph.residual(drive, settled.state)[0] < 1e-6
+outputs = settled.state.activation[0, connectome.populations["output"]]   # what is read
+```
 
 ## Neurons and synapses
 

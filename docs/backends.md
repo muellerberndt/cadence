@@ -17,10 +17,14 @@ everything else takes `backend="torch"` or `backend="mlx"` by name. `available_b
 importable backends with the device and default precision each would use.
 
 ```python
+import numpy as np
 import cadence as cd
 
 print(cd.available_backends())
 # e.g. {'cpu': 'numpy float64', 'torch': 'mps float32', 'mlx': 'gpu float32'} on an M-series Mac
+brain = cd.Brain.compose(inputs=8, actions=3)              # "auto": it picks at its first moment
+brain.act(np.eye(8)[[0]])
+print(brain.placement["backend"], brain.placement["why"])  # where it runs, and why
 ```
 
 ## Which backend should I use?
@@ -600,7 +604,7 @@ float32, whichever of the first two taught it. On that benchmark's four regions 
 the mean of the ten readings from lesson 3,100 over six seeds is .802 on the CPU (.719 to .831) and
 .786 on MLX (.751 to .817): MLX reads .016 below, with a standard error of .015 on that difference. A
 single reading swings further on both, down to .40 past lesson 2,000 on the CPU and .39 on MLX, so
-compare runs by such a mean over seeds, not by a last reading.
+compare runs by such a mean over seeds; a last reading alone misleads.
 
 ## Residual checks, masks and conformance
 

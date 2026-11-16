@@ -1,7 +1,24 @@
-# Wide inputs: images and codes
+# Senses: named senses, images and codes
 
-For wide inputs (an image, a long sensor vector, thousands of features), choose how the brain
-reads them:
+<a id="wide-inputs-images-and-codes"></a>
+
+A sense is what reaches the brain at each moment. Declare several senses by name, and give each
+by its name at every moment; with `code=units` each sense counts alike in the code the brain's
+memories key on, whatever its width:
+
+```python
+import numpy as np
+from cadence import Brain
+
+brain = Brain.compose(senses={"eyes": 24, "ear": 16}, actions=2, code=64, seed=0)
+seen, heard = np.random.default_rng(0).random((1, 24)), np.eye(16)[[3]]
+action = brain.act({"eyes": seen, "ear": heard}, greedy=True)    # each sense by its name
+action = brain.act({"eyes": seen}, greedy=True)                  # the ear is silent
+assert brain.observation_code({"eyes": seen}).shape == (1, 64)   # what the memories key on
+```
+
+For a few numbers, named senses, an image, a long sensor vector or thousands of features, choose
+how the brain reads them:
 
 | Setting | What the brain reads | Section |
 | --- | --- | --- |
@@ -13,11 +30,6 @@ reads them:
 | `PopulationCode(ranges)` before the brain | a few continuous readings (an angle, a velocity, a distance), each spread over tuned inputs | [continuous readings](#continuous-readings-a-population-code) |
 | `senses={name: width}` in place of `inputs` (opt-in) | several senses declared by name, each given by name at every moment; with `code=units` every sense enters the code at unit length | [senses by name](#senses-by-name) |
 | `cadence.senses.Things` and `Ear` | a seen thing as tuned cells a field, and an utterance as one code | [a sense for things and an ear](#a-sense-for-things-and-an-ear) |
-
-```python
-import numpy as np
-from cadence import Brain
-```
 
 ## Image inputs
 
