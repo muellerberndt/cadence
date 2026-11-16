@@ -761,3 +761,10 @@ def test_a_grown_brain_with_a_slots_strength_names_it_in_its_file(tmp_path):
         saved = json.loads(str(archive["brain"]))
     assert saved["format"] == "cadence-brain/5" and saved["features"] == ["recall_strength"]
     assert cd.Brain.load(path).recall.strength
+
+
+def test_attention_and_recall_strength_are_refused_with_the_window_named():
+    with pytest.raises(ValueError, match="recall_strength does not compose with attention=True"
+                       ) as refused:
+        cd.Brain.compose(53, 4, learned_code=64, attention=True, recall_strength=True, seed=0)
+    assert "recall_window=2" in str(refused.value)

@@ -379,3 +379,19 @@ def test_a_brain_keys_its_message_by_role_and_keeps_it_in_a_checkpoint(tmp_path)
     assert np.array_equal(loaded.act(stream[0], greedy=True), brain.act(stream[0], greedy=True))
     with pytest.raises(ValueError):
         _brain(message=8, message_roles=((12,),))
+
+
+def test_a_message_emptied_at_a_boundary_continues_after_a_load(tmp_path):
+    """Without roles a message saves no counts (every count is zero); a loaded brain whose message
+    empties at a boundary rebuilds them and continues as the brain it was saved from."""
+    brain = cd.Brain.compose(32, 3, modules=(16,), seed=3, backend="cpu", message=12,
+                             message_boundary=31)
+    x, edge = np.eye(32)[[0]], np.eye(32)[[31]]
+    brain.act(x, greedy=True)
+    path = brain.save(tmp_path / "boundary.npz")
+    with np.load(path) as saved:
+        assert "message/counts" not in saved.files  # the file is as 0.100.0 wrote it
+    loaded = cd.Brain.load(path)
+    for moment in (x, edge, x):
+        assert np.array_equal(loaded.act(moment, greedy=True), brain.act(moment, greedy=True))
+    assert np.array_equal(loaded.message.state, brain.message.state)

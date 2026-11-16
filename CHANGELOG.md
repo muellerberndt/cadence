@@ -1,5 +1,121 @@
 # Changelog
 
+## 0.101.0 - 2026-11-16
+
+Sounds as symbols. A brain can hold on to what its senses took in together and get it back
+from a part: hear the word "cup" alone and the cup's form comes back into its senses; see the cup
+and its voice says the word it heard with it; ask it a question, pay it when it answers right,
+and the paid answer is the one it gives from then on; say a thing's name and its attention goes
+to that thing on its map, in view or hidden. Everything is opt-in: a brain composed without the
+new options is the brain of 0.100.0, to the bit.
+
+```python
+import numpy as np
+from cadence import Brain
+from cadence.senses import Ear, Things
+
+things = Things({"hue": (0.0, 1.0), "shape": [(0.0, 1.0)] * 3})     # the eyes: tuned cells
+ear = Ear(frames=8, bands=10)                                       # an utterance as one code
+brain = Brain.compose(senses={"eyes": things.widths, "ear": ear.width}, actions=2,
+                      code=512, bound=256, voice="ear", arousal=True, seed=0)
+cup = things.rows({"hue": [0.85], "shape": [[0.6, 0.3, 0.2]]})
+cup_word = ear.code(np.random.default_rng(0).normal(size=(20, 10)))  # "cup", as log-mel frames
+for _ in range(3):
+    brain.act({"eyes": cup, "ear": cup_word}, greedy=True)         # a cup, and "cup" heard
+assert brain.complete({"ear": cup_word})["eyes"]["shape"].any()    # "cup" alone: the cup's form
+said = brain.say({"eyes": cup})                                     # a cup alone: what it says
+assert float(said[0] @ cup_word[0]) > 0.9                            # the word it heard with it
+```
+
+The guide is [records of bound moments](docs/memory.md#records-of-bound-moments-opt-in).
+
+**Moved to 0.102.0.** Two items planned for this release (#344) are not in it:
+- **The sentence state (#308).** Its declared gate of parity with a matched LSTM and transformer
+  fails on paths in every design read so far (.07 to .31 against .81 and .83), for a reason the
+  planned design does not touch: when the brain's notes of a heard sentence are cleared at
+  `GO`, its recall read never learns to follow a path's hops. 0.102.0 starts from a development
+  reading of the planned design (the role of each heard word chosen by the brain) and of that
+  reason.
+- **Records at any size (#310).** Its branch rewrites the long-term store in the same places
+  where 0.100.0 added a record's strength and learned heads (25 conflicting places), and its
+  options are to fold into fewer names first; its declared run at a million records follows on
+  the merged code.
+
+The soft lesson for speech (#304) shipped in 0.100.0. Its round 5, read at its sixth pass on
+twelve founders: the letter from the sound within .021 of a CTC transformer trained offline (its
+gate holds), characters .048 under it (its gate fails), the gap in saying a letter once it is
+preferred; the reading is on the issue.
+
+### Fixes
+
+- **A held message emptied at a boundary continues after a load.** A brain composed with
+  `message=` and `message_boundary=` (without `message_boundary_holds`) raised `IndexError` at its
+  first moment after `Brain.load`, since 0.99.0: such a message saves no counts (every count is
+  zero without roles), and a load gave it none. A load rebuilds them; the files are as before.
+- **A checkpoint of a later format** is refused with the format found, the formats this release
+  reads and that the release that wrote it (or a newer one) reads it.
+- **`attention=True` with `recall_strength=True`** is refused with the reason in the user's own
+  settings: `attention=True` reads a window of two events, which a slot's strength does not
+  compose with (it named `recall_window`, which the user had not set).
+- **Known issue (#346, 0.102.0):** on the compiled kernel, a brain with a held message that holds
+  at a turn (`message_boundary_holds=True`, which `longterm_strength` also sets) can continue from
+  a save with last-bit differences in its arrays on some machines; its acts are unchanged.
+
+### Documentation
+
+- **[Assemble a brain](docs/assembly.md)**, a new guide: senses by name, a map of things, the
+  memories, attention, learning and saving, put together into four whole brains (a plain one, one
+  with a map, one with an ear and a voice, and one with eyes, an ear, a voice and a map), with what
+  each part costs and what it does not do. Every block runs in the documentation test and in the
+  minimal-install job.
+- **The README's first screen** points to the guides in the order a newcomer needs them: start,
+  assemble a brain, space, sounds as symbols, the live demos and the reference; the documentation
+  index follows the same order.
+- **Corrections in the first guide** (`docs/start.md`): a new brain holds four memories, the
+  heard history of the moment before among them, and the surprise signal counts as tellings in a
+  memory's strength and in records of bound moments.
+
+### Records of bound moments, a voice, and senses for things and sound (#342, #344)
+
+- **`Brain.compose(senses=..., code=units, bound=records)`** (opt-in): one `LongTermMemory` of
+  that many records (`brain.bound`, `cadence.bound.BoundRecords`). Every moment the brain lives
+  in which a sense holds something is written: its value what each sense gave, its key the
+  brain's fixed code of those senses with each sense at unit length and its fields alike within
+  it. A moment told again deepens its record and moves it toward the new take; the brain's
+  surprise counts as tellings; a record kept past 8 tellings stays, one told once is forgotten
+  in time (#336's strength law).
+- **A read by a part.** Before every settle each field the senses leave silent is given what
+  the nearest records that hold it hold alike (the heaviest group of the eight nearest), and the
+  brain settles on the moment so completed. `brain.complete(observations)` gives it, a pure read.
+- **`voice=sense`**: a sense `voice` of that sense's layout, what the brain says, heard by itself.
+  `brain.say(observations)` gives the sound that stands for the moment: among the paid records'
+  sounds, the one whose moments share fields nearest the moment's (a place where they differ
+  left out); else what was heard with it; else a sound drawn from the distinct sounds the records
+  hold, passing over sounds said at moments like this one and not paid.
+- **A reward** to `live` or `step` pays the record of the moment the brain acted at (4 tellings
+  a unit, counted as its pay); a said record answers only once paid, and a reward of zero or less
+  refuses it, its sound passed over at moments like it.
+- **A heard name draws the focus** (with a voice, `surprise=True` and a map whose values are
+  named as a sense's fields): the records read by the heard sound alone bring back a thing's fields, and the
+  matching things on the map take a salience in the focus's competition (`focus.sense ==
+  "named"`).
+- **`cadence.senses.Things`** (a seen thing as tuned cells a field) and **`Ear`** (an utterance as
+  one code from its log-mel frames, or from raw audio).
+- A brain with records saves as `cadence-brain/5` with the feature `bound`; `grow`, `graft` and
+  `Lives` refuse it. New public names: `bound` and `voice` in `compose`, `Brain.complete`,
+  `Brain.say`, the modules `cadence.bound` (`BoundRecords`) and `cadence.senses` (`Things`,
+  `Ear`).
+- **The symbols chamber** (`benchmarks/symbols`): a brain that starts with no words. On
+  twelve fresh founders of its fourth declared run (the code of this release) every gate holds:
+  a name heard alone brings its thing back from the records at 1.00 and into the settled state
+  at .975 to 1.00; a reward teaches names and "what colour is this" in 3 to 21 exchanges, at
+  chance unpaid; a paid name is said at new places at 1.00; a heard name draws the focus to its
+  thing at .83 to 1.00, in view and behind a screen. The first two declared runs failed (S5 and
+  S6, then S2), their terms located in the chamber's README: the voice read the whole code where
+  a place weighs as a form (the answer rule above), and 64 association neurons settle an apple
+  and a ball alike (the later runs' brain has 256). The third run held every gate before an
+  independent review's fixes; the fourth reads the code after them.
+
 ## 0.100.0 - 2026-11-16
 
 The composite brain. Senses are declared once, by name; the map of things joins a brain as a
@@ -89,7 +205,7 @@ trained module and a brain with a map assigned by hand.
   whole for a brain that attends it: its kind, each group's amounts as reported, its place, and
   that place from the body (`bearing` from the heading, `distance`). A brain whose attended thing
   is read from the map in place of the eyes' report answers about a thing behind a screen as
-  about a thing in view (#342, one founder of the parrot's research chamber, development
+  about a thing in view (#342, one founder of a research chamber, development
   readings: the thing's name .98 behind a screen against .00 through the eyes).
 
 ### One surprise signal, read from the settle's own residual (#337)

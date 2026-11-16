@@ -27,10 +27,11 @@ again, a little changed. The sections below take each step apart.
 
 `Brain.compose(inputs, actions)` builds a brain with `inputs` sensory neurons and one motor
 neuron per action. Between them sits an **association region** of 64 neurons, where the
-brain forms its interpretation of what it senses. Around that core the brain holds three
+brain forms its interpretation of what it senses. Around that core the brain holds four
 memories, all on by default:
 
 - a **working trace**, which carries the last moment's interpretation into the next one;
+- a **heard history**, which carries what it heard a moment ago;
 - a **recall memory**, a notebook of the stream's recent moments that gives one back when the
   present asks for it;
 - an **associative store**, which remembers which action paid in which situation.
@@ -213,6 +214,8 @@ assert same.pending_feedback                 # the loaded brain awaits the same 
 
 ## Where to go next
 
+- [Assemble a brain](assembly.md): senses by name, a map of things, memories, attention, an ear
+  and a voice, put together into four whole brains.
 - [Parts of a brain](modules.md): the catalogue of every part, and brains composed for a purpose.
 - [Train a brain](teach.md): every way to train, rates, evaluation and failure modes.
 - [Memory](memory.md): which memory to use for which task.
@@ -559,10 +562,13 @@ The founders: `tolerance=2.0`, `floor=0.05`, `adapt=0.5` and `recover=0.01` for 
 `hold=0.8`, `least=0.5`, `reach=0.1`, `inhibit=1.0`, `release=0.95` and `gain=1.0` for the
 focus ([the reference](api.md#surprise-and-the-focus-cadencesurprise)).
 
-**What it changes and costs.** The option reads the settle and changes no action, weight or
-record: a brain with it chooses, learns and saves as the brain without it, to the bit, beside
-the signal's own arrays. Nothing in the library reads the signal: the strength of a memory and
-the rate of learning take none of it. Each moment costs one more evaluation of the residual, one
+**What it changes and costs.** In a brain without a memory's strength and without records of
+bound moments the option reads the settle and changes no action, weight or record: such a brain
+chooses, learns and saves as the brain without it, to the bit, beside the signal's own arrays.
+With `recall_strength`, `longterm_strength` or `bound=`, a moment's surprise counts as tellings
+of the record or slot it writes, so those records differ; the focus a heard name draws reads it
+too. The arousal law and the rate of learning take none of it: arousal's surprise is an outcome
+measured against the critic's forecast, a measure of its own. Each moment costs one more evaluation of the residual, one
 product of the weights with the carried activity; the chamber's table gives the milliseconds.
 It runs on `backend="cpu"`: another backend, and `Lives`, refuse the option by name.
 
@@ -668,7 +674,7 @@ covers modules and observers.
 | Mechanism | Default in `Brain.compose` | Advances on |
 | --- | --- | --- |
 | Neural activity | retained | each accepted action and each `wait` |
-| Memories | working trace, recall memory and associative store on, the rest opt-in | as listed in [memory](memory.md#memory-in-the-composed-brain); `wait` advances the working trace, heard history and recall slots |
+| Memories | working trace, heard history, recall memory and associative store on, the rest opt-in | as listed in [memory](memory.md#memory-in-the-composed-brain); `wait` advances the working trace, heard history and recall slots |
 | Reward plasticity and demonstrations | `step`, `learn`, `lesson`, aroused `live` | actual outcomes and supplied labels |
 | Arousal | off unless `arousal=True` | each outcome `live` receives |
 | Observers | none unless requested | the same neural solve |
@@ -700,7 +706,7 @@ The composed brain integrates no learned model of environmental transitions
 | --- | --- |
 | Present interpretation and action | `Brain.act` qualifies the whole neural graph's residual with the trace and memory reads held as drive. With `memory_choice=True` the episodic vote joins the motor readout after the settle. The memory stores do not equilibrate jointly with the graph. |
 | Settling work | `Brain.last_settlement` reports free-answer residuals, sweeps, checks and qualification, refused attempts included. Eligibility, teaching, feedback, imagination and memory work are excluded; [`record_settlements`](api.md#record-every-settling-step) records every settlement, learning and imagination included, at a memory and copy cost. |
-| Memories | Working trace, associative store and recall memory on; efference copy, heard history and episodic memory opt-in. Each is read as held drive (the episodic vote joins after the settle) and written after the settle. [Memory](memory.md#memory-in-the-composed-brain). |
+| Memories | Working trace, heard history, associative store and recall memory on; efference copy and episodic memory opt-in. Each is read as held drive (the episodic vote joins after the settle) and written after the settle. [Memory](memory.md#memory-in-the-composed-brain). |
 | Local correction | Teacher labels change graph parameters, the address map of a recall memory and, with `memory_choice=True`, the episodic records. Chosen-action outcomes drive reward plasticity and associative writes. A label credits no earlier action. |
 | Routine and repair | `Brain.live`, for a brain built with `arousal`, answers greedily from one qualified settle while calm and changes no parameter or associative record; the trace, heard history and recall slots advance. Surprise, a reward shortfall or an unmet `need` (founder 0) or `need_scale` (0.1, a constant) raises arousal, and the outcome that wakes the brain is written to its associative store. The first `youth` moments (100) and aroused moments sample, keep eligibility and learn, from success too. One stream; the law's constants are genes. [Routine and repair](#routine-and-repair-live). |
 | Private imagination | `Brain.imagine` settles **supplied** observation sequences with a private trace and read-only durable memory. It learns nothing and generates no environmental transition. [Private imagination](#private-imagination). |
