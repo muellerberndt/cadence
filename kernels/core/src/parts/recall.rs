@@ -939,13 +939,22 @@ impl Recall {
         let mut out = drive;
         let (addresses, attended) = self.reads_of(&moment)?;
         let amplitude = if self.config.drive_gain { 1.0 } else { self.config.amplitude };
+        let mut read = vec![0.0f64; width];
         for (h, p) in attended.iter().enumerate() {
             let Some(p) = p else { continue };
             let (recall, following) = self.head_ports(h);
             for (port, slots) in [(Some(recall), &self.values), (following, &self.nexts)] {
                 let Some(port) = port else { continue };
                 for b in 0..n {
-                    let read = np::matmul(row(p, m, b), 1, m, row(&slots.v, m * width, b), width);
+                    // `np::matmul` of the stream's attention with its slots, in one room: from
+                    // zero, slot by slot
+                    read.fill(0.0);
+                    let held = row(&slots.v, m * width, b);
+                    for (l, &x) in row(p, m, b).iter().enumerate() {
+                        for (o, &y) in read.iter_mut().zip(&held[l * width..(l + 1) * width]) {
+                            *o += x * y;
+                        }
+                    }
                     for (c, &k) in port.neurons.iter().enumerate() {
                         out.v[b * columns + k as usize] = amplitude * read[c];
                     }
@@ -966,14 +975,19 @@ impl Recall {
             }
             self.trace = F { shape: vec![n, neurons.len()], v: trace };
         }
-        let as_f = |p: &Option<Vec<f64>>| p.as_ref().map(|v| F { shape: vec![n, m], v: v.clone() });
-        let first = as_f(&attended[0]);
-        self.attended = first;
-        self.reads = (self.heads() > 1).then(|| Reads {
-            writes: self.writes,
-            address: addresses.iter().map(|a| F { shape: vec![n, width], v: a.clone() }).collect(),
-            attended: attended.iter().map(as_f).collect(),
-        });
+        // the reads kept as they were made (moved, where each was copied)
+        let as_f = |p: Option<Vec<f64>>| p.map(|v| F { shape: vec![n, m], v });
+        if self.heads() > 1 {
+            self.attended = as_f(attended[0].clone());
+            self.reads = Some(Reads {
+                writes: self.writes,
+                address: addresses.into_iter().map(|v| F { shape: vec![n, width], v }).collect(),
+                attended: attended.into_iter().map(as_f).collect(),
+            });
+        } else {
+            self.attended = as_f(attended.into_iter().next().expect("a head's read"));
+            self.reads = None;
+        }
         self.last = Some(moment);
         Ok(out)
     }
@@ -1006,10 +1020,6 @@ impl Recall {
     /// before learns them as its next, and the settled cortex moves on (`witness`).
     pub fn witness(&mut self, observations: F, activation: F) -> Result<(), Error> {
         let x = self.port(observations)?;
-        let moment = match &self.last {
-            Some(last) if last.event.shape == x.shape && last.event.v == x.v => last.clone(),
-            _ => self.moment(x.clone()),
-        };
         let n = x.rows();
         let columns = if activation.shape.len() == 2 { activation.shape[1] } else { 0 };
         if self.association.iter().any(|&k| k < 0 || k as usize >= columns) {
@@ -1018,6 +1028,12 @@ impl Recall {
         if activation.rows() != n {
             return Err(refused("the settled state needs one row per stream"));
         }
+        // the moment the read addressed, where these are its observations (it is not held
+        // after the write)
+        let moment = match self.last.take() {
+            Some(last) if last.event.shape == x.shape && last.event.v == x.v => last,
+            _ => self.moment(x),
+        };
         let cortex: Vec<f64> = (0..n)
             .flat_map(|b| self.association.iter().map(move |&k| (b, k)))
             .map(|(b, k)| activation.v[b * columns + k as usize])
@@ -1068,6 +1084,35 @@ impl Recall {
         // the new slots: the bank less the `drop` oldest and this moment behind them
         let drop = (m + 1).saturating_sub(self.config.capacity as usize);
         let kept = m - drop + 1;
+        if n == 1 && self.keys.v.len() == m * width && self.held.v.len() == m {
+            // one stream: the bank moved along in place
+            if drop > 0 {
+                for bank in [&mut self.keys.v, &mut self.values.v, &mut self.nexts.v] {
+                    bank.copy_within(drop * width.., 0);
+                    bank.truncate((m - drop) * width);
+                }
+                self.held.v.drain(..drop);
+            }
+            self.keys.v.extend_from_slice(row(&key.v, width, 0));
+            self.values.v.extend_from_slice(row(&value.v, width, 0));
+            self.nexts.v.extend(std::iter::repeat_n(0.0, width));
+            self.held.v.push(true);
+            for (_, slot) in successor {
+                if slot >= drop {
+                    let at = (slot - drop) * width;
+                    self.nexts.v[at..at + width].copy_from_slice(row(&value.v, width, 0));
+                }
+            }
+            for bank in [&mut self.keys, &mut self.values, &mut self.nexts] {
+                bank.shape = vec![1, kept, width];
+            }
+            self.held.shape = vec![1, kept];
+            for t in self.told.iter_mut() {
+                *t += 1;
+            }
+            self.focus = focus;
+            return;
+        }
         let mut keys = Vec::with_capacity(n * kept * width);
         let mut values = Vec::with_capacity(n * kept * width);
         let mut nexts = Vec::with_capacity(n * kept * width);

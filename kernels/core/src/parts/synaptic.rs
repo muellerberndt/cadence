@@ -52,9 +52,14 @@ pub fn delta_unit(x: &[f64]) -> Vec<f64> {
 /// in order.
 fn product(rows: &[Vec<f64>], matrix: &[f64], w: usize) -> Vec<Vec<f64>> {
     let k = matrix.len() / w.max(1);
-    let columns: Vec<Vec<f64>> = (0..w).map(|j| (0..k).map(|i| matrix[i * w + j]).collect())
-        .collect();
-    rows.iter().map(|r| columns.iter().map(|c| np::dot(r, c)).collect()).collect()
+    // `np::dot` of each row with each column, the column read where it lies
+    rows.iter().map(|r| (0..w).map(|j| {
+        let mut s = 0.0f64;
+        for (i, x) in r.iter().take(k).enumerate() {
+            s += x * matrix[i * w + j];
+        }
+        s
+    }).collect()).collect()
 }
 
 fn finite(xs: &[f64]) -> bool {
@@ -331,11 +336,18 @@ impl Synaptic {
         // `einsum("b,bi,bj->ij", rate, cue, error)`: in order over the rows
         let contract = |error: &[Vec<f64>]| -> Vec<f64> {
             let mut out = vec![0.0; size];
+            let mut lead = vec![0.0; rows.len()];
             for i in 0..kw {
-                let lead: Vec<f64> = (0..rows.len()).map(|r| rate[r] * cue[r][i]).collect();
+                for (r, l) in lead.iter_mut().enumerate() {
+                    *l = rate[r] * cue[r][i];
+                }
                 for j in 0..m {
-                    let column: Vec<f64> = error.iter().map(|e| e[j]).collect();
-                    out[i * m + j] = np::dot(&lead, &column);
+                    // `np::dot(lead, error[:, j])`, the column read where it lies
+                    let mut s = 0.0f64;
+                    for (l, e) in lead.iter().zip(error) {
+                        s += l * e[j];
+                    }
+                    out[i * m + j] = s;
                 }
             }
             out
