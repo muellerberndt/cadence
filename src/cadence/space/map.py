@@ -46,6 +46,19 @@ PASS = 2.0  # the efficacy that passes activity one for one: the inverse of the 
 FORMAT = "cadence-space-map/1"
 
 
+def _in_order(products: np.ndarray) -> Any:
+    """A sum over the first axis, entry after entry from zero: a product's sum as NumPy sums it
+    without BLAS (under Pyodide) and as the compiled kernels and the native core sum it. NumPy's
+    BLAS (Accelerate, OpenBLAS) sums in orders of its own, which part in the last bits, and a
+    thing seen empty with a cell exactly two reaches from its middle is decided by them."""
+    return np.cumsum(products, axis=0)[-1] + 0.0
+
+
+def _length(offset: np.ndarray) -> float:
+    """The length of a place's offset, its squares summed in order."""
+    return float(np.sqrt(_in_order(np.asarray(offset) ** 2)))
+
+
 def sparse_codes(kinds: int, units: int, weight: int = 3, seed: int = 0) -> np.ndarray:
     """``kinds`` codes of ``weight`` units among ``units``, any two sharing one unit at most:
     ``(kinds, units)`` of zeros and ones."""
@@ -451,7 +464,8 @@ class Map:
         if not held.max() > 0:
             return None
         held = held / held.max()
-        score = (self.codes @ held - (1.0 - self.codes) @ held) / self.codes.sum(axis=1)
+        score = (_in_order((self.codes * held).T) - _in_order(((1.0 - self.codes) * held).T)
+                 ) / self.codes.sum(axis=1)
         return int(np.argmax(score))
 
     # -- one moment
@@ -652,7 +666,7 @@ class Map:
             own = self._of_kind(kind, activity) * ~claimed[:, units].any(axis=1)
             own = own * ~held_by_physics[:, units].any(axis=1)
             for piece in self._pieces(np.asarray(own > self._floor)):
-                at = (own[piece] @ self.centers[piece]) / own[piece].sum()
+                at = _in_order(own[piece][:, None] * self.centers[piece]) / own[piece].sum()
                 # a place a sense wrote the moment before is a report, as far off as the
                 # camera's error: it is seen empty where the camera sees around it, within
                 # ``margin``, all it saw there when it reported it (where the field moved off
@@ -670,9 +684,9 @@ class Map:
                                 own[~sight] > self._floor).any():
                             lost[units] = 1.0
                     continue
-                views = [(p, f) for p, f in self._views if np.linalg.norm(p - at) <= self.step]
+                views = [(p, f) for p, f in self._views if _length(p - at) <= self.step]
                 if sensed[piece].any() and views:
-                    place, then = min(views, key=lambda v: float(np.linalg.norm(v[0] - at)))
+                    place, then = min(views, key=lambda v: _length(v[0] - at))
                     now = looks(place, self.margin)
                     seen_empty = bool(now.any()) and not (then & ~now).any()
                 else:  # a held place: the camera sees all of it, as far as its own error
@@ -688,9 +702,9 @@ class Map:
                     wide = np.exp(-0.5 * (apart / self.reach) ** 2) * (
                         ~sight & (apart <= 2.0 * self.reach))
                     if wide.any():  # onto the cells out of sight around where it was held
-                        length = float(np.linalg.norm(before[piece][:, units].max(axis=1)))
-                        write[:, units] += (length * wide / np.linalg.norm(wide))[:, None]
-                        write[:, self._valued] += (length * wide / np.linalg.norm(wide)
+                        length = _length(before[piece][:, units].max(axis=1))
+                        write[:, units] += (length * wide / _length(wide))[:, None]
+                        write[:, self._valued] += (length * wide / _length(wide)
                                                    )[:, None] * moved[None, :]
                         clock = np.where(wide > 0, float(self.clock[piece].max()), clock)
                         doubt = np.where(wide > 0, 1.0, doubt)
@@ -779,14 +793,14 @@ class Map:
         if not mass > 0:
             return 0.0, mean, var, False
         points, shares = self._points(mean, var)
-        share = float(shares @ dark)
+        share = float(_in_order(shares * dark))
         if share <= 0.0:
             return 0.0, mean, var, True
         if share >= 1.0:
             return mass, mean, var, False
         kept = shares * dark / share
-        middle = kept @ points
-        spread = float(((points - middle) ** 2).sum(axis=1) @ kept) / 2.0
+        middle = _in_order(kept[:, None] * points)
+        spread = float(_in_order(((points - middle) ** 2).sum(axis=1) * kept)) / 2.0
         return mass * share, middle, min(var, spread), True
 
     def _carried(self, unit: int) -> np.ndarray:
@@ -881,7 +895,7 @@ class Map:
             cx, cv = rec[CORE:CORE + 2].copy(), rec[CORE + 2:CORE + 4].copy()
             px, pxv, pv = float(rec[CORE + 4]), float(rec[CORE + 5]), float(rec[CORE + 6])
             tx, tvar = rec[TAIL:TAIL + 2].copy(), float(rec[TAIL + 2])
-            speed = float(np.linalg.norm(cv))
+            speed = _length(cv)
             u = cv / speed if speed > 0 else np.zeros(2)
             if tm > 0:  # the tail: a share comes to rest, it goes ahead and widens
                 trail = trail + self._bump(tx, tvar, ph.rest * tm)
@@ -1186,13 +1200,13 @@ class Map:
         kind = self.kind_of(what[: self.units])
         assert kind is not None
         own = float(what[np.flatnonzero(self.codes[kind])].min())
-        at = (where @ self.centers) / where.sum()
+        at = _in_order(where[:, None] * self.centers) / where.sum()
         offset = at - np.asarray(body, dtype=np.float64).reshape(2)
         bearing = float(np.angle(np.exp(1j * (np.arctan2(offset[1], offset[0]) - heading))))
         return {"kind": kind,
                 "values": {group: np.asarray(np.clip(what[units] / own, 0.0, 1.0))
                            for group, units in self.values.items()},
-                "place": at, "bearing": bearing, "distance": float(np.linalg.norm(offset))}
+                "place": at, "bearing": bearing, "distance": _length(offset)}
 
     def where_is_value(self, group: str, value: int) -> np.ndarray:
         """Where the things with a value are, ``(things, 2)`` (``"what is red?"``): the value's
@@ -1244,7 +1258,8 @@ class Map:
                         state = "moving"
                     if since == 0:
                         state = next((sense for k, sense in self._sensed if k == kind), "seen")
-                    entry = {"kind": kind, "place": (own[held] @ self.centers[held])
+                    entry = {"kind": kind, "place": _in_order(own[held][:, None]
+                                                              * self.centers[held])
                              / own[held].sum(), "cells": held, "pieces": group, "since": since,
                              "state": state}
                     if velocity is not None:
