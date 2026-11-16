@@ -3704,7 +3704,7 @@ class Brain:
         features: int = 8,
         field: int = 3,
         code: int | None = None,
-        cortex_reads: str = "code",
+        cortex_reads: str | None = "code",
         learned_code: int | None = None,
         attention: bool = False,
         seed: int = 0,
