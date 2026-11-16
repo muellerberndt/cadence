@@ -150,6 +150,33 @@ fn term(maps: &Maps, x: &[f64], c: &[f64], n: usize) -> Vec<f64> {
     out
 }
 
+/// `_lms(maps, step, rate, x, c)` at `k` rows: `M_x + (rate x)ᵀ step / k`, `M_c + (rate c)ᵀ step
+/// / k`, `m + rate mean(step)`; a step of one number a row for the slope's maps.
+fn lms(maps: &Maps, step: &[f64], rate: f64, x: &[f64], c: &[f64], k: usize) -> Maps {
+    let cols = maps.cols();
+    let stepped = |old: &F, inputs: &[f64]| -> F {
+        let width = old.shape[0];
+        let mut out = old.clone();
+        for i in 0..width {
+            for j in 0..cols {
+                let column: Vec<f64> = (0..k).map(|r| step[r * cols + j]).collect();
+                let scaled: Vec<f64> = (0..k).map(|r| rate * inputs[r * width + i]).collect();
+                let moved = if k == 1 { scaled[0] * column[0] } else { np::dot(&scaled, &column) };
+                out.v[i * cols + j] = moved / k as f64 + old.v[i * cols + j];
+            }
+        }
+        out
+    };
+    let mean: Vec<f64> = if maps.vector() {
+        vec![np::mean(step)]
+    } else {
+        np::sum_rows(step, cols).iter().map(|s| s / k as f64).collect()
+    };
+    let b = F { shape: maps.b.shape.clone(),
+                v: maps.b.v.iter().zip(&mean).map(|(m, s)| m + rate * s).collect() };
+    Maps { x: stepped(&maps.x, x), c: stepped(&maps.c, c), b }
+}
+
 /// The address `key + x M_x + c M_c + m` (`_addressed`).
 fn addressed(key: &[f64], maps: &Maps, x: &[f64], c: &[f64], n: usize) -> Vec<f64> {
     let cols = maps.cols();
@@ -238,6 +265,9 @@ type Attended = Vec<Option<Vec<f64>>>;
 struct Found {
     moving: Vec<bool>,
     x: Vec<f64>,
+    /// The moving rows' cortex and key.
+    c: Vec<f64>,
+    key: Vec<f64>,
     error: Vec<f64>,
     target: Vec<f64>,
     prior: Vec<f64>,
@@ -1288,6 +1318,8 @@ impl Recall {
         };
         let k = rows.len();
         let x = take(&moment.inputs.v, width, &rows);
+        let c = take(&moment.cortex.v, cortex, &rows);
+        let key = take(&moment.key.v, width, &rows);
         let keys = take(&self.keys.v, m * width, &rows);
         let mut p = vec![0.0; k * m];
         for r in 0..k {
@@ -1318,7 +1350,7 @@ impl Recall {
         for r in 0..k {
             error.extend(np::matmul(row(&gradient, m, r), 1, m, row(&keys, m * width, r), width));
         }
-        Ok(Some(Found { moving, x, error, target: p, prior: attention }))
+        Ok(Some(Found { moving, x, c, key, error, target: p, prior: attention }))
     }
 
     /// The columns of the reward eligibility that can hold anything (`reward_blocks`), as
@@ -1615,6 +1647,177 @@ impl Recall {
             self.maps[ANCHOR] = anchor;
         }
         Ok(())
+    }
+
+    // -- a lesson's step
+
+    /// `learn(graph, learned)`: the address lesson and the position lesson at every stream of
+    /// the latest read, from the movement of the association between a lesson's two nudged
+    /// phases (`plus`, `minus`, each `(streams, neurons)`) read back through the graph's
+    /// effective `weights` (`_read_backs`): each head's row steps (`_row_steps`), its address
+    /// map's step (`_step`) and its position maps' (`_position_step`), each installed only
+    /// where every value it makes is finite.
+    pub fn learn(&mut self, weights: &[f64], plus: F, minus: F) -> Result<(), Error> {
+        let positions = !self.maps[POSITION].is_empty()
+            && (self.config.position_rate > 0.0 || self.config.slope > 0.0);
+        if !(self.config.address != 0.0 || positions) {
+            return Ok(());
+        }
+        let Some(moment) = self.last.clone() else { return Ok(()) };
+        let n = moment.address.rows();
+        if self.slots() == 0 || n == 0 || self.streams() != n {
+            return Ok(());
+        }
+        let columns_of = |a: &F| if a.shape.len() == 2 { a.shape[1] } else { 0 };
+        let (cp, cm) = (columns_of(&plus), columns_of(&minus));
+        if self.association.iter().any(|&k| k < 0 || k as usize >= cp.min(cm))
+            || plus.rows() != n || minus.rows() != n
+        {
+            return Err(refused("the phases hold the association, one row per stream each"));
+        }
+        let movement: Vec<f64> = (0..n)
+            .flat_map(|b| self.association.iter().map(move |&k| (b, k as usize)))
+            .map(|(b, k)| plus.v[b * cp + k] - minus.v[b * cm + k])
+            .collect();
+        let reads = self.lesson_reads(&moment)?;
+        for h in 0..self.heads() {
+            let (recall, following) = self.head_ports(h);
+            let d_value = self.readback(recall, weights, &movement, n)?;
+            let d_next = match following {
+                Some(port) => Some(self.readback(port, weights, &movement, n)?),
+                None => None,
+            };
+            let address = self.head_address(&moment, h);
+            let Some(found) = self.row_steps(&moment, &address, &d_value, d_next.as_deref(), h,
+                                             reads[h].as_ref())? else { continue };
+            let energy = self.lesson_energy(&found);
+            if self.config.address != 0.0 {
+                self.address_step(h, &found, &energy);
+            }
+            if positions {
+                self.position_step(h, &found, &energy);
+            }
+        }
+        Ok(())
+    }
+
+    /// Each moving row's `x·x + c·c + 1` (`np.einsum("bi,bi->b", ...)`).
+    fn lesson_energy(&self, found: &Found) -> Vec<f64> {
+        let (width, cortex) = (self.width(), self.cortex());
+        let k = found.x.len() / width.max(1);
+        (0..k).map(|r| {
+            let (x, c) = (row(&found.x, width, r), row(&found.c, cortex, r));
+            np::einsum_dot(x, x) + np::einsum_dot(c, c) + 1.0
+        }).collect()
+    }
+
+    /// `_step`: the head's address map stepped toward the attention the lesson names, at the
+    /// rate `address` bounded by each row's energy; kept where it and the address it makes
+    /// are finite.
+    fn address_step(&mut self, h: usize, found: &Found, energy: &[f64]) {
+        let (width, rate) = (self.width(), self.config.address);
+        let k = energy.len();
+        let mut step = found.error.clone();
+        for r in 0..k {
+            let bound = np::minimum(1.0, 1.0 / (rate * energy[r]));
+            for v in &mut step[r * width..(r + 1) * width] {
+                *v *= bound;
+            }
+        }
+        let maps = lms(&self.maps[ADDRESS][h], &step, rate, &found.x, &found.c, k);
+        let address = addressed(&found.key, &maps, &found.x, &found.c, k);
+        if [&maps.x.v, &maps.c.v, &maps.b.v, &address].iter().all(|a| a.iter().all(|x| x.is_finite())) {
+            self.maps[ADDRESS][h] = maps;
+        }
+    }
+
+    /// `_position_step`: the head's position maps (and the anchored, relative, slope and grid
+    /// maps it holds) stepped by the gradient of the attention the lesson names; kept only
+    /// where every one of them is finite.
+    fn position_step(&mut self, h: usize, found: &Found, energy: &[f64]) {
+        let (m, rate, count) = (self.slots(), self.config.position_rate, self.position_buckets());
+        let k = energy.len();
+        let streams: Vec<usize> = (0..found.moving.len()).filter(|&b| found.moving[b]).collect();
+        let gradient: Vec<f64> = found.target.iter().zip(&found.prior)
+            .map(|(&t, &p)| if p.is_finite() { t - np::exp(p) } else { 0.0 }).collect();
+        let bound: Vec<f64> = energy.iter().map(|&e| np::minimum(1.0, 1.0 / (rate * e))).collect();
+        let bounded = |mut step: Vec<f64>, size: usize| -> Vec<f64> {
+            for r in 0..k {
+                for v in &mut step[r * size..(r + 1) * size] {
+                    *v *= bound[r];
+                }
+            }
+            step
+        };
+        let (x, c) = (&found.x, &found.c);
+        let mut stepped: Vec<(usize, Maps)> = Vec::new();
+        let Ok(buckets) = self.buckets() else { return };
+        let step = bounded(per_bucket(&gradient, &buckets, false, k, m, count), count);
+        stepped.push((POSITION, lms(&self.maps[POSITION][h], &step, rate, x, c, k)));
+        if !self.maps[ANCHOR].is_empty() {
+            let buckets = self.anchored_buckets(Some(&streams));
+            let step = bounded(per_bucket(&gradient, &buckets, true, k, m, count + 1), count + 1);
+            stepped.push((ANCHOR, lms(&self.maps[ANCHOR][h], &step, rate, x, c, k)));
+        }
+        if !self.maps[RELATIVES].is_empty() {
+            let width = (2 * RELATIVE + 2) as usize;
+            let buckets = self.relative_buckets(Some(&streams));
+            let step = bounded(per_bucket(&gradient, &buckets, true, k, m, width), width);
+            stepped.push((RELATIVES, lms(&self.maps[RELATIVES][h], &step, rate, x, c, k)));
+        }
+        if !self.maps[SLOPES].is_empty() {
+            // `within_table`: with grid maps, the streams whose slots lie within the table
+            let within: Vec<bool> = if self.maps[GRID].is_empty() {
+                vec![true; k]
+            } else {
+                streams.iter().map(|&b| {
+                    let held = self.held.v[b * m..(b + 1) * m].iter().filter(|&&x| x).count();
+                    held as i64 <= self.config.position
+                }).collect()
+            };
+            if within.iter().any(|&w| w) {
+                let lean_by: Vec<f64> = self.ages().iter().map(|a| a / SLOPE).collect();
+                let slope = self.config.slope;
+                let lean: Vec<f64> = (0..k).map(|r| {
+                    let l = np::dot(row(&gradient, m, r), &lean_by)
+                        * np::minimum(1.0, 1.0 / (slope * energy[r]));
+                    if within[r] { l } else { 0.0 }
+                }).collect();
+                stepped.push((SLOPES, lms(&self.maps[SLOPES][h], &lean, slope, x, c, k)));
+            }
+        }
+        if !self.maps[GRID].is_empty() {
+            let ages = self.ages();
+            let position = self.config.position as f64;
+            let mut far = Vec::with_capacity(k * m);
+            for r in 0..k {
+                let (t, p) = (row(&found.target, m, r), row(&found.prior, m, r));
+                let attended: Vec<f64> = p.iter()
+                    .map(|&v| if v.is_finite() { np::exp(v) } else { 0.0 }).collect();
+                let peak = np::maximum(np::max(t), np::max(&attended));
+                for i in 0..m {
+                    let g = gradient[r * m + i];
+                    let f = if peak > 0.0 { g / peak } else { g };
+                    far.push(f * if ages[i] >= position { 1.0 } else { 0.0 });
+                }
+            }
+            let width: usize = self.config.grid.iter().map(|&g| g as usize).sum();
+            let mut step = vec![0.0; k * width];
+            for residues in self.grid_buckets() {
+                for (s, v) in step.iter_mut().zip(per_bucket(&far, &residues, false, k, m, width)) {
+                    *s += v;
+                }
+            }
+            let step = bounded(step, width);
+            stepped.push((GRID, lms(&self.maps[GRID][h], &step, rate, x, c, k)));
+        }
+        if stepped.iter().all(|(_, maps)| {
+            [&maps.x.v, &maps.c.v, &maps.b.v].iter().all(|a| a.iter().all(|v| v.is_finite()))
+        }) {
+            for (kind, maps) in stepped {
+                self.maps[kind][h] = maps;
+            }
+        }
     }
 
     pub fn call(&mut self, method: &str, args: &Named, out: &mut Named) -> Result<(), Error> {

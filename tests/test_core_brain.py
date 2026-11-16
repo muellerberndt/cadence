@@ -158,6 +158,83 @@ def test_an_act_in_the_core():
         same(theirs, BRAIN.state_of(held))
 
 
+def shown(t: int) -> tuple[np.ndarray, list[float]]:
+    """A watching lesson's targets (one action, one-hot) and weight; every third a weight of
+    one, the lesson without weights."""
+    targets = np.zeros((1, 4))
+    targets[0, (3 * t) % 4] = 1.0
+    return targets, [1.0 if t % 3 == 0 else 0.25 + 0.05 * (t % 5)]
+
+
+def lesson_arguments(held: Any, given: dict[str, Any], targets: Any, weights: Any) -> dict[str, Any]:
+    _, _, after = BRAIN.calling(held, "lesson", (given,), {})
+    return {**BRAIN._lesson(given, targets=targets, weights=weights), **after()}
+
+
+@core_built
+def test_lessons_in_the_core():
+    core = Core()
+    held = brain(seed=11)
+    taken = refused = 0
+    for t, (given, reward) in enumerate(moments(40, seed=12)):
+        targets, weights = shown(t)
+        before = BRAIN.state_of(held)
+        args = lesson_arguments(held, given, targets, weights)
+        try:
+            held.lesson(given, targets=targets, weights=weights)
+        except RuntimeError:  # a sampled action's outcome is pending
+            refused += 1
+            with pytest.raises(Refused):
+                core.call("brain", "lesson", before, args)
+        else:
+            taken += 1
+            theirs, out = core.call("brain", "lesson", before, args)
+            assert not out
+            same(theirs, BRAIN.state_of(held))
+        lived(held, given, reward)
+    assert taken and refused
+
+
+@core_built
+def test_a_brain_held_in_the_core_takes_the_same_lessons():
+    core = Core()
+    held = brain(seed=13)
+    handle = core.brain(BRAIN.state_of(held))
+    try:
+        for t, (given, reward) in enumerate(moments(30, seed=14)):
+            targets, weights = shown(t)
+            args = lesson_arguments(held, given, targets, weights)
+            try:
+                held.lesson(given, targets=targets, weights=weights)
+            except RuntimeError:
+                with pytest.raises(Refused):
+                    core.brain_call(handle, "lesson", args)
+            else:
+                core.brain_call(handle, "lesson", args)
+            args = arguments(held, given, reward)
+            action = lived(held, given, reward)
+            assert np.array_equal(core.brain_call(handle, "live", args)["action"], action)
+        same(core.brain_state(handle), BRAIN.state_of(held))
+    finally:
+        core.brain_drop(handle)
+
+
+@core_built
+def test_the_core_refuses_the_lessons_the_python_refuses():
+    core = Core()
+    held = brain(seed=15)
+    for given, reward in moments(12, seed=16):  # past its youth, routine
+        lived(held, given, reward)
+    given = moments(1, seed=17)[0][0]
+    state = BRAIN.state_of(held)
+    for targets, weights in ((np.full((1, 4), 0.3), None), (np.eye(4)[:1], [-1.0]),
+                             (np.eye(4)[:1], [0.5, 0.5]), (np.eye(5)[:1], None)):
+        with pytest.raises(ValueError):
+            copy.deepcopy(held).lesson(given, targets=targets, weights=weights)
+        with pytest.raises(Refused):
+            core.call("brain", "lesson", state, lesson_arguments(held, given, targets, weights))
+
+
 @core_built
 def test_the_core_refuses_what_the_python_refuses():
     core = Core()

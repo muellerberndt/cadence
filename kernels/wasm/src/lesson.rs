@@ -125,6 +125,11 @@ pub unsafe extern "C" fn pick(values: usize, index: usize, divisor: f64, out: us
     let values = take!(values, f64, FLOAT64, 0);
     let ix = index_of!(index, 1);
     let out = take!(out, f64, FLOAT64, 3);
+    pick_pass(values, ix, divisor, out)
+}
+
+/// The pass of `pick` on its arrays.
+pub(crate) unsafe fn pick_pass(values: View<f64>, ix: Index, divisor: f64, out: View<f64>) -> i32 {
     if out.len < ix.len() || !inside(ix, values.len) {
         return refused(1);
     }
@@ -142,6 +147,13 @@ pub unsafe extern "C" fn group_power(values: usize, group: usize, power: usize, 
     let group = index_of!(group, 1);
     let power = take!(power, f64, FLOAT64, 2);
     let count = take!(count, f64, FLOAT64, 3);
+    group_power_pass(values, group, power, count)
+}
+
+/// The pass of `group_power` on its arrays.
+pub(crate) unsafe fn group_power_pass(
+    values: View<f64>, group: Index, power: View<f64>, count: View<f64>,
+) -> i32 {
     if group.len() < values.len || count.len != power.len || !inside(group, power.len) {
         return refused(1);
     }
@@ -167,6 +179,13 @@ pub unsafe extern "C" fn divisor(
     let group = index_of!(group, 1);
     let root = take!(root, f64, FLOAT64, 2);
     let out = take!(out, f64, FLOAT64, 5);
+    divisor_pass(values, group, root, share, tiny, out)
+}
+
+/// The pass of `divisor` on its arrays.
+pub(crate) unsafe fn divisor_pass(
+    values: View<f64>, group: Index, root: View<f64>, share: f64, tiny: f64, out: View<f64>,
+) -> i32 {
     if group.len() < values.len || out.len < values.len || !inside(group, root.len) {
         return refused(1);
     }
@@ -189,6 +208,19 @@ pub unsafe extern "C" fn plain(
     let new_velocity = take!(new_velocity, f64, FLOAT64, 13);
     let new_second = take!(new_second, f64, FLOAT64, 14);
     let out = take!(out, f64, FLOAT64, 15);
+    plain_pass(raw, velocity, second, momentum, momentum_rest, momentum_correction, rho,
+               rho_rest, rho_correction, has_momentum, has_normalize, eta, floor, new_velocity,
+               new_second, out)
+}
+
+/// The pass of `plain` on its arrays.
+#[allow(clippy::too_many_arguments)]
+pub(crate) unsafe fn plain_pass(
+    raw: View<f64>, velocity: View<f64>, second: View<f64>, momentum: f64, momentum_rest: f64,
+    momentum_correction: f64, rho: f64, rho_rest: f64, rho_correction: f64, has_momentum: i32,
+    has_normalize: i32, eta: f64, floor: f64, new_velocity: View<f64>, new_second: View<f64>,
+    out: View<f64>,
+) -> i32 {
     let count = raw.len;
     if out.len < count
         || (has_momentum != 0 && (velocity.len < count || new_velocity.len < count))
@@ -229,6 +261,17 @@ pub unsafe extern "C" fn moments(
     let new_second = take!(new_second, f64, FLOAT64, 11);
     let term = take!(term, f64, FLOAT64, 12);
     let root = take!(root, f64, FLOAT64, 13);
+    moments_pass(raw, velocity, second, momentum, momentum_rest, momentum_correction, rho,
+                 rho_rest, rho_correction, has_momentum, new_velocity, new_second, term, root)
+}
+
+/// The pass of `moments` on its arrays.
+#[allow(clippy::too_many_arguments)]
+pub(crate) unsafe fn moments_pass(
+    raw: View<f64>, velocity: View<f64>, second: View<f64>, momentum: f64, momentum_rest: f64,
+    momentum_correction: f64, rho: f64, rho_rest: f64, rho_correction: f64, has_momentum: i32,
+    new_velocity: View<f64>, new_second: View<f64>, term: View<f64>, root: View<f64>,
+) -> i32 {
     let count = raw.len;
     if second.len < count || new_second.len < count || term.len < count || root.len < count
         || (has_momentum != 0 && (velocity.len < count || new_velocity.len < count))
@@ -262,6 +305,15 @@ pub unsafe extern "C" fn step(
     let group = index_of!(group, 2);
     let group_root = take!(group_root, f64, FLOAT64, 3);
     let out = take!(out, f64, FLOAT64, 7);
+    step_pass(term, root, group, group_root, eta, share, tiny, out)
+}
+
+/// The pass of `step` on its arrays.
+#[allow(clippy::too_many_arguments)]
+pub(crate) unsafe fn step_pass(
+    term: View<f64>, root: View<f64>, group: Index, group_root: View<f64>, eta: f64, share: f64,
+    tiny: f64, out: View<f64>,
+) -> i32 {
     let count = term.len;
     if root.len < count || group.len() < count || out.len < count
         || !inside(group, group_root.len)

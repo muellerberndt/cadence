@@ -11,18 +11,22 @@ with no call recorded fails the check.
 A part module may define ``calling(obj, method, args, kwargs) -> (args, kwargs, after)``: the
 call's arguments as the Python method takes them (a callback wrapped so its questions and
 answers are kept) and ``after()``, the named arguments known once the call has run. ``--stream``
-replays each call as it is made and keeps none, so a long life is checked call by call.
+replays each call as it is made and keeps none, so a long life is checked call by call. A call
+the Python refuses (``ValueError``, ``RuntimeError``) is checked as well: the core must refuse
+it. ``--rules`` sets the world's rules (JSON, ``wild.world.Rules``' fields) and ``--parts`` adds
+parts to the minds' (``wild.brain.PARTS``), for a world of other rules (Wild v2's watching).
 """
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import time
 
 import numpy as np
 
-from cadence.core import Core
+from cadence.core import Core, Refused
 from cadence.core.parts import part as part_module
 
 p = argparse.ArgumentParser()
@@ -36,6 +40,9 @@ p.add_argument("--stream", action="store_true",
                help="replay each call as it is made, keeping none (every call of the life)")
 p.add_argument("--methods", default="",
                help="the part's methods recorded, by name with commas (every one by default)")
+p.add_argument("--rules", default="{}", help="the world's rules, as JSON (Rules' fields)")
+p.add_argument("--parts", default="", help="parts added to the minds', with commas")
+p.add_argument("--seed", type=int, default=1, help="the world's seed")
 a = p.parse_args()
 if a.wild:
     sys.path.insert(0, a.wild)
@@ -44,22 +51,28 @@ from wild.sim import Host, Sim  # noqa: E402
 from wild.world import Rules, World  # noqa: E402
 
 module = part_module(a.part)
+REFUSED = {"refused": np.bool_(True)}  # what a refused call answers, on either side
 calling = getattr(module, "calling", None)
 core = Core() if a.stream else None
 kept: list = []
 tally = {"calls": 0, "bitwise": 0, "close": 0, "apart": 0, "worst": 0.0, "shown": 0}
 off: dict[str, list] = {}  # each entry not to the bit: the calls where it is not, its largest gap
 methods: dict[str, int] = {}  # the calls checked of each method
+refusals: dict[str, int] = {}  # of those, the calls the Python refused
 
 
 def check(k, name, before, args, theirs_out, theirs_after):
     """One call made in the core on the state before, against what the Python did."""
     tally["calls"] += 1
     methods[name] = methods.get(name, 0) + 1
+    if theirs_out is REFUSED:
+        refusals[name] = refusals.get(name, 0) + 1
     try:
         after, out = core.call(a.part, name, before, args)
-    except (RuntimeError, ValueError) as error:  # the core refused the call, or faulted
-        after, out = {}, {"refused": str(error)}
+    except Refused:  # the core refused the call where the Python raises
+        after, out = {}, REFUSED
+    except (RuntimeError, ValueError) as error:  # the core faulted
+        after, out = {}, {"fault": np.asarray(str(error))}
     gaps = []
     for label, ours, theirs in (("out", out, theirs_out), ("state", after, theirs_after)):
         if set(ours) != set(theirs):
@@ -104,7 +117,17 @@ for name in chosen:
         after = dict
         if calling is not None:
             args, kwargs, after = calling(self, _n, args, kwargs)
-        value = _m(self, *args, **kwargs)
+        try:
+            value = _m(self, *args, **kwargs)
+        except (RuntimeError, ValueError):
+            # a refusal is checked too: the core must refuse the same call
+            if before is not None:
+                entry = (_n, before, {**_a(*args, **kwargs), **after()}, REFUSED, {})
+                if a.stream:
+                    check(tally["calls"], *entry)
+                else:
+                    kept.append(entry)
+            raise
         if before is not None:
             entry = (_n, before, {**_a(*args, **kwargs), **after()}, _r(value),
                      module.state_of(self))
@@ -116,8 +139,11 @@ for name in chosen:
     setattr(owner, name, property(recorded) if read else recorded)
 getattr(module, "recording", lambda: None)()  # a part whose class checks its own methods
 
-world = World(Rules(), seed=1)
-sim = Sim(world, minds=Host(world.rules.width, world.rules.height, world.seed, None, []))
+from wild.brain import PARTS  # noqa: E402
+
+world = World(Rules(**json.loads(a.rules)), seed=a.seed)
+parts = PARTS + tuple(x for x in a.parts.split(",") if x) if a.parts else None
+sim = Sim(world, minds=Host(world.rules.width, world.rules.height, world.seed, parts, []))
 began = time.perf_counter()
 seen: set[int] = set()  # the events read, each once, by identity (Wild's list is rolling)
 held: list = []  # those events kept, so an identity is never reused
@@ -147,7 +173,9 @@ if not recorded_calls:
 core = core or Core()
 for k, entry in enumerate(kept):
     check(k, *entry)
-print("  calls: " + ", ".join(f"{n} {k}" for k, n in sorted(methods.items())))
+print("  calls: " + ", ".join(
+    f"{n} {k}" + (f" ({refusals[k]} refused)" if k in refusals else "")
+    for k, n in sorted(methods.items())))
 for key, (calls, gap) in sorted(off.items()):
     print(f"  not to the bit: {key} in {calls} calls, largest {gap:.1e}")
 print(f"REPLAY {a.part}: {tally['calls']} calls, {tally['bitwise']} bitwise, {tally['close']} "

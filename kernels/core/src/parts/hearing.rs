@@ -323,6 +323,20 @@ impl Hearing {
         self.contrast(&movement, None, plus.rows as i64, graph)
     }
 
+    /// `learn(graph, learned, beta)`: every route's gain stepped on the mean over the rows of
+    /// a lesson's contrast, its two nudged phases `plus` and `minus` over their span.
+    pub fn learn(&mut self, plus: &Rows, minus: &Rows, beta: f64, graph: &Graph)
+                 -> Result<(), Error> {
+        if self.routes.is_empty() {
+            return Ok(());
+        }
+        let contrast = self.contrast_rows(plus, minus, beta, graph)?;
+        let rows = contrast.rows as f64;
+        let mean: Vec<f64> = np::sum_rows(&contrast.data, contrast.cols).iter()
+            .map(|s| s / rows).collect();
+        self.step(&mean)
+    }
+
     pub fn call(&mut self, method: &str, args: &Named, out: &mut Named) -> Result<(), Error> {
         match method {
             "gain" => {
