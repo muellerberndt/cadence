@@ -48,6 +48,7 @@ for name, (arguments, result) in module.METHODS.items():
             kept.append((_n, before, _a(*args, **kwargs), _r(value), module.state_of(self)))
         return value
     setattr(module.CLASS, name, property(recorded) if read else recorded)
+getattr(module, "recording", lambda: None)()  # a part whose class checks its own methods
 
 world = World(Rules(), seed=1)
 sim = Sim(world, minds=Host(world.rules.width, world.rules.height, world.seed, None, []))
@@ -74,6 +75,7 @@ core = Core()
 bitwise = close = apart = 0
 worst = 0.0
 shown = 0
+entries: dict = {}  # (method, entry) -> calls not to the bit, the largest gap
 for k, (name, before, args, theirs_out, theirs_after) in enumerate(kept):
     after, out = core.call(a.part, name, before, args)
     gaps = []
@@ -91,6 +93,9 @@ for k, (name, before, args, theirs_out, theirs_after) in enumerate(kept):
     if not gaps:
         bitwise += 1
         continue
+    for label, _, gap in gaps:
+        count, top = entries.get((name, label), (0, 0.0))
+        entries[(name, label)] = (count + 1, max(top, gap))
     largest = max(g[2] for g in gaps)
     worst = max(worst, largest)
     if largest <= a.tolerance:
@@ -100,6 +105,8 @@ for k, (name, before, args, theirs_out, theirs_after) in enumerate(kept):
         if shown < 5:
             shown += 1
             print(f"  call {k} {name}: apart {gaps[:4]}")
+for (name, label), (count, top) in sorted(entries.items()):
+    print(f"  {name} {label}: {count} calls not to the bit, largest {top:.1e}")
 print(f"REPLAY {a.part}: {len(kept)} calls, {bitwise} bitwise, {close} within "
       f"{a.tolerance:g} (largest {worst:.1e}), {apart} apart")
 sys.exit(1 if apart or not kept else 0)

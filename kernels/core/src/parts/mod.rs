@@ -3,6 +3,7 @@
 
 pub mod arousal;
 pub mod brain;
+pub mod graph;
 pub mod recall;
 pub mod surprise;
 
@@ -31,6 +32,11 @@ pub fn call(part: &str, method: &str, state: &Named, args: &Named) -> Result<Nam
         }
         "recall" => {
             let mut held = recall::Recall::import(state)?;
+            held.call(method, args, &mut out)?;
+            held.export(&mut after);
+        }
+        "graph" => {
+            let mut held = graph::Graph::import(state)?;
             held.call(method, args, &mut out)?;
             held.export(&mut after);
         }
