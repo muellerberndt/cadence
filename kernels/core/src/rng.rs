@@ -1,8 +1,12 @@
 //! NumPy's `Generator` on `PCG64`, draw for draw: the 128-bit linear congruential step with
 //! the XSL-RR output, the 32-bit draws buffered as NumPy buffers them, `random` from 53 bits,
-//! `integers` by Lemire's method (NumPy's default, not the masked one) and `choice` with or
-//! without probabilities. A generator crosses with NumPy's `bit_generator.state`: the state,
-//! the increment, and the buffered half of a draw.
+//! `integers` by Lemire's method (NumPy's default, not the masked one), `choice` with or
+//! without probabilities, `permutation` (the shuffle's masked draws), `standard_normal` and
+//! `normal` (NumPy's ziggurat, its tables in `ziggurat`), and `uniform`. A generator crosses
+//! with NumPy's `bit_generator.state`: the state, the increment, and the buffered half of a draw.
+
+use crate::np;
+use crate::ziggurat::{FI, KI, NOR_INV_R, NOR_R, WI};
 
 const MULTIPLIER: u128 = 0x2360_ED05_1FC6_5DA4_4385_DF64_9FCC_F645;
 
@@ -103,6 +107,107 @@ impl Pcg64 {
     /// `choice(n)` for one draw: a uniform index, as `integers(0, n)` draws it.
     pub fn choice(&mut self, n: usize) -> usize {
         self.bounded(n as u64 - 1) as usize
+    }
+
+    /// `random_interval(max)`: a value in [0, max], drawn under the smallest mask at or above
+    /// `max` until it fits (a 32-bit draw, buffered, where `max` fits 32 bits): the draws of
+    /// NumPy's `shuffle`.
+    pub fn interval(&mut self, max: u64) -> u64 {
+        if max == 0 {
+            return 0;
+        }
+        let mut mask = max;
+        mask |= mask >> 1;
+        mask |= mask >> 2;
+        mask |= mask >> 4;
+        mask |= mask >> 8;
+        mask |= mask >> 16;
+        mask |= mask >> 32;
+        if max <= 0xFFFF_FFFF {
+            loop {
+                let value = self.next_u32() as u64 & mask;
+                if value <= max {
+                    return value;
+                }
+            }
+        }
+        loop {
+            let value = self.next_u64() & mask;
+            if value <= max {
+                return value;
+            }
+        }
+    }
+
+    /// `permutation(n)`: `arange(n)` shuffled as NumPy's `shuffle` does it, from the last place
+    /// down to the second, each swapped with a place drawn by `interval`.
+    pub fn permutation(&mut self, n: usize) -> Vec<i64> {
+        let mut out: Vec<i64> = (0..n as i64).collect();
+        for i in (1..n).rev() {
+            let j = self.interval(i as u64) as usize;
+            out.swap(i, j);
+        }
+        out
+    }
+
+    /// `standard_normal()`: NumPy's ziggurat (`random_standard_normal`): one 64-bit draw gives
+    /// the strip (its low 8 bits), the sign and 52 bits; past the strip's bound, the tail (strip
+    /// 0, by the C library's `log1p`) or the wedge (by its `exp`) draws again.
+    pub fn standard_normal(&mut self) -> f64 {
+        loop {
+            let mut r = self.next_u64();
+            let idx = (r & 0xff) as usize;
+            r >>= 8;
+            let sign = r & 0x1;
+            let rabs = (r >> 1) & 0x000f_ffff_ffff_ffff;
+            let mut x = rabs as f64 * WI[idx];
+            if sign & 0x1 == 1 {
+                x = -x;
+            }
+            if rabs < KI[idx] {
+                return x;
+            }
+            if idx == 0 {
+                loop {
+                    let xx = -NOR_INV_R * np::log1p(-self.random());
+                    let yy = -np::log1p(-self.random());
+                    if yy + yy > xx * xx {
+                        return if (rabs >> 8) & 0x1 == 1 { -(NOR_R + xx) } else { NOR_R + xx };
+                    }
+                }
+            } else if (FI[idx - 1] - FI[idx]) * self.random() + FI[idx] < np::exp(-0.5 * x * x) {
+                return x;
+            }
+        }
+    }
+
+    /// `normal(loc, scale)`: `loc + scale * standard_normal()`, as NumPy's C compiles it
+    /// (`muladd`).
+    pub fn normal(&mut self, loc: f64, scale: f64) -> f64 {
+        muladd(scale, self.standard_normal(), loc)
+    }
+
+    /// `uniform(low, high)`: `low + (high - low) * random()`, as NumPy's C compiles it
+    /// (`muladd`).
+    pub fn uniform(&mut self, low: f64, high: f64) -> f64 {
+        let range = high - low;
+        muladd(range, self.random(), low)
+    }
+}
+
+/// `c + a * b` as NumPy's own C (`random_normal`, `random_uniform`) is compiled on each machine:
+/// fused into one rounding in NumPy's macOS build on ARM (clang contracts it to `fmadd`); two
+/// roundings in its Linux builds (ARM and x86 alike) and under Pyodide. Checked against NumPy
+/// 2.5.5 on an Apple M-series Mac and on an ARM Linux machine (`check/primitives.py`).
+#[inline]
+fn muladd(a: f64, b: f64, c: f64) -> f64 {
+    #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+    {
+        a.mul_add(b, c)
+    }
+    #[cfg(not(all(target_arch = "aarch64", target_os = "macos")))]
+    {
+        c + a * b
     }
 }
 
