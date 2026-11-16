@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **A lesson inside `live`**: `live(observations, ..., lesson=(targets, weights))` teaches the
+  moment as `lesson` does, after the preceding action's outcome is taken and before the act, which
+  settles under the taught parameters. A lesson given every moment is taken there where `lesson`
+  before `live` is refused while a sampled action awaits its outcome: in Wild's watching worlds,
+  where a young animal is shown its parent's action, `lesson` before `live` was refused in 95% of
+  the moments ([routine and repair](docs/start.md#routine-and-repair-live)).
 - **Brains in a browser on the compiled path**: under Pyodide, where Numba is absent, the CPU
   kernels of `cadence.fused` come from one WebAssembly module built from `kernels/wasm`
   (`cadence_kernel.wasm`, a release file of about 115 KB). A page opts in by naming the file in

@@ -234,7 +234,7 @@ settles on the present observation and issues the next action
 
 ### Routine and repair: `live`
 
-`live(observations, *, reward=None, done=None, salience=None, decision_id=None)` follows one
+`live(observations, *, reward=None, done=None, salience=None, decision_id=None, lesson=None)` follows one
 stream of a brain composed with `arousal=True`. A calm brain answers with the greedy choice of
 one qualified settle and learns nothing: no eligibility phases, no parameter change, no
 associative write, and earlier eligibility fades by one step. Two things rouse it:
@@ -259,6 +259,15 @@ consolidation's importance for the outcome that wakes a calm brain. A mark does 
 brain or permit a calm write, and it needs an awaited action (after `wait` or a saved
 continuation too). The caller decides what to mark; marking every outcome can harm a reward
 chain ([episodic limits](memory.md#episodic-limits)).
+
+`lesson=(targets, weights)` teaches the moment as `lesson(observations, targets=targets,
+weights=weights)` does ([supervised lessons](teach.md#supervised-lessons)): `targets` one row of
+the actions, each slot's summing to one, and `weights` the row's weight (a number, one row, or
+None). It is taught at its place in the moment, after the preceding action's outcome is taken
+and before the moment's act, which settles under the taught parameters. There no outcome is
+pending, so a lesson given every moment (a young animal shown what its parent does) is taken
+where `lesson` before `live` is refused while a sampled action awaits its outcome. An invalid
+lesson raises `ValueError` before anything changes.
 
 ```python
 import numpy as np
