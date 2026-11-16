@@ -15,6 +15,11 @@
   one call of the Python it stands for, with Numba natively and in the WebAssembly module under
   Pyodide, where each equals its Python to the bit. A free solve with an apical compartment runs
   in one compiled call.
+- **The map sums in one order on every machine**: the map of things' products and lengths (a
+  thing's middle, its kind's score, a view's distance, sight's share of a bump, a speed) sum
+  entry after entry from zero, as NumPy sums them without BLAS, where they ran in BLAS's order
+  natively. Under Pyodide the bits are as before; natively they move in the last bits, and a
+  thing exactly two reaches from a cell is decided alike on every machine.
 - **Blocks read by their synapses**: a block whose synapses fill less than six tenths of it sums
   its product over them (`fused.sparse_offset`), to the bit of the whole block's product in a
   browser. Wild's founders take 8.8 ms an animal-moment natively against 11.2 ms, and 14.8 ms
