@@ -69,6 +69,14 @@ def sparse_codes(kinds: int, units: int, weight: int = 3, seed: int = 0) -> np.n
     return out
 
 
+def _answer_copy(answer: dict[str, Any] | None) -> dict[str, Any] | None:
+    """An answer of ``Map.thing_at`` its reader may change without changing the map's."""
+    if answer is None:
+        return None
+    return {**answer, "values": {k: v.copy() for k, v in answer["values"].items()},
+            "place": answer["place"].copy()}
+
+
 class Map:
     """What is where, over ``cells`` of a plane, for kinds given as codes of ``units`` units.
 
@@ -1176,23 +1184,45 @@ class Map:
             reach = 1.5 * float(self.size.max()) if within is None else float(within)
             near = np.linalg.norm(self.centers - np.asarray(place, dtype=np.float64),
                                   axis=1) <= reach
+        answers = None if self.trace else self._answers()
+        key = (near.tobytes(), np.asarray(body, dtype=np.float64).tobytes(), float(heading))
+        if answers is not None and key in answers:  # the same question at the same state
+            self.work["questions"] += 1
+            return _answer_copy(answers[key])
         v = self._settle(kept=near, asked="what_is_at")
         self.work["questions"] += 1
         run = self._runs
         what = np.asarray(np.maximum(np.tanh(v[run["what"]] / 2.0), 0.0))
         where = np.asarray(np.maximum(np.tanh(v[run["where"]] / 2.0), 0.0))
-        if not what[: self.units].max() > self._floor:
-            return None
-        kind = self.kind_of(what[: self.units])
-        assert kind is not None
-        own = float(what[np.flatnonzero(self.codes[kind])].min())
-        at = (where @ self.centers) / where.sum()
-        offset = at - np.asarray(body, dtype=np.float64).reshape(2)
-        bearing = float(np.angle(np.exp(1j * (np.arctan2(offset[1], offset[0]) - heading))))
-        return {"kind": kind,
-                "values": {group: np.asarray(np.clip(what[units] / own, 0.0, 1.0))
-                           for group, units in self.values.items()},
-                "place": at, "bearing": bearing, "distance": float(np.linalg.norm(offset))}
+        answer: dict[str, Any] | None = None
+        if what[: self.units].max() > self._floor:
+            kind = self.kind_of(what[: self.units])
+            assert kind is not None
+            own = float(what[np.flatnonzero(self.codes[kind])].min())
+            at = (where @ self.centers) / where.sum()
+            offset = at - np.asarray(body, dtype=np.float64).reshape(2)
+            bearing = float(np.angle(np.exp(1j * (np.arctan2(offset[1], offset[0]) - heading))))
+            answer = {"kind": kind,
+                      "values": {group: np.asarray(np.clip(what[units] / own, 0.0, 1.0))
+                                 for group, units in self.values.items()},
+                      "place": at, "bearing": bearing, "distance": float(np.linalg.norm(offset))}
+        if answers is not None:
+            answers[key] = _answer_copy(answer)
+        return answer
+
+    def _answers(self) -> dict[Any, Any]:
+        """The answers ``thing_at`` gave at the map's present state: the same question there
+        has the same answer, so it is read back. Kept while the potentials, the clock, the lost
+        and the doubt stay the same to the bit, and the graph the same."""
+        state = (self.potential, self.clock, self.lost, self.doubt)
+        held = self.__dict__.get("_answered")
+        if (held is None or held[0] is not self._plain
+                or any(a.shape != b.shape or a.tobytes() != b.tobytes()
+                       for a, b in zip(held[1], state, strict=True))):
+            held = self.__dict__["_answered"] = (
+                self._plain, tuple(np.array(a, copy=True) for a in state), {})
+        answers: dict[Any, Any] = held[2]
+        return answers
 
     def where_is_value(self, group: str, value: int) -> np.ndarray:
         """Where the things with a value are, ``(things, 2)`` (``"what is red?"``): the value's

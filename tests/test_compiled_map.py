@@ -69,3 +69,48 @@ def test_the_compiled_map_lives_as_its_python(make, monkeypatch: pytest.MonkeyPa
     assert len(fast) == len(slow)
     for a, b in zip(fast, slow, strict=True):
         np.testing.assert_allclose(a, b, rtol=0, atol=1e-9)
+
+
+def asked(held: Map, rng: np.random.Generator, moments: int = 30) -> list[object]:
+    """A life whose every moment asks the map about each thing it holds twice."""
+    out: list[object] = []
+    side = held.plane[1] - held.plane[0]
+    for t in range(moments):
+        seen = [(k, rng.random(2) * side, {"hue": int(rng.integers(4))}) for k in range(2)]
+        held.moment(seen=seen, lit=lambda points, e=0.3 * side + (t % 5): points[:, 0] < e)
+        for _ in range(2):
+            for thing in held.things():
+                if len(thing["cells"]):
+                    cells = np.zeros(held.count, dtype=bool)
+                    cells[thing["cells"]] = True
+                    out.append(held.thing_at(None, cells=cells, body=(1.0, 2.0), heading=0.3))
+            out.append(held.thing_at(rng.random(2) * side))
+    out.append(dict(held.work))
+    return out
+
+
+def test_the_maps_answers_read_back_are_the_answers_asked_anew(monkeypatch) -> None:
+    kept = asked(wild_map(), np.random.default_rng(7))
+    monkeypatch.setattr(Map, "_answers", lambda self: None)
+    anew = asked(wild_map(), np.random.default_rng(7))
+    assert len(kept) == len(anew)
+    for a, b in zip(kept, anew, strict=True):
+        if isinstance(a, dict) and "kind" in a:
+            assert isinstance(b, dict) and a["kind"] == b["kind"]
+            assert a["place"].tobytes() == b["place"].tobytes()
+            assert (a["bearing"], a["distance"]) == (b["bearing"], b["distance"])
+            for group in a["values"]:
+                assert a["values"][group].tobytes() == b["values"][group].tobytes()
+        else:
+            assert a == b  # None, or the map's work: every question counted both ways
+
+
+def test_an_answer_read_back_is_the_readers_own() -> None:
+    held = wild_map()
+    held.moment(seen=[(0, np.array([6.0, 6.0]), {"hue": 1})], lit=lambda p: p[:, 0] < 12.0)
+    first = held.thing_at(np.array([6.0, 6.0]))
+    assert first is not None
+    first["place"][:] = -1.0
+    first["values"]["hue"][:] = 9.0
+    again = held.thing_at(np.array([6.0, 6.0]))
+    assert again is not None and (again["place"] > 0).all() and (again["values"]["hue"] <= 1).all()
