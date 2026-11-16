@@ -35,7 +35,7 @@ def eyes(thing: dict, place: float) -> dict[str, np.ndarray]:
     return THINGS.rows({"hue": [thing["hue"]], "shape": [thing["shape"]], "place": [place]})
 
 
-def parrot(**options) -> Brain:
+def speaker(**options) -> Brain:
     return Brain.compose(senses={"eyes": THINGS.widths, "ear": EAR.width}, actions=2,
                          code=512, bound=256, voice="ear", arousal=True, seed=0,
                          backend="cpu", **options)
@@ -49,7 +49,7 @@ def named(brain: Brain, rng: np.random.Generator, rounds: int = 3) -> None:
 
 
 def test_compose_lays_out_a_voice_and_holds_the_records():
-    brain = parrot()
+    brain = speaker()
     assert list(brain.senses) == ["eyes", "ear", "voice"]
     assert brain.inputs == THINGS.width + 2 * EAR.width
     assert isinstance(brain.bound, BoundRecords) and brain.bound.store.count == 0
@@ -78,7 +78,7 @@ def test_compose_refuses_by_name(options, says):
 
 def test_a_sound_heard_alone_brings_back_the_thing_it_was_heard_with():
     rng = np.random.default_rng(0)
-    brain = parrot()
+    brain = speaker()
     assert not flat(brain.complete({"ear": sound("cup", rng)})["eyes"]).any()  # nothing yet
     named(brain, rng)
     back = flat(brain.complete({"ear": sound("cup", rng)})["eyes"])
@@ -92,7 +92,7 @@ def test_a_sound_heard_alone_brings_back_the_thing_it_was_heard_with():
 
 def test_the_brain_settles_on_what_its_records_bring_back():
     rng = np.random.default_rng(1)
-    brain = parrot()
+    brain = speaker()
     named(brain, rng)
     take = sound("cup", rng)
     rows = brain._sensed_rows({"ear": take})
@@ -106,7 +106,7 @@ def test_the_brain_settles_on_what_its_records_bring_back():
 
 def test_a_moment_writes_what_the_senses_gave_and_not_what_came_back():
     rng = np.random.default_rng(2)
-    brain = parrot()
+    brain = speaker()
     named(brain, rng)
     brain.act({"ear": sound("apple", rng)}, greedy=True)
     slot = int(brain.bound.written[0])
@@ -115,7 +115,7 @@ def test_a_moment_writes_what_the_senses_gave_and_not_what_came_back():
 
 def test_the_voice_says_the_name_heard_with_a_thing_and_babbles_otherwise():
     rng = np.random.default_rng(3)
-    brain = parrot()
+    brain = speaker()
     assert not brain.say({"eyes": eyes(CUP, 0.2)}).any()  # no sound held: silence
     assert brain.bound.said_from == [None]
     for word in WORDS:
@@ -129,7 +129,7 @@ def test_the_voice_says_the_name_heard_with_a_thing_and_babbles_otherwise():
 
 def test_a_reward_makes_what_was_said_the_answer_and_no_reward_refuses_it():
     rng = np.random.default_rng(4)
-    brain = parrot()
+    brain = speaker()
     for word in WORDS:
         brain.act({"ear": sound(word, rng)}, greedy=True)
     question = {"eyes": eyes(CUP, 0.3), "ear": sound("what colour", rng)}
@@ -150,7 +150,7 @@ def test_a_reward_makes_what_was_said_the_answer_and_no_reward_refuses_it():
 
 def test_a_life_without_rewards_pays_nothing():
     rng = np.random.default_rng(5)
-    brain = parrot()
+    brain = speaker()
     for word in WORDS:
         brain.act({"ear": sound(word, rng)}, greedy=True)
     said = brain.say({"eyes": eyes(CUP, 0.0)})
@@ -162,7 +162,7 @@ def test_a_life_without_rewards_pays_nothing():
 
 def test_step_pays_the_record_of_the_moment_it_rewards():
     rng = np.random.default_rng(6)
-    brain = parrot()
+    brain = speaker()
     brain.step({"eyes": eyes(CUP, 0.0), "voice": sound("cup", rng)})
     slot = int(brain.bound.written[0])
     brain.step({"eyes": eyes(CUP, 0.0)}, reward=[1.0])
@@ -171,10 +171,10 @@ def test_step_pays_the_record_of_the_moment_it_rewards():
 
 def test_save_and_load_keep_the_records(tmp_path):
     rng = np.random.default_rng(7)
-    brain = parrot()
+    brain = speaker()
     named(brain, rng)
     said = brain.say({"eyes": eyes(APPLE, 0.0)})
-    path = brain.save(tmp_path / "parrot.npz")
+    path = brain.save(tmp_path / "speaker.npz")
     again = Brain.load(path)
     assert isinstance(again.bound, BoundRecords)
     assert again.bound.store.count == brain.bound.store.count
@@ -190,11 +190,11 @@ def test_save_and_load_keep_the_records(tmp_path):
 
 
 def test_grow_and_graft_refuse_bound_records():
-    brain = parrot()
+    brain = speaker()
     with pytest.raises(ValueError, match="bound records"):
         brain.grow(modules=(80,))
     with pytest.raises(ValueError, match="bound records"):
-        brain.graft(parrot())
+        brain.graft(speaker())
 
 
 def test_complete_and_say_refuse_a_brain_without_records():
@@ -214,7 +214,7 @@ def test_a_heard_name_draws_the_focus_to_the_thing_it_names():
     rng = np.random.default_rng(8)
     space = Map((-1.0, 1.0, -1.0, 1.0), (12, 12), units=8,
                 values={"hue": 8, "shape": 24}, surprise=True, seed=0)
-    brain = parrot(trained=[space], surprise=True)
+    brain = speaker(trained=[space], surprise=True)
     named(brain, rng, rounds=4)
     spots = {"cup": np.array([-0.5, 0.5]), "apple": np.array([0.5, 0.5])}
     for k, (thing, _) in enumerate(((CUP, "cup"), (APPLE, "apple"))):
@@ -249,7 +249,7 @@ def test_things_and_ear():
 def test_what_was_said_answers_only_once_paid_however_often_it_is_told():
     rng = np.random.default_rng(9)
     for surprise in (False, True):
-        brain = parrot(surprise=surprise)
+        brain = speaker(surprise=surprise)
         for word in WORDS:
             brain.act({"ear": sound(word, rng)}, greedy=True)
         question = {"eyes": eyes(CUP, 0.3), "ear": sound("what colour", rng)}
@@ -264,7 +264,7 @@ def test_what_was_said_answers_only_once_paid_however_often_it_is_told():
 
 def test_a_reward_after_wait_pays_the_moment_acted_at():
     rng = np.random.default_rng(10)
-    brain = parrot()
+    brain = speaker()
     for word in WORDS:
         brain.act({"ear": sound(word, rng)}, greedy=True)
     said = brain.say({"eyes": eyes(CUP, 0.0)})
@@ -290,7 +290,7 @@ def test_records_kept_for_good_are_read_however_long_ago():
 
 def test_two_streams_are_paid_and_refused_each_its_own():
     rng = np.random.default_rng(12)
-    brain = parrot()
+    brain = speaker()
     for word in WORDS:
         brain.act({"ear": np.vstack([sound(word, rng), sound(word, rng)])}, greedy=True)
     seen = {"eyes": {f: np.vstack([eyes(CUP, 0.0)[f], eyes(APPLE, 0.5)[f]])
@@ -305,7 +305,7 @@ def test_two_streams_are_paid_and_refused_each_its_own():
 
 def test_imagine_and_reads_write_nothing():
     rng = np.random.default_rng(13)
-    brain = parrot()
+    brain = speaker()
     named(brain, rng)
     before = {k: v.copy() for k, v in brain.bound.arrays().items()}
     brain.imagine([{"ear": sound("cup", rng)}, {"eyes": eyes(APPLE, 0.0)}])

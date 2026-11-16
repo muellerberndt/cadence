@@ -1,4 +1,4 @@
-"""The symbols chamber's world: things a parrot sees, and the words a trainer says.
+"""The symbols chamber's world: things a brain sees, and the words a trainer says.
 
 **Things.** ``KINDS`` kinds, each a shape (three readings) and a surface (one reading), and two
 colours a kind comes in (a hue). A thing seen is its kind, its colour and its place around the
@@ -8,7 +8,7 @@ body (a direction and a distance), each a population of tuned cells (``cadence.s
 "what is this") are utterances: a word is a fixed pattern of log-mel energies (40 bands, 30 to
 60 frames: a few blobs of energy in time and frequency, drawn once from the word's own seed),
 and a take of it is that pattern said by a speaker: faster or slower, a band higher or lower,
-louder or softer, with the room's noise. The parrot's ear hears a take as one code
+louder or softer, with the room's noise. The brain's ear hears a take as one code
 (``cadence.senses.Ear``). The trainer knows what was said by the nearest word to a take.
 
 Everything here is the world and the trainer. Nothing in it is part of the brain.
@@ -85,7 +85,7 @@ class Words:
         self.templates = np.concatenate([ear.code(p) for p in self.patterns.values()])
 
     def take(self, word: str, rng: np.random.Generator, noise: float = 0.3) -> np.ndarray:
-        """One take of ``word`` by a speaker, as the parrot's ear codes it ``(1, width)``."""
+        """One take of ``word`` by a speaker, as the brain's ear codes it ``(1, width)``."""
         pattern = self.patterns[word]
         frames = max(8, int(round(len(pattern) * rng.uniform(0.8, 1.25))))
         at = np.linspace(0, len(pattern) - 1, frames)
@@ -98,7 +98,7 @@ class Words:
         return self.ear.code(said)
 
     def heard(self, code: np.ndarray) -> str | None:
-        """What a take (or a sound the parrot says) is heard as: the nearest word; None for
+        """What a take (or a sound the brain says) is heard as: the nearest word; None for
         silence."""
         code = np.asarray(code, dtype=np.float64).reshape(-1)
         if not np.any(code):

@@ -2055,16 +2055,16 @@ from cadence.senses import Ear, Things
 
 things = Things({"hue": (0.0, 1.0), "shape": [(0.0, 1.0)] * 3}, per=8)
 ear = Ear(frames=8, bands=10)
-parrot = Brain.compose(senses={"eyes": things.widths, "ear": ear.width}, actions=2,
-                       code=512, bound=256, voice="ear", arousal=True, seed=0)
+brain = Brain.compose(senses={"eyes": things.widths, "ear": ear.width}, actions=2,
+                      code=512, bound=256, voice="ear", arousal=True, seed=0)
 cup = things.rows({"hue": [0.85], "shape": [[0.6, 0.3, 0.2]]})
 said_cup = np.random.default_rng(0).normal(size=(20, 10))       # the word's log-mel frames
 for _ in range(3):
-    parrot.act({"eyes": cup, "ear": ear.code(said_cup)}, greedy=True)   # a cup, and "cup"
-back = parrot.complete({"ear": ear.code(said_cup)})              # "cup" heard alone
+    brain.act({"eyes": cup, "ear": ear.code(said_cup)}, greedy=True)   # a cup, and "cup"
+back = brain.complete({"ear": ear.code(said_cup)})              # "cup" heard alone
 assert back["eyes"]["shape"].any()                               # the cup's form comes back
-said = parrot.say({"eyes": cup})                                 # a cup in view: what it says
-assert float(said[0] @ ear.code(said_cup)[0]) > 0.9 and parrot.bound.said_from == ["heard"]
+said = brain.say({"eyes": cup})                                 # a cup in view: what it says
+assert float(said[0] @ ear.code(said_cup)[0]) > 0.9 and brain.bound.said_from == ["heard"]
 ```
 
 **A record.** At every moment the brain lives (`act`, `step`, `live`, `wait`) in which a sense
@@ -2111,12 +2111,12 @@ pays and refuses nothing.
 
 ```python
 for word in (said_cup, np.random.default_rng(1).normal(size=(20, 10))):
-    parrot.act({"ear": ear.code(word)}, greedy=True)             # sounds heard alone
+    brain.act({"ear": ear.code(word)}, greedy=True)             # sounds heard alone
 question = {"eyes": cup, "ear": ear.code(np.random.default_rng(2).normal(size=(20, 10)))}
-said = parrot.say(question)                                      # a guess, or a sound it knows
-parrot.live({**question, "voice": said})                         # it says it, and hears itself
-parrot.live({"eyes": cup}, reward=[1.0])                         # paid: that is the answer
-assert np.allclose(parrot.say(question), said) and parrot.bound.said_from == ["said"]
+said = brain.say(question)                                      # a guess, or a sound it knows
+brain.live({**question, "voice": said})                         # it says it, and hears itself
+brain.live({"eyes": cup}, reward=[1.0])                         # paid: that is the answer
+assert np.allclose(brain.say(question), said) and brain.bound.said_from == ["said"]
 ```
 
 **A heard name draws the focus.** With a voice, `surprise=True` and a map of things whose values
@@ -2137,7 +2137,7 @@ The rule's constants are `cadence.bound.BoundRecords`'s (`HEADS`, `NEAR`, `MATCH
 `cadence-brain/5` with the feature `bound`, which 0.100.0 refuses by name; `describe()` names
 them under `bound` and `voice`. A voice takes a sense of one field. `grow`, `graft` and `Lives` refuse a brain with records.
 
-**What it reads.** In the [symbols chamber](../benchmarks/symbols/README.md) (the parrot that
+**What it reads.** In the [symbols chamber](../benchmarks/symbols/README.md) (a brain that
 starts with no words: eight kinds of things in two colours, seventeen words said by a speaker),
 on twelve fresh founders of its fourth declared run (256 association neurons, the code of this
 release): a kind's name heard alone brings back its kind from the records at 1.00 and in the

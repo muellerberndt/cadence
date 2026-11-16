@@ -16,20 +16,18 @@ from cadence.senses import Ear, Things
 
 things = Things({"hue": (0.0, 1.0), "shape": [(0.0, 1.0)] * 3})     # the eyes: tuned cells
 ear = Ear(frames=8, bands=10)                                       # an utterance as one code
-parrot = Brain.compose(senses={"eyes": things.widths, "ear": ear.width}, actions=2,
-                       code=512, bound=256, voice="ear", arousal=True, seed=0)
+brain = Brain.compose(senses={"eyes": things.widths, "ear": ear.width}, actions=2,
+                      code=512, bound=256, voice="ear", arousal=True, seed=0)
 cup = things.rows({"hue": [0.85], "shape": [[0.6, 0.3, 0.2]]})
 cup_word = ear.code(np.random.default_rng(0).normal(size=(20, 10)))  # "cup", as log-mel frames
 for _ in range(3):
-    parrot.act({"eyes": cup, "ear": cup_word}, greedy=True)         # a cup, and "cup" heard
-assert parrot.complete({"ear": cup_word})["eyes"]["shape"].any()    # "cup" alone: the cup's form
-said = parrot.say({"eyes": cup})                                     # a cup alone: what it says
+    brain.act({"eyes": cup, "ear": cup_word}, greedy=True)         # a cup, and "cup" heard
+assert brain.complete({"ear": cup_word})["eyes"]["shape"].any()    # "cup" alone: the cup's form
+said = brain.say({"eyes": cup})                                     # a cup alone: what it says
 assert float(said[0] @ cup_word[0]) > 0.9                            # the word it heard with it
 ```
 
-The guide is [records of bound moments](docs/memory.md#records-of-bound-moments-opt-in); the
-parrot demo, a parrot that learns words from a trainer and pistachios, is the example of symbols
-learned by reward ([cadence-demos: parrot](https://github.com/muellerberndt/cadence-demos/tree/main/parrot)).
+The guide is [records of bound moments](docs/memory.md#records-of-bound-moments-opt-in).
 
 **Moved to 0.102.0.** Two items planned for this release (#344) are not in it:
 - **The sentence state (#308).** Its declared gate of parity with a matched LSTM and transformer
@@ -92,7 +90,7 @@ preferred; the reading is on the issue.
   `Lives` refuse it. New public names: `bound` and `voice` in `compose`, `Brain.complete`,
   `Brain.say`, the modules `cadence.bound` (`BoundRecords`) and `cadence.senses` (`Things`,
   `Ear`).
-- **The symbols chamber** (`benchmarks/symbols`): the parrot that starts with no words. On
+- **The symbols chamber** (`benchmarks/symbols`): a brain that starts with no words. On
   twelve fresh founders of its fourth declared run (the code of this release) every gate holds:
   a name heard alone brings its thing back from the records at 1.00 and into the settled state
   at .975 to 1.00; a reward teaches names and "what colour is this" in 3 to 21 exchanges, at
@@ -192,7 +190,7 @@ trained module and a brain with a map assigned by hand.
   whole for a brain that attends it: its kind, each group's amounts as reported, its place, and
   that place from the body (`bearing` from the heading, `distance`). A brain whose attended thing
   is read from the map in place of the eyes' report answers about a thing behind a screen as
-  about a thing in view (#342, one founder of the parrot's research chamber, development
+  about a thing in view (#342, one founder of a research chamber, development
   readings: the thing's name .98 behind a screen against .00 through the eyes).
 
 ### One surprise signal, read from the settle's own residual (#337)

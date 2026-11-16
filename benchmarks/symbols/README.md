@@ -1,7 +1,7 @@
-# Symbols chamber: the parrot that starts with no words
+# Symbols chamber: a brain that starts with no words
 
 A brain with eyes, an ear and a voice (`Brain.compose(senses={"eyes": ..., "ear": ...},
-code=2048, bound=4096, voice="ear")`) lives through what a trainer does with a young parrot:
+code=2048, bound=4096, voice="ear")`) lives through what a trainer does with a young animal:
 the trainer says words, names things, asks a question and pays a reward for a right answer. The
 chamber reads whether a sound comes to stand for a thing and a phrase for what it asks, through
 the brain's records of its bound moments ([`cadence.bound`](../../src/cadence/bound.py), the
@@ -13,7 +13,7 @@ guide's [sounds as symbols](../../docs/memory.md#records-of-bound-moments-opt-in
 around the body, seen as tuned cells (`cadence.senses.Things`); seventeen words (the kinds, five
 colours, two questions), each a pattern of log-mel energies that a speaker says faster or slower,
 higher or lower, louder or softer and with the room's noise, heard as one code
-(`cadence.senses.Ear`). The trainer hears what the parrot says as the nearest word. `chamber.py`
+(`cadence.senses.Ear`). The trainer hears what the brain says as the nearest word. `chamber.py`
 holds the life and the readings; its docstring gives each step.
 
 ```sh
@@ -28,7 +28,7 @@ python -m pytest -q benchmarks/symbols
    place and in either colour.
 3. **Reading Y1h, Y2** on that brain.
 4. **Reward** (a fresh brain of the founder after Listen alone): four things, one after the other,
-   each until the parrot names it right three times running or 80 exchanges, a reward of 1.0 for
+   each until the brain names it right three times running or 80 exchanges, a reward of 1.0 for
    the right name and 0.0 otherwise; then the thing at places no exchange used (**Y1**); then
    "what colour is this" with four things, the same way. The same exchanges unpaid on another
    fresh brain.
@@ -63,7 +63,7 @@ parameters and the seconds a life.
 and its constants (`BoundRecords`: the read by the nearest records that hold a field, the
 heaviest group, a refused record weighing against its sound, a reward's tellings, the babble);
 the name's pull on the focus (`NAMED`). **Learned:** every record, its strength, what each sound
-brings back, what the parrot says, which thing a name draws the focus to.
+brings back, what the brain says, which thing a name draws the focus to.
 
 **Expectations, from development (founders 0 to 3).** S1 1.00 on every founder; S2 .68 to 1.00
 (one founder of four under .90 in the first development pass, 1.00 and .98 in the second);

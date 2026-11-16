@@ -1,14 +1,14 @@
-"""The symbols chamber: the parrot that starts with no words (cadence 0.101, #342).
+"""The symbols chamber: a brain that starts with no words (cadence 0.101, #342).
 
 A brain with eyes, an ear and a voice (``Brain.compose(senses={"eyes": ..., "ear": ...},
-code=..., bound=records, voice="ear")``) lives through what a trainer does with a young parrot,
+code=..., bound=records, voice="ear")``) lives through what a trainer does with a young animal,
 and is read at each step. The world and the trainer are in ``world.py``.
 
 1. **Listen.** The trainer says every word of the world three times, nothing else in view.
 2. **Naming.** The trainer holds up a thing (a kind in one of its colours, at a place) and says
    its kind's name, ``ROUNDS`` times a kind.
 3. **Y1h (the record's key "Y1"), a thing named by sight from naming alone.** A thing at a place
-   no naming used, in either colour of its kind, nothing heard: what the parrot says
+   no naming used, in either colour of its kind, nothing heard: what the brain says
    (``Brain.say``) is heard by the trainer as a word. Right when it is the kind's name. Reported
    without a bar; the gated naming (S6) is read after the reward's exchanges.
 4. **Y2, a sound brings the thing back.** A kind's name heard alone, nothing in view:
@@ -20,10 +20,10 @@ and is read at each step. The world and the trainer are in ``world.py``.
    - controls: the same brain with its records barred (``brain.bound = None``), and with the
      records' values dealt to other keys.
 5. **Y3, meaning learned by reward** (a fresh brain of the same founder after Listen alone):
-   - names: a thing in view, the parrot says something; a reward (1.0) when it says the
+   - names: a thing in view, the brain says something; a reward (1.0) when it says the
      kind's name. Four kinds, one after the other, each until it is said right three times
      running or ``BUDGET`` exchanges;
-   - a phrase: "what colour is this" heard with a thing in view, a reward when the parrot says
+   - a phrase: "what colour is this" heard with a thing in view, a reward when the brain says
      its colour. Four things (kind and colour), each until right three times running or
      ``BUDGET`` exchanges;
    - unpaid: the same exchanges with a reward of 0.0 at every answer.
