@@ -1928,13 +1928,13 @@ def _fed_ranges(layout: Layout) -> np.ndarray:
 ApicalBlocks = tuple["Apical", Sequence[int], np.ndarray, Sequence[int]]
 
 # a block whose synapses fill less than this share of it is read by its synapses
-SPARSE_SHARE = 0.25
+SPARSE_SHARE = 0.6
 
 
 def sparse_offset(layout: Layout, apical: ApicalBlocks | None = None) -> np.ndarray:
     """``layout.offset`` followed by the blocks the kernels read by their synapses: where a
     block's synapses fill less than ``SPARSE_SHARE`` of it (the map's one-to-one wiring, a
-    sparse module), its product sums only its synapses, each column's in the order of their
+    module wired at a half), its product sums only its synapses, each column's in the order of their
     presynaptic neurons, the order the product of the whole block sums them without BLAS, so
     the sums are the same to the bit there (an absent synapse adds a zero to a sum that is
     never -0.0). After the ``blocks + 1`` offsets come two rows of ``blocks``: where each

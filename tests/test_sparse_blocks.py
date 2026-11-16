@@ -1,5 +1,5 @@
 """Blocks read by their synapses (``fused.sparse_offset``): a block whose synapses fill less
-than a quarter of it sums its product over them, each column's in the order of their
+than six tenths of it sums its product over them, each column's in the order of their
 presynaptic neurons. Natively the whole blocks' products run in BLAS, so a life on the
 synapses agrees with the same life on whole blocks within rounding; in a browser, where the
 whole block's product sums its rows in order, to the bit (``kernels/wasm/browser/sparse.py``)."""
@@ -40,7 +40,7 @@ def test_the_maps_one_to_one_wiring_is_read_by_its_synapses() -> None:
     assert fused.sparse_offset(lay) is table  # made once
 
 
-def test_a_brain_reads_its_dense_blocks_whole() -> None:
+def test_a_block_is_read_by_its_synapses_where_they_fill_under_the_share() -> None:
     graph = cd.Brain.compose(12, 4, modules=(32, 32), backend="cpu", seed=1).learner.brain
     lay = graph.layout
     table = fused.sparse_offset(lay)
