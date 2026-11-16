@@ -2,6 +2,7 @@
 //! methods by name (`call`), for the replay checks and for the moment that runs them.
 
 pub mod arousal;
+pub mod brain;
 
 use crate::state::{Array, Error, Named};
 
@@ -13,6 +14,11 @@ pub fn call(part: &str, method: &str, state: &Named, args: &Named) -> Result<Nam
     match part {
         "arousal" => {
             let mut held = arousal::Arousal::import(state)?;
+            held.call(method, args, &mut out)?;
+            held.export(&mut after);
+        }
+        "brain" => {
+            let mut held = brain::Brain::import(state)?;
             held.call(method, args, &mut out)?;
             held.export(&mut after);
         }

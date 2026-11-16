@@ -148,6 +148,31 @@ impl Named {
         Ok(self.get(name)?.shape.clone())
     }
 
+    /// The entries named `prefix.<name>`, as `<name>`: one part's state inside a brain's.
+    pub fn under(&self, prefix: &str) -> Named {
+        let lead = format!("{prefix}.");
+        let mut out = Named::new();
+        for name in &self.order {
+            if let Some(rest) = name.strip_prefix(&lead) {
+                out.put(rest, self.arrays[name].clone());
+            }
+        }
+        out
+    }
+
+    /// Whether any entry is named `prefix.<name>`.
+    pub fn holds(&self, prefix: &str) -> bool {
+        let lead = format!("{prefix}.");
+        self.order.iter().any(|n| n.starts_with(&lead))
+    }
+
+    /// `part`'s entries as `prefix.<name>`, after this one's.
+    pub fn put_under(&mut self, prefix: &str, part: &Named) {
+        for name in &part.order {
+            self.put(&format!("{prefix}.{name}"), part.arrays[name].clone());
+        }
+    }
+
     pub fn read(bytes: &[u8]) -> Result<Named, Error> {
         let mut at = 0usize;
         let mut take = |n: usize| -> Result<&[u8], Error> {
