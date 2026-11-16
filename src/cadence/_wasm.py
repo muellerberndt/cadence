@@ -61,7 +61,8 @@ def _instantiate(data: bytes) -> Any:
         """(bytes, M) => {
           const module = new WebAssembly.Module(bytes);
           const env = { memory: M.memory, __stack_pointer: M.___stack_pointer,
-                        host_exp: M._exp, host_malloc: M._malloc, host_free: M._free };
+                        host_exp: M._exp, host_tanh: M._tanh, host_malloc: M._malloc,
+                        host_free: M._free };
           return new WebAssembly.Instance(module, { env }).exports;
         }"""
     )
@@ -140,6 +141,9 @@ def load(source: str | bytes | None = None) -> bool:
     if parts is not None:
         parts._map_settle = _caller("map_settle")
         parts._bound_recall = _caller("bound_recall")
+        parts._map_pieces = _caller("map_pieces")
+        parts._map_moves = _caller("map_moves")
+        parts._map_write_values = _caller("map_write_values")
     if not hasattr(fused, "_wasm"):  # a release before this file: its kernels assert Numba
         fused.njit = _no_numba
         fused._threads = lambda: False
@@ -185,6 +189,9 @@ _KINDS = {
     "clear_choice": "dfq",
     "map_settle": "dqdqqqqq?dfffffbqqqqfffd?bdbddd?b?b?bdbqnw",
     "bound_recall": "qddd?b?bdbnnd?qnffnfffwq",
+    "map_pieces": "?nnqq",
+    "map_moves": "ddddfffnnw",
+    "map_write_values": "nqqdd?d?wdffnn",
 }
 
 

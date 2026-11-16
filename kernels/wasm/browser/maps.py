@@ -1,5 +1,7 @@
-"""The map of things on the compiled path against its Python, to the bit: moments with reports,
-sight and physics, questions by place and by value, on Wild's map and a plain one.
+"""The map of things on the compiled path against its Python: moments with reports, sight and
+physics, the moves its surprise reads, questions by place and by value, on Wild's map and two
+others. Under Pyodide to the bit; natively within 1e-9 (NumPy's BLAS sums a piece's weighted
+middle in another order than the compiled loop).
 
     python kernels/wasm/browser/run.py maps.py           # Pyodide, the WebAssembly kernel
     python kernels/wasm/browser/maps.py fused            # native, Numba
@@ -50,6 +52,9 @@ def life(make, moments=60):
         held.moment(seen=seen, lit=lambda points, e=edge: points[:, 0] < e)
         out.append(held.potential.copy())
         out.append(held.observation())
+        out.append(held.moves(held.potential * 0.7 + 0.3))  # a moved sheet against this one
+        if held.surprise is not None:
+            out.append(np.asarray(held.surprise.last, dtype=np.float64).ravel())
         thing = held.thing_at(rng.random(2) * (held.plane[1] - held.plane[0]))
         if thing is not None:
             out.extend([np.array([thing["kind"]]), np.asarray(thing["place"])])
@@ -61,17 +66,24 @@ def life(make, moments=60):
 
 failures = 0
 for label, make in maps():
-    kernel = compiled._map_settle
+    kernels = {name: getattr(compiled, name) for name in ("_map_settle", "_map_pieces",
+                                                            "_map_moves", "_map_write_values")}
     fast = life(make)
-    compiled._map_settle = None  # the Python of Map._settle: the reference
+    for name in kernels:  # the map's Python: the reference
+        setattr(compiled, name, None)
     try:
         slow = life(make)
     finally:
-        compiled._map_settle = kernel
+        for name, kernel in kernels.items():
+            setattr(compiled, name, kernel)
     same = len(fast) == len(slow) and all(
         a.shape == b.shape and np.array_equal(a.view(np.uint64) if a.dtype == float else a,
                                               b.view(np.uint64) if b.dtype == float else b)
         for a, b in zip(fast, slow, strict=True))
-    failures += not same
-    print(f"{label:16s} {'bitwise' if same else 'APART'} over {len(fast)} arrays", flush=True)
+    gap = max((float(np.max(np.abs(a - b))) if a.shape == b.shape and a.size else
+               (0.0 if a.shape == b.shape else np.inf)) for a, b in zip(fast, slow, strict=True))
+    # under Pyodide to the bit; natively NumPy's BLAS sums a weighted middle otherwise
+    failures += not (same if engine.BROWSER else gap < 1e-9)
+    print(f"{label:16s} {'bitwise' if same else f'apart, largest gap {gap:.1e}'} over "
+          f"{len(fast)} arrays", flush=True)
 engine.finish(not failures)

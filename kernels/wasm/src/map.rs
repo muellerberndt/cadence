@@ -229,3 +229,635 @@ pub unsafe extern "C" fn map_settle(
     let given = View { p: small.add(5), n0: 1, n1: 1, len: 1 };
     settle(&net, freezable, sweeps.max(0) as usize, 0.0, false, given, false, change, kept_view)
 }
+
+// -- the map's pieces and moves (`Map._pieces`, `Map.moves`)
+
+const EMPTY: i64 = -1;
+
+/// The slot each key takes in CPython's set built from the ascending `keys` (a set of small
+/// non-negative ints, whose hash is the int): `table` (room for `16 * keys + 32` slots: a grown
+/// table holds at most eight times its keys, and the old one is copied past it) receives
+/// the keys at their slots, EMPTY elsewhere; returns the table's size. CPython's `set_add_entry`
+/// with its linear probes and perturbation, and `set_table_resize` with `set_insert_clean`.
+unsafe fn set_table(keys: *const i64, n: usize, table: *mut i64) -> usize {
+    const PROBES: usize = 9;
+    let mut size = 8usize;
+    for s in 0..size {
+        *table.add(s) = EMPTY;
+    }
+    let mut fill = 0usize;
+    let mut used = 0usize;
+    for q in 0..n {
+        let key = *keys.add(q);
+        let mask = size - 1;
+        let mut i = key as usize & mask;
+        let mut perturb = key as usize;
+        'place: loop {
+            let probes = if i + PROBES <= mask { PROBES } else { 0 };
+            let mut e = i;
+            for _ in 0..=probes {
+                if *table.add(e) == EMPTY {
+                    *table.add(e) = key;
+                    fill += 1;
+                    used += 1;
+                    break 'place;
+                }
+                e += 1;
+            }
+            perturb >>= 5;
+            i = (i * 5 + 1 + perturb) & mask;
+        }
+        if fill * 5 >= mask * 3 {
+            // the table grows to the least power of two above four times what it holds; its
+            // keys go over in the old table's order
+            let mut grown = 8usize;
+            while grown <= used * 4 {
+                grown <<= 1;
+            }
+            let old = table.add(grown); // the old keys, copied past the new table's room
+            for s in 0..size {
+                *old.add(s) = *table.add(s);
+            }
+            for s in 0..grown {
+                *table.add(s) = EMPTY;
+            }
+            let newmask = grown - 1;
+            for s in 0..size {
+                let k = *old.add(s);
+                if k == EMPTY {
+                    continue;
+                }
+                let mut i = k as usize & newmask;
+                let mut perturb = k as usize;
+                'clean: loop {
+                    if *table.add(i) == EMPTY {
+                        *table.add(i) = k;
+                        break 'clean;
+                    }
+                    if i + PROBES <= newmask {
+                        for j in 1..=PROBES {
+                            if *table.add(i + j) == EMPTY {
+                                *table.add(i + j) = k;
+                                break 'clean;
+                            }
+                        }
+                    }
+                    perturb >>= 5;
+                    i = (i * 5 + 1 + perturb) & newmask;
+                }
+            }
+            size = grown;
+            fill = used;
+        }
+    }
+    size
+}
+
+/// The pieces of `active` (a flag a cell of an `nx` by `ny` grid) as `Map._pieces` finds them:
+/// cells that touch, corners too, each piece's cells ascending, the pieces in the order a
+/// Python set of the active cells pops their seeds. `cells` (count) receives the pieces one
+/// after another and `bounds` (count + 1) where each begins; returns the number of pieces.
+pub(crate) unsafe fn pieces(
+    active: *const u8, nx: usize, ny: usize, cells: *mut i64, bounds: *mut i64,
+    scratch: &mut Scratch,
+) -> usize {
+    let count = nx * ny;
+    let keys = scratch.take::<i64>(count.max(1));
+    let mut n = 0usize;
+    for c in 0..count {
+        if *active.add(c) != 0 {
+            *keys.add(n) = c as i64;
+            n += 1;
+        }
+    }
+    *bounds = 0;
+    if n == 0 {
+        return 0;
+    }
+    let label = scratch.take::<i64>(count);
+    let stack = scratch.take::<i64>(n);
+    for c in 0..count {
+        *label.add(c) = -1;
+    }
+    let mut pieces = 0usize;
+    for q in 0..n {
+        let seed = *keys.add(q);
+        if *label.add(seed as usize) >= 0 {
+            continue;
+        }
+        *label.add(seed as usize) = pieces as i64;
+        let mut top = 1usize;
+        *stack = seed;
+        while top > 0 {
+            top -= 1;
+            let cell = *stack.add(top) as usize;
+            let (i, j) = (cell.checked_div(ny).unwrap_or(0) as i64, cell.checked_rem(ny).unwrap_or(0) as i64);
+            for a in i - 1..=i + 1 {
+                for b in j - 1..=j + 1 {
+                    if a < 0 || a >= nx as i64 || b < 0 || b >= ny as i64 {
+                        continue;
+                    }
+                    let other = (a * ny as i64 + b) as usize;
+                    if *active.add(other) != 0 && *label.add(other) < 0 {
+                        *label.add(other) = pieces as i64;
+                        *stack.add(top) = other as i64;
+                        top += 1;
+                    }
+                }
+            }
+        }
+        pieces += 1;
+    }
+    // each piece's cells ascending, at its label's place
+    let start = scratch.take::<i64>(pieces + 1);
+    for p in 0..=pieces {
+        *start.add(p) = 0;
+    }
+    for q in 0..n {
+        *start.add(*label.add(*keys.add(q) as usize) as usize + 1) += 1;
+    }
+    for p in 0..pieces {
+        *start.add(p + 1) += *start.add(p);
+    }
+    let fill = scratch.take::<i64>(pieces);
+    let grouped = scratch.take::<i64>(n);
+    for p in 0..pieces {
+        *fill.add(p) = *start.add(p);
+    }
+    for q in 0..n {
+        let c = *keys.add(q);
+        let p = *label.add(c as usize) as usize;
+        *grouped.add(*fill.add(p) as usize) = c;
+        *fill.add(p) += 1;
+    }
+    // the seeds in the order the set pops them: from its finger, the next slot that holds a
+    // cell of a piece not yet taken
+    let table = scratch.take::<i64>(16 * n + 32);
+    let size = set_table(keys, n, table);
+    let taken = scratch.take::<u8>(pieces);
+    let mut finger = 0usize;
+    let mut at = 0usize;
+    for out in 0..pieces {
+        let mut s = finger & (size - 1);
+        loop {
+            let k = *table.add(s);
+            if k != EMPTY && *taken.add(*label.add(k as usize) as usize) == 0 {
+                break;
+            }
+            s = (s + 1) & (size - 1);
+        }
+        let p = *label.add(*table.add(s) as usize) as usize;
+        *taken.add(p) = 1;
+        finger = s + 1;
+        for q in *start.add(p) as usize..*start.add(p + 1) as usize {
+            *cells.add(at) = *grouped.add(q);
+            at += 1;
+        }
+        *bounds.add(out + 1) = at as i64;
+    }
+    pieces
+}
+
+fn pieces_room(count: usize) -> usize {
+    room::<i64>(count.max(1)) * 4 + room::<i64>(count) * 2 + room::<i64>(16 * count + 32)
+        + room::<i64>(count + 1) * 2 + room::<u8>(count) + 64
+}
+
+/// `Map._pieces(active)` (see `pieces`): `cells` and `bounds` int64, `count` and `count + 1`
+/// long. Returns the number of pieces.
+#[no_mangle]
+pub unsafe extern "C" fn map_pieces(active: u32, nx: i32, ny: i32, cells: u32, bounds: u32) -> i32 {
+    let active = take!(active, u8, BOOL, 0);
+    let cells = take!(cells, i64, INT64, 3);
+    let bounds = take!(bounds, i64, INT64, 4);
+    let (nx, ny) = (nx.max(0) as usize, ny.max(0) as usize);
+    let count = nx * ny;
+    if active.len != count || cells.len < count || bounds.len < count + 1 {
+        return refused(0);
+    }
+    let mut scratch = match Scratch::new(pieces_room(count)) {
+        Some(x) => x,
+        None => return NO_ROOM,
+    };
+    pieces(active.p, nx, ny, cells.p, bounds.p, &mut scratch) as i32
+}
+
+/// `np.maximum(a, b)`: a NaN on either side is the answer.
+#[inline(always)]
+fn np_maximum(a: f64, b: f64) -> f64 {
+    if a != a || b != b {
+        f64::NAN
+    } else if a >= b {
+        a
+    } else {
+        b
+    }
+}
+
+/// The activity above rest of potentials: `max(tanh(v / 2), 0)` (`Map._activity`).
+#[inline(always)]
+fn activity(v: f64) -> f64 {
+    let t = crate::tanh(v / 2.0);
+    if t != t {
+        t
+    } else if t >= 0.0 {
+        t
+    } else {
+        0.0
+    }
+}
+
+/// `Map.moves(expected)`: how far the moment moved each thing, on its cells, into `out`
+/// (count). `potential` and `expected` (count, width) are the sheet after and before, `codes`
+/// (kinds, units) the kinds' codes (a positive entry a unit of the code), `centers` (count, 2)
+/// the cells' middles. In `moves`' order: the kinds present before or after, ascending; each
+/// kind's pieces after and before (`_pieces`), their middles (the activity's weighted mean);
+/// each piece after takes the nearest piece before within `stride` (its move that gap over
+/// `step`) or appears (1); a piece before none took is gone (1).
+#[no_mangle]
+pub unsafe extern "C" fn map_moves(
+    potential: u32, expected: u32, codes: u32, centers: u32, floor: f64, stride: f64,
+    step: f64, nx: i32, ny: i32, out: u32,
+) -> i32 {
+    let potential = take!(potential, f64, FLOAT64, 0);
+    let expected = take!(expected, f64, FLOAT64, 1);
+    let codes = take!(codes, f64, FLOAT64, 2);
+    let centers = take!(centers, f64, FLOAT64, 3);
+    let out = take!(out, f64, FLOAT64, 9);
+    let (nx, ny) = (nx.max(0) as usize, ny.max(0) as usize);
+    let count = nx * ny;
+    let width = potential.n1;
+    let (kinds, units) = (codes.n0, codes.n1);
+    if potential.n0 != count || expected.n0 != count || expected.n1 != width || units > width
+        || centers.n0 != count || centers.n1 != 2 || out.len != count
+    {
+        return refused(0);
+    }
+    let mut scratch = match Scratch::new(
+        room::<f64>(count * width) * 2 + room::<f64>(count) * 2 + room::<u8>(count)
+            + room::<u8>(units.max(1)) * 2 + room::<i64>(count) * 4 + room::<f64>(count * 2) * 2
+            + room::<u8>(count) + room::<f64>(count.max(1)) + pieces_room(count) * 2 + 64,
+    ) {
+        Some(x) => x,
+        None => return NO_ROOM,
+    };
+    let after = scratch.take::<f64>(count * width);
+    let before = scratch.take::<f64>(count * width);
+    for i in 0..count * width {
+        *after.add(i) = activity(potential.get(i));
+        *before.add(i) = activity(expected.get(i));
+    }
+    let own = scratch.take::<f64>(count);
+    let flags = scratch.take::<u8>(count);
+    let held_after = scratch.take::<u8>(units.max(1));
+    let held_before = scratch.take::<u8>(units.max(1));
+    for (held, sheet) in [(held_after, after), (held_before, before)] {
+        for u in 0..units {
+            let mut any = false;
+            for c in 0..count {
+                any |= *sheet.add(c * width + u) > floor;
+            }
+            *held.add(u) = any as u8;
+        }
+    }
+    let cells = [scratch.take::<i64>(count), scratch.take::<i64>(count)];
+    let bounds = [scratch.take::<i64>(count + 1), scratch.take::<i64>(count + 1)];
+    let middles = [scratch.take::<f64>(count * 2), scratch.take::<f64>(count * 2)];
+    let free = scratch.take::<u8>(count);
+    let picked = scratch.take::<f64>(count.max(1));
+    for c in 0..count {
+        out.set(c, 0.0);
+    }
+    for kind in 0..kinds {
+        let present = |held: *mut u8| {
+            let mut all = true;
+            for u in 0..units {
+                if codes.at(kind, u) > 0.0 {
+                    all &= *held.add(u) != 0;
+                }
+            }
+            all
+        };
+        if !(present(held_after) || present(held_before)) {
+            continue;
+        }
+        let mut found = [0usize; 2];
+        for (side, sheet) in [after, before].iter().enumerate() {
+            // the kind's own activity: the least of its units at each cell (`_of_kind`)
+            for c in 0..count {
+                let mut least = f64::INFINITY;
+                let mut first = true;
+                for u in 0..units {
+                    if codes.at(kind, u) != 0.0 {
+                        let x = *sheet.add(c * width + u);
+                        if first || x < least || x != x {
+                            least = x;
+                            first = false;
+                        }
+                    }
+                }
+                *own.add(c) = least;
+                *flags.add(c) = (least > floor) as u8;
+            }
+            let mut room = match Scratch::new(pieces_room(count)) {
+                Some(x) => x,
+                None => return NO_ROOM,
+            };
+            let n = pieces(flags, nx, ny, cells[side], bounds[side], &mut room);
+            found[side] = n;
+            for p in 0..n {
+                let (lo, hi) = (*bounds[side].add(p) as usize, *bounds[side].add(p + 1) as usize);
+                let mut mx = 0.0f64;
+                let mut my = 0.0f64;
+                for q in lo..hi {
+                    let c = *cells[side].add(q) as usize;
+                    mx += *own.add(c) * centers.at(c, 0);
+                    my += *own.add(c) * centers.at(c, 1);
+                    *picked.add(q - lo) = *own.add(c);
+                }
+                let total = crate::bound::np_sum(picked, hi - lo);
+                *middles[side].add(2 * p) = mx / total;
+                *middles[side].add(2 * p + 1) = my / total;
+            }
+        }
+        for j in 0..found[1] {
+            *free.add(j) = 1;
+        }
+        for p in 0..found[0] {
+            let (ax, ay) = (*middles[0].add(2 * p), *middles[0].add(2 * p + 1));
+            let mut best = f64::INFINITY;
+            let mut nearest = usize::MAX;
+            for j in 0..found[1] {
+                if *free.add(j) == 0 {
+                    continue;
+                }
+                let dx = ax - *middles[1].add(2 * j);
+                let dy = ay - *middles[1].add(2 * j + 1);
+                let gap = crate::sqrt(0.0 + dx * dx + dy * dy);
+                if nearest == usize::MAX || gap < best {
+                    best = gap;
+                    nearest = j;
+                }
+            }
+            let moved;
+            if nearest != usize::MAX && best <= stride {
+                *free.add(nearest) = 0;
+                moved = best / step;
+                let (lo, hi) = (*bounds[1].add(nearest) as usize, *bounds[1].add(nearest + 1) as usize);
+                for q in lo..hi {
+                    let c = *cells[1].add(q) as usize;
+                    out.set(c, np_maximum(out.get(c), moved));
+                }
+            } else {
+                moved = 1.0;
+            }
+            let (lo, hi) = (*bounds[0].add(p) as usize, *bounds[0].add(p + 1) as usize);
+            for q in lo..hi {
+                let c = *cells[0].add(q) as usize;
+                out.set(c, np_maximum(out.get(c), moved));
+            }
+        }
+        for j in 0..found[1] {
+            if *free.add(j) != 0 {
+                let (lo, hi) = (*bounds[1].add(j) as usize, *bounds[1].add(j + 1) as usize);
+                for q in lo..hi {
+                    let c = *cells[1].add(q) as usize;
+                    out.set(c, np_maximum(out.get(c), 1.0));
+                }
+            }
+        }
+    }
+    0
+}
+
+/// `np.clip(x, 0, 1)`: the larger of x and 0 (a NaN kept), then the smaller of that and 1.
+#[inline(always)]
+fn clip01(x: f64) -> f64 {
+    if x != x {
+        return x;
+    }
+    let m = if x > 0.0 { x } else { 0.0 };
+    if m < 1.0 {
+        m
+    } else {
+        1.0
+    }
+}
+
+/// The least of a kind's units' activity at cell `c` (`Map._of_kind`).
+#[inline(always)]
+unsafe fn of_kind(activity: View<f64>, codes: View<f64>, kind: usize, c: usize) -> f64 {
+    let mut least = f64::INFINITY;
+    let mut first = true;
+    for u in 0..codes.n1 {
+        if codes.at(kind, u) != 0.0 {
+            let x = activity.at(c, u);
+            if first || x < least || x != x {
+                least = x;
+                first = false;
+            }
+        }
+    }
+    least
+}
+
+/// `Map._write_values`: a report's values on its cells, claimed, and written at its kind's
+/// weights. `near_cells` and `near_bounds` (int64) hold the pieces the report takes, one after
+/// another; `named` and `named_mask` (value units) the values it names; `claimed` (bool) and
+/// `write` (count, width) are changed in place. In `_write_values`' order: each piece and the
+/// cells around it its kind holds (`_around`), the cells held where no other kind is, the
+/// amounts the pieces held (`_amounts_of`: its kind's activity and every value unit summed
+/// over their cells in order), the named values in their place, the claims, the write.
+#[no_mangle]
+pub unsafe extern "C" fn map_write_values(
+    kind: i32, near_cells: u32, near_bounds: u32, weights: u32, named: u32, named_mask: u32,
+    activity: u32, claimed: u32, write: u32, codes: u32, level: f64, floor: f64, nx: i32,
+    ny: i32,
+) -> i32 {
+    let near_cells = take!(near_cells, i64, INT64, 1);
+    let near_bounds = take!(near_bounds, i64, INT64, 2);
+    let weights = take!(weights, f64, FLOAT64, 3);
+    let named = take!(named, f64, FLOAT64, 4);
+    let named_mask = take!(named_mask, u8, BOOL, 5);
+    let activity = take!(activity, f64, FLOAT64, 6);
+    let claimed = take!(claimed, u8, BOOL, 7);
+    let write = take!(write, f64, FLOAT64, 8);
+    let codes = take!(codes, f64, FLOAT64, 9);
+    let (nx, ny) = (nx.max(0) as usize, ny.max(0) as usize);
+    let count = nx * ny;
+    let width = activity.n1;
+    let units = codes.n1;
+    let kinds = codes.n0;
+    let kind = kind.max(0) as usize;
+    let valued = width.saturating_sub(units);
+    let pieces = if near_bounds.len > 0 { near_bounds.len - 1 } else { 0 };
+    if activity.n0 != count || claimed.n0 != count || claimed.n1 != width || write.n0 != count
+        || write.n1 != width || weights.len != count || named.len != valued
+        || named_mask.len != valued || kind >= kinds || units > width
+        || (pieces > 0 && near_bounds.get(pieces) as usize > near_cells.len)
+    {
+        return refused(0);
+    }
+    for q in 0..near_cells.len.min(if pieces > 0 { near_bounds.get(pieces) as usize } else { 0 }) {
+        if near_cells.get(q) as usize >= count {
+            return refused(1);
+        }
+    }
+    let total_near = if pieces > 0 { near_bounds.get(pieces) as usize } else { 0 };
+    let mut scratch = match Scratch::new(
+        room::<u8>(count) * 4 + room::<i64>(count * (pieces + 1) + total_near * 9 + 8)
+            + room::<f64>(valued + 1) * 2 + 64,
+    ) {
+        Some(x) => x,
+        None => return NO_ROOM,
+    };
+    let mark = scratch.take::<u8>(count);
+    let around_flag = scratch.take::<u8>(count);
+    let others = scratch.take::<u8>(count);
+    let held = scratch.take::<u8>(count);
+    let taken_all = scratch.take::<i64>(count * (pieces + 1) + total_near * 9 + 8);
+    let sums = scratch.take::<f64>(valued + 1);
+    let amounts = scratch.take::<f64>(valued.max(1));
+    // the pieces it takes, each with the cells around it its kind holds, in order
+    let mut taken_n = 0usize;
+    for p in 0..pieces {
+        let (lo, hi) = (near_bounds.get(p) as usize, near_bounds.get(p + 1) as usize);
+        for c in 0..count {
+            *around_flag.add(c) = 0;
+            *mark.add(c) = 0;
+        }
+        for q in lo..hi {
+            let cell = near_cells.get(q) as usize;
+            *mark.add(cell) = 1;
+            let (i, j) = (cell.checked_div(ny).unwrap_or(0) as i64, cell.checked_rem(ny).unwrap_or(0) as i64);
+            for a in i - 1..=i + 1 {
+                for b in j - 1..=j + 1 {
+                    // the neighbour clipped to the grid, as ``_around`` clips it
+                    let a = if a < 0 { 0 } else if a > nx as i64 - 1 { nx - 1 } else { a as usize };
+                    let b = if b < 0 { 0 } else if b > ny as i64 - 1 { ny - 1 } else { b as usize };
+                    *around_flag.add(a * ny + b) = 1;
+                }
+            }
+        }
+        for c in 0..count {
+            if *around_flag.add(c) != 0 {
+                let mut holds = false;
+                for u in 0..units {
+                    if codes.at(kind, u) != 0.0 {
+                        holds |= activity.at(c, u) > 0.0;
+                    }
+                }
+                if holds {
+                    *mark.add(c) = 1;
+                }
+            }
+        }
+        for c in 0..count {
+            if *mark.add(c) != 0 {
+                *taken_all.add(taken_n) = c as i64;
+                taken_n += 1;
+            }
+        }
+    }
+    // the cells another kind holds (`_other_kinds`): kinds present with every unit somewhere
+    for c in 0..count {
+        *others.add(c) = 0;
+    }
+    for other in 0..kinds {
+        if other == kind {
+            continue;
+        }
+        let mut present = true;
+        for u in 0..units {
+            if codes.at(other, u) > 0.0 {
+                let mut any = false;
+                for c in 0..count {
+                    any |= activity.at(c, u) > floor;
+                }
+                present &= any;
+            }
+        }
+        if !present {
+            continue;
+        }
+        for c in 0..count {
+            if of_kind(activity, codes, other, c) > floor {
+                *others.add(c) = 1;
+            }
+        }
+    }
+    // the cells held: the report's own cells and those it takes, where no other kind is
+    for c in 0..count {
+        *held.add(c) = 0;
+    }
+    for c in 0..count {
+        if weights.get(c) > 0.0 {
+            *held.add(c) = 1;
+        }
+    }
+    for q in 0..taken_n {
+        *held.add(*taken_all.add(q) as usize) = 1;
+    }
+    for c in 0..count {
+        if *others.add(c) != 0 {
+            *held.add(c) = 0;
+        }
+    }
+    // the amounts the pieces it takes held on every value unit
+    for v in 0..valued {
+        *amounts.add(v) = 0.0;
+    }
+    if taken_n > 0 {
+        for q in 0..taken_n {
+            let c = *taken_all.add(q) as usize;
+            let own = of_kind(activity, codes, kind, c);
+            if q == 0 {
+                *sums = own;
+                for v in 0..valued {
+                    *sums.add(v + 1) = activity.at(c, units + v);
+                }
+            } else {
+                *sums += own;
+                for v in 0..valued {
+                    *sums.add(v + 1) += activity.at(c, units + v);
+                }
+            }
+        }
+        if *sums > floor {
+            for v in 0..valued {
+                *amounts.add(v) = clip01(*sums.add(v + 1) / *sums);
+            }
+        }
+    }
+    for v in 0..valued {
+        if named_mask.get(v) != 0 {
+            *amounts.add(v) = named.get(v);
+        }
+    }
+    // the claims: the value units of the cells held and of its own cells
+    for c in 0..count {
+        if *held.add(c) != 0 || weights.get(c) > 0.0 {
+            for v in 0..valued {
+                claimed.put(c, units + v, 1);
+            }
+        }
+    }
+    let mut any = false;
+    for v in 0..valued {
+        any |= *amounts.add(v) != 0.0;
+    }
+    if any {
+        let mut square = 0.0f64;
+        for c in 0..count {
+            square += weights.get(c) * weights.get(c);
+        }
+        let norm = crate::sqrt(square);
+        for c in 0..count {
+            let a = level * weights.get(c) / norm;
+            for v in 0..valued {
+                write.put(c, units + v, write.at(c, units + v) + a * *amounts.add(v));
+            }
+        }
+    }
+    0
+}

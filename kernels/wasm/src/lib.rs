@@ -34,6 +34,8 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
 extern "C" {
     #[link_name = "host_exp"]
     fn host_exp(x: f64) -> f64;
+    #[link_name = "host_tanh"]
+    fn host_tanh(x: f64) -> f64;
     #[link_name = "host_malloc"]
     fn host_malloc(n: usize) -> *mut u8;
     #[link_name = "host_free"]
@@ -44,6 +46,12 @@ extern "C" {
 #[inline(always)]
 pub(crate) fn exp(x: f64) -> f64 {
     unsafe { host_exp(x) }
+}
+
+/// The C library's hyperbolic tangent, the one NumPy's `np.tanh` calls.
+#[inline(always)]
+pub(crate) fn tanh(x: f64) -> f64 {
+    unsafe { host_tanh(x) }
 }
 
 #[inline(always)]

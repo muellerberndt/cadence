@@ -404,6 +404,10 @@ class Map:
         """The connected pieces of ``active`` cells (cells that touch, corners too), each as
         its cells' numbers."""
         nx, ny = self.cells
+        from .. import compiled
+
+        if compiled.available("_map_pieces"):  # the same pieces in the same order, compiled
+            return compiled.map_pieces(active, nx, ny)
         left = set(np.flatnonzero(active).tolist())
         out: list[np.ndarray] = []
         while left:
@@ -1021,6 +1025,12 @@ class Map:
         """A report's values on its cells, at its kind's weights: those it names, and for a
         group it names none, what the pieces it takes held. The value units of its cells
         and of those pieces (where no other kind is) are claimed: the value replaces theirs."""
+        from .. import compiled
+
+        if (compiled.available("_map_write_values") and claimed.flags.c_contiguous
+                and write.flags.c_contiguous and write.dtype == np.float64):
+            compiled.map_write_values(self, kind, near, weights, named, activity, claimed, write)
+            return  # the same claims and writes, compiled
         units = np.flatnonzero(self.codes[kind])
         taken = [np.union1d(piece, around[(activity[around][:, units] > 0).any(axis=1)])
                  for piece in near for around in [self._around(piece)]]
@@ -1320,6 +1330,10 @@ class Map:
         ``(cells,)``: a thing of a kind is the nearest piece of that kind's activity within
         ``stride``, and its move the distance between the middles of its activity; a thing that
         appears or is gone moves 1."""
+        from .. import compiled
+
+        if compiled.available("_map_moves") and self.codes.shape[1] <= self.width:
+            return compiled.map_moves(self, expected)  # the same moves, compiled
         out = np.zeros(self.count)
         after = self._activity()
         before = np.maximum(np.tanh(np.asarray(expected, dtype=np.float64) / 2.0), 0.0)

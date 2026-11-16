@@ -26,7 +26,8 @@ import numpy as np
 
 from . import fused
 
-__all__ = ["available", "bound_recall", "map_settle"]
+__all__ = ["available", "bound_recall", "map_moves", "map_pieces", "map_settle",
+           "map_write_values"]
 
 # the kernel's code for a drive or a start that is not finite, which ``settle_batch`` refuses
 NOT_FINITE = -2000
@@ -454,3 +455,409 @@ def bound_recall(records: Any, code: np.ndarray) -> dict[str, np.ndarray]:
         raise RuntimeError(f"cadence: the bound records' kernel refused its arrays ({back})")
     return {name: out[span[0]:span[1]].copy() for name, span, on in zip(names, spans, present,
                                                                          strict=True) if on}
+
+
+# -- the map's pieces: connected cells, in the order a Python set pops their seeds
+
+_map_pieces: Any = None
+
+if fused.njit is not None:
+
+    @fused._compiled
+    def _set_table(keys: np.ndarray, n: int) -> np.ndarray:
+        """The table of CPython's set built from the ascending small ints ``keys[:n]`` (their
+        hash is the int): each key at its slot, -1 elsewhere (``set_add_entry``, its linear
+        probes and perturbation; ``set_table_resize`` with ``set_insert_clean``)."""
+        size = 8
+        table = np.full(size, -1, dtype=np.int64)
+        fill = 0
+        used = 0
+        for q in range(n):
+            key = keys[q]
+            mask = size - 1
+            i = key & mask
+            perturb = key
+            placed = False
+            while not placed:
+                probes = 9 if i + 9 <= mask else 0
+                e = i
+                for _ in range(probes + 1):
+                    if table[e] == -1:
+                        table[e] = key
+                        fill += 1
+                        used += 1
+                        placed = True
+                        break
+                    e += 1
+                if not placed:
+                    perturb >>= 5
+                    i = (i * 5 + 1 + perturb) & mask
+            if fill * 5 >= mask * 3:
+                grown = 8
+                while grown <= used * 4:
+                    grown <<= 1
+                new = np.full(grown, -1, dtype=np.int64)
+                newmask = grown - 1
+                for s in range(size):
+                    k = table[s]
+                    if k == -1:
+                        continue
+                    i = k & newmask
+                    perturb = k
+                    while True:
+                        if new[i] == -1:
+                            new[i] = k
+                            break
+                        done = False
+                        if i + 9 <= newmask:
+                            for j in range(1, 10):
+                                if new[i + j] == -1:
+                                    new[i + j] = k
+                                    done = True
+                                    break
+                        if done:
+                            break
+                        perturb >>= 5
+                        i = (i * 5 + 1 + perturb) & newmask
+                table = new
+                size = grown
+                fill = used
+        return table
+
+    @fused._compiled
+    def _numba_map_pieces(active: np.ndarray, nx: int, ny: int, cells: np.ndarray,
+                          bounds: np.ndarray) -> int:
+        """``Map._pieces``: cells that touch, corners too, each piece ascending, the pieces in
+        the order a Python set of the active cells pops their seeds; into ``cells`` piece after
+        piece, ``bounds`` where each begins. Returns the number of pieces."""
+        count = nx * ny
+        keys = np.flatnonzero(active).astype(np.int64)
+        n = keys.shape[0]
+        bounds[0] = 0
+        if n == 0:
+            return 0
+        label = np.full(count, -1, dtype=np.int64)
+        stack = np.empty(n, dtype=np.int64)
+        pieces = 0
+        for q in range(n):
+            seed = keys[q]
+            if label[seed] >= 0:
+                continue
+            label[seed] = pieces
+            top = 1
+            stack[0] = seed
+            while top > 0:
+                top -= 1
+                cell = stack[top]
+                i, j = cell // ny, cell % ny
+                for a in range(i - 1, i + 2):
+                    for b in range(j - 1, j + 2):
+                        if 0 <= a < nx and 0 <= b < ny:
+                            other = a * ny + b
+                            if active[other] and label[other] < 0:
+                                label[other] = pieces
+                                stack[top] = other
+                                top += 1
+            pieces += 1
+        start = np.zeros(pieces + 1, dtype=np.int64)
+        for q in range(n):
+            start[label[keys[q]] + 1] += 1
+        for p in range(pieces):
+            start[p + 1] += start[p]
+        fill = start[:pieces].copy()
+        grouped = np.empty(n, dtype=np.int64)
+        for q in range(n):
+            p = label[keys[q]]
+            grouped[fill[p]] = keys[q]
+            fill[p] += 1
+        table = _set_table(keys, n)
+        size = table.shape[0]
+        taken = np.zeros(pieces, dtype=np.bool_)
+        finger = 0
+        at = 0
+        for out in range(pieces):
+            s = finger & (size - 1)
+            while table[s] == -1 or taken[label[table[s]]]:
+                s = (s + 1) & (size - 1)
+            p = label[table[s]]
+            taken[p] = True
+            finger = s + 1
+            for q in range(start[p], start[p + 1]):
+                cells[at] = grouped[q]
+                at += 1
+            bounds[out + 1] = at
+        return pieces
+
+    _map_pieces = _numba_map_pieces
+
+
+def map_pieces(active: np.ndarray, nx: int, ny: int) -> list[np.ndarray]:
+    """``Map._pieces(active)`` in one compiled call: each piece's cells (NumPy's index type)."""
+    flags = np.ascontiguousarray(active, dtype=bool).reshape(-1)
+    count = int(nx) * int(ny)
+    cells = np.empty(count, dtype=np.int64)
+    bounds = np.empty(count + 1, dtype=np.int64)
+    found = int(_map_pieces(flags, int(nx), int(ny), cells, bounds))
+    if found < 0:
+        raise RuntimeError(f"cadence: the map's pieces kernel refused its arrays ({found})")
+    held = cells[: bounds[found]].astype(np.intp)
+    return [held[bounds[p]:bounds[p + 1]] for p in range(found)]
+
+
+# -- the map's moves: how far a moment moved each thing
+
+_map_moves: Any = None
+
+if fused.njit is not None:
+
+    @fused._compiled
+    def _numba_map_moves(potential: np.ndarray, expected: np.ndarray, codes: np.ndarray,
+                         centers: np.ndarray, floor: float, stride: float, step: float, nx: int,
+                         ny: int, out: np.ndarray) -> int:
+        """``Map.moves(expected)`` into ``out`` (the module's ``map_moves``, in its order)."""
+        count, width = potential.shape
+        kinds, units = codes.shape
+        after = np.maximum(np.tanh(potential / 2.0), 0.0)
+        before = np.maximum(np.tanh(expected / 2.0), 0.0)
+        held_after = np.zeros(units, dtype=np.bool_)
+        held_before = np.zeros(units, dtype=np.bool_)
+        for u in range(units):
+            for c in range(count):
+                held_after[u] = held_after[u] or after[c, u] > floor
+                held_before[u] = held_before[u] or before[c, u] > floor
+        out[:] = 0.0
+        own = np.empty(count)
+        cells = np.empty((2, count), dtype=np.int64)
+        bounds = np.empty((2, count + 1), dtype=np.int64)
+        middles = np.empty((2, count, 2))
+        picked = np.empty(max(count, 1))
+        found = np.zeros(2, dtype=np.int64)
+        free = np.zeros(count, dtype=np.bool_)
+        for kind in range(kinds):
+            present_after = True
+            present_before = True
+            for u in range(units):
+                if codes[kind, u] > 0.0:
+                    present_after = present_after and held_after[u]
+                    present_before = present_before and held_before[u]
+            if not (present_after or present_before):
+                continue
+            for side in range(2):
+                sheet = after if side == 0 else before
+                for c in range(count):
+                    least = np.inf
+                    first = True
+                    for u in range(units):
+                        if codes[kind, u] != 0.0:
+                            x = sheet[c, u]
+                            if first or x < least or x != x:
+                                least = x
+                                first = False
+                    own[c] = least
+                found[side] = _numba_map_pieces(own > floor, nx, ny, cells[side], bounds[side])
+                for p in range(found[side]):
+                    lo, hi = bounds[side, p], bounds[side, p + 1]
+                    mx = 0.0
+                    my = 0.0
+                    for q in range(lo, hi):
+                        c = cells[side, q]
+                        mx += own[c] * centers[c, 0]
+                        my += own[c] * centers[c, 1]
+                        picked[q - lo] = own[c]
+                    total = _np_sum(picked, hi - lo)
+                    middles[side, p, 0] = mx / total
+                    middles[side, p, 1] = my / total
+            for j in range(found[1]):
+                free[j] = True
+            for p in range(found[0]):
+                best = np.inf
+                nearest = -1
+                for j in range(found[1]):
+                    if not free[j]:
+                        continue
+                    dx = middles[0, p, 0] - middles[1, j, 0]
+                    dy = middles[0, p, 1] - middles[1, j, 1]
+                    gap = np.sqrt(0.0 + dx * dx + dy * dy)
+                    if nearest < 0 or gap < best:
+                        best = gap
+                        nearest = j
+                if nearest >= 0 and best <= stride:
+                    free[nearest] = False
+                    moved = best / step
+                    for q in range(bounds[1, nearest], bounds[1, nearest + 1]):
+                        c = cells[1, q]
+                        out[c] = np.maximum(out[c], moved)
+                else:
+                    moved = 1.0
+                for q in range(bounds[0, p], bounds[0, p + 1]):
+                    c = cells[0, q]
+                    out[c] = np.maximum(out[c], moved)
+            for j in range(found[1]):
+                if free[j]:
+                    for q in range(bounds[1, j], bounds[1, j + 1]):
+                        c = cells[1, q]
+                        out[c] = np.maximum(out[c], 1.0)
+        return 0
+
+    _map_moves = _numba_map_moves
+
+
+def map_moves(held: Any, expected: np.ndarray) -> np.ndarray:
+    """``Map.moves(expected)`` in one compiled call."""
+    nx, ny = held.cells
+    out = np.empty(held.count)
+    code = int(_map_moves(np.ascontiguousarray(held.potential, dtype=np.float64),
+                          np.ascontiguousarray(expected, dtype=np.float64),
+                          np.ascontiguousarray(held.codes, dtype=np.float64),
+                          np.ascontiguousarray(held.centers, dtype=np.float64),
+                          float(held._floor), float(held.stride), float(held.step), int(nx),
+                          int(ny), out))
+    if code < 0:
+        raise RuntimeError(f"cadence: the map's moves kernel refused its arrays ({code})")
+    return out
+
+
+# -- the map's values a report writes
+
+_map_write_values: Any = None
+
+if fused.njit is not None:
+
+    @fused._inlined
+    def _of_kind_at(activity: np.ndarray, codes: np.ndarray, kind: int, c: int) -> float:
+        least = np.inf
+        first = True
+        for u in range(codes.shape[1]):
+            if codes[kind, u] != 0.0:
+                x = activity[c, u]
+                if first or x < least or x != x:
+                    least = x
+                    first = False
+        return least
+
+    @fused._compiled
+    def _numba_map_write_values(
+        kind: int, near_cells: np.ndarray, near_bounds: np.ndarray, weights: np.ndarray,
+        named: np.ndarray, named_mask: np.ndarray, activity: np.ndarray, claimed: np.ndarray,
+        write: np.ndarray, codes: np.ndarray, level: float, floor: float, nx: int, ny: int,
+    ) -> int:
+        """``Map._write_values`` in place on ``claimed`` and ``write`` (the module's
+        ``map_write_values``, in its order)."""
+        count = nx * ny
+        width = activity.shape[1]
+        kinds, units = codes.shape
+        valued = width - units
+        pieces = near_bounds.shape[0] - 1
+        mark = np.zeros(count, dtype=np.bool_)
+        around = np.zeros(count, dtype=np.bool_)
+        taken = np.empty(count * (pieces + 1) + 8, dtype=np.int64)
+        taken_n = 0
+        for p in range(pieces):
+            mark[:] = False
+            around[:] = False
+            for q in range(near_bounds[p], near_bounds[p + 1]):
+                cell = near_cells[q]
+                mark[cell] = True
+                i, j = cell // ny, cell % ny
+                for a in range(i - 1, i + 2):
+                    for b in range(j - 1, j + 2):
+                        around[min(max(a, 0), nx - 1) * ny + min(max(b, 0), ny - 1)] = True
+            for c in range(count):
+                if around[c]:
+                    holds = False
+                    for u in range(units):
+                        if codes[kind, u] != 0.0:
+                            holds = holds or activity[c, u] > 0.0
+                    if holds:
+                        mark[c] = True
+            for c in range(count):
+                if mark[c]:
+                    taken[taken_n] = c
+                    taken_n += 1
+        others = np.zeros(count, dtype=np.bool_)
+        for other in range(kinds):
+            if other == kind:
+                continue
+            present = True
+            for u in range(units):
+                if codes[other, u] > 0.0:
+                    seen = False
+                    for c in range(count):
+                        seen = seen or activity[c, u] > floor
+                    present = present and seen
+            if present:
+                for c in range(count):
+                    if _of_kind_at(activity, codes, other, c) > floor:
+                        others[c] = True
+        held = weights > 0.0
+        for q in range(taken_n):
+            held[taken[q]] = True
+        for c in range(count):
+            if others[c]:
+                held[c] = False
+        amounts = np.zeros(valued)
+        if taken_n > 0:
+            sums = np.empty(valued + 1)
+            for q in range(taken_n):
+                c = taken[q]
+                own = _of_kind_at(activity, codes, kind, c)
+                if q == 0:
+                    sums[0] = own
+                    for v in range(valued):
+                        sums[v + 1] = activity[c, units + v]
+                else:
+                    sums[0] += own
+                    for v in range(valued):
+                        sums[v + 1] += activity[c, units + v]
+            if sums[0] > floor:
+                for v in range(valued):
+                    x = sums[v + 1] / sums[0]
+                    if x == x:
+                        x = x if x > 0.0 else 0.0
+                        x = x if x < 1.0 else 1.0
+                    amounts[v] = x
+        for v in range(valued):
+            if named_mask[v]:
+                amounts[v] = named[v]
+        for c in range(count):
+            if held[c] or weights[c] > 0.0:
+                for v in range(valued):
+                    claimed[c, units + v] = True
+        some = False
+        for v in range(valued):
+            some = some or amounts[v] != 0.0
+        if some:
+            square = 0.0
+            for c in range(count):
+                square += weights[c] * weights[c]
+            norm = np.sqrt(square)
+            for c in range(count):
+                a = level * weights[c] / norm
+                for v in range(valued):
+                    write[c, units + v] += a * amounts[v]
+        return 0
+
+    _map_write_values = _numba_map_write_values
+
+
+def map_write_values(held: Any, kind: int, near: list[np.ndarray], weights: np.ndarray,
+                     named: dict[str, np.ndarray], activity: np.ndarray, claimed: np.ndarray,
+                     write: np.ndarray) -> None:
+    """``Map._write_values`` in one compiled call, in place on ``claimed`` and ``write``."""
+    valued = held.width - held.units
+    given, mask = np.zeros(valued), np.zeros(valued, dtype=bool)
+    for group, amounts in named.items():
+        run = held.values[group]
+        given[run.start - held.units:run.stop - held.units] = amounts
+        mask[run.start - held.units:run.stop - held.units] = True
+    bounds = np.zeros(len(near) + 1, dtype=np.int64)
+    bounds[1:] = np.cumsum([len(p) for p in near]) if near else bounds[1:]
+    cells = (np.concatenate(near).astype(np.int64) if near else np.zeros(0, dtype=np.int64))
+    nx, ny = held.cells
+    status = int(_map_write_values(
+        int(kind), cells, bounds, np.ascontiguousarray(weights, dtype=np.float64), given, mask,
+        np.ascontiguousarray(activity, dtype=np.float64), claimed, write,
+        np.ascontiguousarray(held.codes, dtype=np.float64), float(held.level),
+        float(held._floor), int(nx), int(ny)))
+    if status < 0:
+        raise RuntimeError(f"cadence: the map's values kernel refused its arrays ({status})")
