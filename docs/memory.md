@@ -47,6 +47,7 @@ the brain issued (`efference_amplitude`) and the **held message**, the whole epi
 | Associative store | a ledger of what paid where | yes, averaging its outcomes (`memory_rate=0.2`) | which action pays in a situation, with quick reversal | `episodic=False` removes it; `memory_rate=1.0` keeps the last outcome |
 | Episodic memory | one-shot records that vote | no | a demonstration shown once, a chain paid at its end, a cue that is gone | `memory_choice=True` |
 | Long-term memory | a library of records kept by use | no | thousands of facts asked long after they were told, facts that change, a fixed budget of slots | `longterm=records` with a held message ([long-term records](#long-term-records)), or `cd.LongTermMemory` beside the brain ([a large memory](#a-large-memory)) |
+| Records of bound moments | what the senses held together, read back by a part | no | a sound must bring back the thing it was heard with, and a voice say what the records bind to a thing | `bound=records` with `senses=` and `code=` ([records of bound moments](#records-of-bound-moments-opt-in)) |
 | Efference copy | what I just did | no | sequencing the brain's own actions under identical input | `efference_amplitude=1.0` |
 | Heard history | what I just heard | one block, the moment before | the same observation needs different answers after different earlier observations | `history_decays=(0.2, 0.8)` for slower blocks; `history_decays=()` removes it |
 | No memory | the control | | always measure a memory against the brain without it | `recall=False, episodic=False, working_memory_amplitude=0.0` |
@@ -2037,6 +2038,107 @@ transformer that holds the records in its context.
 
 The [encyclopedia chamber](../benchmarks/encyclopedia/README.md) reads these settings on facts
 from Wikidata.
+
+## Records of bound moments (opt-in)
+
+A brain whose senses are declared by name and coded where they meet (`senses=`, `code=units`)
+can keep records of what its senses held together: `bound=records` gives it one store of that
+many records, read back by a part. A sound heard with a thing in view is one record; the sound
+heard alone brings the thing back, and the brain settles on it. With `voice=sense` the brain
+also says, in that sense's format, the sound its records bind to what it senses, and a reward
+that follows makes a said sound the answer. Without the option a brain is as it was, to the bit.
+
+```python
+import numpy as np
+from cadence import Brain
+from cadence.senses import Ear, Things
+
+things = Things({"hue": (0.0, 1.0), "shape": [(0.0, 1.0)] * 3}, per=8)
+ear = Ear(frames=8, bands=10)
+parrot = Brain.compose(senses={"eyes": things.widths, "ear": ear.width}, actions=2,
+                       code=512, bound=256, voice="ear", arousal=True, seed=0)
+cup = things.rows({"hue": [0.85], "shape": [[0.6, 0.3, 0.2]]})
+said_cup = np.random.default_rng(0).normal(size=(20, 10))       # the word's log-mel frames
+for _ in range(3):
+    parrot.act({"eyes": cup, "ear": ear.code(said_cup)}, greedy=True)   # a cup, and "cup"
+back = parrot.complete({"ear": ear.code(said_cup)})              # "cup" heard alone
+assert back["eyes"]["shape"].any()                               # the cup's form comes back
+said = parrot.say({"eyes": cup})                                 # a cup in view: what it says
+assert float(said[0] @ ear.code(said_cup)[0]) > 0.9 and parrot.bound.said_from == ["heard"]
+```
+
+**A record.** At every moment the brain lives (`act`, `step`, `live`, `wait`) in which a sense
+holds something, the moment is written: its value is what each sense gave (not what the records
+brought back), its key the brain's fixed code of those senses, each sense at unit length and its
+fields alike within it, so a sense of one field and a sense of five weigh alike. The map's read
+(`trained=[map]`) is left out: the map is its own store. A moment told again (a key the store
+holds at cosine .95) moves its record toward the new take and deepens it; with `surprise=True`
+the brain's surprise counts as tellings; a record told past 8 tellings is kept for good, one
+told once fades and is forgotten in time (the [strength law](#a-records-strength-opt-in) of
+`LongTermMemory(blend=True, keep=8, forget=...)`).
+
+**A read by a part.** Before every settle the brain reads its records with the code of what its
+senses hold. For each field (a sense, or a field of a sense) it takes the eight nearest records
+that hold the field, those within .7 of the nearest's cosine and above .15: records that hold
+the field alike (cosine .8) form a group, weighed by their cosines, and the heaviest group comes
+back where it weighs more than .3 of them. A field the senses leave silent is given what came
+back, and the brain settles on the moment so completed. `brain.complete(observations)` gives
+what comes back, sense by sense, and changes nothing.
+
+**A voice.** `voice="ear"` adds a sense `voice` of the ear's layout: what the brain says, heard
+by itself. `brain.say(observations)` gives, one row a stream, the sound that stands for the
+moment. The paid records the read reaches fall into groups by the sound they hold, and a group
+stands for what its moments share: the fields every one of its records holds alike, a field where
+they differ (a place) left out. The group whose shared fields lie nearest the moment's (a mean
+cosine of .5 or more, above every other group's) answers (`"said"`); a record said at a moment
+like this one and not paid refuses its group for it. Where no group answers and the moment holds
+no sound, the heard sound the nearest records hold alike is said (`"heard"`), else a sound drawn
+from the distinct sounds the records hold, passing over sounds said at moments like this one and
+not paid (`"babble"`); zeros where no record holds a sound. A moment like another is one where
+more than half of the fields it holds are held alike. `brain.bound.said_from` names each choice.
+Pass the sound back under `"voice"` at the moment it is said, so the moment's record binds it.
+
+**A reward.** A reward given to `live` or `step` deepens the record of the moment it pays by 4
+tellings a unit of reward. A record of something said is an answer only once paid (depth 3); a
+reward of zero or less refuses it, and a refused record weighs against its sound in the reads of
+moments like it, until a reward pays it. A life with no reward given pays and refuses nothing.
+
+```python
+for word in (said_cup, np.random.default_rng(1).normal(size=(20, 10))):
+    parrot.act({"ear": ear.code(word)}, greedy=True)             # sounds heard alone
+question = {"eyes": cup, "ear": ear.code(np.random.default_rng(2).normal(size=(20, 10)))}
+said = parrot.say(question)                                      # a guess, or a sound it knows
+parrot.live({**question, "voice": said})                         # it says it, and hears itself
+parrot.live({"eyes": cup}, reward=[1.0])                         # paid: that is the answer
+assert np.allclose(parrot.say(question), said) and parrot.bound.said_from == ["said"]
+```
+
+**A heard name draws the focus.** With `surprise=True` and a map of things whose values are
+named as the fields of a sense (`Map(values={"hue": 8, "shape": 24})` beside eyes of fields
+`hue` and `shape`), a heard sound is read alone at every moment: where its records bring back a
+thing's fields, each thing on the map whose values hold more than half of them alike takes a
+salience of 8 times their mean cosine in the focus's competition
+([the focus](start.md#surprise-and-the-focus-it-draws-opt-in)), at its place, in view or out
+of it. `brain.focus.sense` is then `"named"`.
+
+| Setting | Founder | Changed by | What it sets |
+| --- | --- | --- | --- |
+| `bound` | `None`, off | construction | The records of bound moments a brain keeps; needs `senses=` and `code=`, no learned code |
+| `voice` | `None` | construction | The declared sense whose format the brain speaks in; adds the sense `voice` |
+
+The rule's constants are `cadence.bound.BoundRecords`'s (`HEADS`, `NEAR`, `MATCH`, `AGREE`,
+`MOST`, `ANSWER`, `KNOWN`, `PAID`, `PAY`, `NAMED`). A checkpoint keeps the records and saves as
+`cadence-brain/5` with the feature `bound`, which 0.100.0 refuses by name; `describe()` names
+the settings under `bound`. `grow`, `graft` and `Lives` refuse a brain with records.
+
+**What it reads.** In the [symbols chamber](../benchmarks/symbols/README.md) (the parrot that
+starts with no words: eight kinds of things in two colours, seventeen words said by a speaker),
+on development founders a kind's name heard alone brings back its kind from the records at 1.00
+and in the settled state at .68 to 1.00 (.03 to .28 with the records barred); a reward teaches
+each thing's name and the answer to "what colour is this" in 4 to 71 exchanges, at chance unpaid;
+and a heard name draws the focus to its thing on the map at .83 to 1.00, in view and behind a
+screen. A thing seen alone is named from moments of naming alone at .82 to .90: the read weighs a
+thing's place and colour as it weighs its form, which decides its name.
 
 ## How strongly a carried region is heard
 

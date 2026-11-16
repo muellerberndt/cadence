@@ -85,6 +85,7 @@ class BoundRecords:
     HEADS = 8
     NEAR = 0.7
     MOST = 0.3
+    ANSWER = 0.5  # the least match of a said sound's group that answers
     AGREE = 0.8
     MATCH = 0.15
     KNOWN = 0.5
@@ -288,33 +289,110 @@ class BoundRecords:
         self.said_from = []
         for i in range(len(rows)):
             row = np.asarray(rows[i], dtype=np.float64)
-            back = self._agreed(self._taking(codes[i]), row) if self.holds(row) else {}
+            taking = self._taking(codes[i]) if self.holds(row) else []
+            back = self._agreed(taking, row)
+            answer = self._answer(taking, row)
             source: str | None
-            if voice in back:
-                out[i], source = back[voice], "said"
+            if answer is not None:
+                out[i], source = answer, "said"
             elif heard in back and not np.any(row[h0:h1]):
                 out[i], source = back[heard], "heard"
             else:
-                drawn = self._babble(self._refused_sounds(codes[i]))
+                drawn = self._babble(self._refused_sounds(codes[i], row))
                 source = None if drawn is None else "babble"
                 if drawn is not None:
                     out[i] = drawn
             self.said_from.append(source)
         return out
 
-    def _refused_sounds(self, code: np.ndarray) -> np.ndarray:
-        """The sounds said and not paid at moments like the present (the refused records the
-        read of ``code`` reaches), one row each."""
+    def _answer(self, taking: list[tuple[int, float]], row: np.ndarray) -> np.ndarray | None:
+        """The said sound that stands for the moment ``row``: the paid records the read reaches
+        fall into groups by the sound they hold (cosine ``AGREE``). A group stands for what its
+        moments share: the fields every one of its records holds alike. Its match to the moment
+        is the mean cosine, over those fields the moment holds, of the moment's field to the
+        group's mean, a field where its records differ (a place) left out; a refused record
+        whose sound the group holds and which holds those fields as the moment does (``AGREE``)
+        refuses the group for it. The best group answers where its match is ``ANSWER`` or more
+        and above every other's; None where none does."""
+        assert self.voice is not None
+        store = self.store
+        v0, v1 = self.fields[self._voice_field()]
+        own = [f for f in self.fields if f != self._voice_field()]
+        held = [f for f in own if np.any(row[self.fields[f][0]:self.fields[f][1]])]
+        if not taking or not held:
+            return None
+        slots = np.array([slot for slot, _ in taking], dtype=np.int64)
+        values = np.asarray(store.values[slots], dtype=np.float64)
+        sounds = values[:, v0:v1]
+        said = np.any(sounds, axis=1)
+        paid = np.flatnonzero(said & ~self.refused[slots])
+        refused = np.flatnonzero(said & self.refused[slots])
+        groups: list[list[int]] = []
+        for k in paid:
+            for group in groups:
+                if float(_unit(sounds[k]) @ _unit(sounds[group[0]])) >= self.AGREE:
+                    group.append(int(k))
+                    break
+            else:
+                groups.append([int(k)])
+        best, best_match, second = None, -1.0, -1.0
+        for group in groups:
+            shared, alike = [], []
+            for f in held:
+                a, b = self.fields[f]
+                parts = values[group, a:b]
+                if not np.all(np.any(parts, axis=1)):
+                    continue
+                lead = _unit(parts[0])
+                if all(float(_unit(q) @ lead) >= self.AGREE for q in parts[1:]):
+                    shared.append(f)
+                    alike.append(float(_unit(row[a:b]) @ _unit(parts.mean(axis=0))))
+            if not shared:
+                continue
+            match = float(np.mean(alike))
+            for k in refused:
+                if float(_unit(sounds[k]) @ _unit(sounds[group[0]])) < self.AGREE:
+                    continue
+                same = [float(_unit(values[k, self.fields[f][0]:self.fields[f][1]])
+                              @ _unit(row[self.fields[f][0]:self.fields[f][1]])) for f in shared]
+                if np.mean(same) >= self.AGREE:
+                    match = -1.0  # said here and not paid
+                    break
+            if match > best_match:
+                best, best_match, second = group, match, best_match
+            elif match > second:
+                second = match
+        if best is None or best_match < self.ANSWER or best_match <= second:
+            return None
+        return np.asarray(sounds[best].mean(axis=0))
+
+    def _like(self, value: np.ndarray, row: np.ndarray) -> bool:
+        """Whether a record's ``value`` is of a moment like ``row``: of the fields the moment
+        holds (the voice apart), more than half held alike (cosine ``AGREE``)."""
+        held = [f for f in self.fields if f != self._voice_field()
+                and np.any(row[self.fields[f][0]:self.fields[f][1]])]
+        if not held:
+            return False
+        alike = [float(_unit(value[a:b]) @ _unit(row[a:b])) >= self.AGREE
+                 for a, b in (self.fields[f] for f in held)]
+        return float(np.mean(alike)) > 0.5
+
+    def _refused_sounds(self, code: np.ndarray, row: np.ndarray) -> np.ndarray:
+        """The sounds said and not paid at moments like ``row`` (the refused records the read of
+        ``code`` reaches that are of moments like it), one row each."""
         assert self.voice is not None
         first, last = self.fields[self._voice_field()]
-        slots = [slot for slot, _ in self._taking(code) if self.refused[slot]]
-        return np.asarray(self.store.values[slots, first:last], dtype=np.float64).reshape(
+        values = self.store.values
+        slots = [slot for slot, _ in self._taking(code)
+                 if self.refused[slot] and self._like(np.asarray(values[slot]), row)]
+        return np.asarray(values[slots, first:last], dtype=np.float64).reshape(
             len(slots), last - first)
 
     def _babble(self, avoid: np.ndarray | None = None) -> np.ndarray | None:
-        """A sound the records hold, each record one chance: a record's said sound, else its
-        heard one; a sound like one in ``avoid`` (said here before and not paid) is passed over
-        while another is held. None where no record holds a sound."""
+        """A sound the records hold, each distinct sound one chance (records whose sounds lie at
+        cosine ``AGREE`` are one sound): a record's said sound, else its heard one; a sound like
+        one in ``avoid`` (said at moments like this and not paid) is passed over while another
+        is held. None where no record holds a sound."""
         store = self.store
         n = store.count
         if not n:
@@ -330,15 +408,20 @@ class BoundRecords:
             return None
         sounds = np.where(said[holding, None], values[holding, v0:v1], values[holding, h0:h1])
         sounds = np.asarray(sounds, dtype=np.float64)
+        units = sounds / np.maximum(np.linalg.norm(sounds, axis=1, keepdims=True), 1e-12)
+        distinct: list[int] = []
+        for k in range(len(units)):
+            if not distinct or float((units[distinct] @ units[k]).max()) < self.AGREE:
+                distinct.append(k)
+        choices = np.array(distinct)
         if avoid is not None and len(avoid):
-            units = sounds / np.maximum(np.linalg.norm(sounds, axis=1, keepdims=True), 1e-12)
             shunned = avoid / np.maximum(np.linalg.norm(avoid, axis=1, keepdims=True), 1e-12)
-            fresh = (units @ shunned.T).max(axis=1) < self.AGREE
+            fresh = (units[choices] @ shunned.T).max(axis=1) < self.AGREE
             if fresh.any():
-                sounds = sounds[fresh]
+                choices = choices[fresh]
         rng = np.random.default_rng((self.seed, self.draws))
         self.draws += 1
-        return np.asarray(sounds[int(rng.integers(len(sounds)))])
+        return np.asarray(sounds[int(choices[int(rng.integers(len(choices)))])])
 
     # -- the write
 

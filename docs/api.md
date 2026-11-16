@@ -129,6 +129,14 @@ The composed System 1 brain, with optional System 2 `observers` in the same grap
   or record; unset, the brain is as without the option, to the bit. It runs on `backend="cpu"`
   ([surprise and the focus](#surprise-and-the-focus-cadencesurprise),
   [the guide](start.md#surprise-and-the-focus-it-draws-opt-in)).
+- `bound=records` (opt-in, with `senses=` and `code=`, no learned code): the brain keeps
+  records of what its named senses held together and reads them back by a part, completing a
+  silent sense before every settle; `voice=sense` adds a sense `voice` of that declared sense's
+  layout and lets `say` give what the records bind to a moment. Refused by name: either option
+  without named senses or a fixed code, `voice` without `bound` or naming no declared sense, a
+  declared sense named `voice`, and `bound` that is not a positive integer
+  ([records of bound moments](#records-of-bound-moments-cadencebound),
+  [the guide](memory.md#records-of-bound-moments-opt-in)).
 - `options`: every constructor keyword below and every `learning_<field>`, `actor_<field>`
   and `arousal_<field>` name; with `memory_choice=True` it fills in the episodic founders.
 
@@ -244,6 +252,8 @@ projections start at 1.2, a constant (`scales["history"]` and `scales["recall"]`
 | `placement` | Where the brain runs and why: `backend`, `device`, `precision`, `chosen_by`, `why`, `refused`, `pending`, and after a load `saved_on` ([the default backend](backends.md#the-default-backend)). | [backends](backends.md#the-default-backend) |
 | `describe() -> dict` | JSON-safe `layout` (regions, `code`, `composition`, `projection_rates` where the brain holds per-synapse rates, `tied` where it holds tied projections: each one's `pre`, `post`, `blocks` and shared `synapses`, `senses` where it has senses by name: each sense's columns `[start, stop]`, or its fields'), `genes` (every setting by its `compose` name; at `teaching="custom"`, `learning` gives the six effective expert teaching settings), `memories` (each member's `to_dict()`) and `pending`, and `placement` where the brain is not on the CPU by name. | [defaults](tune.md#defaults-and-expert-overrides) |
 | `observation_code(observations) -> (batch, code_width)` | The unit-length key every memory reads and writes; with a learned code, the code the observations settle to without a context. With `code=units` in a brain composed with `senses=`, the code of the row with every field of every sense at unit length ([equal senses](senses.md#equal-senses-in-the-fixed-code)). | [the observation code](senses.md#the-observation-code), [the learned code](senses.md#the-learned-code) |
+| `complete(observations) -> dict` | With `bound`: what the records bring back for the senses given by name, sense by sense (a sense with fields as a mapping of field to rows), zeros where nothing comes back. A pure read. Refuses a brain without records and rows that are not named. | [records of bound moments](memory.md#records-of-bound-moments-opt-in) |
+| `say(observations) -> (batch, width)` | With `bound` and `voice`: what the brain says, in the voice's format, one row a stream: the records' said sound, else their heard sound where the moment holds none, else a sound drawn from those the records hold; `bound.said_from` names each choice. Refuses a brain without a voice. | [records of bound moments](memory.md#records-of-bound-moments-opt-in) |
 | `stimulus(observations, *, memory=True) -> drive` | The drive of a batch; with `memory` the trace, copy, history, recall and hippocampal reads are added, and the recall address is fixed for the moment. | [memory](memory.md) |
 | `parameters() -> int` | Actor and critic parameters, the consolidated matrices of the place and context records and of the direct payments, the recall memory's address and position maps, its options' maps (anchor, relative, slope, grid) and gains, one per carried route, a learned code's tables, and with `maturity` its use (one) and the place records' noise scales (`gate_noise`, one per consolidated entry). | |
 | `copy.deepcopy(brain)` | An independent copy: every array, store, state and random generator copied, the immutable connectomes shared. |
@@ -317,7 +327,8 @@ and the place records' `fade_keep` under their settings), `heads` for the learne
 (`longterm_attention`, `longterm_motor`, #325) and `recall_strength` for the recall memory's
 strength (`recall_strength`, #336: `strength` under the memory's settings and each slot's depth
 in `memories/recall/depth`), `surprise` for the brain's surprise (#337) and `map` for a held map
-whose sheet carries values or reads surprise. `Brain.load` refuses a file that names a feature
+whose sheet carries values or reads surprise, and `bound` for records of bound moments (their
+settings under `bound` in the metadata and the store's arrays under `bound/`). `Brain.load` refuses a file that names a feature
 this version does not hold, by that name, and a file whose features and contents disagree. A
 later option adds a feature's name and no format name.
 
@@ -836,6 +847,38 @@ nothing past it (`clamp=False`). `code(readings)` takes `(readings,)` or `(rows,
 below its high, `per` under 2, a `floor` outside `[0, 1)`, a `clamp` that is no bool, and readings of another width or not
 finite. It learns nothing and is not part of a checkpoint. Guide:
 [continuous readings](senses.md#continuous-readings-a-population-code).
+
+## Records of bound moments (`cadence.bound`)
+
+```text
+BoundRecords(named, key_width, inputs, capacity, *, voice=None, heard=None, seed=0)
+```
+
+A brain's records of its bound moments (`Brain.compose(bound=records)`, `brain.bound`): one
+`LongTermMemory(cosine=True, revise=0.95, blend=True, keep=8, forget=8 * capacity)` in
+`store`, keyed by the brain's fixed code of each moment's senses with each sense at unit length.
+`complete(rows, codes)` fills the fields the rows leave silent, `recall(row, code)` gives each
+field that comes back, `say(rows, codes)` the voice's choice (`said_from`), `hear(rows, codes,
+surprise=None)` writes the moment and fades the records a moment, and `pay(reward)` deepens the
+moment's records by `PAY` tellings a unit of reward or refuses a said record (`refused`) at a
+reward of zero or less. `named(row, code_of)` and `salience(template, things)` give a heard
+name's pull on the focus. The constants: `HEADS` 8, `NEAR` .7, `MATCH` .15, `AGREE` .8, `MOST`
+.3, `ANSWER` .5, `KNOWN` .5, `PAID` 3, `PAY` 4, `NAMED` 8, `REVISE` .95, `KEEP` 8. Guide:
+[records of bound moments](memory.md#records-of-bound-moments-opt-in).
+
+## Senses for things and sound (`cadence.senses`)
+
+```text
+Things(fields, per=8, floor=0.05)
+Ear(frames=16, bands=40, range=8.0)
+```
+
+`Things`: a `PopulationCode` a field; `widths` (the layout for `senses=`), `width`,
+`rows(readings) -> {field: rows}`; an unknown field is refused by name. `Ear`: `width` (frames
+times bands), `code(frames) -> (1, width)` for one utterance's log-mel frames `(time, bands)`,
+`hear(audio, rate=16000)`, `codes(utterances)`; frames of another band count, or not finite, are
+refused. Both learn nothing and a brain does not save them. Guide:
+[a sense for things and an ear](senses.md#a-sense-for-things-and-an-ear).
 
 ## Modules (`cadence.modules`)
 

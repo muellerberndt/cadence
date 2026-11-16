@@ -124,6 +124,7 @@ Then, in this order:
 | A speech recogniser from recordings and transcripts, adapted to a speaker, on live audio | `cadence.speech` (opt-in) | [Speech](speech.md) |
 | To track where things are, in view and out of it, by kind and by place, and where a hidden thing that moves has gone | `cadence.space` (opt-in): `Map`, `Map(physics=True)`, `forecast` | [Space: tracking what is where](space.md) |
 | A signal for what a moment brought that the brain did not carry, and one focus drawn by it | `surprise=True` (opt-in): `brain.surprise`, `brain.focus`, `Map(surprise=True)` | [Surprise, and the focus it draws](start.md#surprise-and-the-focus-it-draws-opt-in) |
+| A sound that stands for a thing: a sound heard alone brings the thing back, a voice says what a thing was named, a reward makes a said sound the answer, a heard name draws the focus | `bound=records`, `voice="ear"`, `complete`, `say`, `cadence.senses.Things`, `Ear` (opt-in) | [Records of bound moments](memory.md#records-of-bound-moments-opt-in), [a sense for things and an ear](senses.md#a-sense-for-things-and-an-ear) |
 | To read or change a living brain | `describe`, `retune`, `last_settlement` | [Tune and read a living brain](tune.md) |
 | A deep or wide brain | `modules=(64, 32, 32)`, `apical=0.25`, `teaching="deep"` | [Larger brains](tune.md#larger-brains) |
 | A GPU, another device or precision | `backend`, `device`, `precision` | [Backends](backends.md) |

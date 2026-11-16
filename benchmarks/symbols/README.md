@@ -79,4 +79,60 @@ the things it pays.
 
 ## Readings
 
-Pending the declared run.
+### The first declared run: S5 and S6 fail
+
+Founders 1010100 to 1010111 at `08465632`, as declared above.
+
+| founder | S1 | S2 | barred | dealt | names (exchanges) | colours (exchanges) | unpaid names | unpaid colours | S6 | S7 in view | S7 screen | untaught | Y1h | s |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1010100 | 1.0 | 0.875 | 0.225 | 0.0 | [9, 18, 46, 17] | [36, 16, 79, 42] | 0.059 | 0.053 | 0.8 | .92 | 1.0 | 0.0 | 0.975 | 119.7 |
+| 1010101 | 1.0 | 0.975 | 0.3 | 0.0 | [7, 14, 27, 32] | [49, 38, 79, 42] | 0.091 | 0.084 | 0.6 | 1.0 | 1.0 | 0.0 | 0.95 | 128.3 |
+| 1010102 | 1.0 | 1.0 | 0.05 | 0.0 | [17, 9, 38, 6] | [34, 14, 4, 40] | 0.059 | 0.053 | 1.0 | .92 | 1.0 | 0.0 | 0.925 | 93.9 |
+| 1010103 | 1.0 | 0.975 | 0.175 | 0.0 | [5, 20, 33, 14] | [20, 18, 37, 26] | 0.05 | 0.059 | 0.85 | 1.0 | 1.0 | 0.0 | 0.825 | 100.1 |
+| 1010104 | 1.0 | 0.9 | 0.325 | 0.0 | [5, 9, 31, 19] | [10, 7, None, 45] | 0.053 | 0.041 | 0.65 | .92 | 1.0 | 0.0 | 0.85 | 111.0 |
+| 1010105 | 1.0 | 1.0 | 0.25 | 0.025 | [3, 9, 10, 15] | [38, 21, 79, 38] | 0.05 | 0.069 | 0.9 | .92 | 1.0 | 0.0 | 0.95 | 117.2 |
+| 1010106 | 1.0 | 0.975 | 0.125 | 0.0 | [14, 29, 12, 37] | [19, 59, 24, 30] | 0.081 | 0.059 | 0.85 | .92 | 1.0 | 0.0 | 0.825 | 171.7 |
+| 1010107 | 1.0 | 1.0 | 0.05 | 0.125 | [7, 9, 8, 11] | [None, 12, 45, 35] | 0.05 | 0.081 | 0.95 | 1.0 | 1.0 | 0.0 | 0.95 | 177.4 |
+| 1010108 | 1.0 | 0.9 | 0.125 | 0.15 | [6, 5, 7, 31] | [22, 13, 43, 26] | 0.05 | 0.053 | 0.95 | 1.0 | 1.0 | 0.0 | 0.825 | 140.0 |
+| 1010109 | 1.0 | 0.9 | 0.075 | 0.05 | [13, 5, 7, 27] | [57, 7, None, 27] | 0.059 | 0.066 | 0.7 | 1.0 | 1.0 | 0.0 | 0.875 | 134.0 |
+| 1010110 | 1.0 | 0.9 | 0.2 | 0.025 | [11, 22, 11, 16] | [20, 29, None, 71] | 0.075 | 0.041 | 0.75 | .92 | 1.0 | 0.0 | 0.95 | 118.6 |
+| 1010111 | 1.0 | 1.0 | 0.125 | 0.0 | [15, 6, 7, 43] | [6, 79, 55, 78] | 0.081 | 0.087 | 1.0 | 1.0 | 1.0 | 0.0 | 0.925 | 161.8 |
+
+
+| Gate | Founders that hold it | |
+| --- | --- | --- |
+| S1 | 12 of 12 | holds |
+| S2 | 11 of 12 | holds |
+| S3 | 10 of 12 | holds |
+| S4 | 12 of 12 | holds |
+| S5 | 8 of 12 | fails |
+| S6 | 5 of 12 | fails |
+| S7 | 12 of 12 | holds |
+
+**Located.** The voice said the sound of the paid records nearest the moment by the whole code,
+where a thing's place weighs as much as its form: at a new place the paid records of another
+thing at a near place won as often as the thing's own (S6), and a phrase's answer paid once was
+lost at the next place (S5). A trace of one phrase item past the budget (development founder 1)
+showed a second term: the sounds passed over in a babble were those refused at every moment the
+read reached, the same question asked of other things included, so the right colour, refused for
+another thing, was passed over for this one; and a babble drew each record once, so the names
+paid many times in S4 took most draws.
+
+### The second declared run
+
+**What changed** (`cadence.bound`, before the run): the voice says the paid sound whose moments
+share fields nearest the moment's (a group of paid records with one sound stands for the fields
+all of them hold alike; a field where they differ is left out; `ANSWER` .5); a refused record
+weighs against its sound only at moments like it (more than half of the moment's fields held
+alike), for the answer and for the babble; a babble draws each distinct sound once. Development,
+founders 0 to 5: S4 3 to 17 exchanges a thing, S5 5 to 16, S6 1.00 on 6 of 6, unpaid .04 to
+.09; on founders 0 to 2 the whole life: S1 1.00, S2 .975 to 1.00, barred .075 to .275, S7 .83 to
+1.00 in view and 1.00 behind a screen.
+
+**Declared** on [#342](https://github.com/muellerberndt/cadence/issues/342) before the first life:
+founders **1010200 to 1010211**, twelve and fresh, the same chamber,
+gates and bars as the first run (S1 to S7 above), one life a founder on the CPU.
+
+**Expectations.** S1, S4, S6 and S7 hold on 11 or 12 founders; S2 and S3 as in the first run
+(11 and 10 of 12); S5 on 11 or 12. A founder whose barred probe reads above .25 (two of the first
+run's twelve) misses S3, and S3 may fail on three.

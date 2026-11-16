@@ -12,6 +12,7 @@ reads them:
 | `attention=True` with `learned_code` | Recall selects a recent event and its successor by an ordered pair of learned codes | [single-head attention](memory.md#single-head-learned-code-attention-opt-in) |
 | `PopulationCode(ranges)` before the brain | a few continuous readings (an angle, a velocity, a distance), each spread over tuned inputs | [continuous readings](#continuous-readings-a-population-code) |
 | `senses={name: width}` in place of `inputs` (opt-in) | several senses declared by name, each given by name at every moment; with `code=units` every sense enters the code at unit length | [senses by name](#senses-by-name) |
+| `cadence.senses.Things` and `Ear` | a seen thing as tuned cells a field, and an utterance as one code | [a sense for things and an ear](#a-sense-for-things-and-an-ear) |
 
 ```python
 import numpy as np
@@ -378,6 +379,37 @@ region holds the observation itself, and it learns its own thresholds and, with
 `learned_code_fields`, units of its own for each channel
 ([when to declare fields](#when-to-declare-fields)). Scale a sense to the range its meaning
 needs before a brain without a fixed code.
+
+### A sense for things and an ear
+
+`cadence.senses` holds two senses a brain declares by name. Both are born: they learn nothing
+and a brain does not save them.
+
+- **`Things(fields, per=8)`**: each field of a seen thing as tuned cells, a `PopulationCode` a
+  field. `fields` maps a field to its range, or to a sequence of ranges for a field of several
+  readings. `things.widths` is the sense's layout for `senses=`, and `things.rows(readings)`
+  gives each field's rows.
+- **`Ear(frames=16, bands=40, range=8.0)`**: an utterance (a word or a phrase, onset to the
+  quiet after it) as one code: its log-mel frames resampled to `frames`, each band kept within
+  `range` nats of the frame's loudest, less the utterance's mean level, at unit length. A slower
+  and a louder take of one word read alike. `ear.code(frames)` takes log-mel frames, and
+  `ear.hear(audio, rate=16000)` raw samples through `cadence.speech.frontend.log_mel`.
+
+```python
+from cadence.senses import Ear, Things
+
+things = Things({"hue": (0.0, 1.0), "shape": [(0.0, 1.0)] * 3}, per=8)
+ear = Ear(frames=8, bands=10)
+looker = Brain.compose(senses={"eyes": things.widths, "ear": ear.width}, actions=2,
+                       code=256, seed=0)
+seen = things.rows({"hue": [0.3], "shape": [[0.9, 0.1, 0.4]]})
+heard = ear.code(np.random.default_rng(0).normal(size=(30, 10)))
+assert seen["shape"].shape == (1, 24) and heard.shape == (1, 80)
+looker.act({"eyes": seen, "ear": heard}, greedy=True)
+```
+
+A brain's records of what such senses held together, and a voice in the ear's format, are
+[records of bound moments](memory.md#records-of-bound-moments-opt-in).
 
 ## The learned code
 

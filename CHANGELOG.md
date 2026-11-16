@@ -1,5 +1,54 @@
 # Changelog
 
+## Unreleased
+
+Sounds as symbols. A brain whose senses are declared by name keeps records of what its senses
+held together and reads them back by a part: a sound heard alone brings back the thing it was
+heard with, a voice says the sound its records bind to what it sees, a reward makes a said sound
+the answer, and a heard name draws the focus to its thing on the map. With the new options unset
+a brain is composed, acts, learns and saves as on 0.100.0, to the bit.
+
+Two items of the plan (#344) move to 0.102.0. **Sentences (#308):** the sentence state's
+declared parity gate fails on paths in every arm read so far (.07 to .31 against .81 and .83 for
+the matched LSTM and transformer), on a term the role design does not touch: under the bar that
+empties a heard sentence's recall slots, the recall read never learns a path's hops. **Records at
+any size (#310):** its branch rewrites the long-term store where 0.100.0's record strength and
+learned heads do (25 conflicting places), and its options fold into fewer names before its
+sixth declaration runs on the code that ships. The reading of the soft lesson's round 5 (#304),
+which shipped in 0.100.0, is posted on its issue.
+
+### Records of bound moments, a voice, and senses for things and sound (#342, #344)
+
+- **`Brain.compose(senses=..., code=units, bound=records)`** (opt-in): one `LongTermMemory` of
+  that many records (`brain.bound`, `cadence.bound.BoundRecords`). Every moment the brain lives
+  in which a sense holds something is written: its value what each sense gave, its key the
+  brain's fixed code of those senses with each sense at unit length and its fields alike within
+  it. A moment told again deepens its record and moves it toward the new take; the brain's
+  surprise counts as tellings; a record kept past 8 tellings stays, one told once is forgotten
+  in time (#336's strength law).
+- **A read by a part.** Before every settle each field the senses leave silent is given what
+  the nearest records that hold it hold alike (the heaviest group of the eight nearest), and the
+  brain settles on the moment so completed. `brain.complete(observations)` gives it, a pure read.
+- **`voice=sense`**: a sense `voice` of that sense's layout, what the brain says, heard by itself.
+  `brain.say(observations)` gives the sound that stands for the moment: among the paid records'
+  sounds, the one whose moments share fields nearest the moment's (a place where they differ
+  left out); else what was heard with it; else a sound drawn from the distinct sounds the records
+  hold, passing over sounds said at moments like this one and not paid.
+- **A reward** to `live` or `step` deepens the record of the moment it pays by 4 tellings a unit;
+  a reward of zero or less refuses a said record, which then weighs against its sound.
+- **A heard name draws the focus** (with `surprise=True` and a map whose values are named as a
+  sense's fields): the records read by the heard sound alone bring back a thing's fields, and the
+  matching things on the map take a salience in the focus's competition (`focus.sense ==
+  "named"`).
+- **`cadence.senses.Things`** (a seen thing as tuned cells a field) and **`Ear`** (an utterance as
+  one code from its log-mel frames, or from raw audio).
+- A brain with records saves as `cadence-brain/5` with the feature `bound`; `grow`, `graft` and
+  `Lives` refuse it. New public names: `bound` and `voice` in `compose`, `Brain.complete`,
+  `Brain.say`, the modules `cadence.bound` (`BoundRecords`) and `cadence.senses` (`Things`,
+  `Ear`).
+- **The symbols chamber** (`benchmarks/symbols`): the parrot that starts with no words, its
+  declared protocol on #342.
+
 ## 0.100.0 - 2026-11-16
 
 The composite brain. Senses are declared once, by name; the map of things joins a brain as a
