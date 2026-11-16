@@ -346,7 +346,20 @@ assert body.describe()["layout"]["code"]["cortex"] == "both"
 assert body.act(seen, greedy=True).shape == (1,)
 ```
 
-READINGS-PLACEHOLDER
+**What it reads.** In the [forager chamber](../benchmarks/forager/README.md) a brain with an
+animal's senses (104 inputs: eyes in eight sectors, ears, a call heard, the thing it attends,
+the nearest food's bearing and distance, its body), modules of 32 and `code=128` is taught to
+forage by a teacher that turns to the nearest plant in sight, walks to it and bites it. On twelve
+fresh founders of its declared run, a linear readout of the teacher's turn from the
+association's settled state reads .837 with `"both"` against .756 with the code alone (.804 to
+.881 against .696 to .813, higher on 12 of 12), where the senses themselves hold it at .875. On
+its own path the brain agrees with the teacher at .601 against .500 and eats 8.0 plants a body
+in 150 moments against 6.2 (the teacher 13.2), higher on 12 of 12 founders. On the teacher's
+path its agreement is .679 against .672, higher on 6 of 12 (the declared bar was 10): the walks
+are three in five of those moments, and the brain that reads the bearing turns at more of them.
+`"observation"` reads .824, .571 and 7.5 plants, and a brain without a code .788, .471 and 6.0.
+
+SYMBOLS-READING
 
 A checkpoint of a brain with `cortex_reads` other than `"code"` saves as `cadence-brain/5` with
 the feature `cortex_reads`, which 0.101.0 refuses by name; `describe()` names it under the

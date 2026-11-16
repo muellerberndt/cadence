@@ -24,7 +24,53 @@ The guide is [what the cortex reads](docs/senses.md#what-the-cortex-reads).
 
 ### What the cortex reads (`cortex_reads`), an opt-in
 
-CHANGELOG-READINGS
+- **`Brain.compose(..., code=units, cortex_reads="both")`**: a region `observation` of one
+  neuron per input holds the observation itself, as given, and projects into the first module
+  beside the code, at the sensory scale. It is drawn after every other part, so the brain is the
+  brain with the code plus that region and its projection: every other synapse and bias starts
+  as without it. `cortex_reads="observation"` holds the observation in the sensory region in
+  place of the code, the routing of an image brain and of `Brain(connectome, code=units)`. Every
+  memory keys on the code whichever the cortex reads (the recall memory, the associative store,
+  records of bound moments); the heard history hears what the sensory region holds. `"code"` is
+  the founder.
+- **Why.** With `code=units` a body's cortex read its senses only through the code: each field at
+  unit length among every other, the largest sums kept. A body whose action follows a bearing or
+  a distance found less of it there, and its memories need the code (records keyed on the code
+  stay readable as the brain learns, and a heard name brings its thing back through the code's
+  conjunctions), so the cortex reads both.
+- **What it reads** (the [forager chamber](benchmarks/forager/README.md), new: an animal's 104
+  senses, `code=128`, modules of 32, taught by a forager that turns to the nearest plant, walks
+  to it and bites it; twelve fresh founders of its declared run). A linear readout of the
+  teacher's turn from the association's settled state: .837 with `"both"` against .756 with the
+  code alone, higher on 12 of 12 (gate F1 holds); the senses themselves hold it at .875. On its
+  own path the brain agrees with the teacher at .601 against .500 and eats 8.0 plants a body in
+  150 moments against 6.2, higher on 12 of 12. On the teacher's path its agreement is .679
+  against .672, higher on 6 of 12: gate F2 (10 of 12) fails. The walks are three in five of
+  those moments, and the brain that reads the bearing turns at more of them; by action it agrees
+  more with the turns and the bites and less with the walks (two founders read after the run).
+  `"observation"` reads .824 and 7.5 plants, and a brain without a code .788 and 6.0.
+SYMBOLS-CHANGELOG
+- A brain with `cortex_reads` other than `"code"` saves as `cadence-brain/5` with the feature
+  `cortex_reads` (the setting under `cortex_reads` in the metadata and the composition), which
+  0.101.0 refuses by name. `describe()` reports it under the layout's `code` as `cortex` and
+  among the genes. `grow` keeps it and refuses to change it, `retune` refuses it, `graft` carries
+  the `observation` region between brains that hold it, and `Lives` refuses it as it refuses a
+  code. Refused with `ValueError`: another value; `"both"` or `"observation"` without
+  `code=units`, beside a learned code, on an image brain or beside a trained module; a custom
+  anatomy that reads both without a population `observation` of one neuron per input
+  (`Genome.composed(..., cortex_reads="both")` lays it out). New public names: `cortex_reads` in
+  `compose`, in the constructor and in `Genome.composed`, and `Brain.observation_index`.
+- `benchmarks/symbols/chamber.py` takes `--cortex-reads`.
+
+### Upgrading from 0.101.0
+
+Nothing to name: a brain composed without `cortex_reads` acts, learns, describes itself and saves
+as on 0.101.0, to the bit, the version string apart (eleven compositions checked against a
+0.101.0 tree: the default brain, a fixed code at one and two modules and with the episodic
+choice, senses by name with the code, a map and surprise, records of bound moments with a voice,
+an image brain with a code, a custom anatomy with a code, a learned code, a held message with
+long-term records). A 0.101.0 file loads and continues; a file of a brain with `cortex_reads`
+needs 0.101.1.
 
 ### Also in this release
 

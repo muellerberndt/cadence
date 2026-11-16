@@ -21,10 +21,10 @@ def test_the_senses_have_the_declared_layout_and_the_teacher_forages():
     for _ in range(200):
         world.step(w.teach(world))
     assert world.eaten.sum() > 4                     # the teacher eats
-    still = w.Worlds(4, seed=0)
+    resting = w.Worlds(4, seed=0)
     for _ in range(200):
-        still.step(np.full(4, w.REST))
-    assert still.eaten.sum() == 0                    # a body at rest eats nothing
+        resting.step(np.full(4, w.REST))
+    assert resting.eaten.sum() == 0                    # a body at rest eats nothing
 
 
 def test_a_bite_eats_only_a_plant_in_reach_ahead():

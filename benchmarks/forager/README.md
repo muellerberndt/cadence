@@ -74,4 +74,53 @@ below both (.799 and .678).
 
 ## Readings
 
-READINGS-PLACEHOLDER
+### The declared run: F1 holds, F2 fails
+
+Founders 1011100 to 1011111 at `44f2fed2`, as declared above (Cadence 0.101.1 before its
+release; [receipt](results/declared.json)). Founders 1011110 and 1011111 were read in two parts
+on a shared machine, the `code` arm and then the other three, with the same source and seeds.
+Each cell is a life's mean over its four readings.
+
+| founder | turn in the cortex, `code` | `both` | teacher's path, `code` | `both` | own path, `code` | `both` | plants, `code` | `both` | while taught, `code` | `both` |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1011100 | .767 | .806 | .702 | .708 | .386 | .705 | 5.25 | 9.56 | .654 | .704 |
+| 1011101 | .726 | .806 | .729 | .659 | .591 | .662 | 8.47 | 8.77 | .642 | .710 |
+| 1011102 | .813 | .881 | .693 | .696 | .590 | .661 | 7.03 | 8.30 | .653 | .733 |
+| 1011103 | .747 | .852 | .605 | .698 | .513 | .528 | 5.05 | 8.09 | .618 | .675 |
+| 1011104 | .791 | .855 | .609 | .713 | .497 | .609 | 5.97 | 8.50 | .650 | .727 |
+| 1011105 | .781 | .850 | .716 | .685 | .473 | .577 | 6.88 | 7.86 | .629 | .712 |
+| 1011106 | .795 | .869 | .655 | .676 | .510 | .678 | 6.45 | 9.45 | .603 | .713 |
+| 1011107 | .696 | .845 | .661 | .658 | .500 | .540 | 4.27 | 6.38 | .588 | .739 |
+| 1011108 | .724 | .823 | .690 | .644 | .569 | .654 | 7.95 | 8.78 | .638 | .684 |
+| 1011109 | .726 | .823 | .684 | .677 | .410 | .515 | 5.16 | 6.59 | .660 | .717 |
+| 1011110 | .782 | .829 | .666 | .697 | .416 | .500 | 5.22 | 6.19 | .591 | .689 |
+| 1011111 | .724 | .804 | .650 | .632 | .545 | .584 | 7.30 | 8.05 | .628 | .725 |
+
+| Gate | Founders that hold it | |
+| --- | --- | --- |
+| F1, the turn in the cortex | 12 of 12 (`both` .804 to .881, `code` .696 to .813; by .039 to .149) | holds |
+| F2, agreement on the teacher's path | 6 of 12 (`both` .632 to .713, `code` .605 to .729; mean .679 against .672) | fails |
+
+Without a bar, `both` against `code` on the same founders: on its own path the brain agrees
+with the teacher more on 12 of 12 (.601 against .500 on average) and eats more on 12 of 12 (8.04
+plants a body in 150 moments against 6.25; the teacher 11.5 to 14.3, a random body under 0.4);
+while taught it agrees more on 12 of 12 (.711 against .630). The newborn's readout is .518
+against .498. The observation and its code hold the turn at .875 and .850 for a linear readout.
+
+| Arm | turn in the cortex | teacher's path | own path | plants | while taught |
+| --- | --- | --- | --- | --- | --- |
+| `code` | .756 | .672 | .500 | 6.25 | .630 |
+| `both` | .837 | .679 | .601 | 8.04 | .711 |
+| `observation` | .824 | .688 | .571 | 7.53 | .694 |
+| `none` | .788 | .671 | .471 | 6.01 | .677 |
+
+**Located (F2).** On the teacher's path the walks make up about three in five moments, and with
+`both` the brain turns or bites at more of them. Read by action after the run (the reading's
+`by_action`, added for this) on the two founders where `both` falls furthest below `code`
+(1011101 and 1011108), `both` agrees with the teacher's walks at .539 and .513 against .739 and
+.701, and with its turns and bites at .747 to .939 against .553 to .824. The lessons weigh every
+action alike, so a turn's row weighs about three times a walk's; the brain that reads the bearing
+learns the turns and moves the border between a turn and a walk off the teacher's. On its own path that border costs it no
+plants. Agreement over the actions, each weighed alike, reads .774 and .764 for `both` against
+.733 and .674 for `code` on those two founders.
+
