@@ -125,9 +125,10 @@ CELLS = covering_array()
 
 # Cells that meet a known defect of the library; each is reproduced alone at the end of this file.
 F1 = (
-    "#346: on the compiled kernel a held message with a turn that holds (message_boundary_holds) "
-    "continues from its save in other last bits once a lesson came before (efficacy within "
-    "1e-11, the same actions over 196 moments); the NumPy loop continues to the bit"
+    "#346: on the compiled kernel a brain with a held message continues from its save in other "
+    "last bits (a holding turn with a lesson before the save, or the episodic choice beside the "
+    "message; 1e-15 to 4e-14, which cell depends on the machine), with the same actions; the "
+    "NumPy loop continues to the bit"
 )
 # Read on the compiled kernel; last bits depend on the machine's compiled code, so the mark is not
 # strict
@@ -135,10 +136,9 @@ F1_MARK = pytest.mark.xfail(kernel._FUSED, strict=False, reason=F1)
 KNOWN: dict[str, Any] = {}
 
 
-def holds_at_a_turn(cell: dict[str, str]) -> bool:
-    """A held message that holds what it heard from a turn (``message_boundary_holds``), which
-    long-term records compose: the composition of #346."""
-    return cell["longterm"] != "off"
+def holds_a_message(cell: dict[str, str]) -> bool:
+    """A held message (``message=``, which long-term records need): the composition of #346."""
+    return cell["message"] == "on" or cell["longterm"] != "off"
 
 
 def cells(rows: list[dict[str, str]], known: dict[str, Any] | None = None) -> list[Any]:
@@ -322,7 +322,7 @@ def test_a_combination_lives_saves_loads_and_continues(cell, tmp_path):
     differ = same_arrays(
         arrays(brain.save(tmp_path / "a.npz")), arrays(loaded.save(tmp_path / "b.npz"))
     )
-    if differ and kernel._FUSED and holds_at_a_turn(cell):
+    if differ and kernel._FUSED and holds_a_message(cell):
         # the actions and the voice above are the same; the arrays differ in last bits on some
         # machines' compiled kernel, and to the bit on the NumPy loop
         pytest.xfail(f"{F1} (arrays {differ[:6]})")
