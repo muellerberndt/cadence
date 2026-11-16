@@ -87,6 +87,35 @@ for run in (np.array([-0.0]), np.full(9, -0.0), np.zeros(0), np.array([-0.0, 0.0
     same(f"sum of {run.tolist()}", np.atleast_1d(core.probe("sum", a=run)["sum"]),
          np.atleast_1d(np.sum(run)))
 
+# einsum's sums of products on ARM: rows against rows (``bj,bj->b``), and a sparse code's
+# gather against its weights (``bek,ek->be``) at a batch of one and of several
+for seed in range(300):
+    rng = np.random.default_rng(seed)
+    rows, cols = int(rng.integers(1, 5)), int(rng.integers(1, 600))
+    a = rng.normal(size=(rows, cols)) * (rng.random((rows, cols)) < 0.7)
+    b = rng.normal(size=(rows, cols))
+    got = core.probe("einsum", a=a, b=b, rows=np.int64(rows), cols=np.int64(cols))
+    ok = got["dot"].tobytes() == np.einsum("bj,bj->b", a, b).tobytes()
+    failures += not ok
+    if not ok or seed < 3:
+        print(f"einsum bj,bj->b of {cols}, seed {seed}: {'bitwise' if ok else 'APART'}")
+    batch, units = int(rng.integers(1, 5)), int(rng.integers(1, 40))
+    fan_in = int(rng.integers(1, 40))
+    x = rng.normal(size=(batch, fan_in + 40)) * (rng.random((batch, fan_in + 40)) < 0.7)
+    index = np.sort(np.stack([rng.choice(fan_in + 40, fan_in, replace=False)
+                              for _ in range(units)]), axis=1)
+    w = rng.normal(size=(units, fan_in))
+    gathered = x[:, index]
+    theirs = np.einsum("bek,ek->be", gathered, w)
+    flat = gathered.reshape(batch * units, fan_in)
+    got = core.probe("einsum", a=flat, b=np.tile(w, (batch, 1)), rows=np.int64(batch * units),
+                     cols=np.int64(fan_in))
+    ours = (got["dot"] if batch == 1 else got["fused"]).reshape(batch, units)
+    ok = ours.tobytes() == theirs.tobytes()
+    failures += not ok
+    if not ok or seed < 3:
+        print(f"einsum bek,ek->be at batch {batch}, seed {seed}: {'bitwise' if ok else 'APART'}")
+print("einsum: 300 cases of each against NumPy's")
 # the selection of the sparse code: rows full of ties (zeros and repeated values), any kth
 for seed in range(400):
     rng = np.random.default_rng(seed)

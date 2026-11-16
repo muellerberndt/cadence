@@ -63,6 +63,48 @@ pub fn dot(a: &[f64], b: &[f64]) -> f64 {
     s
 }
 
+/// `np.einsum`'s sum of the products of two contiguous runs into one entry of its output
+/// (`sum_of_products_contig_contig_outstride0_two`) on ARM: two NEON lanes from zero, each step
+/// of eight fusing its four pairs of products into the lanes from the last pair to the first,
+/// what is left a pair at a time (a lone last product beside a zero), then the two lanes added,
+/// and that added to the output's zero. The order of `einsum("bj,bj->b")` on rows, and of a
+/// gather's `einsum("bek,ek->be")` at a batch of one.
+pub fn einsum_dot(a: &[f64], b: &[f64]) -> f64 {
+    let n = a.len().min(b.len());
+    let (mut lane0, mut lane1) = (0.0f64, 0.0f64);
+    let mut i = 0;
+    while n - i >= 8 {
+        for pair in (0..4).rev() {
+            let k = i + 2 * pair;
+            lane0 = a[k].mul_add(b[k], lane0);
+            lane1 = a[k + 1].mul_add(b[k + 1], lane1);
+        }
+        i += 8;
+    }
+    while i < n {
+        lane0 = a[i].mul_add(b[i], lane0);
+        lane1 = if i + 1 < n {
+            a[i + 1].mul_add(b[i + 1], lane1)
+        } else {
+            0.0f64.mul_add(0.0, lane1)
+        };
+        i += 2;
+    }
+    0.0 + (lane0 + lane1)
+}
+
+/// `np.einsum`'s order where the summed axis runs outside the output's (`sum_of_products_muladd`
+/// over a whole output row at a time): each product fused into its entry from zero, in order.
+/// The order of a gather's `einsum("bek,ek->be")` at a batch of two or more, whose gathered
+/// operand runs fastest along the batch.
+pub fn einsum_fused(a: &[f64], b: &[f64]) -> f64 {
+    let mut s = 0.0f64;
+    for (x, y) in a.iter().zip(b) {
+        s = x.mul_add(*y, s);
+    }
+    s
+}
+
 /// `np.linalg.norm` of a vector: the square root of its dot product with itself.
 pub fn norm(a: &[f64]) -> f64 {
     libm::sqrt(dot(a, a))

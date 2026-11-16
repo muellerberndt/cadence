@@ -14,7 +14,8 @@ from __future__ import annotations
 import importlib
 from types import ModuleType
 
-NAMES = ("arousal", "brain", "orienting", "recall", "surprise")
+NAMES = ("arousal", "brain", "code", "efference", "hearing", "history", "orienting", "recall",
+         "surprise", "trace")
 
 
 def part(name: str) -> ModuleType:
