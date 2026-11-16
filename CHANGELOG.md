@@ -56,9 +56,9 @@ preferred; the reading is on the issue.
 - **`attention=True` with `recall_strength=True`** is refused with the reason in the user's own
   settings: `attention=True` reads a window of two events, which a slot's strength does not
   compose with (it named `recall_window`, which the user had not set).
-- A brain with a held message from a boundary (`message_boundary_holds=True`) continues after a
-  load within 6.6e-12 of its settled activity on the compiled kernel, every action the same:
-  #346, on the 0.102.0 milestone.
+- **Known issue (#346, 0.102.0):** on the compiled kernel, a brain with a held message that holds
+  at a turn (`message_boundary_holds=True`, which `longterm_strength` also sets) can continue from
+  a save with last-bit differences in its arrays on some machines; its acts are unchanged.
 
 ### Documentation
 
