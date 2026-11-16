@@ -29,7 +29,7 @@ def test_a_constant_push_drops_the_pole_and_ends_the_episode():
 def test_the_arms_senses():
     state = np.array([0.1, -0.2, 0.03, 0.4])
     for arm, width in (("raw", 4), ("code", 64), ("code+dense", 104), ("percentile", 64),
-                       ("percentile+clamp", 64)):
+                       ("percentile+clamp", 64), ("code+narrow", 128)):
         inputs, see = cartpole.senses(arm)
         assert inputs == width and see(state).shape == (1, width)
 
@@ -39,3 +39,14 @@ def test_a_reading_past_a_percentile_range_goes_dark_only_unclamped():
     faded = cartpole.senses("percentile")[1](far)
     clamped = cartpole.senses("percentile+clamp")[1](far)
     assert not faded[0, 48:].any() and clamped[0, 63] == 1.0
+
+
+def test_the_streams_and_correction_arms_run(monkeypatch):
+    """Their lives at a few moments: shapes and bookkeeping, not readings."""
+    for name, value in (("GATE", range(10_000, 10_002)), ("STREAMS", 4), ("WATCH_STEPS", 3),
+                        ("ROUND_STEPS", 3), ("WATCHED", 1), ("ROUNDS", 1), ("OWN", 1)):
+        monkeypatch.setattr(cartpole, name, value)
+    monkeypatch.setattr(cartpole, "STEPS", 20)  # demonstrated episodes end at 20 steps
+    for arm in ("streams", "streams-own", "correct", "correct+rehearsal"):
+        row = cartpole.life(arm, 0)
+        assert row["arm"] == arm and len(row["reads"]) == 2
