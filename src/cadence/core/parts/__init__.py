@@ -15,7 +15,7 @@ import importlib
 from types import ModuleType
 
 NAMES = ("arousal", "bound", "brain", "code", "efference", "graph", "hearing", "history",
-         "longterm", "memories", "orienting", "recall", "surprise", "synaptic", "trace")
+         "longterm", "map", "memories", "orienting", "recall", "surprise", "synaptic", "trace")
 
 
 def part(name: str) -> ModuleType:

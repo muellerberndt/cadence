@@ -10,6 +10,8 @@ pub mod hearing;
 pub mod history;
 pub mod longterm;
 pub mod memories;
+pub mod map;
+pub mod physics;
 pub mod recall;
 pub mod surprise;
 pub mod synaptic;
@@ -86,6 +88,11 @@ pub fn call(part: &str, method: &str, state: &Named, args: &Named) -> Result<Nam
         "memories" => {
             let mut held = synaptic::Synaptic::import(state)?;
             memories::call(&mut held, method, args)?;
+            held.export(&mut after);
+        }
+        "map" => {
+            let mut held = map::Map::import(state)?;
+            held.call(method, args, &mut out)?;
             held.export(&mut after);
         }
         "brain" => {
