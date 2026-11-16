@@ -151,7 +151,8 @@ pub(crate) unsafe fn product(
 
 /// The product of `src` (m, na) and the block `w` (na, nb) into `out` (m, nb), each output
 /// from 0.0 in the order of the inputs, skipping the rows of a silent source: on a 64-bit
-/// machine, the same sums as the module's lanes.
+/// machine, the same sums as the module's lanes. The outputs go in tiles (`tile`), each held
+/// in registers across every source and written once.
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) unsafe fn product(
     src: *const f64, w: *const f64, out: *mut f64, m: usize, na: usize, nb: usize,
@@ -167,17 +168,50 @@ pub(crate) unsafe fn product(
                 count += 1;
             }
         }
-        for j in 0..nb {
-            *o.add(j) = 0.0;
+        let mut j = 0usize;
+        while j + 32 <= nb {
+            tile::<32>(x, w, o, nb, j, keep, count);
+            j += 32;
         }
-        for q in 0..count {
-            let k = *keep.add(q) as usize;
-            let a = *x.add(k);
-            let row = w.add(k * nb);
-            for j in 0..nb {
-                *o.add(j) += a * *row.add(j);
-            }
+        if j + 16 <= nb {
+            tile::<16>(x, w, o, nb, j, keep, count);
+            j += 16;
         }
+        if j + 8 <= nb {
+            tile::<8>(x, w, o, nb, j, keep, count);
+            j += 8;
+        }
+        if j + 4 <= nb {
+            tile::<4>(x, w, o, nb, j, keep, count);
+            j += 4;
+        }
+        while j < nb {
+            tile::<1>(x, w, o, nb, j, keep, count);
+            j += 1;
+        }
+    }
+}
+
+/// Outputs `j..j + T` of one row of `product`: each its own sum from 0.0, a product of a
+/// source and a weight added per source in the sources' order (a multiply, then an add: never
+/// fused), the `T` sums side by side in registers (lanes across the outputs) and written once.
+#[cfg(not(target_arch = "wasm32"))]
+#[inline(always)]
+unsafe fn tile<const T: usize>(
+    x: *const f64, w: *const f64, o: *mut f64, nb: usize, j: usize, keep: *const u32,
+    count: usize,
+) {
+    let mut acc = [0.0f64; T];
+    for q in 0..count {
+        let k = *keep.add(q) as usize;
+        let a = *x.add(k);
+        let row = w.add(k * nb + j);
+        for (t, s) in acc.iter_mut().enumerate() {
+            *s += a * *row.add(t);
+        }
+    }
+    for (t, s) in acc.iter().enumerate() {
+        *o.add(j + t) = *s;
     }
 }
 
