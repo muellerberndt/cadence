@@ -6,7 +6,7 @@ entry by entry: to the bit, within a tolerance (shown), or apart (the first few 
 error in the life (Wild logs it as ``brain_error`` and lets the animal act at random) or a part
 with no call recorded fails the check.
 
-    python kernels/core/check/replay.py arousal [steps] [--wild PATH] [--stream]
+    python kernels/core/check/replay.py arousal [steps] [--wild PATH] [--stream] [--methods a,b]
 
 A part module may define ``calling(obj, method, args, kwargs) -> (args, kwargs, after)``: the
 call's arguments as the Python method takes them (a callback wrapped so its questions and
@@ -34,6 +34,8 @@ p.add_argument("--tolerance", type=float, default=1e-9)
 p.add_argument("--calls", type=int, default=4000, help="the most calls kept")
 p.add_argument("--stream", action="store_true",
                help="replay each call as it is made, keeping none (every call of the life)")
+p.add_argument("--methods", default="",
+               help="the part's methods recorded, by name with commas (every one by default)")
 a = p.parse_args()
 if a.wild:
     sys.path.insert(0, a.wild)
@@ -89,7 +91,9 @@ def check(k, name, before, args, theirs_out, theirs_after):
 
 
 owners = getattr(module, "OWNERS", {})  # a function of a module, the part its first argument
-for name, (arguments, result) in module.METHODS.items():
+chosen = [m for m in a.methods.split(",") if m] or list(module.METHODS)
+for name in chosen:
+    arguments, result = module.METHODS[name]
     owner = owners.get(name, module.CLASS)
     method = getattr(owner, name)
     read = isinstance(method, property)  # a property is recorded as a call of its getter
