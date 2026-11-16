@@ -40,22 +40,24 @@ pub unsafe extern "C" fn trace_step(
     let delta = take!(delta, f64, FLOAT64, 8);
     let step_scale = take!(step_scale, f64, FLOAT64, 9);
     let step_bias = take!(step_bias, f64, FLOAT64, 10);
-    trace_pass(trace, trace_bias, decay, s_plus, s_minus, pre, post, span, delta, step_scale,
-               step_bias)
+    trace_pass(trace, trace_bias, trace, trace_bias, decay, s_plus, s_minus, pre, post, span,
+               delta, step_scale, step_bias)
 }
 
-/// The pass of `trace_step` on its arrays: `trace` (batch, edges) and `trace_bias` (batch, n)
-/// in place, the step into `step_scale` and `step_bias`.
+/// The pass of `trace_step` on its arrays: the traces `trace` (batch, edges) and `trace_bias`
+/// (batch, n) after this moment into `next` and `next_bias` (the same arrays for the pass in
+/// place, as `trace_step` runs it), the step into `step_scale` and `step_bias`.
 pub(crate) unsafe fn trace_pass(
-    trace: View<f64>, trace_bias: View<f64>, decay: f64, s_plus: View<f64>, s_minus: View<f64>,
-    pre: Index, post: Index, span: f64, delta: View<f64>, step_scale: View<f64>,
-    step_bias: View<f64>,
+    trace: View<f64>, trace_bias: View<f64>, next: View<f64>, next_bias: View<f64>, decay: f64,
+    s_plus: View<f64>, s_minus: View<f64>, pre: Index, post: Index, span: f64,
+    delta: View<f64>, step_scale: View<f64>, step_bias: View<f64>,
 ) -> i32 {
     let (batch, edges) = (trace.n0, trace.n1);
     let n = trace_bias.n1;
     if pre.len() != edges || post.len() != edges || s_plus.n0 != batch || s_plus.n1 != n
         || s_minus.n0 != batch || s_minus.n1 != n || trace_bias.n0 != batch
         || delta.len < batch || step_scale.len != edges || step_bias.len != n
+        || next.n0 != batch || next.n1 != edges || next_bias.n0 != batch || next_bias.n1 != n
     {
         return refused(0);
     }
@@ -79,13 +81,13 @@ pub(crate) unsafe fn trace_pass(
             let (b_plus, b_minus) = (s_plus.at(b, j), s_minus.at(b, j));
             let c = (a_plus * (b_plus - b_minus) + (a_plus - a_minus) * b_minus) / span;
             let t = decay * trace.at(b, e) + c;
-            trace.put(b, e, t);
+            next.put(b, e, t);
             step_scale.set(e, step_scale.get(e) + d * t);
         }
         for i in 0..n {
             let c = (s_plus.at(b, i) - s_minus.at(b, i)) / span;
             let t = decay * trace_bias.at(b, i) + c;
-            trace_bias.put(b, i, t);
+            next_bias.put(b, i, t);
             step_bias.set(i, step_bias.get(i) + d * t);
         }
     }

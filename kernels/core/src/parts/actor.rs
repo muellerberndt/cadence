@@ -25,7 +25,7 @@ fn refused(text: &str) -> Error {
 const SATURATION_BAND: f64 = 0.02;
 
 /// An array of any shape, row-major.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct Tensor {
     pub shape: Vec<usize>,
     pub data: Vec<f64>,
@@ -34,6 +34,12 @@ pub struct Tensor {
 impl Tensor {
     pub fn zeros(shape: &[usize]) -> Tensor {
         Tensor { shape: shape.to_vec(), data: vec![0.0; shape.iter().product()] }
+    }
+    /// This array at `shape`, its room kept (the entries are then the caller's to write).
+    fn reshape(&mut self, shape: &[usize]) {
+        self.shape.clear();
+        self.shape.extend_from_slice(shape);
+        self.data.resize(shape.iter().product(), 0.0);
     }
     fn of(s: &Named, name: &str) -> Result<Option<Tensor>, Error> {
         if !s.has(name) {
@@ -205,6 +211,7 @@ pub struct ActorCritic {
     /// The carried routes whose gain is the recall memory's own (`Recall.hearing`): the
     /// Python's `Hearing.set` writes it there.
     pub hearing_routes: Vec<i64>,
+    spare: Spare,
 }
 
 fn generator(s: &Named) -> Result<Pcg64, Error> {
@@ -306,6 +313,7 @@ impl ActorCritic {
                       else { None },
             hearing_routes: if s.has("hearing_routes") { s.i64s("hearing_routes")? }
                             else { vec![] },
+            spare: Spare::default(),
         };
         if actor.critic_index.is_empty()
             || actor.critic_index.iter().any(|&i| i < 0 || i as usize >= n)
@@ -519,18 +527,25 @@ impl ActorCritic {
     /// `settle(drive)`: the free phase for `drive`, warm from the last one.
     pub fn settle(&mut self, learner: &Learner, graph: &Graph, drive: &Rows)
                   -> Result<State, Error> {
+        self.settle_held(learner, graph, drive)?;
+        Ok(self.free.clone().expect("a free state"))
+    }
+
+    /// `settle(drive)`, the free phase held as the actor's.
+    fn settle_held(&mut self, learner: &Learner, graph: &Graph, drive: &Rows)
+                   -> Result<(), Error> {
         Self::validated_drive(drive, learner.n())?;
         if self.free.as_ref().is_some_and(|f| f.batch != drive.rows) {
             self.reset();
         }
         let free = learner.free(graph, drive, self.free.as_ref())?;
-        self.free = Some(free.clone());
+        self.free = Some(free);
         self.free_generation = Some(graph.generation);
         self.drive = Some(drive.clone());
         self.pending = None;
         self.pending_memory = None;
         self.pending_entropy = None;
-        Ok(free)
+        Ok(())
     }
 
     /// `_nudged_groups`: from the free state, the outputs pulled toward `target` at `beta`
@@ -621,8 +636,23 @@ impl ActorCritic {
         let current = self.free.is_some()
             && self.free_generation == Some(graph.generation)
             && self.drive.as_ref().is_some_and(|d| same_rows(d, drive));
-        let free = if current { self.free.clone().expect("a free state") }
-                   else { self.settle(learner, graph, drive)? };
+        if !current {
+            self.settle_held(learner, graph, drive)?;
+        }
+        // the free state read where it is held, and held again after the act
+        let free = self.free.take().expect("a free state");
+        let acted = self.act_on(learner, graph, memory, hearing, drive, greedy,
+                                temperature.as_ref(), bias, &free);
+        self.free = Some(free);
+        acted
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn act_on(&mut self, learner: &Learner, graph: &Graph, memory: Option<&mut Recall>,
+              hearing: Option<&Hearing>, drive: &Rows, greedy: bool,
+              temperature: Option<&Heat>, bias: Option<&Rows>, free: &State)
+              -> Result<(Vec<i64>, Vec<usize>), Error> {
+        let n = learner.n();
         self.pending = None;
         self.pending_memory = None;
         self.pending_hearing = None;
@@ -630,7 +660,7 @@ impl ActorCritic {
         let slots = learner.slot_count();
         let batch = free.batch;
         if greedy && bias.is_none() && slots == 1 {
-            let s = Self::outputs(&free, learner, None)?;
+            let s = Self::outputs(free, learner, None)?;
             let width = learner.output_index.len();
             let mut choice = vec![0i64; batch];
             let clear = unsafe {
@@ -643,8 +673,8 @@ impl ActorCritic {
                 return Ok((choice, vec![batch]));
             }
         }
-        let (p, shape) = self.probabilities(learner, &free,
-                                            if greedy { None } else { temperature.as_ref() },
+        let (p, shape) = self.probabilities(learner, free,
+                                            if greedy { None } else { temperature },
                                             bias)?;
         let width = *shape.last().expect("a shape");
         let rows = p.len() / width.max(1);
@@ -668,11 +698,11 @@ impl ActorCritic {
             let labels = Labels { data: action.clone(), shape: action_shape.clone() };
             let target = learner.targets(&labels)?;
             let beta = learner.config.beta;
-            let plus = self.nudged_groups(learner, graph, drive, &free, &target, beta,
-                                          temperature.as_ref())?;
-            let minus = self.nudged_groups(learner, graph, drive, &free, &target, -beta,
-                                           temperature.as_ref())?;
-            let value = self.value(&free);
+            let plus = self.nudged_groups(learner, graph, drive, free, &target, beta,
+                                          temperature)?;
+            let minus = self.nudged_groups(learner, graph, drive, free, &target, -beta,
+                                           temperature)?;
+            let value = self.value(free);
             if self.config.entropy != 0.0 {
                 self.pending_entropy = Some(surprise(&p, &shape, &action));
             }
@@ -702,11 +732,9 @@ impl ActorCritic {
     // -- learning
 
     /// `_validated_transition`: a well-formed outcome of the pending decision.
-    fn validated_transition(&self, learner: &Learner, reward: &[f64], done: &[bool],
-                            next_drive: &Rows, bootstrap: Option<&[f64]>)
+    fn validated_transition(&self, learner: &Learner, pending: &Pending, reward: &[f64],
+                            done: &[bool], next_drive: &Rows, bootstrap: Option<&[f64]>)
                             -> Result<(), Error> {
-        let pending = self.pending.as_ref()
-            .ok_or_else(|| refused("learn needs a non-greedy act first"))?;
         let batch = pending.value.len();
         if reward.len() != batch || !reward.iter().all(|x| x.is_finite()) {
             return Err(refused("reward must be a finite vector matching the action batch"));
@@ -742,34 +770,40 @@ impl ActorCritic {
     }
 
     /// `learn(reward, done, next_drive, bootstrap, observed=, warm=)`: the outcome of the pending
-    /// decision. A refusal leaves the traces and the count as they were. With a maturity its use
-    /// grows by the synapse step applied. Returns the report.
+    /// decision. A refusal leaves the traces and the count as they were (the eligibility of
+    /// this outcome is made apart from the traces and taken only once the outcome stands). With
+    /// a maturity its use grows by the synapse step applied. Returns the report.
     #[allow(clippy::too_many_arguments)]
     pub fn learn_with(&mut self, learner: &mut Learner, graph: &mut Graph,
                       memory: Option<&mut Recall>, hearing: Option<&mut Hearing>,
                       reward: &[f64], done: &[bool], next_drive: &Rows,
                       bootstrap: Option<&[f64]>, observed: Option<&[bool]>,
                       warm: Option<&State>) -> Result<Report, Error> {
-        let saved = (self.trace.clone(), self.trace_bias.clone(), self.trace_memory.clone(),
-                     self.trace_hearing.clone(), self.trace_critic.clone(), self.updates);
-        let before = self.maturity.as_ref().map(|_| graph.efficacy.clone());
         let factor = self.maturity.as_ref().map(|m| m.factor());
-        let found = self.outcome(learner, graph, memory, hearing, factor, reward, done,
-                                 next_drive, bootstrap, observed, warm);
+        let (pending, free) = (self.pending.take(), self.free.take());
+        let found = match (&pending, &free) {
+            (Some(p), Some(f)) => self.outcome(learner, graph, memory, hearing, factor, p, f,
+                                               reward, done, next_drive, bootstrap, observed,
+                                               warm),
+            (None, _) => Err(refused("learn needs a non-greedy act first")),
+            (_, None) => Err(refused("learn needs the free state")),
+        };
         let report = match found {
             Ok(r) => r,
             Err(e) => {
-                (self.trace, self.trace_bias, self.trace_memory, self.trace_hearing,
-                 self.trace_critic, self.updates) = saved;
+                (self.pending, self.free) = (pending, free);
                 return Err(e);
             }
         };
         let eta = self.config.eta;
-        if let (Some(m), Some(before)) = (self.maturity.as_mut(), before) {
+        if let Some(m) = self.maturity.as_mut() {
             if eta > 0.0 {
-                let moved: Vec<f64> = graph.efficacy.iter().zip(&before)
-                    .map(|(a, b)| (a - b).abs()).collect();
-                let grown = m.use_ + np::sum(&moved) / (eta * graph.synapses() as f64);
+                // the efficacies the step replaced, against the graph's
+                let before = learner.previous_efficacy();
+                let room = &mut self.spare.step_scale;
+                room.clear();
+                room.extend(graph.efficacy.iter().zip(before).map(|(a, b)| (a - b).abs()));
+                let grown = m.use_ + np::sum(room) / (eta * graph.synapses() as f64);
                 m.use_ = if Maturity::LIMIT < grown { Maturity::LIMIT } else { grown };
             }
         }
@@ -778,11 +812,11 @@ impl ActorCritic {
 
     #[allow(clippy::too_many_arguments)]
     fn outcome(&mut self, learner: &mut Learner, graph: &mut Graph, memory: Option<&mut Recall>,
-               hearing: Option<&mut Hearing>, factor: Option<f64>, reward: &[f64],
-               done: &[bool], next_drive: &Rows, bootstrap: Option<&[f64]>,
-               observed: Option<&[bool]>, warm: Option<&State>)
+               hearing: Option<&mut Hearing>, factor: Option<f64>, pending: &Pending,
+               free: &State, reward: &[f64], done: &[bool], next_drive: &Rows,
+               bootstrap: Option<&[f64]>, observed: Option<&[bool]>, warm: Option<&State>)
                -> Result<Vec<(&'static str, f64)>, Error> {
-        self.validated_transition(learner, reward, done, next_drive, bootstrap)?;
+        self.validated_transition(learner, pending, reward, done, next_drive, bootstrap)?;
         let batch = reward.len();
         let observed: Vec<bool> = observed.map_or(vec![true; batch], |o| o.to_vec());
         if observed.len() != batch || !observed.iter().any(|&x| x) {
@@ -793,24 +827,32 @@ impl ActorCritic {
         }
         let done: Vec<bool> = done.iter().zip(&observed).map(|(&d, &o)| d || !o).collect();
         let cfg = self.config.clone();
-        let pending = self.pending.clone().expect("a pending decision");
         let (first, second, value) = (&pending.plus.activation, &pending.minus.activation,
                                       &pending.value);
-        let free = self.free.clone().ok_or_else(|| refused("learn needs the free state"))?;
         let (n, e) = (learner.n(), graph.synapses());
         let mut memory = memory;
         let decay = cfg.decay();
         let k = self.critic_index.len();
-        if self.trace.as_ref().is_none_or(|t| t.rows() != batch) {
-            self.trace = Some(Tensor::zeros(&[batch, e]));
-            self.trace_bias = Some(Tensor::zeros(&[batch, n]));
-            self.trace_critic = Some(Tensor::zeros(&[batch, k + 1]));
+        // this outcome's traces, made in the spare room from the ones held (zeros where none
+        // of this batch are held)
+        let fresh = self.trace.as_ref().is_none_or(|t| t.rows() != batch);
+        let spare = &mut self.spare;
+        spare.trace.reshape(&[batch, e]);
+        spare.trace_bias.reshape(&[batch, n]);
+        spare.trace_critic.reshape(&[batch, k + 1]);
+        if fresh {
+            spare.trace.data.iter_mut().for_each(|x| *x = 0.0);
+            spare.trace_bias.data.iter_mut().for_each(|x| *x = 0.0);
+            spare.trace_critic.data.iter_mut().for_each(|x| *x = 0.0);
+        } else {
+            let held = self.trace_critic.as_ref().expect("a critic trace");
+            spare.trace_critic.data.copy_from_slice(&held.data);
         }
         let span = 2.0 * learner.config.beta;
         let fused = self.salience.is_none() && cfg.entropy == 0.0;
-        let (pre, post) = (graph.pre.clone(), graph.post.clone());
         let mut contrast = None;
         if !fused {
+            let (pre, post) = (&graph.pre, &graph.post);
             let mut c = vec![0.0f64; batch * e];
             for b in 0..batch {
                 for q in 0..e {
@@ -828,21 +870,19 @@ impl ActorCritic {
                     }
                 }
             }
-            let trace = self.trace.as_mut().expect("a trace");
-            for (t, x) in trace.data.iter_mut().zip(&c) {
-                *t *= decay;
-                *t += x;
-            }
-            let trace_bias = self.trace_bias.as_mut().expect("a trace");
-            for (t, x) in trace_bias.data.iter_mut().zip(&c_bias) {
-                *t *= decay;
-                *t += x;
+            for (held, next, add) in [(&self.trace, &mut spare.trace, &c),
+                                      (&self.trace_bias, &mut spare.trace_bias, &c_bias)] {
+                for (i, (t, x)) in next.data.iter_mut().zip(add.iter()).enumerate() {
+                    let before = if fresh { 0.0 } else { held.as_ref().expect("a trace").data[i] };
+                    *t = before * decay;
+                    *t += x;
+                }
             }
             contrast = Some((c, c_bias));
         }
         {
             let critic_decay = cfg.gamma * cfg.lam;
-            let tc = self.trace_critic.as_mut().expect("a critic trace");
+            let tc = &mut spare.trace_critic;
             tc.data.iter_mut().for_each(|x| *x *= critic_decay);
             for b in 0..batch {
                 for (j, &i) in self.critic_index.iter().enumerate() {
@@ -851,14 +891,15 @@ impl ActorCritic {
                 tc.data[b * (k + 1) + k] += 1.0;
             }
         }
-        self.trace_memory = eligibility(self.pending_memory.as_ref(), self.trace_memory.take(),
+        let keeps_memory = eligibility(self.pending_memory.as_ref(), self.trace_memory.as_ref(),
+                                       &mut spare.trace_memory, batch, decay);
+        let keeps_hearing = eligibility(self.pending_hearing.as_ref(),
+                                        self.trace_hearing.as_ref(), &mut spare.trace_hearing,
                                         batch, decay);
-        self.trace_hearing = eligibility(self.pending_hearing.as_ref(),
-                                         self.trace_hearing.take(), batch, decay);
         // the next state, warm from this one; a finished row starts from rest
         let next_state = {
-            let warm = warm.cloned().unwrap_or_else(|| free.clone());
-            let warm = if done.iter().any(|&d| d) {
+            let warm = warm.unwrap_or(free);
+            if done.iter().any(|&d| d) {
                 let (mut v, mut a) = (warm.v.clone(), warm.adaptation.clone());
                 for (b, &d) in done.iter().enumerate() {
                     if d {
@@ -866,11 +907,12 @@ impl ActorCritic {
                         a[b * n..(b + 1) * n].iter_mut().for_each(|x| *x = 0.0);
                     }
                 }
-                State { v, adaptation: a, activity_change: None, published: false, ..warm }
+                let rested = State { v, adaptation: a, activity_change: None, published: false,
+                                     activation: warm.activation.clone(), ..*warm };
+                learner.free(graph, next_drive, Some(&rested))?
             } else {
-                warm
-            };
-            learner.free(graph, next_drive, Some(&warm))?
+                learner.free(graph, next_drive, Some(warm))?
+            }
         };
         let raw = self.value(&next_state);
         let td_error: Vec<f64> = (0..batch).map(|b| {
@@ -896,36 +938,49 @@ impl ActorCritic {
             }
             if observed[b] { d / share } else { 0.0 }
         }).collect();
-        let (mut step_scale, mut step_bias);
+        let spare = &mut self.spare;
+        let (mut step_scale, mut step_bias) =
+            (std::mem::take(&mut spare.step_scale), std::mem::take(&mut spare.step_bias));
         if fused {
-            step_scale = vec![0.0f64; e];
-            step_bias = vec![0.0f64; n];
-            let trace = self.trace.as_mut().expect("a trace");
-            let trace_bias = self.trace_bias.as_mut().expect("a trace");
+            step_scale.resize(e, 0.0);
+            step_bias.resize(n, 0.0);
+            let (next, next_bias) = (&mut spare.trace, &mut spare.trace_bias);
             let code = unsafe {
                 let wide = |x: &[i64]| Index::Wide(View { p: x.as_ptr() as *mut i64, n0: x.len(),
                                                            n1: 1, len: x.len() });
                 let seen = |x: &[f64], n0: usize, n1: usize| View { p: x.as_ptr() as *mut f64,
                                                                      n0, n1, len: n0 * n1 };
+                let out = View { p: next.data.as_mut_ptr(), n0: batch, n1: e, len: batch * e };
+                let out_bias = View { p: next_bias.data.as_mut_ptr(), n0: batch, n1: n,
+                                      len: batch * n };
+                // the held traces in, or (none of this batch held) the zeros of the room
+                let (held, held_bias) = match (&self.trace, &self.trace_bias, fresh) {
+                    (Some(t), Some(tb), false) => (seen(&t.data, batch, e), seen(&tb.data, batch, n)),
+                    _ => (out, out_bias),
+                };
                 lesson::trace_pass(
-                    View { p: trace.data.as_mut_ptr(), n0: batch, n1: e, len: batch * e },
-                    View { p: trace_bias.data.as_mut_ptr(), n0: batch, n1: n, len: batch * n },
-                    decay, seen(first, batch, n), seen(second, batch, n), wide(&pre), wide(&post),
-                    span, seen(&delta, batch, 1),
+                    held, held_bias, out, out_bias, decay, seen(first, batch, n),
+                    seen(second, batch, n), wide(&graph.pre), wide(&graph.post), span,
+                    seen(&delta, batch, 1),
                     View { p: step_scale.as_mut_ptr(), n0: e, n1: 1, len: e },
                     View { p: step_bias.as_mut_ptr(), n0: n, n1: 1, len: n })
             };
             if code < 0 {
+                (spare.step_scale, spare.step_bias) = (step_scale, step_bias);
                 return Err(Error::Shape("the trace pass refused its arrays".into()));
             }
         } else {
-            step_scale = self.trace.as_ref().expect("a trace").weighted_mean(&delta);
-            step_bias = self.trace_bias.as_ref().expect("a trace").weighted_mean(&delta);
+            step_scale = spare.trace.weighted_mean(&delta);
+            step_bias = spare.trace_bias.weighted_mean(&delta);
         }
         let mut explored = None;
         if cfg.entropy != 0.0 {
-            let (surprise, entropy) = self.pending_entropy.clone().filter(|s| s.0.len() == batch)
-                .ok_or_else(|| refused("actor entropy needs the sampled act's policy; act again"))?;
+            let Some((surprise, entropy)) =
+                self.pending_entropy.clone().filter(|s| s.0.len() == batch)
+            else {
+                (self.spare.step_scale, self.spare.step_bias) = (step_scale, step_bias);
+                return Err(refused("actor entropy needs the sampled act's policy; act again"));
+            };
             let (c, c_bias) = contrast.expect("the contrast of an entropy step");
             let weight: Vec<f64> = (0..batch)
                 .map(|b| if observed[b] { cfg.entropy * surprise[b] / share } else { 0.0 })
@@ -937,31 +992,35 @@ impl ActorCritic {
             let seen: Vec<f64> = observed_rows.iter().map(|&b| entropy[b]).collect();
             explored = Some(np::mean(&seen));
         }
-        self.updates += 1;
         let f = factor.unwrap_or(1.0);
         let (eta, eta_bias) = (f * cfg.eta, f * cfg.eta_bias);
-        let step_scale: Vec<f64> = step_scale.iter().map(|x| eta * x).collect();
-        let step_bias: Vec<f64> = step_bias.iter().map(|x| eta_bias * x).collect();
-        let (critic_weights, critic_bias) = self.critic_candidate(&delta)?;
-        let proposal = match (&self.trace_memory, memory.as_deref()) {
-            (Some(trace), Some(m)) => {
+        step_scale.iter_mut().for_each(|x| *x = eta * *x);
+        step_bias.iter_mut().for_each(|x| *x = eta_bias * *x);
+        let critic = self.critic_candidate(&self.spare.trace_critic, &delta);
+        let proposal = match (&critic, keeps_memory, memory.as_deref_mut()) {
+            (Ok(_), true, Some(m)) => {
+                let trace = &self.spare.trace_memory;
                 let mean = trace.weighted_mean(&delta);
-                let mut held = Named::new();
-                m.propose(F { shape: trace.shape[1..].to_vec(), v: mean }, &mut held)?;
-                (!held.order.is_empty()).then_some(held)
+                m.proposal(F { shape: trace.shape[1..].to_vec(), v: mean })
             }
-            _ => None,
+            _ => Ok(None),
         };
-        let next_generation = graph.generation;
-        let mut report = learner.apply(graph, &step_scale, &step_bias)?;
+        let next_generation = graph.generation; // the graph the next state settled on
+        let applied = match (critic, proposal) {
+            (Ok(c), Ok(p)) => learner.apply(graph, &step_scale, &step_bias).map(|r| (c, p, r)),
+            (Err(e), _) | (_, Err(e)) => Err(e),
+        };
+        (self.spare.step_scale, self.spare.step_bias) = (step_scale, step_bias);
+        let ((critic_weights, critic_bias), proposal, mut report) = applied?;
         self.w_critic = critic_weights;
         self.b_critic = critic_bias;
         if let (Some(p), Some(m)) = (proposal, memory.as_deref_mut()) {
-            m.accept(&p)?;
-            report.push(("address_reward_step", p.f64("norm")?));
+            let norm = p.norm;
+            m.adopt(p);
+            report.push(("address_reward_step", norm));
         }
-        if let (Some(t), Some(h)) = (&self.trace_hearing, hearing) {
-            h.step(&t.weighted_mean(&delta))?;
+        if let (true, Some(h)) = (keeps_hearing, hearing) {
+            h.step(&self.spare.trace_hearing.weighted_mean(&delta))?;
             // `Hearing.set`: the recall memory's own gain is the one its route holds
             if let Some(m) = memory {
                 for &k in &self.hearing_routes {
@@ -971,17 +1030,32 @@ impl ActorCritic {
                 }
             }
         }
+        // the outcome stands: its traces are the actor's, the ones they replace the room's
+        let spare = &mut self.spare;
+        for (held, next, kept) in [(&mut self.trace, &mut spare.trace, true),
+                                   (&mut self.trace_bias, &mut spare.trace_bias, true),
+                                   (&mut self.trace_critic, &mut spare.trace_critic, true),
+                                   (&mut self.trace_memory, &mut spare.trace_memory, keeps_memory),
+                                   (&mut self.trace_hearing, &mut spare.trace_hearing,
+                                    keeps_hearing)] {
+            if kept {
+                let old = held.replace(std::mem::take(next));
+                *next = old.unwrap_or_else(|| Tensor::zeros(&[]));
+            } else if let Some(old) = held.take() {
+                *next = old;
+            }
+        }
         if done.iter().any(|&d| d) {
             for t in [&mut self.trace, &mut self.trace_bias, &mut self.trace_critic,
                       &mut self.trace_memory, &mut self.trace_hearing].into_iter().flatten() {
                 t.forget(&done);
             }
         }
+        self.updates += 1;
         let next_steps = next_state.steps;
         self.free = Some(next_state);
         self.free_generation = Some(next_generation);
         self.drive = Some(next_drive.clone());
-        self.pending = None;
         self.pending_memory = None;
         self.pending_hearing = None;
         self.pending_entropy = None;
@@ -994,26 +1068,27 @@ impl ActorCritic {
         let seen_value: Vec<f64> = observed_rows.iter().map(|&b| value[b]).collect();
         report.push(("value", np::mean(&seen_value)));
         report.push(("free_steps", next_steps as f64));
-        report.push(("saturation", saturation(&free, learner)));
+        report.push(("saturation", saturation(free, learner)));
         if let Some(x) = explored {
             report.push(("policy_entropy", x));
         }
         let trace = self.trace.as_ref().expect("a trace");
         let plastic = &learner.plastic_synapses;
-        let traced: Vec<f64> = if plastic.iter().all(|&x| x) {
-            trace.data.iter().map(|x| x.abs()).collect()
+        let traced = if plastic.iter().all(|&x| x) {
+            mean_size(&trace.data)
         } else {
-            (0..batch).flat_map(|b| (0..e).filter(|&q| plastic[q]).map(move |q| (b, q)))
-                .map(|(b, q)| trace.data[b * e + q].abs()).collect()
+            let sizes: Vec<f64> = (0..batch)
+                .flat_map(|b| (0..e).filter(|&q| plastic[q]).map(move |q| (b, q)))
+                .map(|(b, q)| trace.data[b * e + q].abs()).collect();
+            np::mean(&sizes)
         };
-        report.push(("trace", np::mean(&traced)));
+        report.push(("trace", traced));
         Ok(report)
     }
 
     /// `_critic_candidate(delta)`: the critic's weights and bias after the dopamine's step on
     /// its trace, divided by the trace's energy.
-    fn critic_candidate(&self, delta: &[f64]) -> Result<(Vec<f64>, f64), Error> {
-        let tc = self.trace_critic.as_ref().expect("a critic trace");
+    fn critic_candidate(&self, tc: &Tensor, delta: &[f64]) -> Result<(Vec<f64>, f64), Error> {
         let width = tc.width();
         let mut scaled = tc.clone();
         for row in scaled.data.chunks_mut(width) {
@@ -1070,21 +1145,79 @@ fn heard_graph(graph: &Graph) -> Heard<'_> {
 
 /// `_memory_eligibility` and `_hearing_eligibility`: `e <- decay e + contrast`; a decision that
 /// kept no contrast, or one of another batch, drops the trace.
-fn eligibility(contrast: Option<&Tensor>, trace: Option<Tensor>, batch: usize, decay: f64)
-               -> Option<Tensor> {
-    let contrast = contrast?;
+/// the trace after this outcome into `out`, from the one `held`; false where it is dropped.
+fn eligibility(contrast: Option<&Tensor>, held: Option<&Tensor>, out: &mut Tensor, batch: usize,
+               decay: f64) -> bool {
+    let Some(contrast) = contrast else { return false };
     if contrast.rows() != batch {
-        return None;
+        return false;
     }
-    let mut trace = match trace {
-        Some(t) if t.shape == contrast.shape => t,
-        _ => Tensor::zeros(&contrast.shape),
-    };
-    for (t, c) in trace.data.iter_mut().zip(&contrast.data) {
-        *t *= decay;
-        *t += c;
+    out.reshape(&contrast.shape);
+    match held {
+        Some(h) if h.shape == contrast.shape => {
+            for ((t, c), &x) in out.data.iter_mut().zip(&contrast.data).zip(&h.data) {
+                *t = x * decay;
+                *t += c;
+            }
+        }
+        _ => {
+            for (t, c) in out.data.iter_mut().zip(&contrast.data) {
+                *t = 0.0 * decay;
+                *t += c;
+            }
+        }
     }
-    Some(trace)
+    true
+}
+
+/// `np.abs(x).mean()` without the array of sizes: the sizes summed in the pairwise order
+/// `np::sum` sums them in, a run of at most 128 at a time.
+fn mean_size(x: &[f64]) -> f64 {
+    fn pairwise(x: &[f64]) -> f64 {
+        if x.len() <= 128 {
+            let mut run = [0.0f64; 128];
+            for (r, v) in run.iter_mut().zip(x) {
+                *r = v.abs();
+            }
+            return np::pairwise(&run[..x.len()]);
+        }
+        let mut half = x.len() / 2;
+        half -= half % 8;
+        pairwise(&x[..half]) + pairwise(&x[half..])
+    }
+    (0.0 + pairwise(x)) / x.len() as f64
+}
+
+/// The rooms an outcome reuses, which hold no state: the traces it makes before they are the
+/// actor's (and the ones they replace after), and the steps. A copy starts without them, and
+/// any two compare equal.
+#[derive(Default)]
+pub struct Spare {
+    trace: Tensor,
+    trace_bias: Tensor,
+    trace_critic: Tensor,
+    trace_memory: Tensor,
+    trace_hearing: Tensor,
+    step_scale: Vec<f64>,
+    step_bias: Vec<f64>,
+}
+
+impl Clone for Spare {
+    fn clone(&self) -> Spare {
+        Spare::default()
+    }
+}
+
+impl PartialEq for Spare {
+    fn eq(&self, _: &Spare) -> bool {
+        true
+    }
+}
+
+impl std::fmt::Debug for Spare {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Spare")
+    }
 }
 
 /// `_saturation(free)`: the share of output activations within the band of 0 or 1.
