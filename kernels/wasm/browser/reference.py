@@ -64,7 +64,7 @@ def same(x, y):
     if isinstance(x, tuple) and isinstance(y, tuple):
         if len(x) == 4 and callable(x[0]) and isinstance(x[3], np.ndarray):  # products
             return x[2] == y[2] and same(x[3], y[3])
-        return len(x) == len(y) and all(same(a, b) for a, b in zip(x, y))
+        return len(x) == len(y) and all(same(a, b) for a, b in zip(x, y, strict=True))
     if x is None or y is None:
         return x is y
     if isinstance(x, (float, np.floating)) and isinstance(y, (float, np.floating)):
@@ -93,7 +93,7 @@ def shadow(name):
         got = live(*args, **kwargs)
         checked[name] += 1
         ok = same(got, expected)
-        for k, (a, b) in enumerate(zip(args, theirs)):
+        for k, (a, b) in enumerate(zip(args, theirs, strict=True)):
             if isinstance(a, np.ndarray) and not same(a, b):
                 ok = False
                 failures.append(f"{name}: argument {k} differs after the call")

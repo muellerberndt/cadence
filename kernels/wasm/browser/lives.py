@@ -21,9 +21,9 @@ ENGINE = engine.choose(sys.argv[1] if len(sys.argv) > 1 else "fused")
 MOMENTS = int(sys.argv[2]) if len(sys.argv) > 2 else 300
 
 import numpy as np  # noqa: E402
+from compositions import COMPOSITIONS, POCKET, observation, pocket_map  # noqa: E402
 
 import cadence as cd  # noqa: E402
-from compositions import COMPOSITIONS, POCKET, observation, pocket_map  # noqa: E402
 
 engine.fit_32_bit_numpy()
 

@@ -2,8 +2,6 @@
 Wild's pocket brain, with the random observations a life takes."""
 from __future__ import annotations
 
-import numpy as np
-
 # Wild's pocket brain (cadence-wild, wild/brain.py at its founders' gene means): senses by
 # name, a code of 128 where they meet, two apical regions under the deep lesson, recall with two
 # heads, records of bound moments with a voice, surprise with its focus, and the map of things

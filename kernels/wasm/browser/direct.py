@@ -4,9 +4,8 @@ gains, warm starts, tolerances and the solves, on a layered graph and on a deep 
 
     python kernels/wasm/browser/run.py direct.py
 """
-from reference import report  # noqa: E402
-
 import numpy as np  # noqa: E402
+from reference import report  # noqa: E402
 
 import cadence as cd  # noqa: E402
 from cadence.brain import Nudge  # noqa: E402
@@ -53,7 +52,7 @@ for label, graph in graphs():
         drive = rng.normal(size=(batch, n)) * 0.8
         mask = (rng.random((batch, n)) > 0.15).astype(float)
         mask[:, :3] = 0.5
-        for name, nudge in nudges(graph, batch):
+        for _name, nudge in nudges(graph, batch):
             if nudge is not None and graph.apical is not None:
                 free = graph.settle_batch(drive, steps=30)
                 held = graph.apical_gain(drive, free)
@@ -83,7 +82,7 @@ for config in (cd.LearnerConfig(momentum=0.9, normalize=0.999, eta=0.02, eta_bia
                cd.LearnerConfig(normalize=0.99, normalize_relative=0.25, eta=0.02, eta_bias=0.02),
                cd.LearnerConfig(momentum=0.8, eta=0.05)):
     learner = cd.Learner(cd.NeuralGraph(connectome, cd.learning_neuron_model()), outputs, config)
-    for lesson in range(6):
+    for _ in range(6):
         drive = np.zeros((4, connectome.n))
         drive[:, :6] = rng.random((4, 6))
         learner.step(drive, rng.integers(0, 4, size=4))

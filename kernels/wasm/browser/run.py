@@ -85,7 +85,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--workers", type=int, default=0)
     parser.add_argument("--pyodide", type=Path, default=None)
-    parser.add_argument("--kernel", type=Path, default=ROOT / "kernels" / "wasm" / "cadence_kernel.wasm")
+    parser.add_argument("--kernel", type=Path,
+                        default=ROOT / "kernels" / "wasm" / "cadence_kernel.wasm")
     parser.add_argument("--timeout", type=float, default=3600.0)
     parser.add_argument("script")
     parser.add_argument("args", nargs=argparse.REMAINDER)

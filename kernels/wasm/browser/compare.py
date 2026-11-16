@@ -46,7 +46,7 @@ def main() -> int:
             continue
         y = b[label]
         same = sum(int(p == q) for p, q in zip(x["actions"], y["actions"], strict=True))
-        first = next((i for i, (p, q) in enumerate(zip(x["actions"], y["actions"]))
+        first = next((i for i, (p, q) in enumerate(zip(x["actions"], y["actions"], strict=True))
                       if p != q), None)
         ax, ay = arrays(x), arrays(y)
         bits = all(np.array_equal(ax[k].view(np.uint64), ay[k].view(np.uint64)) for k in ax)

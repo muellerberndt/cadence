@@ -6,10 +6,9 @@ Python (reference.py).
 import sys
 import time
 
+import numpy as np  # noqa: E402
 import reference  # noqa: E402
 from reference import checked, report  # noqa: E402
-
-import numpy as np  # noqa: E402
 
 import cadence as cd  # noqa: E402
 

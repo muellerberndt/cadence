@@ -20,9 +20,9 @@ WARM = int(sys.argv[4]) if len(sys.argv) > 4 else 3
 SEED = int(sys.argv[5]) if len(sys.argv) > 5 else 1
 
 import numpy as np  # noqa: E402
+from compositions import POCKET, observation, pocket_map  # noqa: E402
 
 import cadence as cd  # noqa: E402
-from compositions import POCKET, observation, pocket_map  # noqa: E402
 
 engine.fit_32_bit_numpy()
 rng = np.random.default_rng(SEED)
