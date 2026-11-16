@@ -618,44 +618,90 @@ unsafe fn basal_input(
 
 // -- one sweep of one row
 
+/// The neurons a sweep steps side by side: each one's activation (an `exp`, then a divide) is a
+/// chain of its own, so a chunk's chains run together.
+const CHAIN: usize = 4;
+
+/// A range's steps as they add up: the running change (one sum, in the neurons' order), the
+/// largest movement, and whether the range's activation and its potential moved.
+struct Tally {
+    change: f64,
+    moved: f64,
+    range: bool,
+    potential: bool,
+}
+
+/// Neurons `lo..hi` of row `b` step to the potentials `potential(i)` gives (each masked where
+/// the sweep masks): in chunks of `CHAIN`, first each moved neuron's activation (masked with
+/// `masked`), the chunk's chains side by side, then in the neurons' order the writes, the tally
+/// and, with `adapt`, the adaptation. A neuron's potential and activation read its own entries
+/// alone, so these are the steps one neuron at a time takes, to the bit.
+#[inline(always)]
+unsafe fn step_neurons(
+    net: &Net, b: usize, lo: usize, hi: usize, masked: bool, adapt: bool,
+    potential: impl Fn(usize) -> f64, tally: &mut Tally,
+) {
+    let (v, a, s) = (net.v, net.a, net.s);
+    let mut i = lo;
+    while i < hi {
+        let k = (hi - i).min(CHAIN);
+        let mut vn = [0.0f64; CHAIN];
+        let mut sn = [0.0f64; CHAIN];
+        for t in 0..k {
+            let x = potential(i + t);
+            vn[t] = x;
+            if x != v.at(b, i + t) {
+                let mut y = act_scalar(x, net.slope, net.threshold, net.rest, net.leak);
+                if masked {
+                    y *= net.keep.at(b, i + t);
+                }
+                sn[t] = y;
+            }
+        }
+        for t in 0..k {
+            let j = i + t;
+            if vn[t] != v.at(b, j) {
+                tally.potential = true;
+                v.put(b, j, vn[t]);
+                let d = fabs(sn[t] - s.at(b, j));
+                tally.change += d;
+                if d > 0.0 {
+                    tally.range = true;
+                    if d > tally.moved {
+                        tally.moved = d;
+                    }
+                }
+                s.put(b, j, sn[t]);
+            }
+            if adapt {
+                a.put(b, j, a.at(b, j) + (s.at(b, j) - a.at(b, j)) / net.tau);
+            }
+        }
+        i += k;
+    }
+}
+
 /// Range `r` of row `b` with no nudge, adaptation or mask on it (`_sweep_range`). Returns the
 /// running change, the largest movement, and whether the range's activation and potential
 /// moved.
 #[inline(always)]
 unsafe fn sweep_range(
     net: &Net, b: usize, r: usize, synaptic_input: *const f64, ahead: *mut f64,
-    mut change: f64, mut moved: f64,
+    change: f64, moved: f64,
 ) -> (f64, f64, bool, bool) {
     let n = net.n;
-    let (v, s, standing) = (net.v.p.add(b * n), net.s.p.add(b * n), net.standing.p.add(b * n));
+    let (v, standing) = (net.v.p.add(b * n), net.standing.p.add(b * n));
     let syn = synaptic_input.add(b * n);
     let ahead = ahead.add(b * n);
     let dt = net.dt;
-    let mut range_moved = false;
-    let mut potential_moved = false;
     let (first, stop) = (net.start(r), net.start(r + 1));
     for i in first..stop {
         let x = *v.add(i);
         *ahead.add(i) = x + dt * (*syn.add(i) + *standing.add(i) - x);
     }
-    for i in first..stop {
-        let vn = *ahead.add(i);
-        if vn != *v.add(i) {
-            potential_moved = true;
-            *v.add(i) = vn;
-            let sn = act_scalar(vn, net.slope, net.threshold, net.rest, net.leak);
-            let d = fabs(sn - *s.add(i));
-            change += d;
-            if d > 0.0 {
-                range_moved = true;
-                if d > moved {
-                    moved = d;
-                }
-            }
-            *s.add(i) = sn;
-        }
-    }
-    (change, moved, range_moved, potential_moved)
+    let mut tally = Tally { change, moved, range: false, potential: false };
+    step_neurons(net, b, first, stop, false, false, |i| *ahead.add(i), &mut tally);
+    (tally.change, tally.moved, tally.range, tally.potential)
 }
 
 /// Every neuron of row `b` takes one step (`_sweep_row`, and `_sweep_row_plain` where nothing
@@ -689,7 +735,7 @@ unsafe fn sweep_row(
             potential_moved = got.3;
         }
         let stop = if is_frozen || is_quiet { net.start(r) } else { net.start(r + 1) };
-        for i in net.start(r)..stop {
+        let potential = |i: usize| {
             let mut tot = *synaptic_input.add(b * n + i) + net.standing.at(b, i);
             if net.has_adapt {
                 tot -= net.strength * a.at(b, i);
@@ -711,29 +757,13 @@ unsafe fn sweep_row(
             if net.masked {
                 vn *= net.keep.at(b, i);
             }
-            if vn != v.at(b, i) {
-                potential_moved = true;
-                v.put(b, i, vn);
-                let mut sn = act_scalar(vn, net.slope, net.threshold, net.rest, net.leak);
-                if net.masked {
-                    sn *= net.keep.at(b, i);
-                }
-                let d = fabs(sn - s.at(b, i));
-                change += d;
-                if d > 0.0 {
-                    range_moved = true;
-                    if d > moved {
-                        moved = d;
-                    }
-                }
-                s.put(b, i, sn);
-            }
-            if net.has_adapt {
-                a.put(b, i, a.at(b, i) + (s.at(b, i) - a.at(b, i)) / net.tau);
-            }
-        }
-        *row_range.add(r) = range_moved as u8;
-        *row_potential.add(r) = potential_moved as u8;
+            vn
+        };
+        let mut tally = Tally { change, moved, range: range_moved, potential: potential_moved };
+        step_neurons(net, b, net.start(r), stop, net.masked, net.has_adapt, potential, &mut tally);
+        (change, moved) = (tally.change, tally.moved);
+        *row_range.add(r) = tally.range as u8;
+        *row_potential.add(r) = tally.potential as u8;
     }
     activity_change.set(b, change);
     moved
@@ -748,7 +778,7 @@ unsafe fn sweep_row_apical(
     row_range: *mut u8, row_potential: *mut u8, activity_change: View<f64>,
 ) -> f64 {
     let n = net.n;
-    let (v, a, s) = (net.v, net.a, net.s);
+    let (v, s) = (net.v, net.s);
     let mut moved = 0.0f64;
     let mut change = activity_change.get(b);
     if net.softmax() {
@@ -759,10 +789,8 @@ unsafe fn sweep_row_apical(
     pool_gains(net, b, basal, raw.add(b * n), gain, values);
     let dt = net.dt;
     for r in 0..net.ranges {
-        let mut range_moved = false;
-        let mut potential_moved = false;
         let stop = if *frozen.add(r) != 0 { net.start(r) } else { net.start(r + 1) };
-        for i in net.start(r)..stop {
+        let potential = |i: usize| {
             let mut x = *basal.add(i);
             let k = net.pool_of.get(i);
             if k >= 0 {
@@ -772,29 +800,13 @@ unsafe fn sweep_row_apical(
             if net.masked {
                 vn *= net.keep.at(b, i);
             }
-            if vn != v.at(b, i) {
-                potential_moved = true;
-                v.put(b, i, vn);
-                let mut sn = act_scalar(vn, net.slope, net.threshold, net.rest, net.leak);
-                if net.masked {
-                    sn *= net.keep.at(b, i);
-                }
-                let d = fabs(sn - s.at(b, i));
-                change += d;
-                if d > 0.0 {
-                    range_moved = true;
-                    if d > moved {
-                        moved = d;
-                    }
-                }
-                s.put(b, i, sn);
-            }
-            if net.has_adapt {
-                a.put(b, i, a.at(b, i) + (s.at(b, i) - a.at(b, i)) / net.tau);
-            }
-        }
-        *row_range.add(r) = range_moved as u8;
-        *row_potential.add(r) = potential_moved as u8;
+            vn
+        };
+        let mut tally = Tally { change, moved, range: false, potential: false };
+        step_neurons(net, b, net.start(r), stop, net.masked, net.has_adapt, potential, &mut tally);
+        (change, moved) = (tally.change, tally.moved);
+        *row_range.add(r) = tally.range as u8;
+        *row_potential.add(r) = tally.potential as u8;
     }
     activity_change.set(b, change);
     moved
