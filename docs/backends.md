@@ -586,6 +586,121 @@ window, the command, the read of when, tokens, the cortex at unit norm or a slot
 refuses is refused for every life. Each life holds its own synapses, their dense blocks, two optimizer moments and an eligibility, five arrays
 of one float per synapse, and in float32 a float64 copy of the blocks for the settles' checks.
 
+## In a browser
+
+Under Pyodide (the library in a web page: CPython and NumPy compiled to WebAssembly) Numba is
+absent, and the CPU path's kernels come from one WebAssembly module, `cadence_kernel.wasm`, built
+from [`kernels/wasm`](../kernels/wasm) by `python kernels/wasm/build.py` (Rust with the
+`wasm32-unknown-unknown` target; the file is a release artefact of about 115 KB). A page opts in:
+it writes the file into Pyodide's file system and names it in `CADENCE_WASM` before `cadence` is
+imported, or calls `cadence._wasm.load(path)` before its first brain.
+
+```js
+const kernel = await (await fetch('cadence_kernel.wasm')).arrayBuffer();
+pyodide.FS.writeFile('/home/pyodide/cadence_kernel.wasm', new Uint8Array(kernel));
+pyodide.runPython("import os; os.environ['CADENCE_WASM'] = '/home/pyodide/cadence_kernel.wasm'");
+```
+
+A brain then takes the compiled path it takes with Numba: `cadence.fused` holds a function of each
+kernel's name and arguments, and the module computes inside Pyodide's own memory, so an array
+passes as its address and nothing is copied. `CADENCE_FUSED=0` keeps the NumPy loop. A page without
+the file keeps the NumPy loop, and so does one whose NumPy the module cannot read, with a warning
+that says why. The rows of a settle run on one thread: Pyodide's memory is not shared between
+workers, so a page settles brains side by side in several workers, each with its own Pyodide and
+module.
+
+Each kernel computes in the order of `fused.py`, with the C library's `exp` (the function NumPy
+calls under Pyodide), and sums its block products in the order of the matrix product of a NumPy
+built without BLAS, as Pyodide's is. In headless Chromium every kernel call of the browser
+suite's lives and launches equals, to the bit, `fused.py`'s own kernels run as Python on the same
+arrays (`kernels/wasm/browser/shadow.py` and `direct.py`: the settle, the residual, both free
+solves, masks, adaptation, plain, softmax and anchored nudges, held apical gains, the optimizer's
+passes, the tied step, the trace step, the recall read's terms and the greedy choice). A life on
+the module chooses the NumPy loop's action at every moment, and ends on the NumPy loop's arrays to
+the bit wherever the compiled path keeps its bits; the fast form of a free solve
+(`learning_fast_settle`) is another solve there as with Numba, and a softmax nudge over eight or
+more motor neurons sums in another order than NumPy's pairwise sum. On a native machine Numba's
+lives choose the same actions and end within about 1e-11 of the module's: BLAS and the platform's
+`exp` round the last bits otherwise.
+
+The suite runs a script of [`kernels/wasm/browser`](../kernels/wasm/browser) under Pyodide in
+headless Chromium (Playwright), or natively where it names the engine:
+
+```bash
+python kernels/wasm/build.py
+python kernels/wasm/browser/run.py shadow.py    # lives, each kernel call against fused.py's Python
+python kernels/wasm/browser/run.py direct.py    # the launches lives rarely make, the same check
+python kernels/wasm/browser/run.py lives.py wasm > wasm.txt
+python kernels/wasm/browser/run.py lives.py numpy > numpy.txt
+python kernels/wasm/browser/compare.py wasm.txt numpy.txt
+python kernels/wasm/browser/run.py --workers 4 many.py wasm 12 10 3 {k}   # brains in 4 workers
+```
+
+The parts around the settle have compiled forms in `cadence.compiled`, one call each for the Python
+it stands for: the map of things' settle, its pieces (in the order a Python set pops their seeds),
+the moves its surprise reads, the values it writes and each report's claims and writes, and the
+bound records' read. Numba compiles
+them natively and the same WebAssembly module holds them under Pyodide; the Python of each part
+is the reference, and `CADENCE_FUSED=0` takes it. In Chromium each equals its Python to the bit;
+natively NumPy's BLAS sums a dot product in another order, within 1e-9.
+
+```bash
+python kernels/wasm/browser/run.py maps.py      # the map's moments, both ways
+python kernels/wasm/browser/run.py records.py   # every read of the bound records, both ways
+python kernels/wasm/browser/run.py pieces.py    # the map's pieces over random masks
+```
+
+A block whose synapses fill less than six tenths of it is read by its synapses
+(`fused.sparse_offset`): its product sums each column's synapses in the order of their presynaptic
+neurons, the order the product of the whole block sums its rows without BLAS, so in a browser the
+sums are the same to the bit, and natively within rounding of BLAS's. The map of things' sheet is
+wired one to one (1,536 synapses in blocks of 299,008 entries), an apical brain's blocks hold no
+apical synapses where only basal ones arrive, and a module wired at a half holds half its block:
+read by their synapses, Wild's founders take 8.8 ms an animal-moment natively against 11.2 ms on
+whole blocks, and 14.8 ms under Pyodide in Node against 20.3 ms; a founder's free solve under
+Pyodide takes 0.86 ms with its half-full modules read by their synapses against 1.38 ms whole
+(`kernels/wasm/browser/sparse.py` compares synapses and whole blocks to the bit).
+
+### A batch of lives on the GPU
+
+[`kernels/webgpu/lives.js`](../kernels/webgpu/lives.js) settles many lives of one anatomy on the
+GPU through WebGPU, each life with its own synapses: a sweep is three passes (each neuron's basal
+and apical input over its incoming synapses, each pool's apical gain, each neuron's step and
+activation), and a settle's sweeps go to the GPU as one submission. WGSL has no float64, so the GPU
+computes in float32; over 30 sweeps of Wild's pocket brain (872 neurons, 28,160 synapses) its
+activations lie within 1.1e-6 of the WebAssembly kernel's float64 ones, and the check passes under
+1e-5. `GpuLives.create()` rejects where a browser has no WebGPU, and the lives settle on the
+WebAssembly kernel.
+
+Milliseconds a life for a free settle of the pocket brain, Chromium 156 on an Apple M4 (Metal),
+the GPU's figure the best of five round trips (upload, sweeps, read back):
+
+| sweeps | lives | WebAssembly, lives in one call | WebAssembly, each life alone | WebGPU | WebGPU against the faster |
+|---|---|---|---|---|---|
+| 30 | 12 | 0.51 | 0.34 | 0.32 | 1.1x |
+| 30 | 50 | 0.59 | 0.36 | 0.090 | 4.0x |
+| 30 | 200 | 0.71 | 0.35 | 0.062 | 5.6x |
+| 30 | 1000 | 0.90 | 0.37 | 0.055 | 6.8x |
+| 10 | 12 | 0.20 | 0.14 | 0.14 | 1.0x |
+| 10 | 50 | 0.20 | 0.15 | 0.050 | 2.9x |
+| 10 | 200 | 0.24 | 0.15 | 0.024 | 6.3x |
+| 10 | 1000 | 0.26 | 0.15 | 0.021 | 7.1x |
+
+The GPU overtakes the WebAssembly kernel at about 12 lives: below that its round trip of a few
+milliseconds outweighs the sweeps. A life settles alike alone and among others on the WebAssembly
+kernel, to the bit, and alone it settles faster there, since one life's synapses stay in cache.
+
+The GPU settles free lives for a given number of sweeps. A brain's settle stops on its residual,
+takes nudges and clamps, and learns between settles; Python under Pyodide calls its kernels
+synchronously while the GPU answers a promise. A brain on the GPU takes a settle of `Lives`, whose
+lives share an anatomy, with its weights kept on the GPU between moments and its Python awaiting
+the settle (Pyodide's `run_sync` over JavaScript promise integration).
+
+```bash
+python kernels/wasm/browser/run.py gpu.py 1 2                     # one sweep against NumPy
+python kernels/wasm/browser/run.py gpu.py 30 12 50 200 1000       # the table
+```
+
 ## Precision matters
 
 Near multiple attractors a rounding difference can change the selected state, and float32

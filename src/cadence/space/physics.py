@@ -137,7 +137,8 @@ class Physics:
             return 0.0
         pv = max(float(pv), 1e-12)
         v0 = self.speed ** 2 / 2.0  # an axis
-        lbf = 0.5 * float(velocity @ velocity) / pv * (v0 / (v0 + pv)) - np.log1p(v0 / pv)
+        speed2 = float(np.cumsum(np.asarray(velocity) ** 2)[-1] + 0.0)  # in order, as without BLAS
+        lbf = 0.5 * speed2 / pv * (v0 / (v0 + pv)) - np.log1p(v0 / pv)
         return float(1.0 / (1.0 + np.exp(-np.clip(lbf, -50.0, 50.0))))
 
     # -- a thing in view
