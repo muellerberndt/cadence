@@ -570,6 +570,9 @@ pub struct Graph {
     /// `fused.sparse_offset(layout, apical)`: the offsets, then the blocks read by their
     /// synapses.
     pub sparse: Vec<i64>,
+    /// Whether two synapses share an entry of the blocks (`Layout.parallel_synapses`): the
+    /// layout's, so read once, when the graph is made.
+    parallel: bool,
     pub neuron: Neuron,
     pub apical: Option<Apical>,
     tables: Tables,
@@ -607,9 +610,7 @@ impl Graph {
     }
     /// `layout.parallel_synapses`: whether two synapses share an entry of a block.
     pub fn parallel_synapses(&self) -> bool {
-        let mut sorted = self.edge_index.clone();
-        sorted.sort_unstable();
-        sorted.windows(2).any(|w| w[0] == w[1])
+        self.parallel
     }
 
     pub fn import(s: &Named) -> Result<Graph, Error> {
@@ -646,6 +647,7 @@ impl Graph {
             offset: s.i64s("layout.offset")?,
             edge_index: s.i64s("layout.edge_index")?,
             sparse: s.i64s("layout.sparse")?,
+            parallel: false,
             neuron: Neuron {
                 dt: s.f64("neuron.dt")?,
                 slope: s.f64("neuron.slope")?,
@@ -661,6 +663,9 @@ impl Graph {
             generation: 0,
         };
         graph.validate()?;
+        let mut sorted = graph.edge_index.clone();
+        sorted.sort_unstable();
+        graph.parallel = sorted.windows(2).any(|w| w[0] == w[1]);
         graph.make_tables()?;
         Ok(graph)
     }
@@ -801,9 +806,7 @@ impl Graph {
     fn set_weights(&mut self, weights: Vec<f64>) {
         let n = self.n();
         let pairs = self.pair_pre.len();
-        let mut sorted = self.edge_index.clone();
-        sorted.sort_unstable();
-        let parallel = sorted.windows(2).any(|w| w[0] == w[1]);
+        let parallel = self.parallel;
         let mut t = Tables::default();
         let mut fed = vec![false; self.ranges()];
         for &r in &self.pair_post {
