@@ -6,6 +6,32 @@ things are, each place bound to what the thing is. A thing enters the map when a
 it. Sensory information updates its place. With no sensory information the last known place
 stays in the state, for any length of time.
 
+## A first map
+
+The camera reports an apple and then a loaf; for a hundred moments no sense reports anything,
+and the map answers where the apple is and what lies where the loaf was reported.
+
+```python
+import numpy as np
+from cadence.space.map import Map
+
+APPLE, BREAD, HAND = 0, 1, 2
+things = Map((-1.0, 1.0, -0.2, 1.4))                   # a plane of 2 m by 1.6 m
+things.moment(seen=[(APPLE, [0.30, 0.62])])            # the camera reports an apple
+things.moment(seen=[(BREAD, [-0.40, 1.00])])           # then a loaf: no thing is announced
+for _ in range(100):
+    things.moment()                                    # no sensory information
+assert np.allclose(things.where_is(APPLE), [[0.30, 0.62]], atol=0.001)   # "where is the apple?"
+assert things.what_is_at([-0.40, 1.00]) == BREAD       # "what is at this place?"
+assert [t["kind"] for t in things.things()] == [APPLE, BREAD]
+assert all(t["state"] == "held" and t["since"] >= 100 for t in things.things())
+```
+
+`Map(plane, cells=(32, 26), units=16)` makes the sheet: 32 by 26 cells over the plane and 16
+units of a kind's code at each cell. A kind is a number. With 16 units the map holds 16 kinds,
+one unit a kind. `Map(plane, units=32, kinds=128)` holds 128 kinds on 32 units: each kind takes
+three units and two kinds share one unit at most. `codes=` takes a table of the caller's own.
+
 The module has two stages: **the map, then learned physics on the map.**
 
 - **The map** (`cadence.space.map`) is a sheet of neurons whose settled activity is the whole
@@ -56,29 +82,6 @@ The pieces are opt-in: a program that does not import `cadence.space` gets a lib
 
 The map is wiring and carried activity. Recognising a thing from pixels is another module's
 work: the caller says "a thing of this kind at this place".
-
-## A first map
-
-```python
-import numpy as np
-from cadence.space.map import Map
-
-APPLE, BREAD, HAND = 0, 1, 2
-things = Map((-1.0, 1.0, -0.2, 1.4))                   # a plane of 2 m by 1.6 m
-things.moment(seen=[(APPLE, [0.30, 0.62])])            # the camera reports an apple
-things.moment(seen=[(BREAD, [-0.40, 1.00])])           # then a loaf: no thing is announced
-for _ in range(100):
-    things.moment()                                    # no sensory information
-assert np.allclose(things.where_is(APPLE), [[0.30, 0.62]], atol=0.001)   # "where is the apple?"
-assert things.what_is_at([-0.40, 1.00]) == BREAD       # "what is at this place?"
-assert [t["kind"] for t in things.things()] == [APPLE, BREAD]
-assert all(t["state"] == "held" and t["since"] >= 100 for t in things.things())
-```
-
-`Map(plane, cells=(32, 26), units=16)` makes the sheet: 32 by 26 cells over the plane and 16
-units of a kind's code at each cell. A kind is a number. With 16 units the map holds 16 kinds,
-one unit a kind. `Map(plane, units=32, kinds=128)` holds 128 kinds on 32 units: each kind takes
-three units and two kinds share one unit at most. `codes=` takes a table of the caller's own.
 
 ## How a position travels
 
@@ -357,32 +360,10 @@ assert again.things() == [] and len(again.where_is(APPLE)) == 0
 
 ## A brain that holds a map
 
-A brain holds a map as a part of itself: `brain.space = Map(...)`. `Brain.save` writes the map
-with the brain and `Brain.load` restores it, its carried state included. The map's regions are a
-graph of their own inside the brain object, beside the brain's connectome and outside it. The
-brain reads the map through `observation()`: the activity of `where` (one value a cell) and of
-`what` (one a code unit) as the latest moment settled them.
-
-`Brain.compose(..., trained=["place"])`, or `trained=[Map(...)]`, composes a brain that holds the
-map and reads it itself: the read joins the brain's senses as the sense `space`, and an
-observation carries the brain's own senses alone
-([a brain that knows where things are](modules.md#a-brain-that-knows-where-things-are)). The
-form below, as on 0.99.1, sizes the inputs by hand and passes the read with each observation.
-
-```python
-import cadence as cd
-
-held = cd.modules.load("place")                        # the map the library ships
-host = cd.Brain.compose(inputs=held.count + held.units, actions=2, seed=0, backend="cpu")
-host.space = held
-host.space.moment(seen=[(APPLE, [0.2, 0.5])])
-host.act(host.space.observation()[None])               # the brain reads where and what
-again = cd.Brain.load(host.save(Path(tempfile.mkdtemp()) / "host.npz"))
-assert again.space.what_is_at([0.2, 0.5]) == APPLE
-```
-
-`cadence.modules.load("place")` gives the built-in map, and `cadence.load_module(path)` a map
-file from outside the library; both are a `Map`.
+A brain holds a map as a part of itself and reads it at every moment: `Brain.compose(...,
+trained=["place"])` or `trained=[Map(...)]` makes the map `brain.space` and its read the sense
+`space`; `save` and `load` keep it. The one home of a map held in a brain, with its long form, is
+[a brain that knows where things are](modules.md#a-brain-that-knows-where-things-are).
 
 ## Surprise on the map (opt-in)
 
@@ -413,7 +394,9 @@ assert focus is not None and np.linalg.norm(focus.place - [0.45, 0.6]) < 0.2
 
 A brain composed with `surprise=True` that holds such a map (`brain.space`) draws its focus
 among the map's cells and its own sensory neurons in one competition
-([the focus](start.md#surprise-and-the-focus-it-draws-opt-in)). `surprise={...}` takes the genes
+([the focus](start.md#surprise-and-the-focus-it-draws-opt-in)); with records of bound moments, a
+voice and values named as a sense's fields, a heard name draws it to its thing
+([records of bound moments](memory.md#records-of-bound-moments-opt-in)). `surprise={...}` takes the genes
 of `Surprise` by name. A map file and a brain's file keep what each cell is used to; `reset()`
 empties the latest reading and keeps it; a `forecast` reads and teaches no cell. With a taught
 physics every moment runs one forecast of one moment more, to know where the map carries each
