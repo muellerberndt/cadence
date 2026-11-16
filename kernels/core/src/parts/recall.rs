@@ -243,6 +243,38 @@ struct Found {
     prior: Vec<f64>,
 }
 
+/// A reward's step on the read's maps, made and checked before it is installed
+/// (`Recall::proposal`): each stepped kind of map with its new rows for the event (`x`), one per
+/// head, and the step's norm.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Proposal {
+    pub stepped: Vec<(usize, Vec<Vec<f64>>)>,
+    pub norm: f64,
+}
+
+/// Rows a proposal replaced, kept as room for the next one; no state: a copy starts without
+/// them, and any two compare equal.
+#[derive(Default)]
+pub struct Spare(Vec<Vec<f64>>);
+
+impl Clone for Spare {
+    fn clone(&self) -> Spare {
+        Spare::default()
+    }
+}
+
+impl PartialEq for Spare {
+    fn eq(&self, _: &Spare) -> bool {
+        true
+    }
+}
+
+impl std::fmt::Debug for Spare {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Spare")
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Recall {
     pub config: Config,
@@ -266,6 +298,7 @@ pub struct Recall {
     pub last: Option<Moment>,
     pub attended: Option<F>,
     pub reads: Option<Reads>,
+    spare: Spare,
 }
 
 /// `p` along its rows: `n` rows of `width`.
@@ -402,6 +435,7 @@ impl Recall {
             told: s.i64s("told")?, focus: s.i64s("focus")?, writes: s.i64("writes")?,
             trace: F::read(s, "trace")?, private: flag(s, "private")?,
             address_held: flag(s, "address_held")?, last: None, attended: None, reads: None,
+            spare: Spare::default(),
         };
         let count = recall.position_buckets();
         for (k, kind) in KINDS.iter().enumerate() {
@@ -1382,10 +1416,40 @@ impl Recall {
 
     /// The maps after a reward's `step` (`propose`), not installed, written into `out` as
     /// `cadence.core.parts.recall` names a proposal; nothing where reward trains nothing.
-    pub fn propose(&self, step: F, out: &mut Named) -> Result<(), Error> {
+    pub fn propose(&mut self, step: F, out: &mut Named) -> Result<(), Error> {
+        let Some(proposal) = self.proposal(step)? else { return Ok(()) };
+        let mut stepped: Vec<Option<&Vec<Vec<f64>>>> = vec![None; KINDS.len()];
+        for (kind, xs) in &proposal.stepped {
+            stepped[*kind] = Some(xs);
+        }
+        // a stepped map with its new rows for the event, as the Python's proposal holds it
+        let put = |out: &mut Named, kind: usize, name: &str| {
+            for (h, maps) in self.maps[kind].iter().enumerate() {
+                let mut maps = maps.clone();
+                if let Some(xs) = stepped[kind] {
+                    maps.x.v.copy_from_slice(&xs[h]);
+                }
+                maps.put(out, &format!("{name}.{h}"));
+            }
+        };
+        put(out, ADDRESS, "address");
+        out.put("norm", Array::scalar_f64(proposal.norm));
+        for (kind, _) in &proposal.stepped {
+            if *kind != ADDRESS {
+                put(out, *kind, KINDS[*kind]);
+            }
+        }
+        self.spare.0.extend(proposal.stepped.into_iter().flat_map(|(_, xs)| xs));
+        Ok(())
+    }
+
+    /// The step `propose` makes, held apart from the maps: each stepped kind's new rows for
+    /// the event (`x`), one per head, and the norm of the step; None where reward trains
+    /// nothing. Its new rows take their room from the rows earlier proposals replaced.
+    pub fn proposal(&mut self, step: F) -> Result<Option<Proposal>, Error> {
         let positions = self.config.position_reward != 0.0 && !self.maps[POSITION].is_empty();
         if !(self.config.address_reward != 0.0 || positions) {
-            return Ok(());
+            return Ok(None);
         }
         let (width, columns, heads) = (self.width(), self.width(), self.heads());
         let blocks = self.reward_blocks();
@@ -1411,72 +1475,70 @@ impl Recall {
         } else {
             0
         };
-        // the columns `start..start + size` of the step, each at `scale`
-        let part = |start: usize, size: usize, scale: f64| -> Vec<f64> {
-            (0..width).flat_map(|i| step.v[i * kept + start..i * kept + start + size].iter()
-                                .map(move |&v| scale * v)).collect()
-        };
-        let mut parts: Vec<Vec<f64>> = Vec::new();  // every part stepped, in order
-        let mut every: Vec<f64> = Vec::new();  // what must be finite
-        let mut address = self.maps[ADDRESS].clone();
+        // the parts stepped, in order: (kind, first column of the step, columns a head, rate)
+        let mut parts: Vec<(usize, usize, usize, f64)> = Vec::new();
         if self.config.address_reward != 0.0 {
-            let moved = part(0, split, self.config.address_reward);
-            for (h, maps) in address.iter_mut().enumerate() {
-                for i in 0..width {
-                    for j in 0..columns {
-                        maps.x.v[i * columns + j] += moved[i * split + h * columns + j];
-                    }
-                }
-                every.extend_from_slice(&maps.x.v);
-            }
-            every.extend_from_slice(&moved);
-            parts.push(moved);
+            parts.push((ADDRESS, 0, columns, self.config.address_reward));
         }
-        let mut stepped_maps: Vec<(&str, Vec<Maps>)> = Vec::new();
         if positions {
             let count = self.position_buckets();
-            let mut kinds = vec![("position", POSITION, count)];
-            if !self.maps[ANCHOR].is_empty() {
-                kinds.push(("anchor", ANCHOR, count + 1));
-            }
             let mut start = split;
-            for (name, kind, size) in kinds {
-                let moved = part(start, heads * size, self.config.position_reward);
-                let mut maps = self.maps[kind].clone();
-                for (h, held) in maps.iter_mut().enumerate() {
-                    for i in 0..width {
-                        for j in 0..size {
-                            held.x.v[i * size + j] += moved[i * heads * size + h * size + j];
-                        }
-                    }
-                }
-                every.extend_from_slice(&moved);
-                parts.push(moved);
-                stepped_maps.push((name, maps));
+            let mut kinds = vec![(POSITION, count)];
+            if !self.maps[ANCHOR].is_empty() {
+                kinds.push((ANCHOR, count + 1));
+            }
+            for (kind, size) in kinds {
+                parts.push((kind, start, size, self.config.position_reward));
                 start += heads * size;
             }
         }
-        for (_, maps) in &stepped_maps {
-            for held in maps {
-                every.extend_from_slice(&held.x.v);
+        // each part's step (`part`: its columns at its rate), every head's maps stepped by it,
+        // and one norm over the parts in order (`np.linalg.norm` of them joined); every value
+        // stepped must be finite
+        let mut finite = true;
+        let mut norm2 = 0.0f64;
+        let mut stepped = Vec::with_capacity(parts.len());
+        for &(kind, start, size, rate) in &parts {
+            let wide = heads * size;
+            let mut xs = Vec::with_capacity(heads);
+            for h in 0..heads {
+                let old = &self.maps[kind][h].x.v;
+                let mut x = self.spare.0.pop().unwrap_or_default();
+                x.clear();
+                x.extend_from_slice(old);
+                for i in 0..width {
+                    for j in 0..size {
+                        x[i * size + j] += rate * step.v[i * kept + start + h * size + j];
+                    }
+                }
+                finite &= x.iter().all(|v| v.is_finite());
+                xs.push(x);
             }
+            for i in 0..width {
+                for jj in 0..wide {
+                    let moved = rate * step.v[i * kept + start + jj];
+                    finite &= moved.is_finite();
+                    norm2 += moved * moved;
+                }
+            }
+            stepped.push((kind, xs));
         }
-        if !every.iter().all(|v| v.is_finite()) {
+        if !finite {
+            self.spare.0.extend(stepped.into_iter().flat_map(|(_, xs)| xs));
             return Err(refused("the address map's reward step must be finite"));
         }
-        // one norm over every part stepped, the zeros between them adding nothing in order
-        let joined: Vec<f64> = parts.concat();
-        let norm = np::norm(&joined);
-        for (h, maps) in address.iter().enumerate() {
-            maps.put(out, &format!("address.{h}"));
-        }
-        out.put("norm", Array::scalar_f64(norm));
-        for (name, maps) in &stepped_maps {
-            for (h, held) in maps.iter().enumerate() {
-                held.put(out, &format!("{name}.{h}"));
+        Ok(Some(Proposal { stepped, norm: np::sqrt(norm2) }))
+    }
+
+    /// Install a step `proposal` made: each stepped map's new rows for the event; the rows they
+    /// replace are kept as room for the next proposal.
+    pub fn adopt(&mut self, proposal: Proposal) {
+        for (kind, xs) in proposal.stepped {
+            for (h, x) in xs.into_iter().enumerate() {
+                let old = std::mem::replace(&mut self.maps[kind][h].x.v, x);
+                self.spare.0.push(old);
             }
         }
-        Ok(())
     }
 
     /// Install a step `propose` made (`accept`): the address maps, and with the position step

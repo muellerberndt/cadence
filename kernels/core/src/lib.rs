@@ -28,24 +28,49 @@ pub mod map;
 #[path = "../../wasm/src/settle.rs"]
 pub mod settle;
 
-/// The kernels' scratch, from Rust's allocator: the size kept ahead of the room.
-pub(crate) unsafe fn host_malloc(n: usize) -> *mut u8 {
-    let layout = std::alloc::Layout::from_size_align(n + 16, 16).unwrap();
-    let p = std::alloc::alloc(layout);
-    if p.is_null() {
-        return p;
-    }
-    *(p as *mut usize) = n + 16;
-    p.add(16)
+thread_local! {
+    /// The kernels' scratch on this thread: the rooms lent to kernels and the rooms they gave
+    /// back. A room keeps the largest size it was asked for and is never freed, so a thread's
+    /// moments reuse the same warm memory; a kernel zeroes what it takes of it (`Scratch::take`).
+    static ROOMS: std::cell::RefCell<(Vec<Vec<u128>>, Vec<Vec<u128>>)> =
+        const { std::cell::RefCell::new((Vec::new(), Vec::new())) };
 }
 
+/// Room of `n` bytes for a kernel's scratch, from this thread's rooms: the smallest returned
+/// room that holds `n` bytes, else the largest, grown to them.
+pub(crate) unsafe fn host_malloc(n: usize) -> *mut u8 {
+    ROOMS.with(|rooms| {
+        let mut rooms = rooms.borrow_mut();
+        let (free, lent) = &mut *rooms;
+        let words = n.div_ceil(16).max(1);
+        let fits = free.iter().enumerate().filter(|(_, r)| r.len() >= words)
+            .min_by_key(|(_, r)| r.len()).map(|(i, _)| i);
+        let pick = fits.or_else(|| {
+            free.iter().enumerate().max_by_key(|(_, r)| r.len()).map(|(i, _)| i)
+        });
+        let mut room = pick.map_or_else(Vec::new, |i| free.swap_remove(i));
+        if room.len() < words {
+            room.resize(words, 0);
+        }
+        let p = room.as_mut_ptr() as *mut u8;
+        lent.push(room);
+        p
+    })
+}
+
+/// A room `host_malloc` lent, given back to this thread's rooms.
 pub(crate) unsafe fn host_free(p: *mut u8) {
     if p.is_null() {
         return;
     }
-    let base = p.sub(16);
-    let n = *(base as *mut usize);
-    std::alloc::dealloc(base, std::alloc::Layout::from_size_align(n, 16).unwrap());
+    ROOMS.with(|rooms| {
+        let mut rooms = rooms.borrow_mut();
+        let (free, lent) = &mut *rooms;
+        if let Some(i) = lent.iter().position(|r| std::ptr::eq(r.as_ptr() as *const u8, p)) {
+            let room = lent.swap_remove(i);
+            free.push(room);
+        }
+    })
 }
 
 pub(crate) fn trap() -> ! {
