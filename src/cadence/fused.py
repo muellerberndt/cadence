@@ -497,16 +497,34 @@ if njit is not None:
         offset: np.ndarray,
         cache: np.ndarray,
         c0: int,
+        which: int,
     ) -> None:
         """Block ``k``'s product for the whole batch into its cache slot at ``c0``: one BLAS
-        call on the whole batch, the same call whichever thread makes it."""
+        call on the whole batch, the same call whichever thread makes it. A block that
+        ``offset`` holds by its synapses (``which``: 0 for ``flat``'s, 1 for the apical
+        blocks', ``sparse_offset``) sums each column's synapses in the order of their
+        presynaptic neurons, as the product sums its rows without BLAS."""
         a, b = pair_pre[k], pair_post[k]
         a0, a1 = starts[a], starts[a + 1]
         na, nb = a1 - a0, starts[b + 1] - starts[b]
         batch = columns.shape[0] // starts[starts.shape[0] - 1]
-        source = columns[batch * a0 : batch * a1].reshape(batch, na)
-        block = flat[offset[k] : offset[k + 1]].reshape(na, nb)
-        np.dot(source, block, cache[c0 : c0 + batch * nb].reshape(batch, nb))
+        blocks = pair_pre.shape[0]
+        at = offset[blocks + 1 + which * blocks + k] if offset.shape[0] > blocks + 1 else -1
+        if at < 0:
+            source = columns[batch * a0 : batch * a1].reshape(batch, na)
+            block = flat[offset[k] : offset[k + 1]].reshape(na, nb)
+            np.dot(source, block, cache[c0 : c0 + batch * nb].reshape(batch, nb))
+            return
+        base = offset[k]
+        rows = at + nb + 2
+        for row in range(batch):
+            x0 = batch * a0 + row * na
+            for j in range(nb):
+                acc = 0.0
+                for q in range(offset[at + 1 + j], offset[at + 2 + j]):
+                    i = offset[rows + q]
+                    acc += columns[x0 + i] * flat[base + i * nb + j]
+                cache[c0 + row * nb + j] = acc
 
     @_inlined
     def _gather(
@@ -1149,11 +1167,11 @@ if njit is not None:
                 q = todo[j]
                 if q < basal_count:
                     _block_product(columns, flat, pairs[q], pair_pre, pair_post, starts, offset,
-                                   cache, cache_offset[q])
+                                   cache, cache_offset[q], 0)
                 else:
                     _block_product(columns, flat_apical, apical_pairs[q - basal_count], pair_pre,
                                    pair_post, starts, offset, cache_up,
-                                   cache_up_offset[q - basal_count])
+                                   cache_up_offset[q - basal_count], 1)
             for r in range(ranges):
                 moving[r] = feeds[r] and not frozen[r]
             # every row's step, the rows on distinct threads
@@ -1450,11 +1468,11 @@ if njit is not None:
             if q < basal_count:
                 if moved_range[pair_pre[pairs[q]]]:
                     _block_product(columns, flat, pairs[q], pair_pre, pair_post, starts, offset,
-                                   cache, cache_offset[q])
+                                   cache, cache_offset[q], 0)
             elif moved_range[pair_pre[apical_pairs[q - basal_count]]]:
                 _block_product(columns, flat_apical, apical_pairs[q - basal_count], pair_pre,
                                pair_post, starts, offset, cache_up,
-                               cache_up_offset[q - basal_count])
+                               cache_up_offset[q - basal_count], 1)
         synaptic_input = np.zeros((batch, n))
         raw = np.zeros((batch, n if has_apical else 1))
         basal = np.empty((batch, n if has_apical else 1))
@@ -1909,6 +1927,53 @@ def _fed_ranges(layout: Layout) -> np.ndarray:
 # compartment; the ``flat`` beside it then holds the basal synapses alone
 ApicalBlocks = tuple["Apical", Sequence[int], np.ndarray, Sequence[int]]
 
+# a block whose synapses fill less than this share of it is read by its synapses
+SPARSE_SHARE = 0.25
+
+
+def sparse_offset(layout: Layout, apical: ApicalBlocks | None = None) -> np.ndarray:
+    """``layout.offset`` followed by the blocks the kernels read by their synapses: where a
+    block's synapses fill less than ``SPARSE_SHARE`` of it (the map's one-to-one wiring, a
+    sparse module), its product sums only its synapses, each column's in the order of their
+    presynaptic neurons, the order the product of the whole block sums them without BLAS, so
+    the sums are the same to the bit there (an absent synapse adds a zero to a sum that is
+    never -0.0). After the ``blocks + 1`` offsets come two rows of ``blocks``: where each
+    block's form by synapses begins in this array, for ``flat`` and for the apical blocks, or
+    -1 for the whole block; each form is its synapse count, its column starts (``nb + 1``)
+    and its presynaptic rows. Made once per layout and compartment and kept on the layout."""
+    mask = None if apical is None else np.asarray(apical[0].synapses, dtype=bool)
+    held = layout.__dict__.get("_sparse_offset")
+    if held is not None and held[0] is (None if apical is None else apical[0].synapses):
+        return held[1]  # type: ignore[no-any-return]
+    blocks = layout.pairs
+    offset = np.asarray(layout.offset, dtype=np.int64)
+    head = np.full(2 * blocks, -1, dtype=np.int64)
+    forms: list[np.ndarray] = []
+    at = blocks + 1 + 2 * blocks
+    edges = np.asarray(layout.edge_index, dtype=np.int64)
+    for which, chosen in enumerate((edges if mask is None else edges[~mask],
+                                    np.zeros(0, dtype=np.int64) if mask is None else edges[mask])):
+        if which == 1 and mask is None:
+            break
+        positions = np.unique(chosen)
+        owner = np.searchsorted(offset, positions, side="right") - 1
+        for k in range(blocks):
+            a0, a1, b0, b1 = layout.bounds(k)
+            na, nb = a1 - a0, b1 - b0
+            local = positions[owner == k] - offset[k]
+            if len(local) >= SPARSE_SHARE * na * nb:
+                continue
+            row, col = np.divmod(local, nb)
+            order = np.lexsort((row, col))  # by column, then by presynaptic neuron
+            form = np.concatenate([[len(local)], np.searchsorted(col[order], np.arange(nb + 1)),
+                                   row[order]]).astype(np.int64)
+            head[which * blocks + k] = at
+            forms.append(form)
+            at += len(form)
+    out = np.concatenate([offset, head, *forms]).astype(np.int64)
+    layout.__dict__["_sparse_offset"] = (None if apical is None else apical[0].synapses, out)
+    return out
+
 
 def _compartment(
     apical: ApicalBlocks | None, layout: Layout, flat: np.ndarray, nudge: Nudge | None,
@@ -2097,7 +2162,7 @@ def fused_settle(
         lay.starts,
         lay.pair_pre,
         lay.pair_post,
-        lay.offset,
+        sparse_offset(lay, apical),
         freezable,
         keep,
         masked,
@@ -2172,8 +2237,9 @@ def fused_solve(
     out = np.empty(batch)
     used, checks, taken, change, kept = _solve_rows(
         v, a, s, _standing(np.ascontiguousarray(drive), bias), flat, pairs, flat_apical,
-        apical_pairs, layout.starts, layout.pair_pre, layout.pair_post, layout.offset, freezable,
-        _NO_MASK, dt, slope, threshold, rest, leak, strength, tau, target, nmask, gid, ngroups,
+        apical_pairs, layout.starts, layout.pair_pre, layout.pair_post,
+        sparse_offset(layout, apical), freezable, _NO_MASK, dt, slope, threshold, rest, leak,
+        strength, tau, target, nmask, gid, ngroups,
         beta, softmax_t, weight, anchor, anchor_gain, pool_of, pool_index, pool_starts, pool_run,
         held, budget, chunk, float(tolerance), out, given, has_given, in_place, has_apical,
         fraction, floor2, tiny,
@@ -2277,7 +2343,7 @@ def fused_residual(
         layout.starts,
         layout.pair_pre,
         layout.pair_post,
-        layout.offset,
+        sparse_offset(layout, apical),
         keep,
         masked,
         dt,

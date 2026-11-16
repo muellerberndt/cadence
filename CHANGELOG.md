@@ -11,9 +11,14 @@
   moment ([backends](docs/backends.md#in-a-browser)). Wild's pocket brain takes 25.2 ms a moment
   in Chromium against 43.8 ms on the NumPy loop; demo-sized brains three to five times less.
 - **The parts around the settle compiled** (`cadence.compiled`): the map of things' settle, pieces,
-  moves and written values, and the bound records' read, each one call of the Python it stands
-  for, with Numba natively and in the WebAssembly module under Pyodide, where each equals its
-  Python to the bit. A free solve with an apical compartment runs in one compiled call.
+  moves, written values and each report's claims and writes, and the bound records' read, each
+  one call of the Python it stands for, with Numba natively and in the WebAssembly module under
+  Pyodide, where each equals its Python to the bit. A free solve with an apical compartment runs
+  in one compiled call.
+- **Blocks read by their synapses**: a block whose synapses fill less than a quarter of it sums
+  its product over them (`fused.sparse_offset`), to the bit of the whole block's product in a
+  browser. Wild's founders take 8.8 ms an animal-moment natively against 11.2 ms, and 14.8 ms
+  under Pyodide against 20.3 ms.
 - **A batch of lives on the GPU** (`kernels/webgpu/lives.js`, WebGPU, float32): many lives of one
   anatomy, each with its own synapses, settle within 1.1e-6 of the WebAssembly kernel's float64
   activations. On an Apple M4 the GPU overtakes the WebAssembly kernel at about 12 lives of Wild's

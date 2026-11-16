@@ -629,7 +629,8 @@ python kernels/wasm/browser/run.py --workers 4 many.py wasm 12 10 3 {k}   # brai
 
 The parts around the settle have compiled forms in `cadence.compiled`, one call each for the Python
 it stands for: the map of things' settle, its pieces (in the order a Python set pops their seeds),
-the moves its surprise reads and the values it writes, and the bound records' read. Numba compiles
+the moves its surprise reads, the values it writes and each report's claims and writes, and the
+bound records' read. Numba compiles
 them natively and the same WebAssembly module holds them under Pyodide; the Python of each part
 is the reference, and `CADENCE_FUSED=0` takes it. In Chromium each equals its Python to the bit;
 natively NumPy's BLAS sums a dot product in another order, within 1e-9.
@@ -639,6 +640,15 @@ python kernels/wasm/browser/run.py maps.py      # the map's moments, both ways
 python kernels/wasm/browser/run.py records.py   # every read of the bound records, both ways
 python kernels/wasm/browser/run.py pieces.py    # the map's pieces over random masks
 ```
+
+A block whose synapses fill less than a quarter of it is read by its synapses
+(`fused.sparse_offset`): its product sums each column's synapses in the order of their presynaptic
+neurons, the order the product of the whole block sums its rows without BLAS, so in a browser the
+sums are the same to the bit, and natively within rounding of BLAS's. The map of things' sheet is
+wired one to one (1,536 synapses in blocks of 299,008 entries), and an apical brain's blocks hold
+no apical synapses where only basal ones arrive: read by their synapses, Wild's founders take
+8.8 ms an animal-moment natively against 11.2 ms on whole blocks, and 14.8 ms under Pyodide in
+Node against 20.3 ms (`kernels/wasm/browser/sparse.py` compares the two to the bit).
 
 ### A batch of lives on the GPU
 

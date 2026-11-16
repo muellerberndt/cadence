@@ -2,7 +2,7 @@
 //! drive, mask and start from the map's carried state, then the sweeps of `_settle_rows`, in
 //! one call and in the order the Python makes them.
 
-use crate::settle::{act_scalar, settle, Net, RECORD};
+use crate::settle::{act_scalar, forms_ok, settle, Net, RECORD};
 use crate::{finite, refused, room, view, Scratch, View, BOOL, FLOAT64, INT64, NO_ROOM};
 
 macro_rules! take {
@@ -224,6 +224,9 @@ pub unsafe extern "C" fn map_settle(
         pool_of, pool_index, pool_starts, pool_run, fraction, floor2, tiny,
         held: one(small.add(2)), has_held: false, per_life: false,
     };
+    if net.offset.len < net.pair_pre.len + 1 || !forms_ok(&net) {
+        return refused(7);
+    }
     let change = View { p: small.add(4), n0: 1, n1: 1, len: 1 };
     let kept_view = View { p: kept_room, n0: kept_len, n1: 1, len: kept_len };
     let given = View { p: small.add(5), n0: 1, n1: 1, len: 1 };

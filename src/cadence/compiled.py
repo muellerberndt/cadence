@@ -159,9 +159,10 @@ def _graph_arrays(graph: Any) -> tuple[Any, ...]:
         fraction, floor2, tiny, _, _ = fused._compartment(apical, lay, flat, None, 1, n)
     dt, slope, threshold, rest, leak, _, _ = fused._rule(graph.neuron_model)
     arrays = (flat, pairs, flat_apical, apical_pairs, lay.starts, lay.pair_pre, lay.pair_post,
-              lay.offset, ~fused._fed_ranges(lay), np.ascontiguousarray(graph.bias, dtype=float),
-              dt, slope, threshold, rest, leak, bool(has_apical), pool_of, pool_index,
-              pool_starts, pool_run, fraction, floor2, tiny)
+              fused.sparse_offset(lay, apical), ~fused._fed_ranges(lay),
+              np.ascontiguousarray(graph.bias, dtype=float), dt, slope, threshold, rest, leak,
+              bool(has_apical), pool_of, pool_index, pool_starts, pool_run, fraction, floor2,
+              tiny)
     graph.__dict__["_map_kernel"] = (flat, arrays)
     return arrays
 
