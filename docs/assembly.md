@@ -228,8 +228,9 @@ repeats to the bit on every run ([which backend](backends.md#which-backend-shoul
 `surprise=True` runs on the CPU.
 
 - **Threads.** Numba's threads give the same bits at any count. Many brains in a process pool
-  run fastest with one thread each (`NUMBA_NUM_THREADS=1`); for a reloaded life that repeats to
-  the bit on another machine, set `OMP_NUM_THREADS=1` before NumPy is imported
+  run fastest with one thread each (`NUMBA_NUM_THREADS=1`). A reloaded life takes the same
+  actions on any machine; for one that repeats to the last bit, use the NumPy path
+  (`CADENCE_FUSED=0`) with `OMP_NUM_THREADS=1` set before NumPy is imported
   ([threads](backends.md#a-reloaded-brain-and-blas-threads)).
 - **Many brains at once.** `cd.Lives(inputs, actions, lives)` steps brains of their own together.
   It takes one row of inputs a life, so senses by name, a map and records belong to lone brains

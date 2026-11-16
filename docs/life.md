@@ -418,9 +418,10 @@ sweep.
 
 A save carries parameters, critic, the learner's optimizer, random state, every trace and
 memory, arousal, an action awaiting feedback and what a waiting stream has sensed; load
-validates them ([formats](api.md#brain-cadence)). On the CPU the resumed brain continues to
-the same bits; on the NumPy path that holds at one BLAS thread count, so a reloaded life
-compared to the bit runs with the thread variables at 1
+validates them ([formats](api.md#brain-cadence)). On the CPU the resumed brain continues with
+the same actions. Its arrays repeat to the bit on the NumPy path at one BLAS thread count, so a
+reloaded life compared to the bit runs there with the thread variables at 1; on the compiled
+kernel they can differ in the last bits on some machines
 ([a reloaded brain and BLAS threads](backends.md#a-reloaded-brain-and-blas-threads)).
 Resume the same rows, supply the pending outcome once and save the environment separately. If `live` refuses an answer, the
 [qualification rules](#qualification-and-refusal) say how to retry without reporting an outcome
