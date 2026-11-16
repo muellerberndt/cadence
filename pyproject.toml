@@ -90,6 +90,7 @@ testpaths = [
     "benchmarks/surprise",
     "benchmarks/recall_strength",
     "benchmarks/symbols",
+    "benchmarks/forager",
 ]
 
 [tool.ruff]
