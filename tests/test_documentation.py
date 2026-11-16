@@ -69,6 +69,7 @@ PAGES = [
     "README.md",
     "docs/start.md",
     "docs/assembly.md",
+    "docs/life.md",
     "docs/world-model.md",
     "docs/teach.md",
     "docs/reward.md",

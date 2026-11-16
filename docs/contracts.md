@@ -10,13 +10,13 @@ learning rule.
 | API | Equations | Stopping rule | Update contract |
 | --- | --- | --- | --- |
 | `NeuralGraph`, `Learner` | Rate neurons exchange activity over a directed graph ([concepts](settling.md#settling-and-equilibrium)). | `equilibrate` checks the full fixed-point equations; `settle` alone may run a fixed budget or stop on activity movement. | Free/nudged local contrast, finite phases by default; optional reward traces. The gradient reading needs symmetric effective weights, a smooth stable branch and a small nudge ([certificate](settling.md#equilibrium-propagation-scope)). |
-| `Brain` (composed) | One recurrent graph, with System 2 observers in the same equations and held trace, record and recall input. | `act`, `predict`, `accuracy` and `wait` need the full potential/adaptation residual below `learning.tolerance` within `learning.free_steps`, with one rescue on the damping ladder before the answer is refused ([qualification and refusal](start.md#qualification-and-refusal)). | The learner's contrast and the actor-critic's reward eligibility (always finite phases, `reward.eligibility_steps`), plus explicit trace and synaptic-memory writes. |
+| `Brain` (composed) | One recurrent graph, with System 2 observers in the same equations and held trace, record and recall input. | `act`, `predict`, `accuracy` and `wait` need the full potential/adaptation residual below `learning.tolerance` within `learning.free_steps`, with one rescue on the damping ladder before the answer is refused ([qualification and refusal](life.md#qualification-and-refusal)). | The learner's contrast and the actor-critic's reward eligibility (always finite phases, `reward.eligibility_steps`), plus explicit trace and synaptic-memory writes. |
 
 ### Component limits
 
 | Component | Implemented operation | Limit |
 | --- | --- | --- |
-| `Brain` (composed) | Qualified settles for every answer, local contrast and reward learning, working trace, recall and synaptic memory and opt-in episodic memory | A qualified answer covers the present settle. Memory enters as held input and is written after the settle, outside the equations; behaviour across ticks needs [persistence tests](evaluate.md#test-coherent-behavior-over-time). |
+| `Brain` (composed) | Qualified settles for every answer, local contrast and reward learning, the default memories ([the default brain](modules.md#the-default-brain)), and opt-in records and episodic memory | A qualified answer covers the present settle. Memory enters as held input and is written after the settle, outside the equations; behaviour across ticks needs [persistence tests](evaluate.md#test-coherent-behavior-over-time). |
 
 A private `imagine` call is a component operation. The application defines what its inputs
 and outputs mean and which future variables it generates or supplies; a learned simulator
@@ -38,7 +38,7 @@ and source identity stay attached to the action that was actually executed.
 
 - A composed `Brain` answers only from a qualified settle (1024 sweeps, residual `3e-3`, with
   a half-step fallback, or `damping` halvings under `qualified=True`); a refused `act` issues no
-  action and changes no state ([qualification and refusal](start.md#qualification-and-refusal)).
+  action and changes no state ([qualification and refusal](life.md#qualification-and-refusal)).
 - `LearnerConfig` teaches with finite phases by default. `qualified=True` gates each phase on
   the full equations, with at most `damping=3` dt halvings by default; give it a `nudged_steps`
   budget comparable to `free_steps`

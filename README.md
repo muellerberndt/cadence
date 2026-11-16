@@ -53,7 +53,7 @@ is no backward pass and no switch between training and use.
 | | [Live demos](https://cadence.floatingpragma.ai/) | brains that see, move, play and keep learning, in the browser |
 | | [API reference](https://github.com/muellerberndt/cadence/blob/main/docs/api.md) | every public name, with its signature and refusals |
 
-More guides: [train a brain](https://github.com/muellerberndt/cadence/blob/main/docs/teach.md), [learning from reward](https://github.com/muellerberndt/cadence/blob/main/docs/reward.md),
+More guides: [a continuing life](https://github.com/muellerberndt/cadence/blob/main/docs/life.md), [train a brain](https://github.com/muellerberndt/cadence/blob/main/docs/teach.md), [learning from reward](https://github.com/muellerberndt/cadence/blob/main/docs/reward.md),
 [memory](https://github.com/muellerberndt/cadence/blob/main/docs/memory.md), [tune and read a living brain](https://github.com/muellerberndt/cadence/blob/main/docs/tune.md),
 [backends](https://github.com/muellerberndt/cadence/blob/main/docs/backends.md); the [documentation index](https://github.com/muellerberndt/cadence/blob/main/docs/README.md) lists them all. The
 [released documentation](https://github.com/muellerberndt/cadence/blob/v0.101.0/docs/README.md)
@@ -69,15 +69,13 @@ failed and cheap stable operation are work in progress; Cadence is alpha researc
 
 ## Start with System 1
 
-By default `Brain.compose` builds one association region of 64 neurons between the senses and
-the motor choice, settling together with them; a working trace that carries the last
-interpretation into the next settle; a heard history of the moment before; a recall memory of
-the stream's recent moments (`recall=False` builds it without one); and an associative store that
-keeps each situation's outcomes. Under `live` the brain learns while young (its first 100
-moments) or aroused by an outcome's surprise or by want, and otherwise answers greedily from one settle; under
-`step` it learns from every outcome and from `teacher=` labels. Everything else is opt-in: System
-2 observers, the episodic memory, a learned code, images, senses by name, the map of things,
-records of bound moments and a voice.
+`Brain.compose` builds one association region of 64 neurons between the senses and the motor
+choice, and four memories: a working trace, a heard history, a recall memory and an associative
+store ([the default brain](https://github.com/muellerberndt/cadence/blob/main/docs/modules.md#the-default-brain)).
+Under `live` the brain learns while young (its first 100 moments) or aroused by an outcome's
+surprise or by want, and otherwise answers greedily from one settle; under `step` it learns from every outcome and from
+`teacher=` labels. Everything else is opt-in
+([assemble a brain](https://github.com/muellerberndt/cadence/blob/main/docs/assembly.md)).
 
 `live` takes the **preceding action's** measured reward, then chooses the next
 action for one continuing stream; supply one observation row per call. It needs
@@ -85,7 +83,7 @@ action for one continuing stream; supply one observation row per call. It needs
 accepted moment, and so do the recall memory's slots. Tune named settings with `compose` or `brain.retune(...)`
 and inspect them with `brain.describe()`
 ([tune and read](https://github.com/muellerberndt/cadence/blob/main/docs/tune.md#defaults-and-expert-overrides)).
-[Continuous interaction](https://github.com/muellerberndt/cadence/blob/main/docs/start.md#continuous-interaction)
+[Continuous interaction](https://github.com/muellerberndt/cadence/blob/main/docs/life.md)
 covers arousal, resets and saved continuation.
 
 For explicit teaching, batched streams or learning from every outcome, use the
@@ -99,7 +97,7 @@ ignores labels. Add `memory_choice=True` when remembered demonstrations and outc
 vote in the choice. Add `learned_code=units, attention=True` when the brain should retrieve a
 relevant recent context and its successor, and `recall_heads=k` when one answer needs several
 witnessed facts at once. The options can be used together.
-[Memory](https://github.com/muellerberndt/cadence/blob/main/docs/memory.md#start-with-the-need)
+[Memory](https://github.com/muellerberndt/cadence/blob/main/docs/memory.md#which-memory-should-i-use)
 starts with these common cases before giving the complete reference.
 A brain trained without a recall memory gets one later: `brain.grow(recall=True)`, or new output
 slots with `brain.grow(slots=...)`, returns a new brain, the trained one with the part added,
@@ -121,7 +119,7 @@ Each action solve reports its residual, qualification, sweeps and check counts
 in read-only `brain.last_settlement`, as
 [start a continuing brain](https://github.com/muellerberndt/cadence/blob/main/docs/start.md#inspect-the-work-of-answering)
 shows. An action whose settle exhausts its budget is refused without changing
-live state; [qualification and refusal](https://github.com/muellerberndt/cadence/blob/main/docs/start.md#qualification-and-refusal)
+live state; [qualification and refusal](https://github.com/muellerberndt/cadence/blob/main/docs/life.md#qualification-and-refusal)
 says when to retry `live(observation)` without resubmitting the reward.
 
 <a id="development-checkout"></a>
@@ -155,8 +153,8 @@ The learner compares local activities in a free and a nudged phase, without a
 backward differentiation pass. The relevant comparison with a recurrent
 backprop network is acquired behavior and total work on the same task, as
 [the comparison below](https://github.com/muellerberndt/cadence/blob/main/README.md#compared-with-a-backprop-network)
-sets out; other model families have
-[their own learning contracts](https://github.com/muellerberndt/cadence/blob/main/docs/contracts.md).
+sets out; [the contracts](https://github.com/muellerberndt/cadence/blob/main/docs/contracts.md)
+state what each part guarantees.
 
 ## Why Cadence
 

@@ -37,6 +37,11 @@ lessons and acts take that many rows until `reset()`
 `step` or `live`, or replace the action with a greedy `act`
 ([supervised lessons](teach.md#supervised-lessons)).
 
+**`RuntimeError: feedback needs a preceding action` from `live(..., reward=...)`.** A reward pays
+the action the brain sampled at its previous `live`; a greedy `act` samples nothing and awaits no
+outcome. Call `live(observation)` once, then pass each reward with the next observation
+([which call](start.md#5-which-call-should-i-use)).
+
 **Every answer is the commoner class.** Class imbalance; weigh the rows and read per-class
 accuracy ([the fix](teach.md#every-answer-is-the-majority-class)).
 
@@ -102,7 +107,7 @@ trace, efference copy, heard history, episodic context and recall slots are clea
 is by default; after `reset(keep=())` an adult brain starts calm with no income or error
 references and no reward scale, so at `need=0` only a surprise at its own forecasts rouses it
 and the scaled need wants nothing until outcomes enter the new scale
-([reset and save](start.md#reset-and-save)).
+([reset and save](life.md#reset-and-save)).
 
 **Stored keys do not match a brain built with another `code`.** Keys are valid only under the
 code they were stored with; `retune` refuses `code` ([the observation code](senses.md#the-observation-code)).

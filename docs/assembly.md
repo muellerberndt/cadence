@@ -77,7 +77,7 @@ assert creature.inputs == 8 + 24 + 80                             # the senses s
   ([equal senses](senses.md#equal-senses-in-the-fixed-code)).
 - **Other senses.** A few continuous readings go through `cd.PopulationCode`; an image is
   `inputs=(height, width)`, read best through `learned_fields`
-  ([wide inputs](senses.md)). `Things` and `Ear` learn nothing and are not saved with the
+  ([senses](senses.md)). `Things` and `Ear` learn nothing and are not saved with the
   brain: make them again with the same arguments.
 
 ### Actions and a voice
@@ -162,7 +162,7 @@ assert watcher.surprise.moment[0] > 0.0                          # a ball where 
 ```
 
 The focus's rules (how long it holds, how long a place it left stays inhibited) are genes of
-`surprise=` ([surprise, and the focus it draws](start.md#surprise-and-the-focus-it-draws-opt-in)).
+`surprise=` ([surprise, and the focus it draws](life.md#surprise-and-the-focus-it-draws-opt-in)).
 
 ### Learning
 
@@ -228,8 +228,9 @@ repeats to the bit on every run ([which backend](backends.md#which-backend-shoul
 `surprise=True` runs on the CPU.
 
 - **Threads.** Numba's threads give the same bits at any count. Many brains in a process pool
-  run fastest with one thread each (`NUMBA_NUM_THREADS=1`); for a reloaded life that repeats to
-  the bit on another machine, set `OMP_NUM_THREADS=1` before NumPy is imported
+  run fastest with one thread each (`NUMBA_NUM_THREADS=1`). A reloaded life takes the same
+  actions on any machine; for one that repeats to the last bit, use the NumPy path
+  (`CADENCE_FUSED=0`) with `OMP_NUM_THREADS=1` set before NumPy is imported
   ([threads](backends.md#a-reloaded-brain-and-blas-threads)).
 - **Many brains at once.** `cd.Lives(inputs, actions, lives)` steps brains of their own together.
   It takes one row of inputs a life, so senses by name, a map and records belong to lone brains

@@ -3,8 +3,24 @@
 This page covers the mechanics below [`Brain.compose`](tune.md), for building or debugging a
 `NeuralGraph` or `Learner` directly. Learning rules live in
 [learning](#learning-the-freenudged-rule) and [reward](reward.md);
-[orientation](../README.md#where-the-learning-signal-comes-from) says where each family's
+[orientation](../README.md#where-the-learning-signal-comes-from) says where each part's
 teaching signal comes from.
+
+A graph of neurons settles under a drive: every neuron updates from its inputs until the
+equations hold everywhere, and the outputs are read from the settled state.
+
+```python
+import numpy as np
+import cadence as cd
+
+connectome = cd.layered(4, 16, 2, seed=0)                       # 4 inputs, 16 hidden, 2 outputs
+graph = cd.NeuralGraph(connectome, cd.learning_neuron_model())
+drive = np.zeros((1, connectome.n))
+drive[0, 0] = 1.0                                               # the first input is on
+settled = graph.equilibrate(drive, tolerance=1e-6)              # sweep until the equations hold
+assert settled.converged[0] and graph.residual(drive, settled.state)[0] < 1e-6
+outputs = settled.state.activation[0, connectome.populations["output"]]   # what is read
+```
 
 ## Neurons and synapses
 
@@ -152,7 +168,7 @@ Assign every state update to one clock. An environment step has the duration its
 or body declares; solver sweeps and `dt` have none, so measure wall time separately. An
 imagined future has its own step index inside a private branch; its steps simulate
 environment time and count neither as inference on the present nor as new observations.
-[Continuous interaction](start.md#defaults-and-the-thinking-clock) states which events
+[Continuous interaction](life.md#defaults-and-the-thinking-clock) states which events
 advance trace, eligibility, arousal and learning in `Brain`.
 
 A previous-state mixing term adds no inference depth to a one-step read from a zero initial
@@ -387,7 +403,7 @@ is refused by name with a message saying what to use instead ([CHANGELOG](../CHA
 
 Qualification certifies the equations at those states; the gradient reading also needs the
 assumptions above. `contrast`, `update` and `apply` act on supplied states. Answers follow
-[qualification and refusal](start.md#qualification-and-refusal).
+[qualification and refusal](life.md#qualification-and-refusal).
 
 #### Finite free phases that run out of budget
 

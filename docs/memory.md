@@ -1,10 +1,27 @@
 # Memory
 
 A memory is anything the brain keeps from an earlier moment and can use in a later answer.
-Everything else is computed again from the present observation. A new brain holds three
-memories, and more are a setting away. This page starts with what each memory is, in plain
-words, then helps you choose, with a minimal example of each; the reference for every memory
-follows.
+Everything else is computed again from the present observation. A new brain holds four memories
+(a working trace, a heard history, a recall memory and an associative store;
+[the default brain](modules.md#the-default-brain) lists all it holds), and more are a setting
+away. This page starts with what each memory is, in plain words, then helps you choose, with a
+minimal example of each; the reference for every memory follows.
+
+Here a brain hears a name stated with a value, then something else, and later the name alone: the
+recall memory brings the value back into the settle.
+
+```python
+import numpy as np
+from cadence import Brain
+
+notebook = Brain.compose(inputs=4, actions=2, modules=(16,), seed=1)
+assert list(notebook.memories) == ["working_memory", "history", "recall", "hippocampus"]
+notebook.act(np.array([[1.0, 0.0, 0.0, 1.0]]), greedy=True)   # a name (0) stated with a value (3)
+notebook.act(np.array([[0.0, 1.0, 0.0, 0.0]]), greedy=True)   # something else
+drive = notebook.stimulus(np.array([[1.0, 0.0, 0.0, 0.0]]))    # the name alone, later
+recalled = drive[0, notebook.connectome.populations["recall"]]
+assert recalled[3] > recalled[1]                               # the value comes back
+```
 
 ## The memories in plain words
 
@@ -27,6 +44,14 @@ follows.
   reminder, keeps what is used often, lets the rest go and revises a fact that changed. Opt-in:
   `cd.LongTermMemory`, a standalone store, or `longterm=records`, the brain's own records keyed by
   its held message.
+- **Records of bound moments: what the senses held together.** Each moment a named sense holds
+  something is a record; a part (a sound heard alone) brings back the rest (the thing it was heard
+  with), and a voice says the sound that stands for a thing. Opt-in, `bound=records` with
+  `senses=` and `code=`.
+
+A memory's **strength** is a law some of them follow: a record told again or written at a moment
+of surprise grows deep, one deep enough is kept for good, one never used fades. It is on for the
+records of bound moments and opt-in for the recall memory and the long-term records.
 
 Three smaller carriers: the **heard history** of the raw observations (`history_decays`), whose one
 block of the moment before a new brain holds, and two opt-ins, the **efference copy** of the actions
@@ -48,9 +73,52 @@ the brain issued (`efference_amplitude`) and the **held message**, the whole epi
 | Episodic memory | one-shot records that vote | no | a demonstration shown once, a chain paid at its end, a cue that is gone | `memory_choice=True` |
 | Long-term memory | a library of records kept by use | no | thousands of facts asked long after they were told, facts that change, a fixed budget of slots | `longterm=records` with a held message ([long-term records](#long-term-records)), or `cd.LongTermMemory` beside the brain ([a large memory](#a-large-memory)) |
 | Records of bound moments | what the senses held together, read back by a part | no | a sound must bring back the thing it was heard with, and a voice say what the records bind to a thing | `bound=records` with `senses=` and `code=` ([records of bound moments](#records-of-bound-moments-opt-in)) |
+| A memory's strength | what comes again or came with a surprise is kept | no (always on in bound records) | a fact told often, or once with a surprise, must outlast a full notebook | `recall_strength=True` ([a slot's strength](#a-slots-strength-opt-in)), `longterm_strength=True` ([a record's strength](#a-records-strength-opt-in)) |
 | Efference copy | what I just did | no | sequencing the brain's own actions under identical input | `efference_amplitude=1.0` |
 | Heard history | what I just heard | one block, the moment before | the same observation needs different answers after different earlier observations | `history_decays=(0.2, 0.8)` for slower blocks; `history_decays=()` removes it |
 | No memory | the control | | always measure a memory against the brain without it | `recall=False, episodic=False, working_memory_amplitude=0.0` |
+
+<a id="start-with-the-need"></a>
+<a id="find-your-situation"></a>
+
+### By situation
+
+| The situation | Write | Section |
+| --- | --- | --- |
+| The present observation holds the answer | `recall=False, episodic=False, working_memory_amplitude=0.0` is the control to compare against; add one memory at a time | [check that a memory does the work](#check-that-a-memory-does-the-work) |
+| A moment heard once has to return by its content: a name stated with a value, look back, n-back, copying | nothing: a new brain holds the memory | [recall memory](#the-recall-memory-in-full) |
+| Whole sentences or stories, read at lengths no lesson reached | nothing: a new brain's memory is this composition | [one composition for sequences](#one-composition-for-sequences) |
+| A position nothing marks, past the table: a period of 40, n-back at 400 | `recall_capacity` about 2.5 times the distance: a new brain holds the grid and 128 slots | [reads over long context](#reads-over-long-context) |
+| A sound heard alone must bring back the thing it was heard with; a voice says it; a reward makes a said sound the answer | `senses=`, `code=units`, `bound=records`, `voice="ear"` | [records of bound moments](#records-of-bound-moments-opt-in) |
+| A fact told often, or once with a surprise, must outlast a full notebook | `recall_strength=True` (`surprise=True` counts the surprise) | [a slot's strength](#a-slots-strength-opt-in) |
+| Thousands of facts, asked long after they were told | `cd.LongTermMemory` beside the brain; or `recall_position=0, recall_temperature=0.05` and a `recall_capacity` that holds them | [a large memory](#a-large-memory) |
+| Two or more facts in one answer | `recall_heads=2` | [several heads](#several-heads-opt-in) |
+| One answer needs several of the brain's long-term records | `longterm_heads=k, longterm_attention=1.0, longterm_motor=0.05` | [several heads, each with a record of its own](#several-heads-each-with-a-record-of-its-own-opt-in) |
+| A read that depends on what another read found | a "think" moment between the two reads | [several heads](#several-heads-opt-in) |
+| "How long ago?", "was A told before B?" | `recall_when=True` | [when a read item happened](#when-a-read-item-happened-opt-in) |
+| The answer is the token the read found, tokens no lesson used included | `recall_tokens=..., recall_gain=1.0` | [the learned value path](#the-learned-value-path-opt-in) |
+| What it did itself, where the observations are alike | `efference_amplitude=1.0` for its last command; `recall_action=True` to find commands with their moments | [efference copy](#efference-copy), [its own actions](#its-own-actions-in-the-slots-opt-in) |
+| How strongly each carried region is heard, per task | nothing: a new brain with the memory learns it (`carried_gain=0.01`) | [carried gain](#how-strongly-a-carried-region-is-heard) |
+| How strongly the read drives the settle, per task | nothing: a new brain with the memory learns it (`recall_drive_gain=True`) | [the read's route](#the-reads-drive-as-a-route) |
+| A cue carried across a short delay | nothing: the working trace is on, with or without a recall memory | [working trace](#working-trace) |
+| One cue held over a delay and replaced by a later one | no measured memory: the trace alone does not serve it | [working trace](#working-trace) |
+| Which action pays in a situation, with quick reversal | nothing: the associative store is on | [associative store](#associative-store-the-hippocampus) |
+| Noisy or signed pay | nothing: a new brain's store averages its outcomes (`memory_rate=0.2`) | [associative store](#associative-store-the-hippocampus) |
+| A demonstration remembered once, or a chain paid at its end | `memory_choice=True` | [episodic memory](#episodic-memory-what-happened-in-this-situation-before) |
+| A paid action stops paying and its failures pay 0 | the store alone: leave `memory_choice` off; beside the vote, `memory_extinction=0.5` | [extinction](#a-paid-action-that-stops-paying-extinction) |
+| Stages that look alike, where a miss changes nothing | `memory_context_hold="unchanged"` beside `memory_choice=True` | [the context hold](#stages-that-look-alike-the-context-hold) |
+| The same observation needs different answers after different earlier observations | `history_decays=(0.2, 0.8)` | [heard history](#heard-history) |
+| An action paid a few moments later; a chain whose stage is observed | nothing: the actor's eligibility is on | [learned weights and eligibility](#learned-weights-and-eligibility) |
+| A wide observation | `code=units` bounds every key | [the observation code](senses.md#the-observation-code) |
+| Keys that overlap where meanings do | `learned_code=units, attention=True` | [single-head attention](#single-head-learned-code-attention-opt-in) |
+| Types taught one after another | `learning_rehearsal=1.0` | [rehearsal](teach.md#teach-several-types-in-sequence-rehearsal) |
+| A memory for a brain trained without it | `brain.grow(recall=True)` | [grow and combine brains](grow.md) |
+| Situations whose keys overlap strongly, outside a brain | a standalone store behind a centered, habituated separator | [pattern separation](#pattern-separation) |
+
+Every memory changes the answer through the same composed brain: the working trace, the efference
+copy, the heard history and the recall memory drive neural regions the association region reads;
+the associative store drives motor neurons; the episodic records add a vote to the motor readout.
+The answer has to [qualify](life.md#qualification-and-refusal) whichever of them shaped it.
 
 Start with the default brain. Add one memory at a time and compare it with the same brain
 without that memory, on held-out moments, through `act`, `step` or `live`: `predict` reads no
@@ -70,16 +138,8 @@ assert thinker.working_memory.trace.any()                   # carried into the n
 quiet = Brain.compose(inputs=3, actions=2, seed=0, working_memory_amplitude=0.0)
 ```
 
-**Recall memory.** A moment heard once comes back when the present shares its content:
-
-```python
-notebook = Brain.compose(inputs=4, actions=2, modules=(16,), seed=1)
-notebook.act(np.array([[1.0, 0.0, 0.0, 1.0]]), greedy=True)   # a name (0) stated with a value (3)
-notebook.act(np.array([[0.0, 1.0, 0.0, 0.0]]), greedy=True)   # something else
-drive = notebook.stimulus(np.array([[1.0, 0.0, 0.0, 0.0]]))    # the name alone, later
-recalled = drive[0, notebook.connectome.populations["recall"]]
-assert recalled[3] > recalled[1]                               # the value comes back
-```
+**Recall memory.** A moment heard once comes back when the present shares its content: the
+example at the top of this page.
 
 **Recall options.** Each is one setting at `compose`:
 
@@ -155,45 +215,6 @@ A trained brain without a recall memory can be given one later: `brain.grow(reca
 ([grow and combine brains](grow.md)). Types taught one after another are kept by rehearsal,
 a training setting ([curriculum and rehearsal](teach.md#curriculum-and-rehearsal)).
 
-<a id="start-with-the-need"></a>
-
-## Find your situation
-
-| The situation | Write | Section |
-| --- | --- | --- |
-| The present observation holds the answer | `recall=False, episodic=False, working_memory_amplitude=0.0` is the control to compare against; add one memory at a time | [check that a memory does the work](#check-that-a-memory-does-the-work) |
-| A moment heard once has to return by its content: a name stated with a value, look back, n-back, copying | nothing: a new brain holds the memory | [recall memory](#the-recall-memory-in-full) |
-| Whole sentences or stories, read at lengths no lesson reached | nothing: a new brain's memory is this composition | [one composition for sequences](#one-composition-for-sequences) |
-| A position nothing marks, past the table: a period of 40, n-back at 400 | `recall_capacity` about 2.5 times the distance: a new brain holds the grid and 128 slots | [reads over long context](#reads-over-long-context) |
-| Thousands of facts, asked long after they were told | `cd.LongTermMemory` beside the brain; or `recall_position=0, recall_temperature=0.05` and a `recall_capacity` that holds them | [a large memory](#a-large-memory) |
-| Two or more facts in one answer | `recall_heads=2` | [several heads](#several-heads-opt-in) |
-| One answer needs several of the brain's long-term records | `longterm_heads=k, longterm_attention=1.0, longterm_motor=0.05` | [several heads, each with a record of its own](#several-heads-each-with-a-record-of-its-own-opt-in) |
-| A read that depends on what another read found | a "think" moment between the two reads | [several heads](#several-heads-opt-in) |
-| "How long ago?", "was A told before B?" | `recall_when=True` | [when a read item happened](#when-a-read-item-happened-opt-in) |
-| The answer is the token the read found, tokens no lesson used included | `recall_tokens=..., recall_gain=1.0` | [the learned value path](#the-learned-value-path-opt-in) |
-| What it did itself, where the observations are alike | `efference_amplitude=1.0` for its last command; `recall_action=True` to find commands with their moments | [efference copy](#efference-copy), [its own actions](#its-own-actions-in-the-slots-opt-in) |
-| How strongly each carried region is heard, per task | nothing: a new brain with the memory learns it (`carried_gain=0.01`) | [carried gain](#how-strongly-a-carried-region-is-heard) |
-| How strongly the read drives the settle, per task | nothing: a new brain with the memory learns it (`recall_drive_gain=True`) | [the read's route](#the-reads-drive-as-a-route) |
-| A cue carried across a short delay | nothing: the working trace is on, with or without a recall memory | [working trace](#working-trace) |
-| One cue held over a delay and replaced by a later one | no measured memory: the trace alone does not serve it | [working trace](#working-trace) |
-| Which action pays in a situation, with quick reversal | nothing: the associative store is on | [associative store](#associative-store-the-hippocampus) |
-| Noisy or signed pay | nothing: a new brain's store averages its outcomes (`memory_rate=0.2`) | [associative store](#associative-store-the-hippocampus) |
-| A demonstration remembered once, or a chain paid at its end | `memory_choice=True` | [episodic memory](#episodic-memory-what-happened-in-this-situation-before) |
-| A paid action stops paying and its failures pay 0 | the store alone: leave `memory_choice` off; beside the vote, `memory_extinction=0.5` | [extinction](#a-paid-action-that-stops-paying-extinction) |
-| Stages that look alike, where a miss changes nothing | `memory_context_hold="unchanged"` beside `memory_choice=True` | [the context hold](#stages-that-look-alike-the-context-hold) |
-| The same observation needs different answers after different earlier observations | `history_decays=(0.2, 0.8)` | [heard history](#heard-history) |
-| An action paid a few moments later; a chain whose stage is observed | nothing: the actor's eligibility is on | [learned weights and eligibility](#learned-weights-and-eligibility) |
-| A wide observation | `code=units` bounds every key | [the observation code](senses.md#the-observation-code) |
-| Keys that overlap where meanings do | `learned_code=units, attention=True` | [single-head attention](#single-head-learned-code-attention-opt-in) |
-| Types taught one after another | `learning_rehearsal=1.0` | [rehearsal](teach.md#teach-several-types-in-sequence-rehearsal) |
-| A memory for a brain trained without it | `brain.grow(recall=True)` | [grow and combine brains](grow.md) |
-| Situations whose keys overlap strongly, outside a brain | a standalone store behind a centered, habituated separator | [pattern separation](#pattern-separation) |
-
-Every memory changes the answer through the same composed brain: the working trace, the efference
-copy, the heard history and the recall memory drive neural regions the association region reads;
-the associative store drives motor neurons; the episodic records add a vote to the motor readout.
-The answer has to [qualify](start.md#qualification-and-refusal) whichever of them shaped it.
-
 <a id="memory-in-the-composed-brain"></a>
 <a id="complete-memory-inventory"></a>
 
@@ -211,6 +232,7 @@ The answer has to [qualify](start.md#qualification-and-refusal) whichever of the
 | Learned weights | yes | learning rates of zero freeze them | synapse scales and biases, actor and critic | none | lessons, and outcomes (aroused ones under `live`) | yes | [the free/nudged rule](settling.md#learning-the-freenudged-rule) |
 | Actor eligibility | yes | `actor_lam=0.0` credits the last action only | each synapse's credit for recent sampled acts | none | each sampled act | no | [reward.md](reward.md#eligibility-traces-and-dopamine) |
 | Long-term memory | no: a standalone store | `cd.LongTermMemory(width, value_width, capacity)` beside the brain | records, a key with a value, under a budget of slots | the caller's key | when the caller writes; a key told again revises its record | yes: the brain does not hold it | [below](#a-long-term-memory-of-records) |
+| Records of bound moments | no | `bound=records` with `senses=` and `code=units` | what each named sense gave at a moment, its depth and its pay | the fixed code of the named senses, each at unit length | every moment a named sense holds something; a reward pays the moment it follows | yes: one store all streams share (`brain.bound`) | [below](#records-of-bound-moments-opt-in) |
 | Long-term records | no | `longterm=records` with `message=units`, `message_boundary` and `message_boundary_holds=True` | each stream's records: the held message at a turn and the moment after it | the held message at the turn | the moment after a turn, where it says more than the record the key finds | yes | [below](#long-term-records) |
 
 `predict`, `accuracy` and `fit` answer independent samples and read none of these except the
@@ -223,7 +245,7 @@ stopped. The long-term memory stands beside the brain, so its caller saves it (`
 a settle and writes them after it: `working_memory`, `efference`, `history`, `recall`,
 `hippocampus` and, with `memory_choice=True`, `episodic` (the episodic records: their vote,
 the temporal context and the paths a reward is replayed along); `brain.memories["recall"]` is
-`brain.recall`. Every member keeps one contract (`cadence.memories`):
+`brain.recall`. The records of bound moments are `brain.bound`, beside `brain.memories`. Every member keeps one contract (`cadence.memories`):
 
 - `stimulus(drive, moment)` adds what it holds to the drive of a moment;
 - `branch()` gives an imagined branch a private copy;
@@ -243,10 +265,10 @@ Memories have three lifetimes:
 - **Permanent until learning changes them**: the learned weights.
 
 The per-stream traces advance at every moment. Under
-[`live`](start.md#routine-and-repair-live) a calm brain reads its records and weights and
+[`live`](life.md#routine-and-repair-live) a calm brain reads its records and weights and
 changes neither; an aroused one learns and writes. `reset()` keeps the arousal state,
 including the income and error references that decide when a `live` brain wakes;
-`reset(keep=())` clears them ([reset and save](start.md#reset-and-save)).
+`reset(keep=())` clears them ([reset and save](life.md#reset-and-save)).
 
 ## Check that a memory does the work
 
@@ -855,8 +877,8 @@ and `recall_founder=True` for the founder memory.
 
 #### Where each fall comes from
 
-A declared run on fresh founders (#280; one machine, 0.95.2) silenced one part of the
-composition at a time and read the falls again. A part is a fall's cause when silencing it
+A declared run on fresh founders ([#280](https://github.com/muellerberndt/cadence/issues/280))
+silenced one part of the composition at a time and read the falls again. A part is a fall's cause when silencing it
 brings the composition back to its control:
 
 | Fall | Control | Composition | Cause | Composition with the cause silenced |
@@ -1403,7 +1425,7 @@ the option decides which moments a full bank holds.
 
 | What happens | Its depth |
 | --- | --- |
-| The slot is written | One telling, 1. In a brain composed with `surprise=True`, 1 plus the brain's surprise at the moment in tellings: the ratio of the most surprised neuron's residual to its tolerated size, less one ([surprise](start.md#surprise-and-the-focus-it-draws-opt-in)). A moment nine times the tolerated size is written at 9 |
+| The slot is written | One telling, 1. In a brain composed with `surprise=True`, 1 plus the brain's surprise at the moment in tellings: the ratio of the most surprised neuron's residual to its tolerated size, less one ([surprise](life.md#surprise-and-the-focus-it-draws-opt-in)). A moment nine times the tolerated size is written at 9 |
 | A later moment tells it again | Plus 1. A moment tells a slot again where their keys lie at cosine `recall_again` (.95) or above; where several slots hold the moment, the deepest gains the telling. The moment is a slot of its own all the same, so the bank keeps its order |
 | A later moment's read attends it with weight `p` | `depth + p * max(1 - depth, 0)`: a read renews a slot that has faded, by its share of the read, and deepens none past one telling |
 | A later moment is written | Times `1 - 1 / (8 * capacity)` below `recall_kept` (8), the time scale of a record's depth; at or past `recall_kept` the depth stays whole |
@@ -2124,7 +2146,7 @@ are named as the fields of a sense (`Map(values={"hue": 8, "shape": 24})` beside
 `hue` and `shape`), a heard sound is read alone at every moment: where its records bring back a
 thing's fields, each thing on the map whose values hold more than half of them alike takes a
 salience of 8 times their mean cosine in the focus's competition
-([the focus](start.md#surprise-and-the-focus-it-draws-opt-in)), at its place, in view or out
+([the focus](life.md#surprise-and-the-focus-it-draws-opt-in)), at its place, in view or out
 of it. `brain.focus.sense` is then `"named"`.
 
 | Setting | Founder | Changed by | What it sets |
@@ -2434,9 +2456,9 @@ so do P4 with a mature skill A (A gains 2.4 points over the ring, B .24) and the
 (A loses 28.8 points, B .35), each to the same counts and means as without it.
 
 A sense that is active at every moment keeps its records in use. In a body whose senses stay
-busy, only the records of the senses that fall silent fade. Twelve brains of the
-[Robot Arena demo](https://github.com/muellerberndt/cadence-demos/tree/main/robot-arena) read
-this way ([#253](https://github.com/muellerberndt/cadence/issues/253)): over a nursery the
+busy, only the records of the senses that fall silent fade. Twelve brains of a body that
+fights in a ring read this way ([#253](https://github.com/muellerberndt/cadence/issues/253)):
+over a nursery the
 fade takes records of "outside the ring", a sense that falls silent as a brain learns to stay
 inside, and little else. The fights, the acquisition from birth and the revision test there
 hold every gate that maturity alone holds.
@@ -3103,7 +3125,7 @@ long as the store keeps its depth (`hold`, eight capacities), so a fact told onc
 is gone after about eight times as many moments as the store has slots. A fact told again as the record holds it (which writes nothing) counts
 one more telling, and a read deepens the record only where it delivers it, once its moment is
 accepted: a refused moment deepens none. In a brain composed
-with `surprise=True` ([surprise](start.md#surprise-and-the-focus-it-draws-opt-in)) the brain's
+with `surprise=True` ([surprise](life.md#surprise-and-the-focus-it-draws-opt-in)) the brain's
 own surprise at the moment a record is written counts as tellings: `brain.surprise.moment` is the
 log of how many times its tolerated size the most surprised neuron's residual was, and the write
 counts that ratio less one. A moment within what every neuron is used to adds nothing, and one

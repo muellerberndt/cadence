@@ -17,10 +17,14 @@ everything else takes `backend="torch"` or `backend="mlx"` by name. `available_b
 importable backends with the device and default precision each would use.
 
 ```python
+import numpy as np
 import cadence as cd
 
 print(cd.available_backends())
 # e.g. {'cpu': 'numpy float64', 'torch': 'mps float32', 'mlx': 'gpu float32'} on an M-series Mac
+brain = cd.Brain.compose(inputs=8, actions=3)              # "auto": it picks at its first moment
+brain.act(np.eye(8)[[0]])
+print(brain.placement["backend"], brain.placement["why"])  # where it runs, and why
 ```
 
 ## Which backend should I use?
@@ -79,7 +83,8 @@ lives, imagines, saves and continues a pending outcome, reads several recall hea
 an apical compartment or a learned code ([`tests/test_mlx_backend.py`](../tests/test_mlx_backend.py),
 [`tests/test_mlx_launch.py`](../tests/test_mlx_launch.py), [`tests/test_mlx_memory.py`](../tests/test_mlx_memory.py)).
 On a float32 backend a brain reloaded from its checkpoint continues within that rounding, not
-bit for bit; on the CPU the reloaded brain is exact.
+bit for bit; on the CPU the reloaded brain takes the same actions, and its arrays repeat to the
+bit under the conditions below.
 
 <a id="a-reloaded-brain-and-blas-threads"></a>
 On the NumPy path (`CADENCE_FUSED=0`) a reloaded brain's continued life repeats to the bit at
@@ -87,8 +92,12 @@ one BLAS thread count. In a reading of 35 compositions on an x86-64 machine, fou
 a load to other last bits with the thread variables unset than at one thread, where the life
 before the save read the same at either count, and each count repeated its own bits (#315). For
 a reloaded life that repeats to the bit on another run or machine, set
-`OMP_NUM_THREADS=OPENBLAS_NUM_THREADS=MKL_NUM_THREADS=1` before NumPy is imported. The fused
-path read one set of bits at either count.
+`OMP_NUM_THREADS=OPENBLAS_NUM_THREADS=MKL_NUM_THREADS=1` before NumPy is imported. On the
+compiled kernel a life takes the same actions and saves the same arrays at any BLAS thread count;
+on some machines one value of the saved report of the last learning step (`last_learning`)
+differs by one ulp at two threads against one (#315). On some machines the compiled kernel also continues a brain with a held message from its
+save in other last bits, with the same actions (#346). The NumPy loop at one BLAS thread
+repeats to the bit.
 
 `available_backends()` asks MLX for its device in a child interpreter, once per process, so an
 unsupported Metal or system configuration that aborts MLX's discovery ends only the child. MLX
@@ -600,7 +609,7 @@ float32, whichever of the first two taught it. On that benchmark's four regions 
 the mean of the ten readings from lesson 3,100 over six seeds is .802 on the CPU (.719 to .831) and
 .786 on MLX (.751 to .817): MLX reads .016 below, with a standard error of .015 on that difference. A
 single reading swings further on both, down to .40 past lesson 2,000 on the CPU and .39 on MLX, so
-compare runs by such a mean over seeds, not by a last reading.
+compare runs by such a mean over seeds; a last reading alone misleads.
 
 ## Residual checks, masks and conformance
 

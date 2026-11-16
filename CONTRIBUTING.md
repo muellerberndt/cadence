@@ -45,7 +45,7 @@ capability-preservation test. State the actual learning rule and the scope of
 its equilibrium guarantee; one model's settlement must not inherit another's
 claims.
 
-Use [one continuing equilibrium brain](docs/start.md#one-continuing-equilibrium-brain) as the application
+Use [one continuing equilibrium brain](docs/world-model.md) as the application
 and tutorial frame: bootstrap useful relations and memory, operate with them,
 repair witnessed failures, then resume the same acquired brain. Parameters and
 memory support a family of equilibria under changing evidence. Deep reciprocal
@@ -118,7 +118,7 @@ temporal credit. First establish acquisition with the simplest directly cued
 control; a failure there does not isolate memory selection. Then test query
 switches on copies with identical saved memories, relevant and irrelevant
 perturbations, fresh bindings and order, held-out roles, interference and
-recovery. Follow the [task protocol](docs/task-design.md#test-learned-memory-relevance).
+recovery. Follow the [task protocol](docs/evaluate.md#test-learned-memory-relevance).
 Neither equation qualification, an adapter-supplied memory index nor a vote
 added after settlement establishes learned relevance in the coupled equilibrium.
 This is an unimplemented capability goal, not a new default or a requirement
@@ -134,7 +134,7 @@ must not hide answers, phase or arrangement outside that brain.
 Use the [principle](AGENTS.md#coherent-behavior-over-time) and the goal epic that
 owns the behavior, [the Doom player #118](https://github.com/muellerberndt/cadence/issues/118) or
 [language #173](https://github.com/muellerberndt/cadence/issues/173), whose tables hold the folded capability
-contracts, rather than creating duplicate capability tracks. [Task design](docs/task-design.md#test-coherent-behavior-over-time)
+contracts, rather than creating duplicate capability tracks. [Task design](docs/evaluate.md#test-coherent-behavior-over-time)
 describes the behavioral comparisons.
 
 Memory relevance belongs to [language #173](https://github.com/muellerberndt/cadence/issues/173), which holds
@@ -186,12 +186,13 @@ instruments of `benchmarks/instruments`.
 A change to a guide's code is a change to a test. The
 [minimal-install job](https://github.com/muellerberndt/cadence/blob/main/.github/workflows/ci.yml)
 builds the wheel with NumPy alone
-and runs the pages that need it alone: `README.md` and, under `docs/`, `start.md`, `assembly.md`,
-`world-model.md`, `teach.md`, `reward.md`, `memory.md`, `senses.md`, `tune.md`, `evaluate.md`, `settling.md`
-and `api.md` (`anatomy.md` imports the benchmark instruments of a source checkout, and
-`backends.md` needs PyTorch). It also executes `examples/continuing_brain.py`. For
+and runs every page that needs it alone: `README.md` and every guide under `docs/` with python
+blocks except `anatomy.md`, which imports the benchmark instruments of a source checkout, and
+`backends.md`, which needs PyTorch. It also executes `examples/continuing_brain.py`. For
 changes to these guides or examples, run `python -m pytest -q tests/test_documentation.py`
-and `ruff check examples/continuing_brain.py tests/test_documentation.py`.
+and `ruff check examples/continuing_brain.py tests/test_documentation.py`. The settings table
+of `docs/tune.md` is generated: `python tools/settings_table.py --write` rewrites it, and
+`tests/test_settings_table.py` fails when a name `Brain.compose` takes is missing from it.
 
 Mathematical claims must state their assumptions and connect them to the
 executed numerical model. The [settling certificates](docs/settling.md#the-settling-certificate) explain
