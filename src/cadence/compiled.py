@@ -1,6 +1,6 @@
 """The compiled kernels of the brain's parts around the settle, each one call of the Python it
-stands for, to the bit: the map of things' settle, pieces, moves and written values, and the bound
-records' read.
+stands for, to the bit: the map of things' settle, pieces, moves, written values and a report's
+claims and writes, and the bound records' read.
 
 The map. ``Map._settle`` makes a drive, a mask and a start from the map's carried state and
 settles the map's graph for one or two sweeps through ``Brain.settle_batch``. At the map's size
@@ -21,13 +21,14 @@ A kernel the Python of its part does not reach stays unused.
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import numpy as np
 
 from . import fused
 
-__all__ = ["available", "bound_recall", "map_moves", "map_pieces", "map_settle",
+__all__ = ["available", "bound_recall", "map_moves", "map_pieces", "map_report", "map_settle",
            "map_write_values"]
 
 # the kernel's code for a drive or a start that is not finite, which ``settle_batch`` refuses
@@ -862,3 +863,253 @@ def map_write_values(held: Any, kind: int, near: list[np.ndarray], weights: np.n
         float(held._floor), int(nx), int(ny)))
     if status < 0:
         raise RuntimeError(f"cadence: the map's values kernel refused its arrays ({status})")
+
+
+# -- a report of the map's moment: its pieces, claims and writes
+
+_map_report: Any = None
+
+if fused.njit is not None:
+
+    @fused._compiled
+    def _numba_map_report(
+        kind: int, px: float, py: float, codes: np.ndarray, centers: np.ndarray,
+        activity: np.ndarray, doubt: np.ndarray, motion: np.ndarray, has_physics: bool,
+        hidden: int, ident: int, fields: int, lowx: float, lowy: float, sizex: float,
+        sizey: float, floor: float, step: float, stride: float, level: float, nx: int, ny: int,
+        has_values: bool, named: np.ndarray, named_mask: np.ndarray, claimed: np.ndarray,
+        write: np.ndarray, fresh: np.ndarray, lost: np.ndarray, near_cells: np.ndarray,
+        near_bounds: np.ndarray,
+    ) -> int:
+        """One report of ``Map.moment`` but its line, in place (the module's ``map_report``,
+        in its order). Returns how many pieces it takes, into ``near_cells`` and
+        ``near_bounds``."""
+        count = nx * ny
+        kinds, units = codes.shape
+        first_unit = -1
+        for u in range(units):
+            if codes[kind, u] != 0.0:
+                first_unit = u
+                break
+        apart = np.empty(count)
+        for c in range(count):
+            dx = centers[c, 0] - px
+            dy = centers[c, 1] - py
+            apart[c] = np.sqrt(-0.0 + dx * dx + dy * dy)
+        own = np.empty(count, dtype=np.bool_)
+        for c in range(count):
+            own[c] = _of_kind_at(activity, codes, kind, c) > floor
+        cells = np.empty(count, dtype=np.int64)
+        bounds = np.empty(count + 1, dtype=np.int64)
+        found = _numba_map_pieces(own, nx, ny, cells, bounds)
+        nearest = np.empty(max(found, 1))
+        for p in range(found):
+            least = apart[cells[bounds[p]]]
+            for q in range(bounds[p] + 1, bounds[p + 1]):
+                x = apart[cells[q]]
+                if x < least or x != x:
+                    least = x
+            nearest[p] = least
+        near = np.empty(max(found, 1), dtype=np.int64)
+        n_near = 0
+        for p in range(found):
+            if nearest[p] <= step:
+                near[n_near] = p
+                n_near += 1
+        if n_near == 0:
+            best = -1
+            for p in range(found):
+                if nearest[p] <= stride and (best < 0 or nearest[p] < nearest[best]):
+                    best = p
+            if best >= 0:
+                near[0] = best
+                n_near = 1
+        doubtful = np.empty(max(found, 1), dtype=np.int64)
+        gathered = np.empty(count)
+        n_doubt = 0
+        for p in range(found):
+            lo, hi = bounds[p], bounds[p + 1]
+            for q in range(lo, hi):
+                gathered[q - lo] = doubt[cells[q]]
+            if _np_sum(gathered, hi - lo) / (hi - lo) > 0.5:
+                doubtful[n_doubt] = p
+                n_doubt += 1
+        if has_physics:
+            theirs = np.empty(count)
+            at_hidden = first_unit * fields + hidden
+            at_ident = first_unit * fields + ident
+            for c in range(count):
+                theirs[c] = motion[c, at_ident] if motion[c, at_hidden] > 0.0 else 0.0
+            mine = np.empty(count)
+            n_mine = 0
+            for k in range(n_near if n_near > 0 else count):
+                lo = bounds[near[k]] if n_near > 0 else k
+                hi = bounds[near[k] + 1] if n_near > 0 else k + 1
+                for q in range(lo, hi):
+                    x = theirs[cells[q]] if n_near > 0 else theirs[q]
+                    if x > 0.0:
+                        seen = False
+                        for m in range(n_mine):
+                            if mine[m] == x:
+                                seen = True
+                                break
+                        if not seen:
+                            mine[n_mine] = x
+                            n_mine += 1
+            kept = 0
+            for k in range(n_doubt):
+                p = doubtful[k]
+                some = False
+                carried = False
+                for q in range(bounds[p], bounds[p + 1]):
+                    x = theirs[cells[q]]
+                    some = some or x != 0.0
+                    for m in range(n_mine):
+                        if mine[m] == x:
+                            carried = True
+                if not some or carried:
+                    doubtful[kept] = p
+                    kept += 1
+            n_doubt = kept
+            for c in range(count):
+                for m in range(n_mine):
+                    if mine[m] == theirs[c]:
+                        for u in range(units):
+                            if codes[kind, u] != 0.0:
+                                claimed[c, u] = True
+                        break
+        taken = n_near + n_doubt
+        at = 0
+        near_bounds[0] = 0
+        for k in range(taken):
+            p = near[k] if k < n_near else doubtful[k - n_near]
+            for q in range(bounds[p], bounds[p + 1]):
+                near_cells[at] = cells[q]
+                at += 1
+            near_bounds[k + 1] = at
+        if taken > 0:
+            others = np.zeros(count, dtype=np.bool_)
+            for other in range(kinds):
+                if other == kind:
+                    continue
+                present = True
+                for u in range(units):
+                    if codes[other, u] > 0.0:
+                        any_ = False
+                        for c in range(count):
+                            any_ = any_ or activity[c, u] > floor
+                        present = present and any_
+                if present:
+                    for c in range(count):
+                        if _of_kind_at(activity, codes, other, c) > floor:
+                            others[c] = True
+            around = np.empty(count, dtype=np.bool_)
+            for k in range(taken):
+                around[:] = False
+                for q in range(near_bounds[k], near_bounds[k + 1]):
+                    cell = near_cells[q]
+                    for u in range(units):
+                        if codes[kind, u] != 0.0:
+                            claimed[cell, u] = True
+                    i, j = cell // ny, cell % ny
+                    for a in range(i - 1, i + 2):
+                        for b in range(j - 1, j + 2):
+                            around[min(max(a, 0), nx - 1) * ny + min(max(b, 0), ny - 1)] = True
+                for c in range(count):
+                    if not around[c] or others[c]:
+                        continue
+                    holds = False
+                    for u in range(units):
+                        if codes[kind, u] != 0.0:
+                            holds = holds or activity[c, u] > 0.0
+                    if holds:
+                        for u in range(units):
+                            if codes[kind, u] != 0.0:
+                                claimed[c, u] = True
+        weights = np.zeros(count)
+        ax = (px - lowx) / sizex - 0.5
+        ax = ax if ax > 0.0 else 0.0
+        ax = ax if ax < nx - 1.0 else nx - 1.0
+        ay = (py - lowy) / sizey - 0.5
+        ay = ay if ay > 0.0 else 0.0
+        ay = ay if ay < ny - 1.0 else ny - 1.0
+        ix = min(int(ax), nx - 2)
+        iy = min(int(ay), ny - 2)
+        fx, fy = ax - ix, ay - iy
+        cell = ix * ny + iy
+        weights[cell] = 1.0 * (1.0 - fx) * (1.0 - fy)
+        weights[cell + ny] = 1.0 * fx * (1.0 - fy)
+        weights[cell + 1] = 1.0 * (1.0 - fx) * fy
+        weights[cell + ny + 1] = 1.0 * fx * fy
+        square = 0.0
+        for c in range(count):
+            square += weights[c] * weights[c]
+        norm = np.sqrt(square)
+        for c in range(count):
+            w = weights[c]
+            add = level * w / norm
+            for u in range(units):
+                if codes[kind, u] != 0.0:
+                    if w > 0.0:
+                        claimed[c, u] = True
+                    write[c, u] += add
+        if has_values:
+            _numba_map_write_values(kind, near_cells[:at], near_bounds[:taken + 1], weights,
+                                    named, named_mask, activity, claimed, write, codes, level,
+                                    floor, nx, ny)
+        for c in range(count):
+            if weights[c] > 0.0:
+                fresh[c] = True
+        for u in range(units):
+            if codes[kind, u] != 0.0:
+                lost[u] = 0.0
+        return taken
+
+    _map_report = _numba_map_report
+
+_NO_MOTION = np.zeros((1, 1))
+
+
+def map_report(held: Any, kind: int, place: np.ndarray, named: dict[str, np.ndarray],
+               activity: np.ndarray, claimed: np.ndarray, write: np.ndarray,
+               fresh: np.ndarray, lost: np.ndarray) -> list[np.ndarray] | None:
+    """One report of ``Map.moment`` in one compiled call, in place on ``claimed``, ``write``,
+    ``fresh`` and ``lost``: the pieces it takes (``near``, for its line), or None where the
+    Python takes the report (a place that is not finite, a sheet narrower than two cells, a
+    kind with no units)."""
+    px, py = float(place[0]), float(place[1])
+    nx, ny = held.cells
+    if not (math.isfinite(px) and math.isfinite(py)) or nx < 2 or ny < 2 or not (
+            held.codes[kind] != 0).any():
+        return None
+    count = held.count
+    room = held.__dict__.get("_report_room")
+    if room is None or len(room[0]) != 2 * count:
+        room = held.__dict__["_report_room"] = (np.empty(2 * count, dtype=np.int64),
+                                                np.empty(2 * count + 1, dtype=np.int64))
+    cells, bounds = room
+    valued = held.width - held.units
+    given, mask = np.zeros(valued), np.zeros(valued, dtype=bool)
+    for group, amounts in named.items():
+        run = held.values[group]
+        given[run.start - held.units:run.stop - held.units] = amounts
+        mask[run.start - held.units:run.stop - held.units] = True
+    physics = held.physics is not None
+    if physics:
+        from .space.physics import FIELDS, HIDDEN, IDENT
+
+        motion = held.motion.reshape(count, -1)
+    else:
+        motion, FIELDS, HIDDEN, IDENT = _NO_MOTION, 1, 0, 0
+    found = int(_map_report(
+        int(kind), px, py, np.ascontiguousarray(held.codes, dtype=np.float64),
+        np.ascontiguousarray(held.centers, dtype=np.float64), activity,
+        np.ascontiguousarray(held.doubt, dtype=np.float64),
+        np.ascontiguousarray(motion, dtype=np.float64), physics, HIDDEN, IDENT, FIELDS,
+        float(held._low[0]), float(held._low[1]), float(held.size[0]), float(held.size[1]),
+        float(held._floor), float(held.step), float(held.stride), float(held.level), int(nx),
+        int(ny), bool(held.values), given, mask, claimed, write, fresh, lost, cells, bounds))
+    if found < 0:
+        raise RuntimeError(f"cadence: the map's report kernel refused its arrays ({found})")
+    taken = cells[: bounds[found]].astype(np.intp)
+    return [taken[bounds[p]:bounds[p + 1]] for p in range(found)]

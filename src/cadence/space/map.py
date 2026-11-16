@@ -594,8 +594,17 @@ class Map:
             from .physics import IDENT
 
             self._identity = float(self.motion[:, :, IDENT].max())
+        from .. import compiled
+
+        compiled_reports = compiled.available("_map_report")
         for (kind, place, sense), named in zip(reports, said, strict=True):
             units = np.flatnonzero(self.codes[kind])
+            took = compiled.map_report(self, kind, place, named, activity, claimed, write, fresh,
+                                       lost) if compiled_reports else None
+            if took is not None:  # its pieces, claims and writes in one compiled call
+                if physics is not None:  # its line reads none of what the call writes
+                    lines.append((units, self._line(units, took, place, sense), sense))
+                continue
             apart = np.linalg.norm(self.centers - place, axis=1)
             pieces = self._pieces(np.asarray(self._of_kind(kind, activity) > self._floor))
             near = [p for p in pieces if apart[p].min() <= self.step]

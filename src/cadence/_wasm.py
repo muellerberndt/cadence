@@ -144,6 +144,8 @@ def load(source: str | bytes | None = None) -> bool:
         parts._map_pieces = _caller("map_pieces")
         parts._map_moves = _caller("map_moves")
         parts._map_write_values = _caller("map_write_values")
+        if hasattr(parts, "_map_report"):  # a release before the report's kernel has none
+            parts._map_report = _caller("map_report")
     if not hasattr(fused, "_wasm"):  # a release before this file: its kernels assert Numba
         fused.njit = _no_numba
         fused._threads = lambda: False
@@ -192,6 +194,7 @@ _KINDS = {
     "map_pieces": "?nnqq",
     "map_moves": "ddddfffnnw",
     "map_write_values": "nqqdd?d?wdffnn",
+    "map_report": "nffdddddbnnnffffffffnnbd??w?wqq",
 }
 
 
