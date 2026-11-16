@@ -219,10 +219,10 @@ impl Graph {
     }
 }
 
-/// The activity above rest of a potential: `max(tanh(v / 2), 0)`.
+/// The activity above rest of a potential: `max(tanh(v / 2), 0)`, with NumPy's `tanh`.
 #[inline]
 fn lit_up(v: f64) -> f64 {
-    np::maximum(np::tanh(v / 2.0), 0.0)
+    np::maximum(np::tanh_ufunc(v / 2.0), 0.0)
 }
 
 /// NumPy's sort order of floats: NaN after every number.
