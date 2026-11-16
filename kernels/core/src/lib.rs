@@ -9,6 +9,7 @@ pub mod np;
 pub mod parts;
 pub mod rng;
 pub mod state;
+pub(crate) mod ziggurat;
 
 // The compiled kernels of `cadence.fused` and `cadence.compiled`, one source with the browser
 // module (`kernels/wasm`): the settle, the solve, the lessons' passes, the map's and the bound
@@ -168,6 +169,49 @@ fn probe(name: &str, input: &Named) -> Result<Named, state::Error> {
             let n = input.i64("n")? as usize;
             let draws: Vec<i64> = (0..n).map(|_| g.choice_p(&p) as i64).collect();
             out.put("draws", Array::from_i64(&[n], &draws));
+        }
+        "standard_normal" => {
+            let mut g = generator(input)?;
+            let n = input.i64("n")? as usize;
+            let draws: Vec<f64> = (0..n).map(|_| g.standard_normal()).collect();
+            out.put("draws", Array::from_f64(&[n], &draws));
+            out.put("after", Array::from_u64(&[2], &[(g.state >> 64) as u64, g.state as u64]));
+        }
+        "normal" => {
+            let mut g = generator(input)?;
+            let (loc, scale, n) = (input.f64("loc")?, input.f64("scale")?, input.i64("n")? as usize);
+            let draws: Vec<f64> = (0..n).map(|_| g.normal(loc, scale)).collect();
+            out.put("draws", Array::from_f64(&[n], &draws));
+        }
+        "uniform" => {
+            let mut g = generator(input)?;
+            let (low, high, n) = (input.f64("low")?, input.f64("high")?, input.i64("n")? as usize);
+            let draws: Vec<f64> = (0..n).map(|_| g.uniform(low, high)).collect();
+            out.put("draws", Array::from_f64(&[n], &draws));
+        }
+        "permutation" => {  // permutations of 0..m for each m of "sizes", one after another
+            let mut g = generator(input)?;
+            let mut draws = Vec::new();
+            for m in input.i64s("sizes")? {
+                draws.extend(g.permutation(m as usize));
+            }
+            out.put("draws", Array::from_i64(&[draws.len()], &draws));
+        }
+        "world_mixed" => {  // the draws a world's moment interleaves: a permutation of the biters,
+            // a plant's regrowth, two normals a word heard, a uniform, an integer
+            let mut g = generator(input)?;
+            let n = input.i64("n")? as usize;
+            let mut draws = Vec::new();
+            for k in 0..n {
+                draws.extend(g.permutation(k % 11).into_iter().map(|v| v as f64));
+                draws.push(g.random());
+                draws.push(g.normal(0.0, 0.25));
+                draws.push(g.normal(0.0, 0.25));
+                draws.push(g.uniform(1.0, 23.0));
+                draws.push(g.integers(0, (k % 5) as i64 + 1) as f64);
+                draws.push(g.standard_normal());
+            }
+            out.put("draws", Array::from_f64(&[draws.len()], &draws));
         }
         "seeded" => {  // `default_rng(tuple of integers)`: its state, then draws as "mixed"
             let g0 = rng::Pcg64::from_entropy(&input.u64s("entropy")?);

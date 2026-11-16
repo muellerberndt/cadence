@@ -1,6 +1,7 @@
 """The core's shared primitives against NumPy: the generator draw for draw (``random``,
-``integers`` over small and large ranges, ``choice`` with probabilities, and the interleaved
-draws of a moment), the sums (pairwise, the dot product in order, the mean) and the selection
+``integers`` over small and large ranges, ``choice`` with probabilities, ``permutation``,
+``standard_normal`` and ``normal`` by the ziggurat, ``uniform``, and the interleaved draws of a
+moment and of a world's moment), the sums (pairwise, the dot product in order, the mean) and the selection
 of the sparse code (``argpartition``, NumPy's introselect, ties and all). Bitwise, or it fails;
 NumPy's own dot runs in BLAS natively, and its gap is shown. On x86 with AVX2 or AVX-512 NumPy
 selects with its own SIMD routine, which arranges ties otherwise: run this on an ARM machine or
@@ -58,6 +59,56 @@ for seed in (0, 1, 12345, 2**40 + 7):
         theirs.append(float(ref.integers(0, k % 7 + 2)))
     same(f"interleaved, seed {seed}", core.probe("mixed", n=np.int64(200), **state)["draws"],
          np.array(theirs))
+
+# the shuffle's draws (``permutation``), the normal ziggurat (``standard_normal``, ``normal``,
+# its tail and wedges among a million draws) and ``uniform``, each from a buffered state and
+# interleaved as a world's moment draws them
+for seed in (0, 1, 12345, 2**40 + 7):
+    rng = np.random.default_rng(seed)
+    rng.random()
+    rng.integers(0, 5)  # half a draw buffered: the shuffle's 32-bit draws take it first
+    state = generator_state(rng)
+
+    def ref() -> np.random.Generator:
+        g = np.random.Generator(np.random.PCG64())
+        g.bit_generator.state = rng.bit_generator.state
+        return g
+
+    sizes = np.array([0, 1, 2, 3, 7, 50, 200, 1000, 70000], dtype=np.int64)
+    g = ref()
+    theirs = np.concatenate([g.permutation(int(m)) for m in sizes]).astype(np.int64)
+    same(f"permutation, seed {seed}", core.probe("permutation", sizes=sizes, **state)["draws"], theirs)
+    n = 1_000_000 if seed == 0 else 20_000
+    g = ref()
+    got = core.probe("standard_normal", n=np.int64(n), **state)
+    same(f"standard_normal x{n}, seed {seed}", got["draws"], g.standard_normal(n))
+    g2 = ref()
+    each = np.array([g2.standard_normal() for _ in range(300)])
+    same(f"standard_normal one by one, seed {seed}", got["draws"][:300], each)
+    for loc, scale in ((0.0, 0.25), (3.0, 1.5), (-1e3, 7e-3)):
+        g = ref()
+        same(f"normal({loc}, {scale}), seed {seed}",
+             core.probe("normal", loc=np.float64(loc), scale=np.float64(scale), n=np.int64(500),
+                        **state)["draws"],
+             np.array([g.normal(loc, scale) for _ in range(500)]))
+    for low, high in ((0.0, 1.0), (1.0, 23.0), (-3.5, 2.25), (-np.pi, np.pi)):
+        g = ref()
+        same(f"uniform({low:.3g}, {high:.3g}), seed {seed}",
+             core.probe("uniform", low=np.float64(low), high=np.float64(high), n=np.int64(500),
+                        **state)["draws"],
+             np.array([g.uniform(low, high) for _ in range(500)]))
+    g = ref()
+    theirs = []
+    for k in range(400):
+        theirs.extend(float(v) for v in g.permutation(k % 11))
+        theirs.append(g.random())
+        theirs.append(g.normal(0.0, 0.25))
+        theirs.append(g.normal(0.0, 0.25))
+        theirs.append(g.uniform(1.0, 23.0))
+        theirs.append(float(g.integers(0, k % 5 + 1)))
+        theirs.append(g.standard_normal())
+    same(f"a world's interleaved draws, seed {seed}",
+         core.probe("world_mixed", n=np.int64(400), **state)["draws"], np.array(theirs))
 
 # a generator seeded from a tuple of integers (``default_rng((seed, draws))``: SeedSequence)
 for entropy in ((0, 0), (1777165801, 0), (1777165801, 37), (2**31 - 1, 2**33 + 5), (7,),
