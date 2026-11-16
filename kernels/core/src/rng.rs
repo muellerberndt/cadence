@@ -105,3 +105,80 @@ impl Pcg64 {
         self.bounded(n as u64 - 1) as usize
     }
 }
+
+// NumPy's `SeedSequence` (Melissa O'Neill's hash mixing, 32-bit words, a pool of four)
+const INIT_A: u32 = 0x43b0_d7e5;
+const MULT_A: u32 = 0x931e_8875;
+const INIT_B: u32 = 0x8b51_f9dd;
+const MULT_B: u32 = 0x58f3_8ded;
+const MIX_MULT_L: u32 = 0xca01_f9dd;
+const MIX_MULT_R: u32 = 0x4973_f715;
+const XSHIFT: u32 = 16;
+const POOL: usize = 4;
+
+fn hashmix(value: u32, hash_const: &mut u32) -> u32 {
+    let mut value = value ^ *hash_const;
+    *hash_const = hash_const.wrapping_mul(MULT_A);
+    value = value.wrapping_mul(*hash_const);
+    value ^ (value >> XSHIFT)
+}
+
+fn mix(x: u32, y: u32) -> u32 {
+    let result = MIX_MULT_L.wrapping_mul(x).wrapping_sub(MIX_MULT_R.wrapping_mul(y));
+    result ^ (result >> XSHIFT)
+}
+
+impl Pcg64 {
+    /// `np.random.default_rng(entropy)` for a sequence of nonnegative integers (a tuple such as
+    /// `(seed, draws)`): each integer as its 32-bit words from the lowest (0 as one word), the
+    /// words mixed into `SeedSequence`'s pool, four 64-bit words drawn from it, and PCG64 seeded
+    /// with the first two as its state and the last two as its stream.
+    pub fn from_entropy(entropy: &[u64]) -> Pcg64 {
+        let mut words: Vec<u32> = Vec::new();
+        for &n in entropy {
+            if n == 0 {
+                words.push(0);
+            }
+            let mut n = n;
+            while n > 0 {
+                words.push(n as u32);
+                n >>= 32;
+            }
+        }
+        let mut pool = [0u32; POOL];
+        let mut hash_const = INIT_A;
+        for (i, slot) in pool.iter_mut().enumerate() {
+            *slot = hashmix(words.get(i).copied().unwrap_or(0), &mut hash_const);
+        }
+        for src in 0..POOL {
+            for dst in 0..POOL {
+                if src != dst {
+                    pool[dst] = mix(pool[dst], hashmix(pool[src], &mut hash_const));
+                }
+            }
+        }
+        for &word in words.iter().skip(POOL) {
+            for slot in pool.iter_mut() {
+                *slot = mix(*slot, hashmix(word, &mut hash_const));
+            }
+        }
+        // `generate_state(4, np.uint64)`: eight 32-bit words, read two at a time, low first
+        let mut hash_const = INIT_B;
+        let mut state = [0u64; 4];
+        for i in 0..8 {
+            let mut value = pool[i % POOL] ^ hash_const;
+            hash_const = hash_const.wrapping_mul(MULT_B);
+            value = value.wrapping_mul(hash_const);
+            value ^= value >> XSHIFT;
+            state[i / 2] |= (value as u64) << (32 * (i % 2));
+        }
+        let initstate = ((state[0] as u128) << 64) | state[1] as u128;
+        let initseq = ((state[2] as u128) << 64) | state[3] as u128;
+        // `pcg_setseq_128_srandom_r`
+        let mut g = Pcg64 { state: 0, inc: (initseq << 1) | 1, has_uint32: false, uinteger: 0 };
+        g.next_u64();
+        g.state = g.state.wrapping_add(initstate);
+        g.next_u64();
+        g
+    }
+}

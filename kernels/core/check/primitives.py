@@ -59,6 +59,20 @@ for seed in (0, 1, 12345, 2**40 + 7):
     same(f"interleaved, seed {seed}", core.probe("mixed", n=np.int64(200), **state)["draws"],
          np.array(theirs))
 
+# a generator seeded from a tuple of integers (``default_rng((seed, draws))``: SeedSequence)
+for entropy in ((0, 0), (1777165801, 0), (1777165801, 37), (2**31 - 1, 2**33 + 5), (7,),
+                (3, 1, 4, 1, 5, 9), (2**64 - 1, 0, 12)):
+    ref = np.random.default_rng(entropy)
+    held = generator_state(ref)
+    got = core.probe("seeded", entropy=np.array(entropy, dtype=np.uint64), n=np.int64(100))
+    same(f"seeded {entropy}: state", np.concatenate([got["state"], got["inc"]]),
+         np.concatenate([held["state"], held["inc"]]))
+    theirs = []
+    for k in range(100):
+        theirs.append(float(ref.integers(k % 9 + 1)))
+        theirs.append(ref.random())
+    same(f"seeded {entropy}: draws", got["draws"], np.array(theirs))
+
 for n in (1, 3, 7, 8, 9, 16, 31, 128, 129, 200, 1000, 4099):
     a = np.random.default_rng(n).normal(size=n) * 10.0 ** np.random.default_rng(n + 1).integers(
         -3, 4, size=n)
