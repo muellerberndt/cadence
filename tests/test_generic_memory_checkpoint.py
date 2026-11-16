@@ -113,8 +113,11 @@ def test_a_file_of_the_formats_before_0_85_is_refused_naming_the_release_that_lo
         cd.Brain.load(learner)
     other = tmp_path / "other.npz"
     np.savez(other, brain=np.array(json.dumps({**meta, "format": "cadence-brain/9"})), **arrays)
-    with pytest.raises(ValueError, match="unsupported Brain checkpoint format"):
+    with pytest.raises(ValueError, match="unsupported Brain checkpoint format") as refused:
         cd.Brain.load(other)
+    told = str(refused.value)  # the format found, the formats read, what reads it
+    assert "'cadence-brain/9'" in told and "cadence-brain/5" in told
+    assert f"cadence-net {cd.__version__} reads" in told and "a newer one" in told
 
 
 @pytest.mark.parametrize(

@@ -47,6 +47,21 @@ twelve founders: the letter from the sound within .021 of a CTC transformer trai
 gate holds), characters .048 under it (its gate fails), the gap in saying a letter once it is
 preferred; the reading is on the issue.
 
+### Fixes
+
+- **A held message emptied at a boundary continues after a load.** A brain composed with
+  `message=` and `message_boundary=` (without `message_boundary_holds`) raised `IndexError` at its
+  first moment after `Brain.load`, since 0.99.0: such a message saves no counts (every count is
+  zero without roles), and a load gave it none. A load rebuilds them; the files are as before.
+- **A checkpoint of a later format** is refused with the format found, the formats this release
+  reads and that the release that wrote it (or a newer one) reads it.
+- **`attention=True` with `recall_strength=True`** is refused with the reason in the user's own
+  settings: `attention=True` reads a window of two events, which a slot's strength does not
+  compose with (it named `recall_window`, which the user had not set).
+- A brain with a held message from a boundary (`message_boundary_holds=True`) continues after a
+  load within 6.6e-12 of its settled activity on the compiled kernel, every action the same:
+  #346, on the 0.102.0 milestone.
+
 ### Records of bound moments, a voice, and senses for things and sound (#342, #344)
 
 - **`Brain.compose(senses=..., code=units, bound=records)`** (opt-in): one `LongTermMemory` of

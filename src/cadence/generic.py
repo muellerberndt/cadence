@@ -3720,6 +3720,12 @@ class Brain:
                 raise ValueError("attention=True needs learned_code=units")
             if options.get("recall", True) is not True:
                 raise ValueError("attention=True needs recall enabled")
+            if options.get("recall_strength"):
+                raise ValueError(
+                    "recall_strength does not compose with attention=True: attention=True reads "
+                    "a window of two events (recall_window=2), and a slot's strength holds over "
+                    "single events; compose the brain with one of the two"
+                )
             options.setdefault("recall", True)
             options.setdefault("recall_window", 2)
             options.setdefault("recall_next", True)
@@ -7897,10 +7903,17 @@ class Brain:
             if "brain" not in archive:
                 raise ValueError("not a Brain checkpoint; use Learner.load for a learner")
             saved = json.loads(str(archive["brain"]))
-            if not isinstance(saved, dict) or saved.get("format") not in (
+            readable = (
                 BRAIN_FORMAT, MATURITY_FORMAT, FADE_FORMAT, LONGTERM_FORMAT, FEATURES_FORMAT
-            ):
-                raise ValueError("unsupported Brain checkpoint format")
+            )
+            found = saved.get("format") if isinstance(saved, dict) else None
+            if found not in readable:
+                from . import __version__ as _version
+                raise ValueError(
+                    f"unsupported Brain checkpoint format {found!r}: cadence-net "
+                    f"{_version} reads {', '.join(readable)}; a file of a later format is "
+                    "read by the cadence-net release that wrote it, or a newer one"
+                )
             saved_memories = saved.get("memories")
             with_records = isinstance(saved_memories, dict) and "longterm" in saved_memories
             named = saved.get("features", [])
@@ -8117,6 +8130,9 @@ class Brain:
                 message.held = data["message/held"].astype(bool)
                 if message.roles:
                     message.counts = data["message/counts"].astype(np.int64)
+                else:  # without roles every count is zero and none is saved: as the streams
+                    message.counts = np.zeros((len(message.trace), message.groups),
+                                              dtype=np.int64)
                 message.previous = data["message/previous"].astype(float)
                 if message.reads:
                     message.maps = [
