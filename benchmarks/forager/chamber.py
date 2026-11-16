@@ -16,7 +16,7 @@ with no code at all.
    teacher shows. Every ``SWAP`` moments the halves change places, the worlds are drawn anew and
    the streams begin a new scene (``Brain.reset``).
 2. **Agreement while taught**: the share of the brain's answers that are the teacher's, over the
-   last ``SWAP`` moments of the life.
+   last ``SWAP`` moments of lessons before each reading.
 3. **Agreement on its own path**: a frozen copy (``copy.deepcopy``, greedy acts, no lesson) lives
    ``HELD`` moments in ``BODIES`` worlds no lesson used, every body moving as the copy answers;
    the share of its answers that are the teacher's at the states it reaches, by action, and the
@@ -26,9 +26,12 @@ with no code at all.
    newborn brain of the same founder settling on every moment (greedy acts the world does not
    take), so every arm is read on the same states: the copy's agreement with the teacher, and the
    turn in the cortex. On the moments at which a plant is in sight and the teacher turns left,
-   turns right or walks on toward it, a ridge readout of that turn is fitted on the even moments
-   and read on the odd ones, from the observation itself, its code, and the association's
-   settled activity of the copy and of the newborn. Balanced accuracy, chance one third.
+   turns right or walks on (toward the plant, or from a rock or a wall in the way), a ridge
+   readout of that turn is fitted on every other sample, in the order the moments and the bodies
+   give them, and read on the rest, from the observation itself, its code, and the association's
+   settled activity of the copy and of the newborn. Balanced accuracy, chance one third. The same
+   readout fitted on the even bodies and read on the odd ones (``<source>_bodies``, added after
+   the declared run) keeps each body's moments on one side.
 
     PYTHONPATH=src python benchmarks/forager/chamber.py --founders 0 1 --out dev.json
 """
@@ -166,7 +169,7 @@ def teacher_path(brain: cd.Brain, newborn: cd.Brain, founder: int, *, moments: i
     agree: list[np.ndarray] = []
     right = np.zeros((len(ACTIONS), 2))
     samples: dict[str, list] = {"turn": [], "observation": [], "code": [], "state": [],
-                                "newborn": []}
+                                "newborn": [], "body": []}
     for _ in range(moments):
         sensed = world.senses()
         shown = teach(world)
@@ -179,6 +182,7 @@ def teacher_path(brain: cd.Brain, newborn: cd.Brain, founder: int, *, moments: i
         if toward.any():
             x = flat(sensed)
             samples["turn"].append(shown[toward])
+            samples["body"].append(np.flatnonzero(toward))
             samples["observation"].append(x[toward])
             samples["code"].append(frozen.observation_code(sensed)[toward])
             samples["state"].append(association(frozen)[toward])
@@ -192,12 +196,15 @@ def teacher_path(brain: cd.Brain, newborn: cd.Brain, founder: int, *, moments: i
 
 def readout(samples: dict[str, list]) -> dict[str, float]:
     """Balanced accuracy of a ridge readout of the turn (left, walk on, right) from each source,
-    fitted on the even moments and read on the odd ones."""
+    fitted on every other sample and read on the rest (the declared split), and fitted on the
+    even bodies and read on the odd ones (``<source>_bodies``)."""
     turn = np.concatenate(samples["turn"])
     classes = [LEFT, WALK, RIGHT]
     keep = np.isin(turn, classes)
     turn = turn[keep]
-    half = np.arange(len(turn)) % 2 == 0
+    splits = {"": np.arange(len(turn)) % 2 == 0}
+    if samples.get("body"):
+        splits["_bodies"] = np.concatenate(samples["body"])[keep] % 2 == 0
     out = {}
     for source in ("observation", "code", "state", "newborn"):
         if not samples[source]:
@@ -205,11 +212,13 @@ def readout(samples: dict[str, list]) -> dict[str, float]:
         x = np.concatenate(samples[source])[keep]
         x = np.hstack([x, np.ones((len(x), 1))])
         y = np.eye(3)[[classes.index(t) for t in turn]]
-        w = np.linalg.solve(x[half].T @ x[half] + RIDGE * np.eye(x.shape[1]), x[half].T @ y[half])
-        said = np.asarray(classes)[np.argmax(x[~half] @ w, axis=1)]
-        recalls = [float(np.mean(said[turn[~half] == c] == c)) for c in classes
-                   if (turn[~half] == c).any()]
-        out[source] = round(float(np.mean(recalls)), 3)
+        for tag, half in splits.items():
+            w = np.linalg.solve(x[half].T @ x[half] + RIDGE * np.eye(x.shape[1]),
+                                x[half].T @ y[half])
+            said = np.asarray(classes)[np.argmax(x[~half] @ w, axis=1)]
+            recalls = [float(np.mean(said[turn[~half] == c] == c)) for c in classes
+                       if (turn[~half] == c).any()]
+            out[source + tag] = round(float(np.mean(recalls)), 3)
     out["moments"] = int(len(turn))
     return out
 
@@ -240,9 +249,10 @@ def mean(readings: list[dict]) -> dict:
         "own": lambda r: r["own"]["agreement"],
         "eaten": lambda r: r["own"]["eaten"],
         "teacher": lambda r: r["teacher"]["agreement"],
-        **{f"turn_{source}": (lambda r, s=source: r["teacher"]["readout"][s])
-           for source in ("observation", "code", "state", "newborn")},
     }
+    read = readings[0]["teacher"]["readout"]
+    for source in [key for key in read if key != "moments"]:
+        pick[f"turn_{source}"] = lambda r, s=source: r["teacher"]["readout"][s]
     return {name: round(float(np.mean([f(r) for r in readings])), 3)
             for name, f in pick.items()}
 

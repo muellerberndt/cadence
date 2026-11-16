@@ -66,7 +66,8 @@ The composed System 1 brain, with optional System 2 `observers` in the same grap
   drawn after every other part; `"observation"` (opt-in) holds the observation in the sensory
   region and keys the memories on the code alone. Every memory keys on the code whichever the
   cortex reads. Refused by name: another value, either opt-in without `code`, beside a learned
-  code, on an image brain or beside a trained module
+  code, on an image brain or beside a trained module, and `"observation"` beside a held message
+  (`message=`), which would hear the observation itself
   ([what the cortex reads](senses.md#what-the-cortex-reads)).
 - `learned_code=units` (a vector brain, without `code`): adds a `code` region of that many
   neurons that settles with the brain to a learned sparse code of the observation, read by the

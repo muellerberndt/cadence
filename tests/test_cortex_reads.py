@@ -226,6 +226,21 @@ def test_cortex_reads_is_refused_where_it_reads_nothing(options, match):
         cd.Brain.compose(actions=3, cortex_reads=reads, **options)
 
 
+def test_a_held_message_hears_the_code_and_is_refused_beside_the_observation():
+    both = cd.Brain.compose(inputs=40, actions=3, code=64, cortex_reads="both", message=24,
+                            message_boundary=39, message_boundary_holds=True, longterm=8, seed=0,
+                            backend="cpu")
+    assert both.message.inputs == 64 and len(both.connectome.populations["longterm"]) == 64
+    with pytest.raises(ValueError, match='compose the brain with cortex_reads="both"'):
+        cd.Brain.compose(inputs=40, actions=3, code=64, cortex_reads="observation", message=24,
+                         seed=0, backend="cpu")
+
+
+def test_unset_is_the_founder():
+    assert cd.Brain.compose(inputs=40, actions=3, code=64, cortex_reads=None, seed=0).describe(
+    )["layout"]["code"]["cortex"] == "code"
+
+
 def test_the_constructor_takes_cortex_reads_with_the_inputs_it_needs():
     connectome = develop(Genome.composed(40, 3, code=64, seed=0), seed=0)
     with pytest.raises(ValueError, match="pass no inputs"):

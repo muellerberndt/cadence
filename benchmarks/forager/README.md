@@ -44,10 +44,13 @@ Every 300 moments a frozen copy is read on sixteen worlds no lesson used (150 mo
 - **On the teacher's path:** the teacher moves every body, and the copy and the founder's newborn
   brain settle on each moment, so every arm is read on the same states: the copy's agreement
   with the teacher, and **the turn in the cortex**, a ridge readout of the teacher's turn (left,
-  walk on, right, at the moments a plant is in sight and no bite) from the association's settled
-  activity, fitted on the even moments and read on the odd ones, balanced accuracy, chance one
-  third. The same readout from the observation and from its code is the ceiling of what the
-  senses hold.
+  walk on, right, at the moments a plant is in sight and no bite, a walk toward the plant or a
+  turn from a rock or a wall in the way) from the association's settled activity, fitted on every
+  other sample, in the order the moments and the bodies give them, and read on the rest;
+  balanced accuracy, chance one third. The same readout from the observation and from its code
+  reads what the senses hold.
+- **While taught:** the agreement of the brain's greedy answers with the teacher's, each right
+  after the moment's lesson, over the last 100 moments of lessons before the reading.
 
 A life's reading is the mean over its four readings.
 
@@ -101,6 +104,12 @@ Each cell is a life's mean over its four readings.
 | F1, the turn in the cortex | 12 of 12 (`both` .804 to .881, `code` .696 to .813; by .039 to .149) | holds |
 | F2, agreement on the teacher's path | 6 of 12 (`both` .632 to .713, `code` .605 to .729; mean .679 against .672) | fails |
 
+The declared readout is fitted on every other sample, so moments of one body fall on both
+sides of it. Fitted on the even bodies and read on the odd ones (`<source>_bodies`, added after
+the run; [receipt](results/bodies.json), founders 1011100 to 1011103 read again, every declared
+mean to the last digit), the state reads .806, .810, .884 and .872 with `both` against .737,
+.722, .826 and .756 with `code`, and the observation .848 to .903, the code .829 to .888.
+
 Without a bar, `both` against `code` on the same founders: on its own path the brain agrees
 with the teacher more on 12 of 12 (.601 against .500 on average) and eats more on 12 of 12 (8.04
 plants a body in 150 moments against 6.25; the teacher 11.5 to 14.3, a random body under 0.4);
@@ -116,11 +125,12 @@ against .498. The observation and its code hold the turn at .875 and .850 for a 
 
 **Located (F2).** On the teacher's path the walks make up about three in five moments, and with
 `both` the brain turns or bites at more of them. Read by action after the run (the reading's
-`by_action`, added for this) on the two founders where `both` falls furthest below `code`
+`by_action`, added for this; [receipt](results/by_action.json), the declared lives read again
+with their means to the last digit) on the two founders where `both` falls furthest below `code`
 (1011101 and 1011108), `both` agrees with the teacher's walks at .539 and .513 against .739 and
 .701, and with its turns and bites at .747 to .939 against .553 to .824. The lessons weigh every
-action alike, so a turn's row weighs about three times a walk's; the brain that reads the bearing
-learns the turns and moves the border between a turn and a walk off the teacher's. On its own path that border costs it no
-plants. Agreement over the actions, each weighed alike, reads .774 and .764 for `both` against
-.733 and .674 for `code` on those two founders.
+action alike, so a turn's row weighs about three times a walk's; the brain that reads the
+bearing learns the turns and moves the border between a turn and a walk off the teacher's. On
+its own path that border costs it no plants. Agreement over the actions, each weighed alike,
+reads .774 and .764 for `both` against .733 and .674 for `code` on those two founders.
 

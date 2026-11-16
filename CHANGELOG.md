@@ -31,7 +31,8 @@ The guide is [what the cortex reads](docs/senses.md#what-the-cortex-reads).
   as without it. `cortex_reads="observation"` holds the observation in the sensory region in
   place of the code, the routing of an image brain and of `Brain(connectome, code=units)`. Every
   memory keys on the code whichever the cortex reads (the recall memory, the associative store,
-  records of bound moments); the heard history hears what the sensory region holds. `"code"` is
+  records of bound moments, and a held message with the long-term records keyed on it, which
+  `"observation"` refuses); the heard history hears what the sensory region holds. `"code"` is
   the founder.
 - **Why.** With `code=units` a body's cortex read its senses only through the code: each field at
   unit length among every other, the largest sums kept. A body whose action follows a bearing or
@@ -49,7 +50,11 @@ The guide is [what the cortex reads](docs/senses.md#what-the-cortex-reads).
   those moments, and the brain that reads the bearing turns at more of them; by action it agrees
   more with the turns and the bites and less with the walks (two founders read after the run).
   `"observation"` reads .824 and 7.5 plants, and a brain without a code .788 and 6.0.
-SYMBOLS-CHANGELOG
+- **No change where the code matters** (the [symbols chamber](benchmarks/symbols/README.md)
+  with `--cortex-reads both`, a quick reading of its gates S1 to S7 on four fresh founders
+  against the same founders with the code alone): every gate holds on every founder in both
+  arms, at the same readings, a name heard alone bringing its thing back from the records and in
+  the settled state at 1.00; the controls of S3 move within their bar.
 - A brain with `cortex_reads` other than `"code"` saves as `cadence-brain/5` with the feature
   `cortex_reads` (the setting under `cortex_reads` in the metadata and the composition), which
   0.101.0 refuses by name. `describe()` reports it under the layout's `code` as `cortex` and

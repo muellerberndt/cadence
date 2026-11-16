@@ -630,13 +630,17 @@ def _code_units(code: Any) -> int:
 # founder, the sensory region is the code); the observation itself (the sensory region holds it,
 # and the code keys the memories alone); or both (the sensory region is the code, and a region of
 # one neuron per input beside it, ``observation``, holds the observation itself). Every memory
-# keys on the code whichever the cortex reads.
+# keys on the code whichever the cortex reads: a held message hears the sensory region's code,
+# and the observation itself is refused beside one.
 _CORTEX_READS = ("code", "observation", "both")
 _OBSERVATION = "observation"  # the region that holds the observation itself beside the code
 
 
 def _cortex_reads(value: Any) -> str:
-    """``cortex_reads`` as given: ``"code"``, ``"observation"`` or ``"both"``."""
+    """``cortex_reads`` as given: ``"code"``, ``"observation"`` or ``"both"``; None, unset, is the
+    founder ``"code"``."""
+    if value is None:
+        return "code"
     if not isinstance(value, str) or value not in _CORTEX_READS:
         raise ValueError(
             'cortex_reads is what the cortex of a brain with code=units reads: "code" (the '
@@ -2748,7 +2752,9 @@ class Brain:
     region holds the observation itself) or ``"both"`` (with ``inputs`` and a population named
     ``observation`` of one neuron per input, which holds the observation itself beside the
     code, ``observation_index``); unset, the code with ``inputs`` and the observation without.
-    Every memory keys on the code whichever the cortex reads.
+    Every memory keys on the code whichever the cortex reads; ``"observation"`` refuses a held
+    message, which hears what the sensory region holds. A population named ``observation`` is
+    driven only with ``"both"``.
     ``sparse_code`` holds the ``PatternSeparator``, ``code_width`` the key width
     (``Genome.observation_width`` gives it before the brain is built, to size the ``recall`` and
     ``next`` regions of a custom anatomy). A memory keyed on the code numbers its key
@@ -2948,6 +2954,12 @@ class Brain:
         self._coded_keys = bool(units) or bool(learned) or self.fields is not None
         recalled = _recall_genes(recall, genes)  # the recall_* genes leave ``genes`` here
         messaged = _message_genes(message, genes)  # and the message_* genes here
+        if messaged and cortex_reads == "observation":
+            raise ValueError(
+                'cortex_reads="observation" holds the observation itself in the sensory region, '
+                "which a held message hears and long-term records key on: compose the brain with "
+                'cortex_reads="both", whose sensory region and message hold the code'
+            )
         for name in [name for name in genes if name.startswith("message_")]:
             del genes[name]
         kept_records = _longterm_genes(longterm, genes)  # and the longterm_* genes here

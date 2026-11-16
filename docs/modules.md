@@ -1114,7 +1114,7 @@ Each row below was read from the library's own refusal.
 | Learned fields | A vector brain; `code` or `learned_code` beside them; an image under 8 by 8 pixels; fewer than 2 fields | An image `inputs` with `learned_fields` alone |
 | `ports`, `fields_motor` | A brain without `learned_fields` | Add `learned_fields=features` |
 | A learned code | An image brain; `code` beside it; the `torch` backend | A vector brain on `cpu` or `mlx` |
-| `cortex_reads` | A value other than `"code"`, `"both"` and `"observation"`; `"both"` or `"observation"` without `code=units`, beside a learned code, on an image brain or beside a trained module; a custom anatomy that reads both without a population `observation` of one neuron per input | `code=units, cortex_reads="both"` on a vector brain; `Genome.composed(..., cortex_reads="both")` lays out an anatomy |
+| `cortex_reads` | A value other than `"code"`, `"both"` and `"observation"`; `"both"` or `"observation"` without `code=units`, beside a learned code, on an image brain or beside a trained module; `"observation"` beside a held message; a custom anatomy that reads both without a population `observation` of one neuron per input | `code=units, cortex_reads="both"` on a vector brain; `Genome.composed(..., cortex_reads="both")` lays out an anatomy |
 | `attention=True` | A brain without `learned_code`, or with `recall=False` | `learned_code=units, attention=True` |
 | A held message | An image brain; a learned code | A vector brain, with or without `code=units` |
 | Long-term records | A brain without `message=units`, or without a turn | `message_boundary=channel, message_boundary_holds=True`, or `longterm_turn=channel` |

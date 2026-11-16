@@ -323,8 +323,10 @@ chooses what the cortex reads:
 | `"observation"` (opt-in) | the observation itself, as a brain without a code reads it; the code keys the memories alone, as on an image brain | a wide observation whose code serves to bound the memories' keys |
 
 Every memory keys on the code whichever the cortex reads: the recall memory, the associative
-store and records of bound moments. The heard history hears what the sensory region holds (the
-code with `"code"` and `"both"`, the observation with `"observation"`). The brain with
+store, records of bound moments, and with `"code"` and `"both"` a held message and the long-term
+records keyed on it, which hear the sensory region's code (`"observation"` refuses a held
+message, which would hear the observation itself). The heard history hears what the sensory
+region holds (the code with `"code"` and `"both"`, the observation with `"observation"`). The brain with
 `cortex_reads="both"` is the brain with the code plus the `observation` region and its one
 projection into the first module, at the sensory scale (`scales={"sensory": ...}`), drawn after
 every other part, so every other synapse and bias starts as in the brain with the code: it
@@ -359,16 +361,23 @@ path its agreement is .679 against .672, higher on 6 of 12 (the declared bar was
 are three in five of those moments, and the brain that reads the bearing turns at more of them.
 `"observation"` reads .824, .571 and 7.5 plants, and a brain without a code .788, .471 and 6.0.
 
-SYMBOLS-READING
+In the [symbols chamber](../benchmarks/symbols/README.md#the-senses-beside-the-code-01011),
+where a brain learns names from a trainer, every gate holds on four fresh founders with
+`"both"` as with the code alone, at the same readings: a name heard alone brings its thing back
+from the records and in the settled state at 1.00, a reward teaches names and colours in the same
+exchanges, and a heard name draws the focus as before.
 
 A checkpoint of a brain with `cortex_reads` other than `"code"` saves as `cadence-brain/5` with
 the feature `cortex_reads`, which 0.101.0 refuses by name; `describe()` names it under the
 layout's `code` as `cortex` and under the genes. `grow` keeps it, and `graft` carries the
 `observation` region between brains that hold it. Refused with `ValueError`: a value other than
 the three, `cortex_reads` other than `"code"` without `code=units`, beside a learned code, on an
-image brain, and beside a trained module; `Lives` refuses it as it refuses a code, and `grow`
-and `retune` refuse to change it. A custom anatomy reads both with a population named
-`observation` of one neuron per input (`Genome.composed(..., cortex_reads="both")` lays it out).
+image brain, and beside a trained module, and `"observation"` beside a held message; `Lives`
+refuses it as it refuses a code, and `grow` and `retune` refuse to change it. A custom anatomy
+reads both with a population named `observation` of one neuron per input
+(`Genome.composed(..., cortex_reads="both")` lays it out), which is driven only with
+`cortex_reads="both"`. With `surprise=True`, `places` gives a place to each neuron of the
+sensory region, the code's units; the `observation` region takes no place in the focus.
 
 ## Senses by name
 

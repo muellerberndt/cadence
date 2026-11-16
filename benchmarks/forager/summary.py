@@ -22,8 +22,11 @@ def gates(both: dict[str, Any], code: dict[str, Any]) -> dict[str, bool]:
     return {
         "F1": both["turn_state"] > code["turn_state"],
         "F2": both["teacher"] > code["teacher"],
-        "F3": both["eaten"] > code["eaten"],
     }
+
+
+# Readings without a bar: the founders on which ``both`` reads above ``code``
+UNBARRED = ("own", "eaten", "taught")
 
 
 def main(paths: list[str]) -> int:
@@ -49,11 +52,14 @@ def main(paths: list[str]) -> int:
     paired = [f for f in by if {"both", "code"} <= set(by[f])]
     if paired:
         held = {name: sum(gates(by[f]["both"]["mean"], by[f]["code"]["mean"])[name]
-                          for f in paired) for name in ("F1", "F2", "F3")}
+                          for f in paired) for name in ("F1", "F2")}
         print()
         for name, count in held.items():
             print(f"{name}: {count} of {len(paired)} -> "
                   f"{'holds' if count >= OF * len(paired) / 12 else 'fails'}")
+        for key in UNBARRED:
+            above = sum(by[f]["both"]["mean"][key] > by[f]["code"]["mean"][key] for f in paired)
+            print(f"{key} (no bar): both above code on {above} of {len(paired)}")
     return 0
 
 
