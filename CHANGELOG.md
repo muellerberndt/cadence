@@ -40,6 +40,7 @@ The guide is [records of bound moments](docs/memory.md#records-of-bound-moments-
   where 0.100.0 added a record's strength and learned heads (25 conflicting places), and its
   options are to fold into fewer names first; its declared run at a million records follows on
   the merged code.
+
 The soft lesson for speech (#304) shipped in 0.100.0. Its round 5, read at its sixth pass on
 twelve founders: the letter from the sound within .021 of a CTC transformer trained offline (its
 gate holds), characters .048 under it (its gate fails), the gap in saying a letter once it is
