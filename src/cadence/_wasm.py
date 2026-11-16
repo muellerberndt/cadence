@@ -164,6 +164,7 @@ _ARRAYS = {"d": np.float64, "w": np.float64, "q": np.int64, "i": np.int64, "?": 
 
 _KINDS = {
     "settle_rows": "wwwddqdqqqqq?dbfffffbffbddqnfddddbqqqqfffdbnfbdbww",
+    "settle_lives": "wwwddqdqqqqq?dbfffffbffbddqnfddddbqqqqfffdbnfbdbww",
     "residual_rows": "wwwddqdqqqqqdbfffffbfbddqnfddddbqqqqfffdbwwbbw",
     "solve_rows": "wwwddqdqqqqq?dfffffffddqnfddddqqqqdnnfwwbbbfffwwwq",
     "fast_solve": "wwwdqqqqffffnnffwqw",

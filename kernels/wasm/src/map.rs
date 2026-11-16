@@ -222,7 +222,7 @@ pub unsafe extern "C" fn map_settle(
         weight: View { p: small.add(3), n0: 1, n1: 1, len: 1 }, anchor: one(small.add(1)),
         anchor_gain: View { p: anchor_gain, n0: n, n1: 1, len: n }, has_apical: has_apical != 0,
         pool_of, pool_index, pool_starts, pool_run, fraction, floor2, tiny,
-        held: one(small.add(2)), has_held: false,
+        held: one(small.add(2)), has_held: false, per_life: false,
     };
     let change = View { p: small.add(4), n0: 1, n1: 1, len: 1 };
     let kept_view = View { p: kept_room, n0: kept_len, n1: 1, len: kept_len };

@@ -196,6 +196,8 @@ pub(crate) struct Net {
     pub tiny: f64,
     pub held: View<f64>,
     pub has_held: bool,
+    /// each row a life of its own: `flat` and `flat_apical` hold one row of blocks a life
+    pub per_life: bool,
 }
 
 impl Net {
@@ -296,6 +298,20 @@ unsafe fn block_product(
     let na = net.start(a + 1) - a0;
     let nb = net.start(b + 1) - net.start(b);
     let batch = net.batch;
+    if net.per_life {  // each row through its own life's block
+        for row in 0..batch {
+            product(
+                columns.add(batch * a0 + row * na),
+                flat.p.add(row * flat.n1 + net.offset.get(k) as usize),
+                cache.add(c0 + row * nb),
+                1,
+                na,
+                nb,
+                keep,
+            );
+        }
+        return;
+    }
     product(
         columns.add(batch * a0),
         flat.p.add(net.offset.get(k) as usize),
@@ -1128,6 +1144,7 @@ pub(crate) unsafe fn net_of(
         tiny: apical[2],
         held: get!(24, f64, FLOAT64),
         has_held: has_held != 0,
+        per_life: false,
     };
     let ranges = if net.starts.len > 0 { net.starts.len - 1 } else { 0 };
     let net = Net { ranges, ..net };
@@ -1203,6 +1220,51 @@ pub unsafe extern "C" fn settle_rows(
         Ok(x) => x,
         Err(code) => return code,
     };
+    let freezable = take!(freezable, u8, BOOL, 25);
+    let given = take!(given, f64, FLOAT64, 26);
+    let change = take!(activity_change, f64, FLOAT64, 27);
+    let kept = take!(kept, f64, FLOAT64, 28);
+    if freezable.len != net.ranges || change.len != net.batch || kept.len != net.kept_len() {
+        return refused(28);
+    }
+    if has_given != 0 && given.len != kept.len {
+        return refused(26);
+    }
+    settle(&net, freezable, steps.max(0) as usize, tolerance, use_tolerance != 0, given,
+           has_given != 0, change, kept)
+}
+
+/// `settle_rows` for lives: each row a life of its own, `flat` (lives, blocks) and `flat_apical`
+/// (lives, apical blocks) one row of a life's synapses each; every other argument as in
+/// `settle_rows`, the bias inside each row's `standing`.
+#[no_mangle]
+pub unsafe extern "C" fn settle_lives(
+    v: u32, a: u32, s: u32, standing: u32, flat: u32, pairs: u32, flat_apical: u32,
+    apical_pairs: u32, starts: u32, pair_pre: u32, pair_post: u32, offset: u32,
+    freezable: u32, keep: u32, masked: i32, dt: f64, slope: f64, threshold: f64, rest: f64,
+    leak: f64, has_adapt: i32, adapt_strength: f64, adapt_tau: f64, has_nudge: i32,
+    target: u32, nmask: u32, gid: u32, ngroups: i32, beta: f64, softmax_t: u32, weight: u32,
+    anchor: u32, anchor_gain: u32, has_apical: i32, pool_of: u32, pool_index: u32,
+    pool_starts: u32, pool_run: u32, fraction: f64, floor2: f64, tiny: f64, held: u32,
+    has_held: i32, steps: i32, tolerance: f64, use_tolerance: i32, given: u32, has_given: i32,
+    activity_change: u32, kept: u32,
+) -> i32 {
+    let ids = ids30([
+        v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, pair_pre, pair_post,
+        offset, keep, target, nmask, gid, softmax_t, weight, anchor, anchor_gain, pool_of,
+        pool_index, pool_starts, pool_run, held, 0, 0, 0, 0, 0,
+    ]);
+    let net = match net_of(&ids, masked, [dt, slope, threshold, rest, leak], has_adapt,
+                           adapt_strength, adapt_tau, has_nudge, ngroups, beta, has_apical,
+                           [fraction, floor2, tiny], has_held) {
+        Ok(x) => Net { per_life: true, ..x },
+        Err(code) => return code,
+    };
+    for (k, x) in [(4, net.flat), (6, net.flat_apical)] {
+        if x.n0 != net.batch || (x.len > 0 && x.n1 < net.offset.get(net.pair_pre.len) as usize) {
+            return refused(k);
+        }
+    }
     let freezable = take!(freezable, u8, BOOL, 25);
     let given = take!(given, f64, FLOAT64, 26);
     let change = take!(activity_change, f64, FLOAT64, 27);
