@@ -1263,7 +1263,7 @@ pub unsafe extern "C" fn residual_rows(
 }
 
 /// `_solve_rows`: the check, then chunks of sweeps and their checks while a row is over
-/// `tolerance` and sweeps are left. `given` is the state's kept array (read where `has_given`,
+/// `tolerance` and sweeps are left, with the apical compartment where `has_apical` says so. `given` is the state's kept array (read where `has_given`,
 /// made current in place where `in_place`); `kept_a` and `kept_b` (zeros, `kept_len` long)
 /// take the chunks' states in turn. `report` (int64, 5) receives the sweeps, the checks, the
 /// last chunk's sweeps and which array holds what the state keeps (0 given, 1 `kept_a`, 2
@@ -1276,17 +1276,17 @@ pub unsafe extern "C" fn solve_rows(
     strength: f64, tau: f64, target: u32, nmask: u32, gid: u32, ngroups: i32, beta: f64,
     softmax_t: u32, weight: u32, anchor: u32, anchor_gain: u32, pool_of: u32, pool_index: u32,
     pool_starts: u32, pool_run: u32, held: u32, budget: i32, chunk: i32, tolerance: f64,
-    out: u32, given: u32, has_given: i32, in_place: i32, change: u32, kept_a: u32,
-    kept_b: u32, report: u32,
+    out: u32, given: u32, has_given: i32, in_place: i32, has_apical: i32, fraction: f64,
+    floor2: f64, tiny: f64, change: u32, kept_a: u32, kept_b: u32, report: u32,
 ) -> i32 {
     let ids = ids30([
         v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, pair_pre, pair_post,
         offset, keep, target, nmask, gid, softmax_t, weight, anchor, anchor_gain, pool_of,
         pool_index, pool_starts, pool_run, held, 0, 0, 0, 0, 0,
     ]);
-    // the off flags of a free solve: no mask, adaptation, nudge or compartment
+    // the off flags of a free solve: no mask, adaptation or nudge, no gain held
     let net = match net_of(&ids, 0, [dt, slope, threshold, rest, leak], 0, strength, tau, 0,
-                           ngroups, beta, 0, [1.0, 1.0, 0.0], 0) {
+                           ngroups, beta, has_apical, [fraction, floor2, tiny], 0) {
         Ok(x) => x,
         Err(code) => return code,
     };

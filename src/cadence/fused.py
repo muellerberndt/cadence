@@ -1533,12 +1533,18 @@ if njit is not None:
         given: np.ndarray,
         has_given: bool,
         in_place: bool,
+        has_apical: bool,
+        fraction: float,
+        floor2: float,
+        tiny: float,
     ) -> tuple[int, int, int, np.ndarray, np.ndarray]:
         """A free solve of a state whose activations ``s`` are published, in one compiled call:
         the check, then chunks of sweeps and their checks while a row is over ``tolerance``
         and sweeps are left, as ``Brain._equilibrate_local`` makes them one launch each, in place
-        on ``v``, ``a`` and ``s``. ``out`` ends on each row's error. Returns the sweeps, the
-        checks, the last chunk's sweeps and activity change, and what the state keeps."""
+        on ``v``, ``a`` and ``s``; a graph with an apical compartment (``has_apical``) settles
+        and is checked with it, no gain held. ``out`` ends on each row's error. Returns the
+        sweeps, the checks, the last chunk's sweeps and activity change, and what the state
+        keeps."""
         batch = v.shape[0]
         # variables and not the constants: to the compiler a constant argument is a type of its
         # own, and the kernels would compile again for the calls a launch makes
@@ -1547,8 +1553,8 @@ if njit is not None:
             v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, pair_pre,
             pair_post, offset, keep, off, dt, slope, threshold, rest, leak, off, strength,
             off, target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain,
-            off, pool_of, pool_index, pool_starts, pool_run, 1.0, 1.0, 0.0, held, off, out,
-            given, has_given, in_place,
+            has_apical, pool_of, pool_index, pool_starts, pool_run, fraction, floor2, tiny,
+            held, off, out, given, has_given, in_place,
         )
         used, checks, taken = 0, 1, 0
         change = np.zeros(batch)
@@ -1566,16 +1572,17 @@ if njit is not None:
                 v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, pair_pre,
                 pair_post, offset, freezable, keep, off, dt, slope, threshold, rest, leak,
                 off, strength, tau, off, target, nmask, gid, ngroups, beta, softmax_t,
-                weight, anchor, anchor_gain, off, pool_of, pool_index, pool_starts, pool_run,
-                1.0, 1.0, 0.0, held, off, min(chunk, budget - used), 0.0, off, kept, on,
+                weight, anchor, anchor_gain, has_apical, pool_of, pool_index, pool_starts,
+                pool_run, fraction, floor2, tiny, held, off, min(chunk, budget - used), 0.0,
+                off, kept, on,
             )
             used += taken
             kept = _check(
                 v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, pair_pre,
                 pair_post, offset, keep, off, dt, slope, threshold, rest, leak, off, strength,
                 off, target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain,
-                off, pool_of, pool_index, pool_starts, pool_run, 1.0, 1.0, 0.0, held, off,
-                out, kept, on, on,
+                has_apical, pool_of, pool_index, pool_starts, pool_run, fraction, floor2, tiny,
+                held, off, out, kept, on, on,
             )
             checks += 1
         return used, checks, taken, change, kept
@@ -2134,13 +2141,14 @@ def fused_solve(
     chunk: int,
     tolerance: float,
     products: Products | None,
+    apical: ApicalBlocks | None = None,
 ) -> tuple[np.ndarray, int, int, int, np.ndarray, Products] | None:
-    """A free solve without a mask, a nudge or a compartment in one compiled call, in place on a
-    C-ordered state of published activations ``s``: what ``Brain._equilibrate_local`` makes of the
-    state in launches of one settle or one check. Returns each row's error, the sweeps, the
-    checks, the last chunk's sweeps and activity change and the products; None for adaptation,
-    rows that settle on Numba's threads, or a state in another memory order, which the launches
-    serve."""
+    """A free solve without a mask or a nudge in one compiled call, in place on a C-ordered state
+    of published activations ``s``: what ``Brain._equilibrate_local`` makes of the state in
+    launches of one settle or one check, with the apical compartment ``apical`` where the graph
+    has one. Returns each row's error, the sweeps, the checks, the last chunk's sweeps and
+    activity change and the products; None for adaptation, rows that settle on Numba's threads,
+    or a state in another memory order, which the launches serve."""
     assert available()
     batch, n = v.shape
     if (
@@ -2153,10 +2161,10 @@ def fused_solve(
     target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain = _nudge_arrays(
         None, batch, n
     )
-    compartment = _compartment(None, layout, flat, None, batch, n)
-    pairs, flat_apical, apical_pairs = compartment[:3]
+    compartment = _compartment(apical, layout, flat, None, batch, n)
+    pairs, flat_apical, apical_pairs, has_apical = compartment[:4]
     pool_of, pool_index, pool_starts, pool_run = compartment[4:8]
-    held = compartment[11]
+    fraction, floor2, tiny, held = compartment[8:12]
     freezable = ~_fed_ranges(layout)
     # the check's activations are the state's own: published under no mask, they are the rule's
     given, has_given = _given(products, flat, flat_apical, batch)
@@ -2167,7 +2175,8 @@ def fused_solve(
         apical_pairs, layout.starts, layout.pair_pre, layout.pair_post, layout.offset, freezable,
         _NO_MASK, dt, slope, threshold, rest, leak, strength, tau, target, nmask, gid, ngroups,
         beta, softmax_t, weight, anchor, anchor_gain, pool_of, pool_index, pool_starts, pool_run,
-        held, budget, chunk, float(tolerance), out, given, has_given, in_place,
+        held, budget, chunk, float(tolerance), out, given, has_given, in_place, has_apical,
+        fraction, floor2, tiny,
     )
     return out, used, checks, taken, change, _kept(flat, flat_apical, batch, kept)
 

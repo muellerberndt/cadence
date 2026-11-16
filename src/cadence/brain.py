@@ -1260,7 +1260,7 @@ class Brain:
     ) -> Equilibrium:
         """Run a validated local attempt; only a subsequent damping attempt may skip a stall."""
         current = self.settle_batch(drive, steps=0, state=state, mask=mask, nudge=nudge)
-        if mask is None and nudge is None and not stop_if_stalled and self._solves_compiled():
+        if mask is None and nudge is None and not stop_if_stalled and self._solves_whole():
             solved = self._solve_compiled(drive, current, budget, chunk, tolerance, fast)
             if solved is not None:
                 return solved
@@ -1355,13 +1355,19 @@ class Brain:
                                     tolerance, True)
 
     def _solves_compiled(self) -> bool:
-        """Whether a free solve can run in one compiled call: no compartment, no recording, on
-        the compiled CPU path. A wrapped ``settle_batch`` or ``residual`` sees every launch, and
-        a subclass that withholds its blocks settles its own way."""
+        """Whether a free solve can run in one compiled call in either form, the fast one
+        included: no compartment, no recording, on the compiled CPU path. A wrapped
+        ``settle_batch`` or ``residual`` sees every launch, and a subclass that withholds its
+        blocks settles its own way."""
+        return self.apical is None and self._solves_whole()
+
+    def _solves_whole(self) -> bool:
+        """Whether a free solve can run in one compiled call in its ordinary form, an apical
+        compartment's included (``fused.fused_solve``): no recording, on the compiled CPU
+        path."""
         return (
             _FUSED
             and self.backend == "cpu"
-            and self.apical is None
             and self._solves_alone()
             and self._fused_blocks() is not None
         )
@@ -1388,7 +1394,7 @@ class Brain:
 
         compiled = self._fused_blocks()
         assert compiled is not None
-        if fast:
+        if fast and compiled[1] is None:  # the fast form holds no compartment
             quick = fused_fast_solve(
                 current.v, current.adaptation, current.activation, np.atleast_2d(drive), self.bias,
                 self.layout, compiled[0], self.neuron_model, budget, min(chunk, 16), tolerance,
@@ -1405,7 +1411,7 @@ class Brain:
         solved = fused_solve(
             current.v, current.adaptation, current.activation, np.atleast_2d(drive), self.bias,
             self.layout, compiled[0], self.neuron_model, budget, chunk, tolerance,
-            current.__dict__.get("_products"),
+            current.__dict__.get("_products"), apical=compiled[1],
         )
         if solved is None:
             return None

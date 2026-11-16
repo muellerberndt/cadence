@@ -165,7 +165,7 @@ _ARRAYS = {"d": np.float64, "w": np.float64, "q": np.int64, "i": np.int64, "?": 
 _KINDS = {
     "settle_rows": "wwwddqdqqqqq?dbfffffbffbddqnfddddbqqqqfffdbnfbdbww",
     "residual_rows": "wwwddqdqqqqqdbfffffbfbddqnfddddbqqqqfffdbwwbbw",
-    "solve_rows": "wwwddqdqqqqq?dfffffffddqnfddddqqqqdnnfwwbbwwwq",
+    "solve_rows": "wwwddqdqqqqq?dfffffffddqnfddddqqqqdnnfwwbbbfffwwwq",
     "fast_solve": "wwwdqqqqffffnnffwqw",
     "publish_rows": "dwwbffff",
     "kept_length": "qqqqnn",
@@ -299,7 +299,7 @@ def install(namespace: dict[str, Any]) -> None:
         report = np.zeros(4, dtype=np.int64)
         solve_rows(v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, *rest,
                    change, first, second, report)
-        given = rest[-3]
+        given = rest[-7]  # (given, has_given, in_place, has_apical, fraction, floor2, tiny)
         kept = (given, first, second)[int(report[3])]
         return int(report[0]), int(report[1]), int(report[2]), change, kept
 

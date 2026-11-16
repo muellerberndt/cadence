@@ -12,14 +12,15 @@ import sys
 
 import engine
 
-ENGINE = engine.choose("wasm" if engine.BROWSER else (sys.argv[1] if len(sys.argv) > 1 else "fused"))
+ENGINE = engine.choose(
+    "wasm" if engine.BROWSER else (sys.argv[1] if len(sys.argv) > 1 else "fused"))
 MOMENTS = int(sys.argv[-1]) if len(sys.argv) > 1 and sys.argv[-1].isdigit() else 150
 
 import numpy as np  # noqa: E402
+from compositions import POCKET, observation, pocket_map  # noqa: E402
 
 import cadence as cd  # noqa: E402
 from cadence import bound, compiled  # noqa: E402
-from compositions import POCKET, observation, pocket_map  # noqa: E402
 
 engine.fit_32_bit_numpy()
 assert compiled.available("_bound_recall"), "the bound records' kernel is not in use"
