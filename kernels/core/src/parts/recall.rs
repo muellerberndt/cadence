@@ -33,7 +33,7 @@ const GRID: usize = 5;
 const MOMENT: [&str; 5] = ["event", "cortex", "address", "key", "inputs"];
 
 fn refused(why: &str) -> Error {
-    Error::Shape(why.to_string())
+    crate::state::refused(why)
 }
 
 /// One boolean named `name`.

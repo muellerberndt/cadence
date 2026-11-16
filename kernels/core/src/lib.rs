@@ -51,19 +51,19 @@ pub(crate) fn trap() -> ! {
     std::process::abort()
 }
 
-/// The kernels' `exp`, `tanh` and square root: musl's, as the `libm` crate carries them, in the
-/// browser and natively alike.
+/// The kernels' `exp`, `tanh` and square root: `np`'s, the platform's libm natively and musl's
+/// in the browser.
 #[inline(always)]
 pub(crate) fn exp(x: f64) -> f64 {
-    libm::exp(x)
+    np::exp(x)
 }
 #[inline(always)]
 pub(crate) fn tanh(x: f64) -> f64 {
-    libm::tanh(x)
+    np::tanh(x)
 }
 #[inline(always)]
 pub(crate) fn sqrt(x: f64) -> f64 {
-    libm::sqrt(x)
+    np::sqrt(x)
 }
 
 use state::{Array, Named};
@@ -258,6 +258,7 @@ pub unsafe extern "C" fn core_call(
             give(named.write(), out, out_len);
             0
         }
+        Err(e) if e.refused() => -5,
         Err(_) => -3,
     }
 }
@@ -293,7 +294,8 @@ pub unsafe extern "C" fn core_brain_new(state: *const u8, len: usize) -> i64 {
 }
 
 /// One method of a held brain (`live`, ...) on named arguments; 0 and what it returned, or a
-/// negative code (-4 for a handle that holds no brain).
+/// negative code: -5 a refusal the Python raises as `ValueError` or `RuntimeError`, -4 a handle
+/// that holds no brain, -3 a fault.
 ///
 /// # Safety
 /// The pointers are the caller's buffers of the given lengths.
@@ -321,6 +323,7 @@ pub unsafe extern "C" fn core_brain_call(
             give(named.write(), out, out_len);
             0
         }
+        Err(e) if e.refused() => -5,  // the Python's ValueError or RuntimeError
         Err(_) => -3,
     }
 }

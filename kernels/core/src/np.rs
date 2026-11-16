@@ -142,20 +142,49 @@ pub fn clip(x: f64, lo: f64, hi: f64) -> f64 {
     }
 }
 
-/// The C library's functions as NumPy calls them under Pyodide (musl's, as the `libm` crate
-/// carries them; `exp` there is within one unit in the last place of Pyodide's).
-#[inline]
-pub fn exp(x: f64) -> f64 {
-    libm::exp(x)
+// -- the C library's functions, as NumPy calls them on each machine: natively the platform's
+// libm (what NumPy calls there, so each build is bitwise to its own Python reference), in the
+// browser musl's (Pyodide's C library, as the `libm` crate carries it; its exp and log are
+// within one unit in the last place of Pyodide's current musl). Every part calls these and no
+// other math, so the split lives here alone.
+
+#[cfg(not(target_arch = "wasm32"))]
+mod platform {
+    #[cfg_attr(target_os = "linux", link(name = "m"))]
+    extern "C" {
+        pub fn exp(x: f64) -> f64;
+        pub fn expm1(x: f64) -> f64;
+        pub fn log(x: f64) -> f64;
+        pub fn log1p(x: f64) -> f64;
+        pub fn log2(x: f64) -> f64;
+        pub fn tanh(x: f64) -> f64;
+        pub fn pow(x: f64, y: f64) -> f64;
+        pub fn atan2(y: f64, x: f64) -> f64;
+        pub fn hypot(x: f64, y: f64) -> f64;
+        pub fn sin(x: f64) -> f64;
+        pub fn cos(x: f64) -> f64;
+    }
 }
-#[inline]
-pub fn tanh(x: f64) -> f64 {
-    libm::tanh(x)
+
+macro_rules! math {
+    ($($name:ident($($arg:ident),+)),+ $(,)?) => {$(
+        #[cfg(not(target_arch = "wasm32"))]
+        #[inline]
+        pub fn $name($($arg: f64),+) -> f64 {
+            unsafe { platform::$name($($arg),+) }
+        }
+        #[cfg(target_arch = "wasm32")]
+        #[inline]
+        pub fn $name($($arg: f64),+) -> f64 {
+            libm::$name($($arg),+)
+        }
+    )+};
 }
-#[inline]
-pub fn log(x: f64) -> f64 {
-    libm::log(x)
-}
+
+math!(exp(x), expm1(x), log(x), log1p(x), log2(x), tanh(x), pow(x, y), atan2(y, x),
+      hypot(x, y), sin(x), cos(x));
+
+/// The square root, correctly rounded on every machine.
 #[inline]
 pub fn sqrt(x: f64) -> f64 {
     libm::sqrt(x)
@@ -397,11 +426,3 @@ pub fn logaddexp(x: f64, y: f64) -> f64 {
     }
 }
 
-#[inline]
-pub fn log1p(x: f64) -> f64 {
-    libm::log1p(x)
-}
-#[inline]
-pub fn log2(x: f64) -> f64 {
-    libm::log2(x)
-}

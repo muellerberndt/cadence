@@ -106,6 +106,21 @@ pub enum Error {
     Name,
     Missing(String),
     Shape(String),
+    /// What the Python refuses with a `ValueError` or a `RuntimeError` (a caller may answer it,
+    /// as Wild answers a refused moment with a random action); every other error is a fault.
+    Refused(String),
+}
+
+impl Error {
+    /// Whether the Python refuses this (`ValueError`, `RuntimeError`), as against a fault.
+    pub fn refused(&self) -> bool {
+        matches!(self, Error::Refused(_))
+    }
+}
+
+/// A refusal the Python raises as `ValueError` or `RuntimeError`.
+pub fn refused(why: &str) -> Error {
+    Error::Refused(why.to_string())
 }
 
 impl Named {

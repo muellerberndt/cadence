@@ -21,7 +21,11 @@ from typing import Any
 
 import numpy as np
 
-__all__ = ["Core", "pack", "unpack"]
+__all__ = ["Core", "Refused", "pack", "unpack"]
+
+
+class Refused(ValueError):
+    """What the core refuses where the Python raises a ``ValueError`` or a ``RuntimeError``."""
 
 MAGIC = b"CAD1"
 _KINDS = {1: np.dtype("<f8"), 2: np.dtype("<i8"), 3: np.dtype("bool"), 4: np.dtype("<u8")}
@@ -111,6 +115,8 @@ class Core:
     def _taken(self, call: Any, *args: Any) -> bytes:
         at, length = ctypes.c_void_p(), ctypes.c_size_t()
         code = int(call(*args, ctypes.byref(at), ctypes.byref(length)))
+        if code == -5:  # what the Python refuses with a ValueError or a RuntimeError
+            raise Refused("cadence core: the brain refused the call")
         if code < 0:
             raise RuntimeError(f"cadence core: the call refused ({code})")
         try:

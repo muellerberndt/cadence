@@ -11,8 +11,8 @@ use crate::state::{Array, Error, Named};
 /// sensory neurons with places, a held map's cells, the things a heard name makes salient).
 pub const SENSES: [&str; 4] = ["place", "senses", "map", "named"];
 
-fn refused(text: &str) -> Error {
-    Error::Shape(text.to_string())
+fn refused(why: &str) -> Error {
+    crate::state::refused(why)
 }
 
 /// `_gene`: a finite real number in `[low, high]`.

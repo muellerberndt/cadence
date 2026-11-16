@@ -81,7 +81,7 @@ extern "C" {
 }
 
 /// The C library's `exp`: in a browser the one NumPy calls under Pyodide (musl's), natively
-/// musl's as the `libm` crate carries it.
+/// the platform's.
 #[cfg(target_arch = "wasm32")]
 #[inline(always)]
 pub(crate) fn exp(x: f64) -> f64 {
@@ -91,7 +91,7 @@ pub(crate) fn exp(x: f64) -> f64 {
 #[cfg(not(target_arch = "wasm32"))]
 #[inline(always)]
 pub(crate) fn exp(x: f64) -> f64 {
-    libm::exp(x)
+    unsafe { platform_exp(x) }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -103,7 +103,18 @@ pub(crate) fn tanh(x: f64) -> f64 {
 #[cfg(not(target_arch = "wasm32"))]
 #[inline(always)]
 pub(crate) fn tanh(x: f64) -> f64 {
-    libm::tanh(x)
+    unsafe { platform_tanh(x) }
+}
+
+// natively the platform's libm: what NumPy calls on that machine
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg_attr(target_os = "macos", link(name = "System"))]
+#[cfg_attr(target_os = "linux", link(name = "m"))]
+extern "C" {
+    #[link_name = "exp"]
+    fn platform_exp(x: f64) -> f64;
+    #[link_name = "tanh"]
+    fn platform_tanh(x: f64) -> f64;
 }
 
 /// The square root, correctly rounded on every machine.

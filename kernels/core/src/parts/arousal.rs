@@ -41,7 +41,7 @@ pub struct Arousal {
 /// Python's `float ** int` for a base in (0, 1] and a count: the C library's `pow`.
 #[inline]
 fn powi(base: f64, count: i64) -> f64 {
-    libm::pow(base, count as f64)
+    np::pow(base, count as f64)
 }
 
 fn log_ratio(error: f64, unit: f64) -> f64 {
@@ -120,7 +120,7 @@ impl Arousal {
         }
         let mut correction = 1.0 - powi(1.0 - rate, count);
         if correction == 0.0 {
-            correction = -libm::expm1(count as f64 * libm::log1p(-rate));
+            correction = -np::expm1(count as f64 * np::log1p(-rate));
         }
         accumulated / correction
     }
@@ -234,7 +234,7 @@ impl Arousal {
                 let (s, w) = self
                     .outcome(args.f64("error")?, args.f64("reward")?,
                              args.bools("own")?[0], args.bools("learned")?[0])
-                    .ok_or(Error::Shape("arousal moments must remain finite".into()))?;
+                    .ok_or(crate::state::refused("arousal moments must remain finite"))?;
                 out.put("surprise", Array::scalar_f64(s));
                 out.put("want", Array::scalar_f64(w));
             }
