@@ -36,6 +36,7 @@ overwritten at every moment. Every reading has the recall slots of the heard sen
 from __future__ import annotations
 
 import argparse
+import copy
 import os
 import json
 import sys
@@ -598,6 +599,52 @@ def by_kind(brain: Any, store: Store | None, design: Design,
                           for k, v in sorted(reads.items())}} if reads else {})}
 
 
+def paths_landing(brain: Any, store: Store | None, design: Design,
+                  batches: list[list[gr.Row]], bar: bool) -> dict[str, Any]:
+    """Where the recall memory's first head lands at each said moment of a path, teacher-forced
+    with every previous word and taught role given, the store following the taught roles, and
+    with ``bar`` the path's start emptied at ``GO`` as the lessons empty it: for each word whose
+    content a heard moment holds, whether the head attends most to that moment or to the one
+    before it (``delivered``), and whether the brain says the word."""
+    fork = copy.deepcopy(brain)
+    part = None if store is None else copy.deepcopy(store)
+    work = gr.new_work()
+    groups = {}
+    for rows in batches:
+        speak(fork, rows, part, design, forced=True, listen=True)  # the heard moments
+        n, written = len(rows), len(rows[0].pre)
+        expected = [gr.sources(r) for r in rows]
+        for j in range(len(rows[0].target)):
+            x = (np.tile(gr.concept("GO"), (n, 1)) if j == 0
+                 else np.stack([gr.spoken(r.target[j - 1]) for r in rows]))
+            if bar and j == rows[0].force:
+                mn.bar_meaning(fork, rows)
+            labels = np.array([said_label(r, j, design) for r in rows], dtype=np.int64)
+            ages = np.asarray(fork.recall.ages())
+            words, roles = _act(fork, x, work)
+            if part is not None:
+                part.apply(labels[:, 2], settled(fork, n))
+                install(fork, part)
+            heads = fork.recall.attended_heads
+            p = heads[0] if heads else None
+            for i, r in enumerate(rows):
+                source = expected[i][j]
+                if source is None:
+                    continue
+                landed = -2
+                if p is not None and p.shape[1] == len(ages):
+                    landed = written - 1 - int(ages[int(np.argmax(p[i]))])
+                g = groups.setdefault(gr._kind(r, j), [0, 0, 0, 0])
+                g[0] += int(landed in (source, source - 1))
+                g[1] += int(words[i] == r.target[j])
+                g[2] += int(landed >= len(r.pre))  # a moment the brain said
+                g[3] += 1
+            written += 1
+    return {k: {"n": v[3], "delivered": round(v[0] / v[3], 3), "said": round(v[1] / v[3], 3),
+                "on_own_said_words": round(v[2] / v[3], 3)}
+            for k, v in sorted(groups.items())}
+
+
 def held_states(brain: Any, store: Store | None, design: Design,
                 batches: list[list[gr.Row]]) -> list[tuple[gr.Row, dict[str, Any]]]:
     """Each sentence's state after its last heard moment, the roles the brain's own: the
@@ -796,6 +843,9 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
         row["saved"] = str(brain.save(folder / f"{row['tag']}_{founder}"))
     row["synapses"] = int(brain.describe()["layout"]["synapses"])
     row["gains"] = dict(brain.carried_gains) if brain.hearing is not None else {}
+    if spec.get("landing") and "path" in tests:  # where the read lands on a path's hops
+        row["landing"] = {"barred": paths_landing(brain, store, design, tests["path"], True),
+                          "free": paths_landing(brain, store, design, tests["path"], False)}
     row["panels"] = panels(brain, store, design, tests, mn.SAID)
     row["sayback"] = panels(brain, store, design, tests, mn.BACK)
     if train == "all":
