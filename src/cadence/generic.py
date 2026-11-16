@@ -70,6 +70,7 @@ from ._configuration import (
 from .arousal import Arousal, ArousalConfig
 from .blocks import Layout
 from .blocks import layout as make_layout
+from .bound import BoundRecords
 from .brain import Apical, Backend, BrainState, Equilibrium, _host_copy, _resident
 from .brain import Brain as NeuralGraph
 from .code import LearnedCode
@@ -138,10 +139,11 @@ LONGTERM_FORMAT = "cadence-brain/4"
 # learned heads into the brain's records and their route to the motor: ``longterm_attention``,
 # ``longterm_motor``, #325), ``recall_strength`` (the recall memory's slots keep a depth and
 # a full bank gives up its weakest: ``recall_strength``, #336), ``surprise`` (the brain's
-# surprise and the focus it draws, #337) and ``map`` (a held map of things whose sheet carries
-# values or reads surprise, which a reader of 0.99.1 cannot build).
+# surprise and the focus it draws, #337), ``map`` (a held map of things whose sheet carries
+# values or reads surprise, which a reader of 0.99.1 cannot build) and ``bound`` (records of
+# bound moments, ``compose(bound=records)``, 0.101).
 FEATURES_FORMAT = "cadence-brain/5"
-FEATURES = frozenset({"strength", "heads", "recall_strength", "surprise", "map"})
+FEATURES = frozenset({"strength", "heads", "recall_strength", "surprise", "map", "bound"})
 # A memory's group in BRAIN_FORMAT and the prefix the reader validates its arrays under; the
 # episodic memory's arrays are the context store's and the stream's (``_flat_layout``).
 _MEMORY_PREFIXES = {
@@ -2059,6 +2061,8 @@ def _saved_features(saved: Mapping[str, Any]) -> list[str]:
         out.append("map")
     if "surprise" in saved:
         out.append("surprise")
+    if "bound" in saved:
+        out.append("bound")
     memories = saved.get("memories")
     if not isinstance(memories, dict):
         return sorted(out)
@@ -3225,6 +3229,11 @@ class Brain:
         # the observation each takes, and how many of them the brain reads from its map
         # itself; None for a brain whose observation is one row of numbers
         self._senses: dict[str, Any] | None = None
+        # records of bound moments (``compose(bound=records)``, ``cadence.bound``; off unless
+        # given): what the named senses held together, read back by a part; and the rows the
+        # senses gave at the latest moment, before the records completed them
+        self.bound: BoundRecords | None = None
+        self._bound_given: tuple[np.ndarray, np.ndarray] | None = None
         # surprise and the one focus it draws (``cadence.surprise``, #337; off unless given):
         # each neuron's residual at the start of the moment's settle, against the neuron's usual
         # residual. It reads the carried state under the moment's drive and changes nothing else.
@@ -3688,6 +3697,13 @@ class Brain:
                 "Brain.compose() needs inputs (or senses=) and actions: "
                 "Brain.compose(inputs=4, actions=2)"
             )
+        for name in ("bound", "voice"):
+            if options.get(name) is not None:
+                raise ValueError(
+                    f"{name}= keeps records of what named senses hold together: compose the "
+                    "brain with senses={...} and code=units"
+                )
+            options.pop(name, None)
         if parts:
             return _compose_trained(
                 cls, inputs, actions, parts,
@@ -4132,6 +4148,8 @@ class Brain:
         """
         if self.message is not None:
             raise ValueError("a brain with a message is not grown in this version")
+        if self.bound is not None:
+            raise ValueError("a brain with bound records is not grown in this version")
         if self.fields is not None:
             raise ValueError("grow and graft take a brain without learned fields in this version")
         return _grow(self, parts)
@@ -4192,6 +4210,8 @@ class Brain:
         freeze = False if freeze is None else freeze
         if self.message is not None or getattr(donor, "message", None) is not None:
             raise ValueError("a brain with a message is not grafted in this version")
+        if self.bound is not None or getattr(donor, "bound", None) is not None:
+            raise ValueError("a brain with bound records is not grafted in this version")
         if self.fields is not None or getattr(donor, "fields", None) is not None:
             raise ValueError("grow and graft take a brain without learned fields in this version")
         return _graft(self, donor, regions, into, joints, freeze)
@@ -4342,6 +4362,8 @@ class Brain:
             genes["attention"] = True
         if self.surprise is not None and self.orienting is not None:
             genes["surprise"] = {**self.surprise.settings(), **self.orienting.settings()}
+        if self.bound is not None:
+            genes["bound"] = self.bound.settings()
         populations = self.connectome.populations
         result = {
             "layout": {
@@ -4433,7 +4455,7 @@ class Brain:
             raise ValueError(f"observations need {self.inputs} values per row, got {x.shape[1]}")
         return x
 
-    def _sensed_rows(self, observations: Any) -> Any:
+    def _sensed_rows(self, observations: Any, complete: bool = True) -> Any:
         """What a brain with named senses is given, as rows of its whole width. A mapping of
         sense to rows (a brain composed with ``senses=``): each sense's rows in its columns,
         a sense left out silent, and no sense at all one silent row. The map's read
@@ -4477,6 +4499,8 @@ class Brain:
                 whole[:, first:last] = rows
             if tail:
                 whole[:, start : start + tail] = self._map_read(tail)
+            if self.bound is not None and complete:  # the records complete what is silent
+                return self._bound_complete(whole)
             return whole
         if not tail:
             return observations
@@ -4498,6 +4522,44 @@ class Brain:
         read = np.broadcast_to(self._map_read(tail), (len(x), tail))
         return np.concatenate([x[:, :start], read, x[:, start:]], axis=1)
 
+    def _bound_keyed(self, rows: np.ndarray) -> np.ndarray:
+        """The code bound records key on (``bound``): the brain's fixed code where the senses
+        meet, of ``rows`` with each sense at unit length and its fields alike within it (each
+        field at unit length, scaled by one over the root of the sense's fields), so that a
+        sense of one field and a sense of five weigh alike; the map's read left out (the map is
+        its own store)."""
+        held = self._senses
+        assert held is not None and self.sparse_code is not None
+        out = np.array(rows, dtype=float)
+        for sense, columns in held["named"].items():
+            spans = list(columns.values()) if isinstance(columns, Mapping) else [columns]
+            if sense == _SPACE:
+                for first, last in spans:
+                    out[:, first:last] = 0.0
+                continue
+            share = 1.0 / np.sqrt(len(spans))
+            for first, last in spans:
+                out[:, first:last] = share * _unit_rows(out[:, first:last])
+        return np.asarray(_unit_rows(self.sparse_code.code(out)), dtype=float)
+
+    def _bound_complete(self, given: np.ndarray) -> np.ndarray:
+        """``given`` rows completed by the brain's bound records: each field they leave silent
+        holds what the records bring back for the moment (``cadence.bound``). The rows the
+        senses gave are kept for the moment's own record."""
+        assert self.bound is not None
+        filled = self.bound.complete(given, self._bound_keyed(given))
+        self._bound_given = (filled.copy(), np.array(given, dtype=float))
+        return filled
+
+    def _bound_hear(self, x: np.ndarray) -> None:
+        """The moment ``x`` the streams lived joins the bound records: what the senses gave
+        (not what the records brought back), under its code, with the moment's surprise."""
+        held = self.bound
+        assert held is not None
+        given = self._bound_given
+        rows = given[1] if given is not None and self._same(given[0], x) else x
+        held.hear(rows, self._bound_keyed(rows), surprise=self._moment_surprise(len(x), held))
+
     def _map_read(self, width: int) -> np.ndarray:
         """What the brain reads of its map this moment (``brain.space.observation()``: ``where``
         and ``what``), ``width`` values; refused by name where ``brain.space`` holds no map of
@@ -4510,6 +4572,61 @@ class Brain:
                 + ("which holds no map" if read is None else f"whose map reads {len(read)}")
             )
         return read
+
+    def _bound_rows(self, observations: Any, what: str) -> np.ndarray:
+        """Named senses as the rows they give, before the records complete them; refused for a
+        brain without bound records (``what`` names the operation)."""
+        if self.bound is None or self._senses is None:
+            raise ValueError(
+                f"{what} reads the brain's bound records: compose it with senses=, code= and "
+                "bound=records"
+            )
+        if not isinstance(observations, Mapping):
+            raise ValueError(f"{what} takes the senses by name: a mapping of sense to rows")
+        rows = np.asarray(self._sensed_rows(observations, complete=False), dtype=float)
+        if not np.isfinite(rows).all():
+            raise ValueError("observations must be finite")
+        return rows
+
+    def complete(self, observations: Any) -> dict[str, Any]:
+        """What the brain's bound records bring back for ``observations`` (the senses by name):
+        each sense's rows (a sense with fields as a mapping of field to rows), zeros where
+        nothing came back. A pure read: the records, the streams and every memory are as they
+        were. The brain reads the same at every moment and settles on the senses its
+        observation leaves silent filled with it (``compose(bound=records)``)."""
+        rows = self._bound_rows(observations, "complete")
+        held = self.bound
+        assert held is not None and self._senses is not None
+        codes = self._bound_keyed(rows)
+        back = np.zeros_like(rows)
+        for i in range(len(rows)):
+            for field, part in held.recall(rows[i], codes[i]).items():
+                first, last = held.fields[field]
+                back[i, first:last] = part
+        out: dict[str, Any] = {}
+        for sense, columns in self._senses["named"].items():
+            if sense == _SPACE:
+                continue
+            if isinstance(columns, Mapping):
+                out[sense] = {field: back[:, a:b].copy() for field, (a, b) in columns.items()}
+            else:
+                out[sense] = back[:, columns[0]:columns[1]].copy()
+        return out
+
+    def say(self, observations: Any) -> np.ndarray:
+        """What the brain says at this moment, in the format of the sense its voice takes
+        (``compose(voice=sense)``), one row a stream: what its bound records bind to what it
+        senses (what it said and was paid for, else what it heard with it where it hears no
+        sound now), else a sound drawn from the sounds its records hold (``brain.bound.said_from``
+        names each choice). Pass it back under ``"voice"`` at the moment it is said, so the
+        moment's record binds it, and a reward that follows deepens that record. Changes the
+        records' draw count alone."""
+        rows = self._bound_rows(observations, "say")
+        held = self.bound
+        assert held is not None
+        if held.voice is None:
+            raise ValueError("say needs a voice: compose the brain with voice=<the heard sense>")
+        return held.say(rows, self._bound_keyed(rows))
 
     def observation_code(self, observations: Any) -> np.ndarray:
         """The code the memories key on, ``(batch, code_width)``: the observations themselves
@@ -4843,8 +4960,10 @@ class Brain:
 
     def _compiled_moment(self) -> bool:
         """Whether the moment's work around the solve runs compiled (``learning_compiled_moment``):
-        the option, on the CPU backend."""
-        return bool(self.learner.config.compiled_moment) and self.brain.backend == "cpu"
+        the option, on the CPU backend, for a brain without bound records (whose moments write
+        on the general path)."""
+        return (bool(self.learner.config.compiled_moment) and self.brain.backend == "cpu"
+                and self.bound is None)
 
     def _compiled_drive(self, x: np.ndarray, code: np.ndarray) -> np.ndarray | None:
         """The drive of the compiled moment (``learning_compiled_moment``) on the host, written
@@ -5683,6 +5802,8 @@ class Brain:
         if pending:
             supplied = None if salience is None else importance
             self.last_learning = self.learn(r, ended, x, bootstrap=bootstrap, salience=supplied)
+            if self.bound is not None and reward is not None:  # the record of the moment paid
+                self.bound.pay(r)
         else:
             self.last_learning = {}
         if labels is not None:
@@ -6076,7 +6197,10 @@ class Brain:
         """With ``learning_rehearsal`` above zero: the moment ``x`` the streams heard (an act,
         or a moment ``wait`` sensed) joins their episodes; the latest moments a replay reaches
         are kept. At zero nothing is kept, so a rate retuned above zero keeps the moments heard
-        from then on."""
+        from then on. With ``bound`` the moment joins the bound records (a replay's moments
+        are not the streams' own and write none)."""
+        if self.bound is not None and not self._surprise_private:
+            self._bound_hear(x)
         if not self.learner.config.rehearsal:
             if self._episode_moments:
                 self._episode_moments, self._episode_told = [], np.zeros(0, dtype=np.int64)
@@ -6386,6 +6510,8 @@ class Brain:
                 raise
             self._lived = None  # this outcome is taken, exactly once
             self._awaiting = None  # and the stream continues from where it settled
+            if self.bound is not None and reward is not None:  # the record of the moment paid
+                self.bound.pay(r)
             if routine and self.surprise is not None:
                 self._surprised(x)  # the moment is certain: what follows reads its surprise
             if routine:
@@ -6710,8 +6836,39 @@ class Brain:
         mapped = getattr(self.space, "surprise", None)
         if isinstance(mapped, Surprise):
             sources["map"] = (mapped.last[0], self.space.centers)
+        named = self._bound_named(x)
+        if named is not None:
+            sources["named"] = named
         if sources:
             self.orienting.attend(sources)
+
+    def _bound_named(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
+        """The salience a heard name gives the things on the map (``bound`` with a voice and a
+        map with values): the records read by the heard sense of the first stream alone bring
+        back a thing's fields, and each thing the map holds whose values hold them alike takes
+        a salience in the focus's competition at its place (``BoundRecords.salience``); None
+        where nothing is heard, nothing comes back or no thing matches."""
+        held, space = self.bound, self.space
+        if held is None or held.heard is None or space is None or not hasattr(space, "things"):
+            return None
+        given = self._bound_given
+        rows = given[1] if given is not None and self._same(given[0], x) else x
+        template = held.named(np.asarray(rows[0], dtype=float), self._bound_keyed)
+        if not template:
+            return None
+        things = [t for t in space.things() if t.get("place") is not None and len(t["cells"])]
+        if not things:
+            return None
+        read = []
+        for thing in things:
+            cells = np.zeros(space.count, dtype=bool)
+            cells[np.asarray(thing["cells"], dtype=np.intp)] = True
+            whole = space.thing_at(None, cells=cells)
+            read.append({"codes": {} if whole is None else whole["values"]})
+        salience = held.salience(template, read)
+        if not salience.any():
+            return None
+        return salience, np.array([t["place"] for t in things], dtype=float)
 
     def _surprise_streams(self) -> tuple[Any, ...] | None:
         """The surprise's stream state, for ``_resume``: the latest surprise, the residual read
@@ -7514,6 +7671,8 @@ class Brain:
             features.append("map")
         if self.surprise is not None:
             features.append("surprise")
+        if self.bound is not None:
+            features.append("bound")
         if self.longterm is not None and (
                 self.longterm.attention is not None or self.longterm.motor):
             features.append("heads")
@@ -7653,6 +7812,9 @@ class Brain:
             data.update({f"space/{name}": value for name, value in arrays.items()})
         if self._senses is not None:  # the senses by name; a brain without them saves none
             metadata["senses"] = plain(self._senses)
+        if self.bound is not None:  # records of bound moments: their settings and the store
+            metadata["bound"] = self.bound.to_dict()
+            data.update({f"bound/{name}": value for name, value in self.bound.arrays().items()})
         if self.surprise is not None and self.orienting is not None:
             # what each neuron is used to, the latest surprise, the focus and the observations
             # of a moment in progress whose surprise is observed (#337)
@@ -8246,6 +8408,15 @@ class Brain:
                 result._senses = _load_senses(
                     meta["senses"], int(result.inputs), result.space is not None
                 )
+            if "bound" in meta:  # records of bound moments (``compose(bound=records)``)
+                if result._senses is None:
+                    raise ValueError("saved bound records require the senses by name")
+                result.bound = BoundRecords.from_parts(
+                    result._senses["named"], int(result.code_width), int(result.inputs),
+                    meta["bound"], {name[len("bound/"):]: data[name] for name in data
+                                    if name.startswith("bound/")})
+            elif any(name.startswith("bound/") for name in data):
+                raise ValueError("saved bound arrays require the bound records' record")
             if "surprise" in meta:  # what each neuron is used to, and the focus (#337)
                 _load_surprise(result, meta["surprise"], {
                     name[len("surprise/"):]: data[name] for name in data
@@ -8860,7 +9031,12 @@ def _compose_named(
     under the module's name."""
     from . import modules as shipped
 
+    options = dict(options)
+    records, voice = options.pop("bound", None), options.pop("voice", None)
     declared = None if senses is None else _declared_senses(senses)
+    if records is not None or voice is not None:
+        declared = _bound_senses(declared, records, voice, layout.get("code"),
+                                 layout.get("learned_code"))
     if declared is not None and inputs is not None:
         raise ValueError(
             "senses= declares the brain's inputs by name and inputs= counts them: pass one of "
@@ -8945,7 +9121,48 @@ def _compose_named(
     if held is not None:
         brain.space = held
     brain._senses = {"named": named, "declared": declared is not None, "space": tail}
+    if records is not None:
+        brain.bound = BoundRecords(
+            named, int(brain.code_width), int(brain.inputs), records,
+            voice=None if voice is None else _VOICE, heard=voice, seed=seed,
+        )
     return brain
+
+
+_VOICE = "voice"  # the sense a brain with a voice hears what it says under
+
+
+def _bound_senses(declared: dict[str, Any] | None, records: Any, voice: Any, code: Any,
+                  learned_code: Any) -> dict[str, Any]:
+    """The declared senses of a brain with records of bound moments (``bound``) and a voice:
+    with ``voice=sense`` a sense ``voice`` of that sense's layout after the declared ones.
+    Refused by name: records without named senses or without a fixed code, a voice without
+    records, a voice that names no declared sense, and a declared sense named ``voice``."""
+    if declared is None:
+        raise ValueError(
+            "bound= keeps records of what named senses hold together: compose the brain with "
+            "senses={...} and code=units"
+        )
+    if records is None:
+        raise ValueError("voice= says what the brain's records hold: compose it with bound=records")
+    if isinstance(records, bool) or not isinstance(records, (int, np.integer)) or records < 1:
+        raise ValueError("bound is the records a brain keeps: a positive integer")
+    if code is None or learned_code is not None:
+        raise ValueError(
+            "bound records key on the fixed code where the senses meet: compose the brain with "
+            "code=units (and no learned code)"
+        )
+    if _VOICE in declared:
+        raise ValueError(f"a brain with bound records hears what it says as {_VOICE!r}: "
+                         "name the declared sense otherwise")
+    if voice is None:
+        return declared
+    if not isinstance(voice, str) or voice not in declared:
+        raise ValueError(
+            "voice names the declared sense whose format the brain speaks in: one of "
+            + ", ".join(repr(name) for name in declared)
+        )
+    return {**declared, _VOICE: declared[voice]}
 
 
 def _compose_trained(
