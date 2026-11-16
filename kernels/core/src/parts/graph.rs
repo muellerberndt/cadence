@@ -55,6 +55,26 @@ fn column<T>(x: &[T]) -> View<T> {
     seen(x, x.len(), 1)
 }
 
+/// Zeroed room for `count` arrays of `len` floats a kernel keeps its products in, from this
+/// thread's rooms (`Scratch`): the zeros `vec![0.0; len]` gives, without new memory.
+struct Rooms {
+    scratch: crate::Scratch,
+}
+
+fn rooms(len: usize, count: usize) -> Rooms {
+    match unsafe { crate::Scratch::new(count * crate::room::<f64>(len)) } {
+        Some(scratch) => Rooms { scratch },
+        None => crate::trap(),
+    }
+}
+
+impl Rooms {
+    /// The next array, zeroed.
+    fn next(&mut self, len: usize) -> View<f64> {
+        let p = unsafe { self.scratch.take::<f64>(len) };
+        View { p, n0: len, n1: 1, len }
+    }
+}
 
 fn no_nan(x: &[f64]) -> bool {
     x.iter().all(|v| !v.is_nan())
@@ -1182,11 +1202,11 @@ impl Graph {
         let taken = unsafe {
             let net = self.net(batch, &mut v, &mut a, &mut s, &standing, &k);
             let length = net.kept_len();
-            let mut kept = vec![0.0f64; length];
+            let mut room = rooms(length, 1);
             let none = [0.0f64];
             settle::settle(&net, column(&freezable), steps as usize,
                            tolerance.unwrap_or(0.0), tolerance.is_some(), column(&none), false,
-                           held(&mut change, batch, 1), held(&mut kept, length, 1)) as i64
+                           held(&mut change, batch, 1), room.next(length)) as i64
         };
         if taken < 0 {
             return Err(fault("the settle kernel refused its arrays"));
@@ -1316,7 +1336,7 @@ impl Graph {
                 size += batch * (self.start(c as usize + 1) - self.start(c as usize));
             }
             let length = 3 * batch * n + size + self.ranges() + RECORD;
-            let mut kept = vec![0.0f64; length];
+            let mut room = rooms(length, 1);
             let code = unsafe {
                 fast::fast(held(&mut v, batch, n), held(&mut s, batch, n),
                            seen(&standing, batch, n), column(&self.tables.flat),
@@ -1324,7 +1344,7 @@ impl Graph {
                            column(&self.offset), m.slope, m.threshold, m.rest, m.leak,
                            clip(budget), clip(chunk.min(16)), tolerance,
                            tolerance.min(FAST_SETTLED), held(&mut out, batch, 1),
-                           held(&mut report, 4, 1), held(&mut kept, length, 1))
+                           held(&mut report, 4, 1), room.next(length))
             };
             if code < 0 {
                 return Err(fault("the fast solve refused its arrays"));
@@ -1343,12 +1363,12 @@ impl Graph {
         let code = unsafe {
             let net = self.net(batch, &mut v, &mut a, &mut s, &standing, &k);
             let length = net.kept_len();
-            let (mut ka, mut kb) = (vec![0.0f64; length], vec![0.0f64; length]);
+            let mut room = rooms(length, 2);
             let none = [0.0f64];
+            let (ka, kb) = (room.next(length), room.next(length));
             settle::solve(&net, column(&self.tables.freezable), clip(budget), clip(chunk),
                           tolerance, held(&mut out, batch, 1), column(&none), false, false,
-                          held(&mut change, batch, 1), held(&mut ka, length, 1),
-                          held(&mut kb, length, 1), held(&mut report, 4, 1))
+                          held(&mut change, batch, 1), ka, kb, held(&mut report, 4, 1))
         };
         if code < 0 {
             return Err(fault("the solve kernel refused its arrays"));
@@ -1403,10 +1423,10 @@ impl Graph {
         let code = unsafe {
             let net = self.net(batch, &mut v, &mut a, &mut s, &standing, &k);
             let length = net.kept_len();
-            let mut kept = vec![0.0f64; length];
+            let mut room = rooms(length, 1);
             let none = [0.0f64];
             settle::residual(&net, held(&mut out, batch, 1), column(&none), false, false,
-                             held(&mut kept, length, 1))
+                             room.next(length))
         };
         if code < 0 {
             return Err(fault("the residual kernel refused its arrays"));
