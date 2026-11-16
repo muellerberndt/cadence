@@ -3,6 +3,7 @@
 
 pub mod arousal;
 pub mod brain;
+pub mod recall;
 pub mod surprise;
 
 use crate::state::{Array, Error, Named};
@@ -25,6 +26,11 @@ pub fn call(part: &str, method: &str, state: &Named, args: &Named) -> Result<Nam
         }
         "orienting" => {
             let mut held = surprise::Orienting::import(state)?;
+            held.call(method, args, &mut out)?;
+            held.export(&mut after);
+        }
+        "recall" => {
+            let mut held = recall::Recall::import(state)?;
             held.call(method, args, &mut out)?;
             held.export(&mut after);
         }
