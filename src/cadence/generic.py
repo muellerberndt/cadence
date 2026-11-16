@@ -2399,7 +2399,7 @@ def _layout(
     ports: int = 0,
     tied: Any = None,
     fields_motor: float = 0.0,
-    cortex_reads: str = "code",
+    cortex_reads: str | None = "code",
 ) -> tuple[Genome, dict[str, Any]]:
     """The layout ``Brain.compose`` develops (``Genome.composed``) and the settings it resolved.
     ``options`` are compose's other settings; the efference copy, the heard history, the recall
