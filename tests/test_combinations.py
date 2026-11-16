@@ -21,6 +21,7 @@ import pytest
 
 import cadence as cd
 from cadence import Brain
+from cadence import brain as kernel
 from cadence.space.map import Map
 
 # Each option and its levels; the first level is "off", the brain of 0.101.0 without it.
@@ -125,21 +126,23 @@ CELLS = covering_array()
 
 # Cells that meet a known defect of the library; each is reproduced alone at the end of this file.
 F1 = (
-    "a held message with a turn that holds (message_boundary_holds) continues from its save "
-    "other than it lived once a lesson came before"
+    "on the compiled kernel a held message with a turn that holds (message_boundary_holds) "
+    "continues from its save in other last bits once a lesson came before (efficacy within "
+    "1e-11, the same actions over 196 moments); the NumPy loop continues to the bit"
 )
+# Read on the compiled kernel of an Apple M4; last bits depend on the machine's compiled code,
+# so the mark is not strict
+F1_MARK = pytest.mark.xfail(kernel._FUSED, strict=False, reason=F1)
 KNOWN = {
     "trained=map,longterm=strength,message=on,memory_choice=on,maturity=on,fade=on,observers=on,"
-    "history=two,efference=on,arousal=on": F1,
+    "history=two,efference=on,arousal=on": F1_MARK,
 }
 
 
-def cells(rows: list[dict[str, str]], known: dict[str, str] | None = None) -> list[Any]:
+def cells(rows: list[dict[str, str]], known: dict[str, Any] | None = None) -> list[Any]:
     known = known or {}
     return [
-        pytest.param(
-            row, id=cell_id(row), marks=pytest.mark.xfail(strict=True, reason=known[cell_id(row)])
-        )
+        pytest.param(row, id=cell_id(row), marks=known[cell_id(row)])
         if cell_id(row) in known
         else pytest.param(row, id=cell_id(row))
         for row in rows
@@ -494,7 +497,7 @@ def _turns(moment: int) -> np.ndarray:
     return row
 
 
-@pytest.mark.xfail(strict=True, reason=F1)
+@F1_MARK
 def test_known_a_held_message_with_a_holding_turn_continues_as_it_lived(tmp_path):
     brain = Brain.compose(
         INPUTS,
