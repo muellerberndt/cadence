@@ -36,8 +36,10 @@ from wild.world import Rules, World  # noqa: E402
 
 module = part_module(a.part)
 kept: list = []
+owners = getattr(module, "OWNERS", {})  # a function of a module, the part its first argument
 for name, (arguments, result) in module.METHODS.items():
-    method = getattr(module.CLASS, name)
+    owner = owners.get(name, module.CLASS)
+    method = getattr(owner, name)
     read = isinstance(method, property)  # a property is recorded as a call of its getter
 
     def recorded(self, *args, _m=method.fget if read else method, _n=name, _a=arguments,
@@ -47,7 +49,7 @@ for name, (arguments, result) in module.METHODS.items():
         if before is not None:
             kept.append((_n, before, _a(*args, **kwargs), _r(value), module.state_of(self)))
         return value
-    setattr(module.CLASS, name, property(recorded) if read else recorded)
+    setattr(owner, name, property(recorded) if read else recorded)
 
 world = World(Rules(), seed=1)
 sim = Sim(world, minds=Host(world.rules.width, world.rules.height, world.seed, None, []))
