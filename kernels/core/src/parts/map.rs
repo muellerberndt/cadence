@@ -244,15 +244,13 @@ fn lexsort_last(secondary: &[f64], primary: &[f64]) -> usize {
     best
 }
 
-/// A sum over the first axis of rows of `n`: the rows added in order to zeros.
+/// A sum over the first axis of rows of `n` (`a.sum(axis=0)`, `np::sum_rows`).
 fn column_sums(rows: impl Iterator<Item = Vec<f64>>, n: usize) -> Vec<f64> {
-    let mut out = vec![0.0; n];
-    for row in rows {
-        for (o, x) in out.iter_mut().zip(row) {
-            *o += x;
-        }
+    let flat: Vec<f64> = rows.flatten().collect();
+    if flat.is_empty() {
+        return vec![0.0; n];
     }
-    out
+    np::sum_rows(&flat, n)
 }
 
 /// The largest of values, a NaN where one is (`np.max`).
