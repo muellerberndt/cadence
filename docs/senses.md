@@ -621,9 +621,10 @@ check: damping cannot stabilize an intrinsically growing mode.
 The code phase runs in float64 on every backend. On `"cpu"`, on `"mlx"` and on a torch MPS
 device, which has no float64, it runs on the host. On any other torch device (CUDA, the CPU
 device) it runs on that device, whatever the brain's precision: the sub-network settles there,
-and the factorizations and eigenvalues of the step are read there. `brain.learned_code.device`
-names the device, `None` on the host. The tables, their learning rules and the memories' key
-stay on the host ([a learned code on torch](backends.md#a-learned-code-on-torch)).
+and the factorizations and eigenvalues of the step are read there, or on the host with a
+warning where the device fails in them. `brain.learned_code.device` names the device, `None`
+on the host. The tables, their learning rules and the memories' key stay on the host
+([a learned code on torch](backends.md#a-learned-code-on-torch)).
 
 The top-down boundary reads the working trace, the settled association activity of the moment
 before, and never the association region of the moment: a prediction read from the moment's

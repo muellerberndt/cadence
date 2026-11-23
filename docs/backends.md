@@ -226,15 +226,18 @@ print(coded.learned_code.device, coded.learned_code.graph.precision)  # cpu floa
 On the device the sub-network is a graph of its own, `units` neurons with every ordered pair of lateral
 synapses. Its kernel takes the lateral weights and the thresholds in place after each learning step, and the
 brain's kernel takes the thresholds as its code units' biases the same way, so no kernel is built again and a
-state settled on either continues on it. The step's tests factorize the rows of a batch in groups that hold at
-most 128 MB of couplings at a time (`LearnedCode.DEVICE_BYTES`: 16 rows of 1,024 units), and read the
-eigenvalues there when the factorizations do not settle the step. The region's tables and their three
-learning rules, the key of the memories and the memories themselves
+state settled on either continues on it. The step's tests read the rows of a batch in groups that work within
+128 MiB (`LearnedCode.DEVICE_BYTES`; `brain.learned_code.DEVICE_BYTES = bytes` sets it for a brain while it
+is held, and a file does not carry it): at 1,024 units four rows are factorized at a time, and two are solved
+for their eigenvalues where the factorizations do not settle the step. Where the device fails in a test, by a
+solver's error or by its memory, the host reads the same step and a `RuntimeWarning` names the failure. The
+region's tables and their three learning rules, the key of the memories and the memories themselves
 ([the options that keep them on the host](#memories-on-the-device)) run on the host in NumPy, where a moment
 also makes its warm start from the stream's state and the phase.
 
 In float64 with `learning_fast_settle=False` a life on torch reads as the life on the CPU within rounding at
-each moment, with the same sweeps of every code phase and the same step.
+each moment, with the same step of every code phase. A phase the solver damps can end a stalled attempt one
+check apart on the two (32 sweeps, the settled state within rounding), so `code_steps` can differ by that.
 [`tests/test_learned_code_torch.py`](../tests/test_learned_code_torch.py) reads small brains to 1e-9 on a torch
 CPU device and on CUDA where there is one: lessons, outcomes, `live` and `wait`, `value`, imagined branches,
 copies, a refused moment, `grow`, `graft`, `retune`, and files saved on either backend and continued on the
@@ -249,23 +252,32 @@ of the actions' slots agreed. Compare such runs by means over seeds.
 
 On an NVIDIA A10G against one core of its machine's EPYC 7R32, one thread per process, milliseconds of
 `act`, `lesson` and `step` as [the default backend's table](#the-default-backend) reads them (the least of four
-rounds after one to warm). The card was shared with other jobs, which held it at 15 to 70% through the
-readings, so each cell of the card gives the least and the greatest of three readings, and the reading's
-process was held under 3 GB of the card's memory:
+rounds after one to warm). Other jobs kept the machine and the card busy, its 48 threads at a load of 23 to 33
+and the card at 13 to 100%, so both columns were read in the same seventeen minutes, each cell of the card
+gives the least and the greatest of six readings, and the reading's process was held under 3 GB of the card's
+memory:
 
 | Brain | Synapses | Rows | One core | A10G, float32 |
 | --- | ---: | ---: | ---: | ---: |
-| 1,000 inputs, 400 actions in four slots, `modules=(256, 128), learned_code=1024, attention=True, recall_heads=4, teaching="normalized"` | 4,721,664 | 16 | 1,127, 1,418, 2,822 | 234 to 337, 453 to 651, 619 to 946 |
-| The same | | 64 | 5,364, 4,381, 12,624 | 506 to 599, 642 to 771, not read |
+| 1,000 inputs, 400 actions in four slots, `modules=(256, 128), learned_code=1024, attention=True, recall_heads=4, teaching="normalized"` | 4,721,664 | 16 | 2,284, 2,982, 5,427 | 357 to 493, 763 to 1,073, 1,169 to 1,640 |
+| The same | | 64 | 9,166, 9,305, 24,043 | 637 to 1,283, 909 to 1,716, not read |
 
-A lesson with a greedy act, the mean over 16 consecutive moments of that brain at 64 rows, took 13.1 seconds on
-one core and 1.9 to 2.3 seconds on the card in five float32 readings, about six times less, and 2.2 seconds in
-float64. The card's `step` at 64 rows holds the streams' synapse eligibility, 1.2 GB an array in float32, which
-is more than the reading's share of the card ([memories on the device](#memories-on-the-device)). On one core
-85% of such a moment is the code phase: 70% in the step's factorizations and eigenvalues and 14% in the
-sub-network's settle (six moments after two to warm, in which two of twelve tests read the eigenvalues). On the
-card the same six moments spend 32% in the step's tests, 46% in the recall heads' read and lesson on the host
-in NumPy at one thread, and 6% in the region's learning step on the host.
+A lesson with a greedy act, the mean over 16 consecutive moments of that brain at 64 rows, took 20.5 seconds on
+one core and 2.8 to 4.1 seconds on the card in the same minutes, five to seven times less; float64 on the card
+read 3.1 seconds beside 2.7 to 3.0 for float32 in the minutes before. The card's `step` at 64 rows holds the
+streams' synapse eligibility, 1.2 GB an array in float32, which is more than the reading's share of the card
+([memories on the device](#memories-on-the-device)). On one core 85% of such a moment is the code phase: 70% in
+the step's factorizations and eigenvalues and 14% in the sub-network's settle (a profile of six moments after
+two to warm, in which two of twelve tests read the eigenvalues). On the card the same six moments spend 41% in
+the step's tests, 42% in the recall heads' read and lesson on the host in NumPy at one thread, and 5% in the
+region's learning step on the host.
+
+Over a life of 300 such moments the card's allocated memory read 412 to 414 MiB at each of twelve readings, its
+peak of 751 MiB was reached within the first 25 moments, and torch held 1,042 MiB reserved throughout. The
+life's 600 tests of the step took 0.21 seconds each, a sixth of its time, and two of them read the eigenvalues,
+at 4 seconds each. A test the factorizations hold works in 77 MiB beside what the brain holds and one that
+reads the eigenvalues in 100 MiB; with `DEVICE_BYTES` at 512 MiB (sixteen rows factorized at a time, eight
+solved) they take 0.11 and 2.1 seconds in 305 and 395 MiB.
 
 A file saved on either backend loads on the other, and `Brain.load(path, backend="torch")` places the phase on
 the device again. A float32 brain holds its code units' biases as float32 holds the negated thresholds, and a

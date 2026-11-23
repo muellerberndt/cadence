@@ -848,7 +848,7 @@ prediction and, at a learned moment, the context-free code `free`); the constant
 `SILENCE`, `ACTIVE` and `IDENTITY`, held as the instance's attributes of the same names in
 lower case, `learning` (False holds every table still) and `top_down` (0 is the control
 without the top-down boundary) the two a reading or a control changes on a copy;
-`DEVICE_BYTES` (the bytes of couplings the step's tests hold at a time on a device).
+`DEVICE_BYTES` (the bytes the step's tests work within on a device).
 Both step bounds include the supplied neuron model's synaptic `gain`; the standing
 `top_down` anchor has its own gain. They bound negative modes only. A custom model
 needs its largest slope-weighted coupling eigenvalue below one. A refused enclosing

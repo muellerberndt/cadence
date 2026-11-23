@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.102.0 - 2026-11-23
+## 0.102.0 - 2026-11-24
 
 A learned code on a GPU, and a cortex that reads the senses beside its fixed code. A brain with
 `learned_code=units` runs on the `"torch"` backend: the code region's own phase settles on the
@@ -18,7 +18,8 @@ import numpy as np
 from cadence import Brain
 
 rng = np.random.default_rng(0)
-coded = Brain.compose(64, 8, learned_code=128, backend="torch", device="cpu", seed=0)  # "cuda" on a GPU
+coded = Brain.compose(64, 8, learned_code=128, seed=0,
+                      backend="torch", device="cpu")        # device="cuda" on a GPU
 coded.lesson(rng.random((4, 64)), rng.integers(8, size=4))
 assert str(coded.learned_code.device) == "cpu"              # the code phase, on the brain's device
 
@@ -42,44 +43,47 @@ The guides are [a learned code on torch](docs/backends.md#a-learned-code-on-torc
   `brain.learned_code.device` names the device (`None` on the host) and
   `LearnedCode.place(device)` moves the phase.
 - **Why.** On the CPU a moment of a wide code spends most of its time in the phase. On a brain of
-  1,000 inputs with `learned_code=1024` at 64 rows, one core spends 85% of a lesson and an act
-  there: 70% in the step's factorizations and eigenvalues of a `rows` by `units` by `units`
-  coupling, and 14% in the sub-network's settle.
+  1,000 inputs with `learned_code=1024` at 64 rows, a profile of six moments on one core has 85%
+  of a lesson and an act there: 70% in the step's factorizations and eigenvalues of a `rows` by
+  `units` by `units` coupling, and 14% in the sub-network's settle.
 - **What runs where.** The sub-network is a graph of its own on the device. Its kernel takes the
   lateral weights and the thresholds in place after each learning step, and the brain's kernel
   takes the thresholds as its code units' biases the same way, so no kernel is built again and a
-  state settled on either continues on it. The step's tests factorize the rows of a batch in
-  groups that hold at most 128 MB of couplings at a time (`LearnedCode.DEVICE_BYTES`), and read
-  the eigenvalues there when the factorizations do not settle the step. The standing boundary
-  goes to the device once: the torch kernel fills a nudge's buffers again only where the nudge's
-  arrays can be written. The tables, their three learning rules, the memories' key and the
-  memories themselves stay on the host.
+  state settled on either continues on it. The step's tests read the rows of a batch in groups
+  that work within 128 MiB (`LearnedCode.DEVICE_BYTES`), factorized there and solved for their
+  eigenvalues there when the factorizations do not settle the step. Where the device fails in a
+  test, by a solver's error or by its memory, the host reads the same step and a
+  `RuntimeWarning` names the failure. The standing boundary goes to the device once: the torch
+  kernel fills a nudge's buffers again only where the nudge's arrays can be written. The tables,
+  their three learning rules, the memories' key and the memories themselves stay on the host.
 - **What agrees with the CPU.** In float64 with `learning_fast_settle=False` a life on torch
-  reads as the life on the CPU within rounding at each moment, with the same sweeps of every
-  code phase and the same step (`tests/test_learned_code_torch.py`, to 1e-9 on a torch CPU
-  device and on CUDA: lessons, outcomes, `live` and `wait`, `value`, imagined branches, copies,
-  a refused moment, `grow`, `graft`, `retune`, files saved on either backend and continued on
-  the other). On the brain of the reading below at 32 rows on an A10G, twelve lessons with a
-  greedy act each left the dictionary within 5.5e-12 of the CPU's, the predictor within 3.9e-12,
-  the thresholds equal and the efficacies within 1.6e-10, with every action equal. In float32,
-  the device's default, the phase reads its context and warm start from the brain's float32
-  state, and the life is another run, as any float32 life is: on the same brain one unit's count
-  at the active floor fell on the other side at the seventh moment (one step of a threshold,
-  6.25e-4), and 97% of the actions' slots agreed over the twelve. Compare such runs by means
-  over seeds.
+  reads as the life on the CPU within rounding at each moment, with the same step of every code
+  phase; a phase the solver damps can end a stalled attempt one check (32 sweeps) apart
+  (`tests/test_learned_code_torch.py`, to 1e-9 on a torch CPU device and on CUDA: lessons,
+  outcomes, `live` and `wait`, `value`, imagined branches, copies, a refused moment, `grow`,
+  `graft`, `retune`, files saved on either backend and continued on the other). On the brain of
+  the reading below at 32 rows on an A10G, twelve lessons with a greedy act each left the
+  dictionary within 5.5e-12 of the CPU's, the predictor within 3.9e-12, the thresholds equal and
+  the efficacies within 1.6e-10, with every action equal. In float32, the device's default, the
+  phase reads its context and warm start from the brain's float32 state, and the life is another
+  run, as any float32 life is: on the same brain one unit's count at the active floor fell on
+  the other side at the seventh moment (one step of a threshold, 6.25e-4), and 97% of the
+  actions' slots agreed over the twelve. Compare such runs by means over seeds.
 - **The reading.** 1,000 inputs, 400 actions in four slots, `modules=(256, 128),
   learned_code=1024, attention=True, recall_heads=4, teaching="normalized"` (19,128 neurons,
   4,721,664 synapses) at 64 rows, on an NVIDIA A10G against one core of its machine's EPYC 7R32,
-  one thread per process. The card was shared with other jobs, which held it at 15 to 70%, and
-  the reading's process was held under 3 GB of its memory. A lesson with a greedy act, the mean
-  over 16 consecutive moments: 13.1 seconds on one core, 1.9 to 2.3 seconds on the card in five
-  float32 readings, about six times less, and 2.2 seconds in float64. By the least of four
-  rounds, as the default backend's table reads them, over three readings of the card: `act` 506
-  to 599 ms against 5,364 and `lesson` 642 to 771 ms against 4,381; at 16 rows `act` 234 to 337
-  ms against 1,127, `lesson` 453 to 651 against 1,418 and `step` 619 to 946 against 2,822. In a
-  profile of six moments on the card, 46% is the recall heads' read and
-  lesson on the host in NumPy at one thread, and 32% the step's tests
-  ([the table](docs/backends.md#a-learned-code-on-torch)).
+  one thread per process. Other jobs kept the machine and the card busy (48 threads at a load of
+  23 to 33, the card at 13 to 100%), so both were read in the same seventeen minutes, and the
+  reading's process was held under 3 GB of the card's memory. A lesson with a greedy act, the
+  mean over 16 consecutive moments: 20.5 seconds on one core and 2.8 to 4.1 seconds on the card
+  in six float32 readings, five to seven times less. By the least of four rounds, as the default
+  backend's table reads them, over six readings of the card: `act` 637 to 1,283 ms against 9,166
+  and `lesson` 909 to 1,716 ms against 9,305; at 16 rows `act` 357 to 493 ms against 2,284,
+  `lesson` 763 to 1,073 against 2,982 and `step` 1,169 to 1,640 against 5,427. Over a life of
+  300 moments the card's allocated memory read 412 to 414 MiB at each of twelve readings, with a
+  peak of 751 MiB reached within the first 25 moments. In a profile of six moments on the card,
+  42% is the recall heads' read and lesson on the host in NumPy at one thread, and 41% the
+  step's tests ([the table](docs/backends.md#a-learned-code-on-torch)).
 - **Files.** A file saved on either backend loads on the other, and `Brain.load(path,
   backend="torch")` places the phase on the device again. A float32 brain holds its code units'
   biases as float32 holds the negated thresholds; a load takes them exact or so rounded, where
@@ -152,11 +156,12 @@ the code units' biases exact.
 
 ### Not in this release
 
-The sentence state ([#308](https://github.com/muellerberndt/cadence/issues/308)), records at any
-size ([#310](https://github.com/muellerberndt/cadence/issues/310)) and the letter from the sound
-([#304](https://github.com/muellerberndt/cadence/issues/304)), which the notes of 0.101.0 named
-for 0.102.0, are work in progress on [the roadmap](https://github.com/muellerberndt/cadence/issues/109).
-The known issue of 0.101.0 ([#346](https://github.com/muellerberndt/cadence/issues/346)) is open.
+The sentence state ([#308](https://github.com/muellerberndt/cadence/issues/308)) and records at
+any size ([#310](https://github.com/muellerberndt/cadence/issues/310)), which the notes of
+0.101.0 moved to 0.102.0, are work in progress on
+[the roadmap](https://github.com/muellerberndt/cadence/issues/109), and so is the letter from
+the sound ([#304](https://github.com/muellerberndt/cadence/issues/304)). The known issue of
+0.101.0 ([#346](https://github.com/muellerberndt/cadence/issues/346)) is open.
 
 ### Also in this release
 
