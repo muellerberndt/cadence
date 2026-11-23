@@ -99,14 +99,16 @@ columns all overlap (one input: every column is plus or minus the same vector).
 The region's own phase runs in float64 on every backend. A brain on the ``"cpu"`` or ``"mlx"``
 backend, or on a torch device without float64 (MPS), settles it on the host. A brain on
 another torch device settles it there (``place``): the sub-network is a graph on that device,
-whose kernel takes the tables in place after a learning step, and the step's factorization
-tests run there in batches of rows. The tables, their rules and the code the memories key on
-stay on the host.
+whose kernel takes the tables in place after a learning step, and the step's tests run there
+in groups of rows within ``DEVICE_BYTES``; where the device fails in them the host reads the
+same step, with a warning. The tables, their rules and the code the memories key on stay on
+the host.
 """
 
 from __future__ import annotations
 
 import copy
+import warnings
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -217,8 +219,10 @@ class LearnedCode:
     # Contraction also requires its upper end below one.
     STEP_MARGIN = 1.5
     BOUND_MARGIN = 1e-9  # how clear of a step bound a factorization test must be, relative
-    # On a device the step's tests hold at most this many bytes of couplings at a time: the
-    # rows of a batch are factorized in groups of ``DEVICE_BYTES / (8 * units^2)``, at least one.
+    # On a device the step's tests work within this many bytes: the rows of a batch are
+    # factorized in groups of ``DEVICE_BYTES / (32 * units^2)`` and solved for their eigenvalues
+    # in groups of half as many, at least one. A group's couplings with their factors take 2.4
+    # times the couplings' bytes on a CUDA card, and with an eigenvalue read's workspace 6.2 times.
     DEVICE_BYTES = 1 << 27
 
     @staticmethod
@@ -315,8 +319,8 @@ class LearnedCode:
         self.halvings = 0  # the step's halvings the settled code needs (``stability``)
         # the torch device the region's own phase runs on (``place``), None on the host; there
         # ``_base`` is the sub-network at the model's step, whose kernel holds the tables, and
-        # ``_coupled`` the dictionary with its lateral weights at the model's gain on the
-        # device, read again when another dictionary takes its place
+        # ``_coupled`` a copy of the dictionary with its lateral weights at the model's gain on
+        # the device, made again when the dictionary reads otherwise
         self._device: Any = None
         self._base: NeuralGraph | None = None
         self._coupled: Any = None
@@ -381,67 +385,72 @@ class LearnedCode:
         return base._with_dt(float(np.ldexp(self.model.dt, -self.halvings)))
 
     def __deepcopy__(self, memo: dict[int, Any]) -> LearnedCode:
-        """An independent copy. On a device the copy builds its own sub-network there from its
-        own tables, so neither region's learning step writes the other's kernel."""
+        """An independent copy. On a device the copy holds a kernel of its own with its own
+        tables, so neither region's learning step writes the other's, and a copied state that
+        rested on this region's kernel rests on the copy's. The sub-network at a halved step
+        and the standing boundary are made again from the copy's own."""
         twin = type(self).__new__(type(self))
         memo[id(self)] = twin
-        # what rests on the device, and the standing boundary it holds, are made again
-        placed = ("graph", "_base", "_coupled", "_anchor") if self._device is not None else ()
+        derived = ("graph", "_anchor") if self._device is not None else ()
         for name, value in self.__dict__.items():
-            twin.__dict__[name] = None if name in placed else copy.deepcopy(value, memo)
+            twin.__dict__[name] = None if name in derived else copy.deepcopy(value, memo)
         if self._device is not None:
-            twin._device = None
-            twin.place(self._device)
+            twin.graph = twin._stepped()
         return twin
 
     def _stability_device(self, v: np.ndarray) -> int:
         """``stability`` on the region's device: the slopes are read on the host, as there;
-        the couplings are made, bounded and factorized on the device, ``DEVICE_BYTES`` of
-        them at a time, and the lateral weights at the model's gain rest there for as long as
-        the region holds the same dictionary array. The same tests in the same order as
-        ``_held_halvings``, each clear of
-        its bound by ``BOUND_MARGIN``, so the answer is the one the eigenvalues give, as on
-        the host; where a test is not clear the eigenvalues are read on the device."""
+        the couplings are made, bounded, factorized and, where a test is not clear, solved for
+        their eigenvalues on the device, a group of rows at a time within ``DEVICE_BYTES``.
+        The lateral weights at the model's gain rest there while the dictionary reads the
+        same. The same tests in the same order as ``_held_halvings``, each clear of its bound
+        by ``BOUND_MARGIN``, so the answer is the one the eigenvalues give, as on the host."""
         import torch
 
         device = self._device
         slopes_host = np.maximum(self.model.slope_at(v), 0.0)
         kept = self._coupled
-        if kept is None or kept[0] is not self.dictionary:  # another dictionary since
-            kept = self._coupled = (self.dictionary, torch.from_numpy(
+        if kept is None or not np.array_equal(kept[0], self.dictionary):
+            kept = self._coupled = (self.dictionary.copy(), torch.from_numpy(
                 np.ascontiguousarray(self.model.gain * self.lateral())
             ).to(device))
         lateral = kept[1]
         slopes = torch.from_numpy(np.ascontiguousarray(slopes_host)).to(device)
         roots = torch.sqrt(slopes)
         rows, units = slopes.shape
-        group = max(1, int(self.DEVICE_BYTES // (8 * units * units)))
+        group = max(1, int(self.DEVICE_BYTES // (32 * units * units)))
+        fewer_rows = max(1, int(self.DEVICE_BYTES // (64 * units * units)))  # an eigenvalue read
 
-        def coupling(index: Any) -> Any:  # the rows' couplings, a tensor of their own
+        def coupling(index: Any) -> Any:  # the rows' couplings, one tensor of their own
             root = roots[index]
-            out = root[:, :, None] * lateral[None, :, :] * root[:, None, :]
+            out = lateral.unsqueeze(0) * root.unsqueeze(2)
+            out.mul_(root.unsqueeze(1))
             # the standing boundary's restoring term, -top_down on every unit's own diagonal
             out.diagonal(dim1=1, dim2=2).sub_(self.top_down * slopes[index])
             return out
 
         def above(index: np.ndarray, t: float) -> bool:  # every one of the rows above t
             for start in range(0, len(index), group):
-                part = torch.from_numpy(index[start:start + group]).to(device)
-                shifted = coupling(part)
+                shifted = coupling(torch.from_numpy(index[start:start + group]).to(device))
                 shifted.diagonal(dim1=1, dim2=2).sub_(t)
                 factor, info = torch.linalg.cholesky_ex(shifted)
+                del shifted
                 # a factorization holds where it reports no failure and its factor is finite
-                if not bool(((info == 0).all() & torch.isfinite(factor).all()).item()):
+                holds = bool(((info == 0).all() & torch.isfinite(factor).all()).item())
+                del factor, info
+                if not holds:
                     return False
             return True
 
         parts = []
         for start in range(0, rows, group):
             block = coupling(slice(start, start + group))
-            diagonal = block.diagonal(dim1=1, dim2=2)
-            parts.append((diagonal - (block.abs().sum(dim=2) - diagonal.abs())).min(dim=1).values)
+            diagonal = block.diagonal(dim1=1, dim2=2).clone()
+            block.abs_()
+            parts.append((diagonal - (block.sum(dim=2) - diagonal.abs())).min(dim=1).values)
+            del block, diagonal
         floors = torch.cat(parts).cpu().numpy()
-        del parts, block, diagonal
+        del parts
         dt, margin, halvings = self.model.dt, self.STEP_MARGIN, self.halvings
 
         def bound(h: int) -> float:  # the least smallest eigenvalue h halvings allow
@@ -464,10 +473,12 @@ class LearnedCode:
                     )
         if held:
             return halvings
-        mu = min(
-            float(torch.linalg.eigvalsh(coupling(slice(start, start + group)))[:, 0].min().item())
-            for start in range(0, rows, group)
-        )
+        least = []
+        for start in range(0, rows, fewer_rows):
+            block = coupling(slice(start, start + fewer_rows))
+            least.append(float(torch.linalg.eigvalsh(block)[:, 0].min().item()))
+            del block
+        mu = float(np.min(least))
         need = self.model.dt * (1.0 - mu) / self.STEP_MARGIN
         return 0 if need <= 1.0 else int(np.ceil(np.log2(need)))
 
@@ -483,8 +494,17 @@ class LearnedCode:
         the bound holds at the model's own step. Local contraction also requires the largest
         coupling eigenvalue below one, as the founder standing gain ensures."""
         v = np.atleast_2d(np.asarray(v, dtype=float))
-        if self._device is not None:
-            return self._stability_device(v)
+        if self._device is not None and len(v):
+            failed = None
+            try:
+                return self._stability_device(v)
+            except RuntimeError as error:  # the device's solver, or its memory
+                failed = (str(error).splitlines() or [type(error).__name__])[0]
+            # the same step read on the host, as the eigenvalues give it there
+            warnings.warn(
+                f"the learned code's step is read on the host: the device failed ({failed})",
+                RuntimeWarning, stacklevel=2,
+            )
         slopes = np.maximum(self.model.slope_at(v), 0.0)
         root = np.sqrt(slopes)
         lateral = self.model.gain * self.lateral()
@@ -638,13 +658,20 @@ class LearnedCode:
         base = self._base
         if base is not None:
             kernel, lateral = base._torch, self.lateral()
-            self._base = base._with_device_parameters(
-                kernel._placed(np.asarray(lateral[self._pre, self._post])),
-                kernel._placed(-self.thresholds),
-            )
-            # the same lateral weights at the model's gain, for the step's tests
-            self._coupled = (self.dictionary, kernel._placed(self.model.gain * lateral))
-            self.graph = self._stepped()
+            # everything the device takes is placed before the kernel is written; the same
+            # lateral weights at the model's gain serve the step's tests
+            scale = kernel._placed(np.asarray(lateral[self._pre, self._post]))
+            bias = kernel._placed(-self.thresholds)
+            coupled = (self.dictionary.copy(), kernel._placed(self.model.gain * lateral))
+            held = kernel.scale, kernel.bias_param
+            self._base = base._with_device_parameters(scale, bias)
+            try:
+                graph = self._stepped()
+            except BaseException:  # the kernel of a halved step did not take them
+                kernel.set_parameters(*held)
+                self._base = base
+                raise
+            self._coupled, self.graph = coupled, graph
             return
         self.graph = self.graph.with_parameters(
             efficacy=self.lateral_efficacy(), bias=-self.thresholds
@@ -704,7 +731,7 @@ class LearnedCode:
         kernel = self.graph._torch
         if kernel is not None:
             # the stimulus goes to the device once, where every sweep and check of the phase
-            # reads it; a resident drive is read as it rests, so it is refused here
+            # reads it; a drive that rests there is not read for finiteness, so it is read here
             host = np.atleast_2d(np.asarray(stimulus, dtype=float))
             if not np.isfinite(host).all():
                 raise ValueError("drive must be finite and the brain must contain neurons")
@@ -776,7 +803,7 @@ class LearnedCode:
         if not n or not self.learning or not (self.rate or self.predictor or self.threshold_rate):
             return False
         saved = self.dictionary, self.weights, self.thresholds, self.graph, self.work.copy()
-        base = self._base  # on a device: written only by a complete, checked install
+        base = self._base  # on a device: an install that fails returns its kernel as it was
         try:
             return self._learn(x, a, z, own)
         except Exception:

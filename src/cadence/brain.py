@@ -3397,8 +3397,9 @@ class _TorchKernel:
         Its states rest on this kernel (``root``). A qualified solve's damping halves the step
         (``Brain.equilibrate``); a kernel made at every halving would build its plan and read
         every parameter back to the host each time. The live kernel keeps one per step it was
-        asked for (at most the damping's halvings), each holding the transport's weights once
-        on the device; a kernel of another step asks the live kernel."""
+        asked for (the damping's halvings, and for a learned code's sub-network each step its
+        phase took), each holding the transport's weights once on the device; a kernel of
+        another step asks the live kernel."""
         root = self.root
         if root is not self:
             return root.stepped(neuron_model)

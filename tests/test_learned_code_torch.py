@@ -1,8 +1,9 @@
 """A learned code on the torch backend. The region's own phase, the settle of its sub-network
 and the tests of its step, runs in float64 on the brain's device (on the host where the device
 has no float64, MPS), so a float64 brain there reads as the float64 host brain within rounding,
-moment by moment, and takes the step the eigenvalues give. Read on a torch CPU device and on
-CUDA where there is one."""
+moment by moment, and takes the step the eigenvalues give. A phase the solver damps can end a
+stalled attempt one check apart on the two, so the sweeps are not compared. Read on a torch CPU
+device and on CUDA where there is one."""
 
 from __future__ import annotations
 
@@ -61,12 +62,33 @@ def tables(brain: cd.Brain) -> dict[str, np.ndarray]:
     }
 
 
+def counts(brain: cd.Brain) -> dict[str, int]:
+    """The region's work without its sweeps: a stalled attempt of a damped phase ends at two
+    repeated states at rounding, which the host and a device can reach one check apart."""
+    return {name: value for name, value in brain.learned_code.work.items() if name != "sweeps"}
+
+
 def same(a: cd.Brain, b: cd.Brain, atol: float = TIGHT) -> None:
     ours, theirs = tables(a), tables(b)
     for name, value in ours.items():
         np.testing.assert_allclose(theirs[name], value, rtol=0, atol=atol, err_msg=name)
     assert b.learned_code.halvings == a.learned_code.halvings
-    assert b.learned_code.work == a.learned_code.work
+    assert counts(b) == counts(a)
+
+
+def held_by_kernels(brain: cd.Brain) -> None:
+    """The kernels hold what the tables give: the sub-network its lateral weights and
+    thresholds, the whole graph the thresholds as the code units' biases in its precision and
+    the region's synapses at zero."""
+    region, graph = brain.learned_code, brain.brain
+    np.testing.assert_array_equal(region.graph.efficacy, region.lateral_efficacy())
+    np.testing.assert_array_equal(region.graph.bias, -region.thresholds)
+    precision = "float32" if graph._torch.dtype == torch.float32 else "float64"
+    np.testing.assert_array_equal(
+        graph.bias[brain.code_index], (-region.thresholds).astype(precision)
+    )
+    for synapses, _, _ in brain._code_synapses.values():
+        assert not graph.efficacy[synapses].any()
 
 
 def observations(rng: np.random.Generator, rows: int) -> np.ndarray:
@@ -115,14 +137,21 @@ def test_a_brain_on_mps_keeps_the_regions_phase_on_the_host(tmp_path):
     brain = cd.Brain.compose(
         INPUTS, ACTIONS, seed=3, backend="torch", device="mps", **OPTIONS
     )
-    assert brain.learned_code.device is None and brain.learned_code.graph.backend == "cpu"
-    reference = host()
-    taught((reference, brain), np.random.default_rng(0), 6)
-    same(reference, brain, atol=1e-4)  # float32 around a float64 phase
+    region = brain.learned_code
+    assert region.device is None and region.graph.backend == "cpu"
+    rng = np.random.default_rng(0)
+    for _ in range(6):
+        x = observations(rng, 2)
+        brain.lesson(x, rng.integers(ACTIONS, size=2))
+        assert brain.act(x, greedy=True).shape == (2,)
+        np.testing.assert_array_equal(
+            brain.brain.bias[brain.code_index], (-region.thresholds).astype("float32")
+        )
+    assert region.work["updates"] == 6 and region.device is None
     loaded = cd.Brain.load(brain.save(tmp_path / "brain.npz"), backend="torch", device="mps")
     assert loaded.learned_code.device is None
-    x = observations(np.random.default_rng(1), 2)
-    np.testing.assert_array_equal(loaded.act(x, greedy=True), brain.act(x, greedy=True))
+    np.testing.assert_array_equal(loaded.learned_code.thresholds, region.thresholds)
+    assert loaded.act(observations(rng, 2), greedy=True).shape == (2,)
 
 
 @pytest.mark.parametrize("device", DEVICES)
@@ -157,8 +186,7 @@ def test_a_life_of_lessons_and_acts_reads_as_on_the_host(device, rows):
     taught((reference, placed), np.random.default_rng(0), 30, rows)
     same(reference, placed)
     assert reference.learned_code.work["updates"] == 30
-    for name in ("code_steps", "context_free_steps"):
-        assert placed.last_settlement[name] == reference.last_settlement[name]
+    held_by_kernels(placed)
 
 
 @pytest.mark.parametrize("device", DEVICES)
@@ -266,15 +294,27 @@ def test_surprise_keeps_its_own_refusal_of_a_device():
 
 
 @pytest.mark.parametrize("device", DEVICES)
-def test_a_float32_brain_follows_the_host_within_float32(device):
+def test_a_float32_brain_starts_as_the_host_and_keeps_its_kernels(device):
     """The phase is float64, and it reads the context and its warm start from the brain's
-    float32 state and learns from float32 activations."""
+    float32 state and learns from float32 activations: the first moment reads as the host's
+    within float32's rounding, and a float32 life is a run of its own, so the moments after
+    it are held to what the kernels hold and compared with no other run."""
     reference, placed = host(), on(device, "float32")
-    taught((reference, placed), np.random.default_rng(0), 12)
+    rng = np.random.default_rng(0)
+    x, labels = observations(rng, 2), rng.integers(ACTIONS, size=2)
+    for brain in (reference, placed):
+        brain.lesson(x, labels)
+        brain.act(x, greedy=True)
     ours, theirs = tables(reference), tables(placed)
     for name, value in ours.items():
-        np.testing.assert_allclose(theirs[name], value, rtol=0, atol=1e-4, err_msg=name)
-    assert placed.learned_code.halvings == reference.learned_code.halvings
+        np.testing.assert_allclose(theirs[name], value, rtol=0, atol=1e-5, err_msg=name)
+    for _ in range(12):
+        x = observations(rng, 2)
+        placed.lesson(x, rng.integers(ACTIONS, size=2))
+        assert placed.act(x, greedy=True).shape == (2,)
+        held_by_kernels(placed)
+    assert placed.learned_code.graph._torch.dtype == torch.float64
+    assert placed.learned_code.work["updates"] == 13
 
 
 @pytest.mark.parametrize("device", DEVICES)
@@ -312,16 +352,29 @@ def eigenvalue_halvings(code, v: np.ndarray) -> int:
 
 @pytest.mark.parametrize("device", DEVICES)
 @pytest.mark.parametrize("group", [1, 3, None])
-def test_the_step_on_a_device_is_the_one_the_eigenvalues_give(device, group):
+def test_the_step_on_a_device_is_the_one_the_eigenvalues_give(device, group, monkeypatch):
     """From every step held, over states from silent to steep and dictionaries from the drawn
-    one to one direction shared by every unit, with the rows factorized one at a time, three
-    at a time and at the region's own bound: the host's answer."""
+    one to one direction shared by every unit, with the rows read one at a time, three at a
+    time and at the region's own bound: the host's answer, made on the device (NumPy's
+    factorization and eigenvalues are out of reach while the device reads) in groups of at
+    most that many rows."""
     rng = np.random.default_rng(11)
-    answers = set()
+    answers, read = set(), {"factorized": [], "solved": []}
+    factorize, solve = torch.linalg.cholesky_ex, torch.linalg.eigvalsh
+    monkeypatch.setattr(torch.linalg, "cholesky_ex", lambda matrix: (
+        read["factorized"].append(len(matrix)), factorize(matrix))[1])
+    monkeypatch.setattr(torch.linalg, "eigvalsh", lambda matrix: (
+        read["solved"].append(len(matrix)), solve(matrix))[1])
+
+    def unreachable(*args, **kwargs):
+        raise AssertionError("the host's linear algebra read a step the device holds")
+
     for seed, overlap in enumerate((0.0, 0.3, 0.7, 1.0)):
         placed, reference = on(device, seed=seed).learned_code, host(seed=seed).learned_code
         if group is not None:
-            placed.DEVICE_BYTES = 8 * placed.units * placed.units * group
+            placed.DEVICE_BYTES = 32 * placed.units * placed.units * group
+        bound = max(1, placed.DEVICE_BYTES // (32 * placed.units * placed.units))
+        del read["factorized"][:], read["solved"][:]
         one = rng.normal(size=(placed.inputs, 1))
         dictionary = (1.0 - overlap) * placed.dictionary + overlap * one
         dictionary = dictionary / np.linalg.norm(dictionary, axis=0)
@@ -335,8 +388,130 @@ def test_the_step_on_a_device_is_the_one_the_eigenvalues_give(device, group):
                 for held in {0, 1, 2, 3, 5, expected, expected + 1, max(expected - 1, 0)}:
                     placed.restep(held)
                     reference.restep(held)
-                    assert placed.stability(v) == expected == reference.stability(v)
+                    assert reference.stability(v) == expected
+                    with monkeypatch.context() as patch:
+                        patch.setattr(np.linalg, "cholesky", unreachable)
+                        patch.setattr(np.linalg, "eigvalsh", unreachable)
+                        assert placed.stability(v) == expected
+        # the factorizations by the group, an eigenvalue read by half of it
+        most = max(read["factorized"]), max(read["solved"])
+        assert most[0] <= bound and most[1] <= max(1, bound // 2)
+        if group is None:  # the region's own bound takes these rows together
+            assert most[0] > 3 and most[1] == 16
+        else:
+            assert most == (group, max(1, group // 2))
     assert len(answers) >= 2
+
+
+@pytest.mark.parametrize("device", DEVICES)
+def test_the_step_follows_a_dictionary_written_in_place(device):
+    """The lateral weights the device keeps for the step's tests are made again when the
+    dictionary reads otherwise, a column written in place without ``install`` included."""
+    placed, reference = on(device).learned_code, host().learned_code
+    rng = np.random.default_rng(4)
+    v = rng.normal(placed.model.threshold, 3.0, (4, placed.units))
+    assert placed.stability(v) == reference.stability(v)
+    kept = placed._coupled[1]
+    assert placed.stability(v) == reference.stability(v) and placed._coupled[1] is kept
+    shared = rng.normal(size=placed.inputs)
+    for code in (placed, reference):
+        code.dictionary[:, : code.units // 2] = (shared / np.linalg.norm(shared))[:, None]
+    assert placed.stability(v) == reference.stability(v) == eigenvalue_halvings(reference, v)
+    assert placed._coupled[1] is not kept
+
+
+@pytest.mark.parametrize("device", DEVICES)
+@pytest.mark.parametrize("failing", ["cholesky_ex", "eigvalsh"])
+def test_a_device_that_fails_in_the_steps_tests_leaves_the_step_to_the_host(
+    device, failing, monkeypatch
+):
+    """A solver error or an exhausted device in the step's tests does not end a life: the host
+    reads the same step, and a warning names the failure."""
+    reference, placed = host(), on(device)
+    rng = np.random.default_rng(0)
+    taught((reference, placed), rng, 3)
+
+    def fails(*args, **kwargs):
+        raise RuntimeError("cusolver error: CUSOLVER_STATUS_EXECUTION_FAILED\nwhen calling it")
+
+    monkeypatch.setattr(torch.linalg, failing, fails)
+    region = placed.learned_code
+    for held in (0, 1, 4):  # a held step asks the factorizations, another one the eigenvalues
+        region.restep(held)
+        reference.learned_code.restep(held)
+        v = rng.normal(region.model.threshold, 3.0, (4, region.units))
+        expected = reference.learned_code.stability(v)
+        if failing == "eigvalsh" and expected == held:
+            assert region.stability(v) == expected  # the factorizations settled it
+            continue
+        with pytest.warns(RuntimeWarning, match="read on the host: the device failed "
+                                                r"\(cusolver error: CUSOLVER_STATUS_EXECUTION_FAILED\)"):
+            assert region.stability(v) == expected
+    for brain in (reference, placed):
+        brain.learned_code.restep(reference.learned_code.halvings)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        taught((reference, placed), rng, 6)  # the life goes on, as the host's
+    same(reference, placed)
+    assert region.device is not None
+
+
+def _peak_of(device: str, call) -> int | None:
+    """The most bytes ``call`` held on ``device`` beyond what was held before it: CUDA's own
+    count, or on the CPU device the allocations the profiler records; None where it records
+    none."""
+    if device == "cuda":
+        torch.cuda.synchronize()
+        before = torch.cuda.memory_allocated()
+        torch.cuda.reset_peak_memory_stats()
+        call()
+        torch.cuda.synchronize()
+        return int(torch.cuda.max_memory_allocated() - before)
+    from torch.profiler import ProfilerActivity, profile
+
+    with profile(activities=[ProfilerActivity.CPU], profile_memory=True) as recorded:
+        call()
+    try:  # the profiler's own record of every allocation and release
+        moves = sorted(
+            (event.start_ns(), event.nbytes())
+            for event in recorded.profiler.kineto_results.events() if event.name() == "[memory]"
+        )
+    except AttributeError:
+        return None
+    if not moves:
+        return None
+    live = peak = 0
+    for _, size in moves:
+        live += size
+        peak = max(peak, live)
+    return int(peak)
+
+
+@pytest.mark.parametrize("device", DEVICES)
+def test_the_steps_tests_work_within_their_bytes(device):
+    """Factorized or solved for their eigenvalues, the rows of a batch are read in groups
+    whose couplings, factors and workspace stay within ``DEVICE_BYTES`` (the batch's slopes
+    beside them). On CUDA at a width where the solver's workspace is the matrices' and not its
+    fixed part."""
+    units, rows, group = (512, 64, 4) if device == "cuda" else (128, 64, 4)
+    region = cd.Brain.compose(
+        40, ACTIONS, seed=0, backend="torch", device=device, precision="float64",
+        modules=(16,), learned_code=units,
+    ).learned_code
+    region.DEVICE_BYTES = 32 * units * units * group
+    v = np.random.default_rng(0).normal(region.model.threshold, 1.0, (rows, units))
+    needed = region.stability(v)
+    whole = 8 * rows * units * units  # every row's coupling at once
+    assert region.DEVICE_BYTES * 3 < whole
+    for held in (needed, needed + 3, 0):  # held by factorizations, and read by eigenvalues
+        region.restep(held)
+        region.stability(v)  # the lateral weights rest on the device from here
+        peak = _peak_of(device, lambda: region.stability(v))
+        if peak is None:
+            pytest.skip("this torch records no allocations on the CPU device")
+        # a group's couplings at the least, and no more than the region's bytes
+        assert 8 * group * units * units <= peak, (held, peak)
+        assert peak <= region.DEVICE_BYTES + 4 * 8 * rows * units, (held, peak)
 
 
 @pytest.mark.parametrize("device", DEVICES)
@@ -354,7 +529,7 @@ def test_a_halved_step_settles_on_the_kernel_that_holds_the_tables(device):
         assert placed.graph.neuron_model.dt == reference.graph.neuron_model.dt
         a = reference.settle(stimulus, None, budget=512 << halvings, tolerance=1e-9)
         b = placed.settle(stimulus, None, budget=512 << halvings, tolerance=1e-9)
-        assert b.steps == a.steps and np.all(b.qualified)
+        assert np.all(a.qualified) and np.all(b.qualified)
         np.testing.assert_allclose(b.state.activation, a.state.activation, rtol=0, atol=1e-12)
         sensory, context = rng.random((3, placed.inputs)), rng.random((3, placed.context))
         for code, phase in ((reference, a), (placed, b)):
@@ -433,6 +608,39 @@ def test_a_refused_learning_step_leaves_the_region_and_its_kernel(device):
 
 
 @pytest.mark.parametrize("device", DEVICES)
+def test_an_install_the_device_fails_in_returns_the_kernel_as_it_was(device):
+    """The kernel is written in place before the sub-network of a halved step takes the same
+    parameters; where that fails, the kernel holds the tables it held, with the region."""
+    region = on(device).learned_code
+    region.restep(2)
+    kernel = region._base._torch
+    kept = region.dictionary, region.weights, region.thresholds, region.graph, region._base
+    scale, bias = kernel.host_scale(), kernel.host_bias()
+    rng = np.random.default_rng(0)
+    sensory, activation = rng.random((2, region.inputs)), rng.random((2, region.units))
+    context = rng.random((2, region.context))
+    stepped = kernel.stepped
+
+    def fails(model):
+        raise RuntimeError("CUDA out of memory")
+
+    kernel.stepped = fails
+    try:
+        with pytest.raises(RuntimeError, match="out of memory"):
+            region.learn(sensory, activation, context)
+    finally:
+        kernel.stepped = stepped
+    assert (region.dictionary, region.weights, region.thresholds) == kept[:3]
+    assert region.graph is kept[3] and region._base is kept[4]
+    np.testing.assert_array_equal(kernel.host_scale(), scale)
+    np.testing.assert_array_equal(kernel.host_bias(), bias)
+    np.testing.assert_array_equal(kernel.host_scale(), region.lateral_efficacy())
+    assert region.learn(sensory, activation, context)  # and the same step takes afterwards
+    np.testing.assert_array_equal(region.graph.efficacy, region.lateral_efficacy())
+    np.testing.assert_array_equal(region._base._torch.host_bias(), -region.thresholds)
+
+
+@pytest.mark.parametrize("device", DEVICES)
 def test_the_standing_boundary_goes_to_the_device_once(device):
     """Its arrays cannot be written, so the kernel's buffers hold it while it lives; a nudge
     whose arrays can be written is filled at every settle, as before."""
@@ -476,6 +684,10 @@ def test_a_copy_holds_its_own_kernels_and_learns_apart(device):
     assert twin.device == region.device and twin.connectome is region.connectome
     assert twin.standing() is not region.standing() and twin.standing() is twin.standing()
     assert not twin.standing().anchor_gain.flags.writeable
+    # the copied moment's phase rests on the copy's kernel: no third kernel is made for it
+    for brain in (placed, twins[1]):
+        phase = brain._coded_moment[2]
+        assert phase.device["holder"] is brain.learned_code._base._torch
     assert twin._base._torch is not region._base._torch
     assert twin.graph._torch.root is twin._base._torch
     assert twins[1].brain._torch is not placed.brain._torch
@@ -593,10 +805,11 @@ def test_a_float32_brains_file_loads_on_every_backend(device, last, tmp_path):
     )
     assert [brain.learned_code.device is None for brain in loaded] == [True, False, False]
     x, labels = observations(rng, 2), rng.integers(ACTIONS, size=2)
-    answer = placed.act(x, greedy=True)
     for brain in loaded:
         np.testing.assert_array_equal(brain.learned_code.thresholds, thresholds)
-        np.testing.assert_array_equal(brain.act(x, greedy=True), answer)
+        np.testing.assert_array_equal(brain.learned_code.dictionary, placed.learned_code.dictionary)
+        assert brain.learned_code.halvings == placed.learned_code.halvings
+        assert brain.act(x, greedy=True).shape == (2,)
         brain.lesson(x, labels)
         assert brain._code_installed(brain.brain)
 
@@ -666,13 +879,3 @@ def test_a_graft_and_a_retune_keep_the_region_on_the_device(device):
 def test_lives_refuse_a_learned_code_by_name_on_torch_too():
     with pytest.raises(ValueError, match="Lives holds the parts its lives axis covers: no learned"):
         cd.Lives(INPUTS, ACTIONS, 2, backend="torch", device="cpu", modules=(16,), learned_code=8)
-
-
-def test_the_default_backend_leaves_a_learned_code_on_the_cpu():
-    """The rule has no reading of a learned code on a card: such a brain takes torch by name."""
-    from cadence.resident import _fastest_backends
-
-    assert [c.backend for c in _fastest_backends(256, 6_321_152, learned_code=True)][-1] == "cpu"
-    assert "torch" not in [
-        c.backend for c in _fastest_backends(256, 6_321_152, learned_code=True)
-    ]
