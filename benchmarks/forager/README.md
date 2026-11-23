@@ -79,7 +79,7 @@ below both (.799 and .678).
 
 ### The declared run: F1 holds, F2 fails
 
-Founders 1011100 to 1011111 at `44f2fed2`, as declared above (Cadence 0.101.1 before its
+Founders 1011100 to 1011111 at `44f2fed2`, as declared above (Cadence 0.102.0 before its
 release; [receipt](results/declared.json)). Founders 1011110 and 1011111 were read in two parts
 on a shared machine, the `code` arm and then the other three, with the same source and seeds.
 Each cell is a life's mean over its four readings.

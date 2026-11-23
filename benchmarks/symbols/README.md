@@ -253,7 +253,7 @@ on one or two.
 
 Without a bar: Y1h .80 to .95.
 
-### The senses beside the code (0.101.1)
+### The senses beside the code (0.102.0)
 
 `--cortex-reads both` composes every brain of the life with `cortex_reads="both"`: the cortex
 reads the senses beside the code, and every memory keys on the code as before. A quick reading of

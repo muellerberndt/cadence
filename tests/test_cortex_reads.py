@@ -1,4 +1,4 @@
-"""What the cortex of a brain with a fixed code reads (``compose(cortex_reads=...)``, 0.101.1):
+"""What the cortex of a brain with a fixed code reads (``compose(cortex_reads=...)``, 0.102.0):
 the code (the founder), the code and the observation itself (``"both"``), or the observation
 itself (``"observation"``). Every memory keys on the code whichever the cortex reads."""
 

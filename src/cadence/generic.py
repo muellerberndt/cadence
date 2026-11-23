@@ -142,7 +142,7 @@ LONGTERM_FORMAT = "cadence-brain/4"
 # surprise and the focus it draws, #337), ``map`` (a held map of things whose sheet carries
 # values or reads surprise, which a reader of 0.99.1 cannot build), ``bound`` (records of
 # bound moments, ``compose(bound=records)``, 0.101) and ``cortex_reads`` (a cortex that reads the
-# observation itself beside or in place of its fixed code, ``compose(cortex_reads=...)``, 0.101.1).
+# observation itself beside or in place of its fixed code, ``compose(cortex_reads=...)``, 0.102.0).
 FEATURES_FORMAT = "cadence-brain/5"
 FEATURES = frozenset(
     {"strength", "heads", "recall_strength", "surprise", "map", "bound", "cortex_reads"}

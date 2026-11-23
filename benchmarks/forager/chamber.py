@@ -1,5 +1,5 @@
 """The forager chamber: a body taught by imitation, its cortex reading the code or the code and
-its senses (cadence 0.101.1).
+its senses (cadence 0.102.0).
 
 A brain with the senses of a small animal (``world.SENSES``: eyes, ears, a heard call, the thing
 it attends, the nearest food and its body; 104 inputs), two modules of 32 neurons and a fixed

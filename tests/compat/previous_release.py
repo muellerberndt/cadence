@@ -6,7 +6,7 @@
 ``save`` writes every brain of the released-files panel (``tests/fixtures/released/panel.py``,
 brains without this version's new options) after its life, with each brain's continuation
 after a load in this version, and a brain whose cortex reads the senses beside its code
-(``cortex_reads="both"``, 0.101.1) that the previous release refuses. ``load`` reads them under
+(``cortex_reads="both"``, 0.102.0) that the previous release refuses. ``load`` reads them under
 the previous release: each brain loads and continues with the same actions and the same weights
 to the bit, and the brain with ``cortex_reads`` is refused by its feature's name. CI runs both
 on one machine on the NumPy loop (``CADENCE_FUSED=0``).

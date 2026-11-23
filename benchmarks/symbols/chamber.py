@@ -78,7 +78,7 @@ NAMED = ("cup", "apple", "banana", "key")
 ROOMS = 12
 SPOTS = np.array([[-0.6, 0.5], [0.0, 0.6], [0.6, 0.5]])  # where a room's three things stand
 MAP_VALUES = {"hue": 8, "shape": 24, "surface": 8}
-READS = "code"  # what the cortex reads beside the code (``--cortex-reads``; 0.101.1)
+READS = "code"  # what the cortex reads beside the code (``--cortex-reads``; 0.102.0)
 
 
 def setting() -> tuple[cd.senses.Things, Ear, Words]:
@@ -348,7 +348,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--founders", nargs="+", type=int, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--cortex-reads", choices=("code", "both", "observation"), default="code",
-                        help="what the cortex reads beside the code (cadence 0.101.1)")
+                        help="what the cortex reads beside the code (cadence 0.102.0)")
     args = parser.parse_args(argv)
     global READS
     READS = args.cortex_reads
