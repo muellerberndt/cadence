@@ -361,7 +361,7 @@ path its agreement is .679 against .672, higher on 6 of 12 (the declared bar was
 are three in five of those moments, and the brain that reads the bearing turns at more of them.
 `"observation"` reads .824, .571 and 7.5 plants, and a brain without a code .788, .471 and 6.0.
 
-In the [symbols chamber](../benchmarks/symbols/README.md#the-senses-beside-the-code-01011),
+In the [symbols chamber](../benchmarks/symbols/README.md#the-senses-beside-the-code-01020),
 where a brain learns names from a trainer, every gate holds on four fresh founders with
 `"both"` as with the code alone, at the same readings: a name heard alone brings its thing back
 from the records and in the settled state at 1.00, a reward teaches names and colours in the same
@@ -618,6 +618,13 @@ while attempted-work counters and refusal diagnostics may advance.
 Custom controls such as `top_down=0` with a large negative-branch leak need that separate
 check: damping cannot stabilize an intrinsically growing mode.
 
+The code phase runs in float64 on every backend. On `"cpu"`, on `"mlx"` and on a torch MPS
+device, which has no float64, it runs on the host. On any other torch device (CUDA, the CPU
+device) it runs on that device, whatever the brain's precision: the sub-network settles there,
+and the factorizations and eigenvalues of the step are read there. `brain.learned_code.device`
+names the device, `None` on the host. The tables, their learning rules and the memories' key
+stay on the host ([a learned code on torch](backends.md#a-learned-code-on-torch)).
+
 The top-down boundary reads the working trace, the settled association activity of the moment
 before, and never the association region of the moment: a prediction read from the moment's
 own association activity would copy the code it reads.
@@ -679,7 +686,7 @@ and `IDENTITY` 0.9 (the weight of the observation's own identity in the memories
 
 Refused with `ValueError`: `learned_code` below 2, `learned_code_fields` without the region,
 fields that do not sum to the inputs or leave a field fewer than two units, `code` beside
-`learned_code`, an image brain, the `torch` backend, and a custom connectome without a
+`learned_code`, an image brain, and a custom connectome without a
 `code` population and the complete dictionary, lateral and predictor synapses, or whose
 sensory neurons project anywhere but to the code region.
 

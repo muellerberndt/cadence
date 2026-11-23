@@ -8,7 +8,7 @@ NumPy float64 unless you pick another. Start from the NumPy-only
 [installation](../README.md#get-started) and add an extra:
 
 ```bash
-python -m pip install "cadence-net[fast]==0.101.1"
+python -m pip install "cadence-net[fast]==0.102.0"
 ```
 
 `[fast]` installs Numba and SciPy, `[accel]` PyTorch and `[apple]` MLX (0.21.1 or later); from a checkout, use
@@ -208,6 +208,70 @@ hold no eligibility. A large read eligibility goes to a checkpoint as the actor 
 or the full layout.
 
 
+### A learned code on torch
+
+`Brain.compose(..., learned_code=units, backend="torch")` runs the region's own phase on the brain's device:
+the settle of its sub-network and the tests of its step
+([how a moment settles](senses.md#how-a-moment-settles)). The phase is float64 whatever the brain's
+precision, because the step's factorizations hold a relative margin of 1e-9 from their bounds, which float32
+does not resolve. MPS has no float64, so a brain there keeps the phase on the host, as a brain on `"cpu"` or
+`"mlx"` does. `brain.learned_code.device` names the device, `None` on the host.
+
+```python
+coded = cd.Brain.compose(12, 3, learned_code=16, backend="torch", device="cpu")  # "cuda" for a GPU
+coded.act(np.eye(12)[[0, 5]], greedy=True)
+print(coded.learned_code.device, coded.learned_code.graph.precision)  # cpu float64
+```
+
+On the device the sub-network is a graph of its own, `units` neurons with every ordered pair of lateral
+synapses. Its kernel takes the lateral weights and the thresholds in place after each learning step, and the
+brain's kernel takes the thresholds as its code units' biases the same way, so no kernel is built again and a
+state settled on either continues on it. The step's tests factorize the rows of a batch in groups that hold at
+most 128 MB of couplings at a time (`LearnedCode.DEVICE_BYTES`: 16 rows of 1,024 units), and read the
+eigenvalues there when the factorizations do not settle the step. The region's tables and their three
+learning rules, the key of the memories and the memories themselves
+([the options that keep them on the host](#memories-on-the-device)) run on the host in NumPy, where a moment
+also makes its warm start from the stream's state and the phase.
+
+In float64 with `learning_fast_settle=False` a life on torch reads as the life on the CPU within rounding at
+each moment, with the same sweeps of every code phase and the same step.
+[`tests/test_learned_code_torch.py`](../tests/test_learned_code_torch.py) reads small brains to 1e-9 on a torch
+CPU device and on CUDA where there is one: lessons, outcomes, `live` and `wait`, `value`, imagined branches,
+copies, a refused moment, `grow`, `graft`, `retune`, and files saved on either backend and continued on the
+other. On the brain of the table below at 32 rows on an A10G, twelve lessons with a greedy act each left the
+dictionary within 5.5e-12 of the CPU's, the predictor within 3.9e-12, the thresholds equal and the efficacies
+within 1.6e-10, with every action equal. In float32, the device's default, the phase reads its context and its
+warm start from the brain's float32 state and learns from float32 activations, so the life is another run, as
+any float32 life is ([precision matters](#precision-matters)). On the same brain and rows the dictionary stood
+1.9e-5 from the CPU's after six moments; at the seventh one unit's count at the active floor fell on the other
+side, which is one step of a threshold (`LearnedCode.THRESHOLD_RATE`, 6.25e-4), and over the twelve moments 97%
+of the actions' slots agreed. Compare such runs by means over seeds.
+
+On an NVIDIA A10G against one core of its machine's EPYC 7R32, one thread per process, milliseconds of
+`act`, `lesson` and `step` as [the default backend's table](#the-default-backend) reads them (the least of four
+rounds after one to warm). The card was shared with other jobs, which held it at 15 to 70% through the
+readings, so each cell of the card gives the least and the greatest of three readings, and the reading's
+process was held under 3 GB of the card's memory:
+
+| Brain | Synapses | Rows | One core | A10G, float32 |
+| --- | ---: | ---: | ---: | ---: |
+| 1,000 inputs, 400 actions in four slots, `modules=(256, 128), learned_code=1024, attention=True, recall_heads=4, teaching="normalized"` | 4,721,664 | 16 | 1,127, 1,418, 2,822 | 234 to 337, 453 to 651, 619 to 946 |
+| The same | | 64 | 5,364, 4,381, 12,624 | 506 to 599, 642 to 771, not read |
+
+A lesson with a greedy act, the mean over 16 consecutive moments of that brain at 64 rows, took 13.1 seconds on
+one core and 1.9 to 2.3 seconds on the card in five float32 readings, about six times less, and 2.2 seconds in
+float64. The card's `step` at 64 rows holds the streams' synapse eligibility, 1.2 GB an array in float32, which
+is more than the reading's share of the card ([memories on the device](#memories-on-the-device)). On one core
+85% of such a moment is the code phase: 70% in the step's factorizations and eigenvalues and 14% in the
+sub-network's settle (six moments after two to warm, in which two of twelve tests read the eigenvalues). On the
+card the same six moments spend 32% in the step's tests, 46% in the recall heads' read and lesson on the host
+in NumPy at one thread, and 6% in the region's learning step on the host.
+
+A file saved on either backend loads on the other, and `Brain.load(path, backend="torch")` places the phase on
+the device again. A float32 brain holds its code units' biases as float32 holds the negated thresholds, and a
+load takes them exact or so rounded; the tables themselves are saved in float64. `Lives` refuses a learned code
+on every backend ([what does not go together](modules.md#what-does-not-go-together)).
+
 ## The default backend
 
 With no backend named, `Brain.compose` uses `backend="auto"`: the fastest backend this machine has for
@@ -272,7 +336,9 @@ On an Apple M4, the same, single readings on a shared machine at a load of 12 to
 MPS and other torch devices are not on the list: MPS reads slower than MLX and the CPU, and the others
 have no reading; name them to use them. Options that keep the moment's memories on the
 host take a device from four times the work, and `precision="float64"` named on CUDA from four times, both
-reasoned from the readings above and not read at that size. A learned code stays off torch.
+reasoned from the readings above and not read at that size. The rule takes no CUDA device for a brain with a
+learned code, whose crossing it has not read: name `backend="torch"` for one
+([a learned code on torch](#a-learned-code-on-torch)).
 
 A CUDA card this table has not read is measured once. The first brain whose work reaches a quarter of
 the table's crossing times the chamber's default brain on the card in float32 and on one core of the

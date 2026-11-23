@@ -237,7 +237,7 @@ of 8 decisions, demonstrations recorded at 1.0, 24 active separation cells) are 
 | `memory_keep` 0 or more, and above 0 needs `memory_fade` ([a record's strength](memory.md#a-records-strength-opt-in)) | `ValueError` |
 | `recall_strength` boolean, without `recall_heads` above 1, `recall_window` above 1, `recall_action` or `recall_when`; `recall_again` in `[0, 1]` and `recall_kept` above 0, each away from its founder only with `recall_strength` ([a slot's strength](memory.md#a-slots-strength-opt-in)) | `ValueError` |
 | `memory_context`, `memory_extinction` need `memory_choice`; `memory_context_hold` (`"unchanged"` or `"punished"`) needs `memory_choice` and `memory_context` | `ValueError` |
-| `learned_code` at least 2; `learned_code_fields` without it, `code` beside it, an image brain, the `torch` backend, or a connectome without the region's populations and complete synapses | `ValueError` |
+| `learned_code` at least 2; `learned_code_fields` without it, `code` beside it, an image brain, or a connectome without the region's populations and complete synapses | `ValueError` |
 | `learned_fields` at least 2, on an image of at least 8 by 8 pixels, without `code` or `learned_code`; `image`, `ports` or `fields_motor` without `learned_fields`; `ports` negative or not an integer; `fields_motor` negative or not finite; `grow` and `graft` of a brain that holds them | `ValueError` |
 | `tied` a mapping from `(pre, post)` to two positive integers, one of them 1 or the two equal; a projection the layout lacks or a population the connectome lacks; blocks that do not divide a region; blocks that hold different synapses or start at different signs or contact counts; a synapse two ties name; a learned code's own projections; the sensory region of `learned_fields` with `ports`; `retune(tied=...)`, a construction setting (`retune` changes a tied brain's other settings); `Lives` and `graft` of a tied brain, and `grow` of a region a tie cuts into blocks | `ValueError` |
 | `memory_context` in `[0, 1)`; `memory_extinction` in `[0, 1]`; `working_memory_decay`, `efference_decay` in `[0, 1)` | `ValueError` |
@@ -350,7 +350,7 @@ in `memories/recall/depth`), `surprise` for the brain's surprise (#337) and `map
 whose sheet carries values or reads surprise, `bound` for records of bound moments (their
 settings under `bound` in the metadata and the store's arrays under `bound/`), and
 `cortex_reads` for a cortex that reads the observation beside or in place of its fixed code
-(`cortex_reads` in the metadata and the composition, 0.101.1). `Brain.load` refuses a file that names a feature
+(`cortex_reads` in the metadata and the composition, 0.102.0). `Brain.load` refuses a file that names a feature
 this version does not hold, by that name, and a file whose features and contents disagree. A
 later option adds a feature's name and no format name.
 
@@ -827,7 +827,9 @@ and held as `brain.learned_code`: `dictionary` `(inputs, units)` with unit-lengt
 `weights` `(units, context)` the predictor, `thresholds` `(units,)`, `read` (the gain the
 sensory activation is read at, one over the activation one input at amplitude 1 gives, from
 the model), the lateral `connectome`
-and `graph` of the units (the sub-network a moment's code phase settles). `lateral()`,
+and `graph` of the units (the sub-network a moment's code phase settles), `device` (the torch
+device the phase runs on, `None` on the host) with `place(device)` (a torch device that has
+float64, or `None` for the host; MPS is refused). `lateral()`,
 `lateral_efficacy()`, `gram()`; `stimulus(sensory, context)`, `prediction(context)`,
 `settle(stimulus, warm, *, budget, tolerance, damping=3) -> Equilibrium`,
 `code_of(activation)` (the rectified code at unit length, what the memories key on and the
@@ -845,7 +847,8 @@ prediction and, at a learned moment, the context-free code `free`); the constant
 `TOP_DOWN`, `RATE`, `PREDICTOR`, `THRESHOLD`, `THRESHOLD_RATE`, `TARGET`, `REPAIR`,
 `SILENCE`, `ACTIVE` and `IDENTITY`, held as the instance's attributes of the same names in
 lower case, `learning` (False holds every table still) and `top_down` (0 is the control
-without the top-down boundary) the two a reading or a control changes on a copy.
+without the top-down boundary) the two a reading or a control changes on a copy;
+`DEVICE_BYTES` (the bytes of couplings the step's tests hold at a time on a device).
 Both step bounds include the supplied neuron model's synaptic `gain`; the standing
 `top_down` anchor has its own gain. They bound negative modes only. A custom model
 needs its largest slope-weighted coupling eigenvalue below one. A refused enclosing

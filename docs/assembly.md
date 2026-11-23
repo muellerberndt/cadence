@@ -441,7 +441,7 @@ moments. A `live` moment here learns (the brain is young); a calm one costs abou
 - **What refuses what.** `grow`, `graft` and `Lives` refuse a brain with records; `Lives` takes
   no senses by name and no map; `surprise=True` runs on the CPU. The whole list is
   [what does not go together](modules.md#what-does-not-go-together).
-- **Sentences and records at any size are 0.102.0 work.** A sentence held in the state
+- **Sentences and records at any size are work in progress.** A sentence held in the state
   ([#308](https://github.com/muellerberndt/cadence/issues/308)) and long-term records past a
-  machine's memory ([#310](https://github.com/muellerberndt/cadence/issues/310)) are planned for
-  the next release ([changelog](../CHANGELOG.md)).
+  machine's memory ([#310](https://github.com/muellerberndt/cadence/issues/310)) are in no
+  release ([the roadmap](https://github.com/muellerberndt/cadence/issues/109)).
