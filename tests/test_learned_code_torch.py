@@ -35,15 +35,20 @@ def _quiet():
         yield
 
 
+def settings(options: dict) -> dict:
+    """The brain's options with ``options`` over them; a None leaves the name out."""
+    return {name: value for name, value in {**OPTIONS, **options}.items() if value is not None}
+
+
 def on(device: str, precision: str = "float64", seed: int = 3, **options) -> cd.Brain:
     return cd.Brain.compose(
         INPUTS, ACTIONS, seed=seed, backend="torch", device=device, precision=precision,
-        **{**OPTIONS, **options},
+        **settings(options),
     )
 
 
 def host(seed: int = 3, **options) -> cd.Brain:
-    return cd.Brain.compose(INPUTS, ACTIONS, seed=seed, backend="cpu", **{**OPTIONS, **options})
+    return cd.Brain.compose(INPUTS, ACTIONS, seed=seed, backend="cpu", **settings(options))
 
 
 def tables(brain: cd.Brain) -> dict[str, np.ndarray]:
@@ -186,6 +191,78 @@ def test_a_living_brain_waits_and_stays_calm_as_on_the_host(device):
             reference.wait(x)
             placed.wait(x)
     same(reference, placed)
+
+
+BESIDE = {
+    "no recall": {"recall": False, "attention": False, "recall_heads": None},
+    "the founder's recall": {"recall_founder": True, "attention": False, "recall_heads": None},
+    "a compartment": {"modules": (24, 16, 16), "apical": 0.25, "teaching": "deep"},
+    "normalized teaching": {"teaching": "normalized"},
+    "observers": {"observers": (8,)},
+    "the episodic choice": {"memory_choice": True, "attention": False, "recall_heads": None},
+    "efference and two histories": {"efference_amplitude": 1.0, "history_decays": (0.0, 0.8)},
+    "two slots": {"slots": (3, 2)},
+    "fields": {"learned_code_fields": (8, 4)},
+    "maturity": {"maturity": True},
+    "a fading store": {"memory_fade": 1.2e-4},
+    "qualified teaching": {"learning_qualified": True},
+    "rehearsal": {"learning_rehearsal": 2},
+    "tokens and the command": {"recall_tokens": range(5), "recall_gain": 1.0, "recall_action": True},
+    "an observation wider than the code": {"learned_code": 8},
+}
+
+
+@pytest.mark.parametrize("device", DEVICES)
+@pytest.mark.parametrize("name", sorted(BESIDE))
+def test_every_part_beside_the_region_lives_as_on_the_host(device, name):
+    """Lessons with greedy acts, then steps that learn from outcomes and labels, an imagined
+    moment and the memories' key: each as the host brain of the same composition."""
+    options = BESIDE[name]
+    reference, placed = host(**options), on(device, **options)
+    assert placed.learned_code.device is not None
+    rng = np.random.default_rng(0)
+    slots = options.get("slots")
+
+    def labels() -> np.ndarray:
+        if slots:
+            return np.stack([rng.integers(k, size=2) for k in slots], axis=1)
+        return rng.integers(ACTIONS, size=2)
+
+    for moment in range(10):
+        x, y = observations(rng, 2), labels()
+        if moment < 4:
+            for brain in (reference, placed):
+                brain.lesson(x, y)
+            answer = reference.act(x, greedy=True), placed.act(x, greedy=True)
+        else:
+            reward = rng.normal(size=2) if reference.pending_feedback else None
+            teacher = y if moment % 2 else None
+            answer = (reference.step(x, reward=reward, teacher=teacher),
+                      placed.step(x, reward=reward, teacher=teacher))
+        np.testing.assert_array_equal(answer[1], answer[0])
+    same(reference, placed)
+    x = observations(rng, 2)
+    np.testing.assert_allclose(
+        placed.observation_code(x), reference.observation_code(x), rtol=0, atol=TIGHT
+    )
+    for a, b in zip(reference.imagine([x]), placed.imagine([x]), strict=True):
+        np.testing.assert_allclose(b.state.activation, a.state.activation, rtol=0, atol=TIGHT)
+
+
+@pytest.mark.parametrize("device", DEVICES)
+def test_independent_samples_fit_and_score_as_on_the_host(device):
+    reference, placed = host(), on(device)
+    rng = np.random.default_rng(1)
+    x, labels = observations(rng, 24), rng.integers(ACTIONS, size=24)
+    assert placed.fit(x, labels, epochs=2, batch=8) == reference.fit(x, labels, epochs=2, batch=8)
+    np.testing.assert_array_equal(placed.predict(x), reference.predict(x))
+    assert placed.accuracy(x, labels) == reference.accuracy(x, labels)
+    same(reference, placed)
+
+
+def test_surprise_keeps_its_own_refusal_of_a_device():
+    with pytest.raises(ValueError, match="surprise reads each neuron's residual on the host"):
+        on("cpu", surprise=True)
 
 
 @pytest.mark.parametrize("device", DEVICES)
