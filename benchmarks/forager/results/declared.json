@@ -1,0 +1,8354 @@
+[
+ {
+  "founder": 1011100,
+  "arm": "code",
+  "parameters": 54496,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.6175
+    },
+    "own": {
+     "eaten": 5.25,
+     "agreement": 0.39,
+     "by_action": {
+      "walk": [
+       0.552,
+       801
+      ],
+      "left": [
+       0.232,
+       1133
+      ],
+      "right": [
+       0.443,
+       359
+      ],
+      "bite": [
+       0.682,
+       107
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.705,
+     "readout": {
+      "observation": 0.875,
+      "code": 0.851,
+      "state": 0.724,
+      "newborn": 0.508,
+      "moments": 1813
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.675625
+    },
+    "own": {
+     "eaten": 6.75,
+     "agreement": 0.47,
+     "by_action": {
+      "walk": [
+       0.418,
+       1343
+      ],
+      "left": [
+       0.57,
+       509
+      ],
+      "right": [
+       0.401,
+       431
+      ],
+      "bite": [
+       0.88,
+       117
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.748,
+     "readout": {
+      "observation": 0.875,
+      "code": 0.851,
+      "state": 0.775,
+      "newborn": 0.508,
+      "moments": 1813
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.686875
+    },
+    "own": {
+     "eaten": 8.0,
+     "agreement": 0.562,
+     "by_action": {
+      "walk": [
+       0.601,
+       1182
+      ],
+      "left": [
+       0.448,
+       726
+      ],
+      "right": [
+       0.559,
+       338
+      ],
+      "bite": [
+       0.805,
+       154
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.759,
+     "readout": {
+      "observation": 0.875,
+      "code": 0.851,
+      "state": 0.793,
+      "newborn": 0.508,
+      "moments": 1813
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.63625
+    },
+    "own": {
+     "eaten": 1.0,
+     "agreement": 0.123,
+     "by_action": {
+      "walk": [
+       0.054,
+       1909
+      ],
+      "left": [
+       0.287,
+       404
+      ],
+      "right": [
+       0.859,
+       71
+      ],
+      "bite": [
+       0.938,
+       16
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.598,
+     "readout": {
+      "observation": 0.875,
+      "code": 0.851,
+      "state": 0.774,
+      "newborn": 0.508,
+      "moments": 1813
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.654,
+   "own": 0.386,
+   "eaten": 5.25,
+   "teacher": 0.702,
+   "turn_observation": 0.875,
+   "turn_code": 0.851,
+   "turn_state": 0.767,
+   "turn_newborn": 0.508
+  },
+  "seconds": 34.0,
+  "baselines": {
+   "teacher": 12.375,
+   "random": 0.1875
+  }
+ },
+ {
+  "founder": 1011100,
+  "arm": "both",
+  "parameters": 57928,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.66375
+    },
+    "own": {
+     "eaten": 7.625,
+     "agreement": 0.504,
+     "by_action": {
+      "walk": [
+       0.465,
+       1166
+      ],
+      "left": [
+       0.681,
+       417
+      ],
+      "right": [
+       0.387,
+       688
+      ],
+      "bite": [
+       0.907,
+       129
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.696,
+     "readout": {
+      "observation": 0.875,
+      "code": 0.851,
+      "state": 0.793,
+      "newborn": 0.546,
+      "moments": 1813
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.730625
+    },
+    "own": {
+     "eaten": 7.4375,
+     "agreement": 0.674,
+     "by_action": {
+      "walk": [
+       0.52,
+       1318
+      ],
+      "left": [
+       0.936,
+       545
+      ],
+      "right": [
+       0.815,
+       373
+      ],
+      "bite": [
+       0.713,
+       164
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.638,
+     "readout": {
+      "observation": 0.875,
+      "code": 0.851,
+      "state": 0.833,
+      "newborn": 0.546,
+      "moments": 1813
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.688125
+    },
+    "own": {
+     "eaten": 11.375,
+     "agreement": 0.805,
+     "by_action": {
+      "walk": [
+       0.764,
+       1346
+      ],
+      "left": [
+       0.871,
+       559
+      ],
+      "right": [
+       0.828,
+       285
+      ],
+      "bite": [
+       0.852,
+       210
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.755,
+     "readout": {
+      "observation": 0.875,
+      "code": 0.851,
+      "state": 0.799,
+      "newborn": 0.546,
+      "moments": 1813
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.7325
+    },
+    "own": {
+     "eaten": 11.8125,
+     "agreement": 0.838,
+     "by_action": {
+      "walk": [
+       0.802,
+       1437
+      ],
+      "left": [
+       0.886,
+       368
+      ],
+      "right": [
+       0.893,
+       394
+      ],
+      "bite": [
+       0.9,
+       201
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.743,
+     "readout": {
+      "observation": 0.875,
+      "code": 0.851,
+      "state": 0.8,
+      "newborn": 0.546,
+      "moments": 1813
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.704,
+   "own": 0.705,
+   "eaten": 9.562,
+   "teacher": 0.708,
+   "turn_observation": 0.875,
+   "turn_code": 0.851,
+   "turn_state": 0.806,
+   "turn_newborn": 0.546
+  },
+  "seconds": 34.5,
+  "baselines": {
+   "teacher": 12.375,
+   "random": 0.1875
+  }
+ },
+ {
+  "founder": 1011100,
+  "arm": "observation",
+  "parameters": 52912,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.668125
+    },
+    "own": {
+     "eaten": 7.1875,
+     "agreement": 0.562,
+     "by_action": {
+      "walk": [
+       0.448,
+       1324
+      ],
+      "left": [
+       0.589,
+       611
+      ],
+      "right": [
+       0.869,
+       329
+      ],
+      "bite": [
+       0.809,
+       136
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.635,
+     "readout": {
+      "observation": 0.875,
+      "code": 0.851,
+      "state": 0.793,
+      "newborn": 0.552,
+      "moments": 1813
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.723125
+    },
+    "own": {
+     "eaten": 7.625,
+     "agreement": 0.548,
+     "by_action": {
+      "walk": [
+       0.542,
+       1333
+      ],
+      "left": [
+       0.772,
+       298
+      ],
+      "right": [
+       0.377,
+       636
+      ],
+      "bite": [
+       0.917,
+       133
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.752,
+     "readout": {
+      "observation": 0.875,
+      "code": 0.851,
+      "state": 0.803,
+      "newborn": 0.552,
+      "moments": 1813
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.72
+    },
+    "own": {
+     "eaten": 8.6875,
+     "agreement": 0.73,
+     "by_action": {
+      "walk": [
+       0.79,
+       906
+      ],
+      "left": [
+       0.87,
+       408
+      ],
+      "right": [
+       0.67,
+       815
+      ],
+      "bite": [
+       0.498,
+       271
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.767,
+     "readout": {
+      "observation": 0.875,
+      "code": 0.851,
+      "state": 0.84,
+      "newborn": 0.552,
+      "moments": 1813
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.688125
+    },
+    "own": {
+     "eaten": 9.6875,
+     "agreement": 0.712,
+     "by_action": {
+      "walk": [
+       0.75,
+       1100
+      ],
+      "left": [
+       0.649,
+       743
+      ],
+      "right": [
+       0.677,
+       365
+      ],
+      "bite": [
+       0.802,
+       192
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.708,
+     "readout": {
+      "observation": 0.875,
+      "code": 0.851,
+      "state": 0.815,
+      "newborn": 0.552,
+      "moments": 1813
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.7,
+   "own": 0.638,
+   "eaten": 8.297,
+   "teacher": 0.716,
+   "turn_observation": 0.875,
+   "turn_code": 0.851,
+   "turn_state": 0.813,
+   "turn_newborn": 0.552
+  },
+  "seconds": 38.1,
+  "baselines": {
+   "teacher": 12.375,
+   "random": 0.1875
+  }
+ },
+ {
+  "founder": 1011100,
+  "arm": "none",
+  "parameters": 42760,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.603125
+    },
+    "own": {
+     "eaten": 6.625,
+     "agreement": 0.607,
+     "by_action": {
+      "walk": [
+       0.661,
+       710
+      ],
+      "left": [
+       0.672,
+       595
+      ],
+      "right": [
+       0.548,
+       891
+      ],
+      "bite": [
+       0.485,
+       204
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.652,
+     "readout": {
+      "observation": 0.875,
+      "code": 0.875,
+      "state": 0.711,
+      "newborn": 0.603,
+      "moments": 1813
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.708125
+    },
+    "own": {
+     "eaten": 4.875,
+     "agreement": 0.364,
+     "by_action": {
+      "walk": [
+       0.241,
+       1725
+      ],
+      "left": [
+       0.56,
+       382
+      ],
+      "right": [
+       0.774,
+       221
+      ],
+      "bite": [
+       1.0,
+       72
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.646,
+     "readout": {
+      "observation": 0.875,
+      "code": 0.875,
+      "state": 0.8,
+      "newborn": 0.603,
+      "moments": 1813
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.6275
+    },
+    "own": {
+     "eaten": 7.3125,
+     "agreement": 0.574,
+     "by_action": {
+      "walk": [
+       0.492,
+       1265
+      ],
+      "left": [
+       0.527,
+       706
+      ],
+      "right": [
+       0.971,
+       275
+      ],
+      "bite": [
+       0.747,
+       154
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.564,
+     "readout": {
+      "observation": 0.875,
+      "code": 0.875,
+      "state": 0.77,
+      "newborn": 0.603,
+      "moments": 1813
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.75
+    },
+    "own": {
+     "eaten": 2.9375,
+     "agreement": 0.226,
+     "by_action": {
+      "walk": [
+       0.126,
+       1734
+      ],
+      "left": [
+       0.413,
+       312
+      ],
+      "right": [
+       0.494,
+       312
+      ],
+      "bite": [
+       1.0,
+       42
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.726,
+     "readout": {
+      "observation": 0.875,
+      "code": 0.875,
+      "state": 0.853,
+      "newborn": 0.603,
+      "moments": 1813
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.672,
+   "own": 0.443,
+   "eaten": 5.438,
+   "teacher": 0.647,
+   "turn_observation": 0.875,
+   "turn_code": 0.875,
+   "turn_state": 0.784,
+   "turn_newborn": 0.603
+  },
+  "seconds": 30.9,
+  "baselines": {
+   "teacher": 12.375,
+   "random": 0.1875
+  }
+ },
+ {
+  "founder": 1011101,
+  "arm": "code",
+  "parameters": 54496,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.605625
+    },
+    "own": {
+     "eaten": 7.4375,
+     "agreement": 0.581,
+     "by_action": {
+      "walk": [
+       0.53,
+       1135
+      ],
+      "left": [
+       0.597,
+       521
+      ],
+      "right": [
+       0.699,
+       539
+      ],
+      "bite": [
+       0.517,
+       205
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.7,
+     "readout": {
+      "observation": 0.862,
+      "code": 0.836,
+      "state": 0.682,
+      "newborn": 0.508,
+      "moments": 1780
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.6475
+    },
+    "own": {
+     "eaten": 8.4375,
+     "agreement": 0.556,
+     "by_action": {
+      "walk": [
+       0.54,
+       1183
+      ],
+      "left": [
+       0.468,
+       628
+      ],
+      "right": [
+       0.617,
+       449
+      ],
+      "bite": [
+       0.893,
+       140
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.756,
+     "readout": {
+      "observation": 0.862,
+      "code": 0.836,
+      "state": 0.77,
+      "newborn": 0.508,
+      "moments": 1780
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.6625
+    },
+    "own": {
+     "eaten": 10.8125,
+     "agreement": 0.669,
+     "by_action": {
+      "walk": [
+       0.819,
+       882
+      ],
+      "left": [
+       0.411,
+       813
+      ],
+      "right": [
+       0.779,
+       512
+      ],
+      "bite": [
+       0.782,
+       193
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.76,
+     "readout": {
+      "observation": 0.862,
+      "code": 0.836,
+      "state": 0.725,
+      "newborn": 0.508,
+      "moments": 1780
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.651875
+    },
+    "own": {
+     "eaten": 7.1875,
+     "agreement": 0.557,
+     "by_action": {
+      "walk": [
+       0.651,
+       1020
+      ],
+      "left": [
+       0.4,
+       834
+      ],
+      "right": [
+       0.55,
+       429
+      ],
+      "bite": [
+       0.889,
+       117
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.7,
+     "readout": {
+      "observation": 0.862,
+      "code": 0.836,
+      "state": 0.728,
+      "newborn": 0.508,
+      "moments": 1780
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.642,
+   "own": 0.591,
+   "eaten": 8.469,
+   "teacher": 0.729,
+   "turn_observation": 0.862,
+   "turn_code": 0.836,
+   "turn_state": 0.726,
+   "turn_newborn": 0.508
+  },
+  "seconds": 33.1,
+  "baselines": {
+   "teacher": 13.9375,
+   "random": 0.375
+  }
+ },
+ {
+  "founder": 1011101,
+  "arm": "both",
+  "parameters": 57928,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.643125
+    },
+    "own": {
+     "eaten": 2.8125,
+     "agreement": 0.443,
+     "by_action": {
+      "walk": [
+       0.148,
+       1088
+      ],
+      "left": [
+       0.913,
+       310
+      ],
+      "right": [
+       0.606,
+       956
+      ],
+      "bite": [
+       0.87,
+       46
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.502,
+     "readout": {
+      "observation": 0.862,
+      "code": 0.836,
+      "state": 0.761,
+      "newborn": 0.502,
+      "moments": 1780
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.709375
+    },
+    "own": {
+     "eaten": 10.875,
+     "agreement": 0.725,
+     "by_action": {
+      "walk": [
+       0.689,
+       1376
+      ],
+      "left": [
+       0.65,
+       572
+      ],
+      "right": [
+       0.896,
+       288
+      ],
+      "bite": [
+       0.988,
+       164
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.727,
+     "readout": {
+      "observation": 0.862,
+      "code": 0.836,
+      "state": 0.811,
+      "newborn": 0.502,
+      "moments": 1780
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.745
+    },
+    "own": {
+     "eaten": 11.5625,
+     "agreement": 0.802,
+     "by_action": {
+      "walk": [
+       0.76,
+       1511
+      ],
+      "left": [
+       0.845,
+       342
+      ],
+      "right": [
+       0.853,
+       360
+      ],
+      "bite": [
+       0.968,
+       187
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.799,
+     "readout": {
+      "observation": 0.862,
+      "code": 0.836,
+      "state": 0.821,
+      "newborn": 0.502,
+      "moments": 1780
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.74125
+    },
+    "own": {
+     "eaten": 9.8125,
+     "agreement": 0.677,
+     "by_action": {
+      "walk": [
+       0.671,
+       1301
+      ],
+      "left": [
+       0.669,
+       387
+      ],
+      "right": [
+       0.631,
+       539
+      ],
+      "bite": [
+       0.89,
+       173
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.609,
+     "readout": {
+      "observation": 0.862,
+      "code": 0.836,
+      "state": 0.832,
+      "newborn": 0.502,
+      "moments": 1780
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.71,
+   "own": 0.662,
+   "eaten": 8.766,
+   "teacher": 0.659,
+   "turn_observation": 0.862,
+   "turn_code": 0.836,
+   "turn_state": 0.806,
+   "turn_newborn": 0.502
+  },
+  "seconds": 34.4,
+  "baselines": {
+   "teacher": 13.9375,
+   "random": 0.375
+  }
+ },
+ {
+  "founder": 1011101,
+  "arm": "observation",
+  "parameters": 52912,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.654375
+    },
+    "own": {
+     "eaten": 10.0,
+     "agreement": 0.7,
+     "by_action": {
+      "walk": [
+       0.75,
+       1214
+      ],
+      "left": [
+       0.651,
+       458
+      ],
+      "right": [
+       0.626,
+       514
+      ],
+      "bite": [
+       0.696,
+       214
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.749,
+     "readout": {
+      "observation": 0.862,
+      "code": 0.836,
+      "state": 0.813,
+      "newborn": 0.525,
+      "moments": 1780
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.74375
+    },
+    "own": {
+     "eaten": 9.25,
+     "agreement": 0.644,
+     "by_action": {
+      "walk": [
+       0.568,
+       1484
+      ],
+      "left": [
+       0.907,
+       237
+      ],
+      "right": [
+       0.663,
+       522
+      ],
+      "bite": [
+       0.898,
+       157
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.649,
+     "readout": {
+      "observation": 0.862,
+      "code": 0.836,
+      "state": 0.846,
+      "newborn": 0.525,
+      "moments": 1780
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.720625
+    },
+    "own": {
+     "eaten": 9.125,
+     "agreement": 0.613,
+     "by_action": {
+      "walk": [
+       0.526,
+       1547
+      ],
+      "left": [
+       0.678,
+       376
+      ],
+      "right": [
+       0.778,
+       334
+      ],
+      "bite": [
+       1.0,
+       143
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.667,
+     "readout": {
+      "observation": 0.862,
+      "code": 0.836,
+      "state": 0.848,
+      "newborn": 0.525,
+      "moments": 1780
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.746875
+    },
+    "own": {
+     "eaten": 11.25,
+     "agreement": 0.737,
+     "by_action": {
+      "walk": [
+       0.829,
+       1248
+      ],
+      "left": [
+       0.73,
+       400
+      ],
+      "right": [
+       0.477,
+       555
+      ],
+      "bite": [
+       0.898,
+       197
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.817,
+     "readout": {
+      "observation": 0.862,
+      "code": 0.836,
+      "state": 0.878,
+      "newborn": 0.525,
+      "moments": 1780
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.716,
+   "own": 0.673,
+   "eaten": 9.906,
+   "teacher": 0.721,
+   "turn_observation": 0.862,
+   "turn_code": 0.836,
+   "turn_state": 0.846,
+   "turn_newborn": 0.525
+  },
+  "seconds": 38.0,
+  "baselines": {
+   "teacher": 13.9375,
+   "random": 0.375
+  }
+ },
+ {
+  "founder": 1011101,
+  "arm": "none",
+  "parameters": 42760,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.514375
+    },
+    "own": {
+     "eaten": 6.375,
+     "agreement": 0.45,
+     "by_action": {
+      "walk": [
+       0.474,
+       846
+      ],
+      "left": [
+       0.479,
+       626
+      ],
+      "right": [
+       0.375,
+       769
+      ],
+      "bite": [
+       0.572,
+       159
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.698,
+     "readout": {
+      "observation": 0.862,
+      "code": 0.862,
+      "state": 0.662,
+      "newborn": 0.558,
+      "moments": 1780
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.723125
+    },
+    "own": {
+     "eaten": 10.375,
+     "agreement": 0.71,
+     "by_action": {
+      "walk": [
+       0.745,
+       1265
+      ],
+      "left": [
+       0.802,
+       298
+      ],
+      "right": [
+       0.556,
+       653
+      ],
+      "bite": [
+       0.859,
+       184
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.772,
+     "readout": {
+      "observation": 0.862,
+      "code": 0.862,
+      "state": 0.801,
+      "newborn": 0.558,
+      "moments": 1780
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.68875
+    },
+    "own": {
+     "eaten": 9.4375,
+     "agreement": 0.656,
+     "by_action": {
+      "walk": [
+       0.615,
+       1453
+      ],
+      "left": [
+       0.533,
+       531
+      ],
+      "right": [
+       0.949,
+       274
+      ],
+      "bite": [
+       0.972,
+       142
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.685,
+     "readout": {
+      "observation": 0.862,
+      "code": 0.862,
+      "state": 0.818,
+      "newborn": 0.558,
+      "moments": 1780
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.725625
+    },
+    "own": {
+     "eaten": 10.0625,
+     "agreement": 0.614,
+     "by_action": {
+      "walk": [
+       0.838,
+       921
+      ],
+      "left": [
+       0.334,
+       858
+      ],
+      "right": [
+       0.569,
+       459
+      ],
+      "bite": [
+       0.951,
+       162
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.839,
+     "readout": {
+      "observation": 0.862,
+      "code": 0.862,
+      "state": 0.794,
+      "newborn": 0.558,
+      "moments": 1780
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.663,
+   "own": 0.607,
+   "eaten": 9.062,
+   "teacher": 0.749,
+   "turn_observation": 0.862,
+   "turn_code": 0.862,
+   "turn_state": 0.769,
+   "turn_newborn": 0.558
+  },
+  "seconds": 30.6,
+  "baselines": {
+   "teacher": 13.9375,
+   "random": 0.375
+  }
+ },
+ {
+  "founder": 1011102,
+  "arm": "code",
+  "parameters": 54496,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.565
+    },
+    "own": {
+     "eaten": 5.375,
+     "agreement": 0.571,
+     "by_action": {
+      "walk": [
+       0.656,
+       1049
+      ],
+      "left": [
+       0.666,
+       554
+      ],
+      "right": [
+       0.341,
+       690
+      ],
+      "bite": [
+       0.729,
+       107
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.667,
+     "readout": {
+      "observation": 0.904,
+      "code": 0.887,
+      "state": 0.753,
+      "newborn": 0.521,
+      "moments": 1672
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.691875
+    },
+    "own": {
+     "eaten": 7.5625,
+     "agreement": 0.585,
+     "by_action": {
+      "walk": [
+       0.565,
+       1242
+      ],
+      "left": [
+       0.731,
+       368
+      ],
+      "right": [
+       0.483,
+       669
+      ],
+      "bite": [
+       0.917,
+       121
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.666,
+     "readout": {
+      "observation": 0.904,
+      "code": 0.887,
+      "state": 0.798,
+      "newborn": 0.521,
+      "moments": 1672
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.63375
+    },
+    "own": {
+     "eaten": 7.0,
+     "agreement": 0.552,
+     "by_action": {
+      "walk": [
+       0.627,
+       1184
+      ],
+      "left": [
+       0.781,
+       279
+      ],
+      "right": [
+       0.312,
+       825
+      ],
+      "bite": [
+       0.955,
+       112
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.688,
+     "readout": {
+      "observation": 0.904,
+      "code": 0.887,
+      "state": 0.833,
+      "newborn": 0.521,
+      "moments": 1672
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.720625
+    },
+    "own": {
+     "eaten": 8.1875,
+     "agreement": 0.65,
+     "by_action": {
+      "walk": [
+       0.74,
+       1123
+      ],
+      "left": [
+       0.719,
+       342
+      ],
+      "right": [
+       0.476,
+       744
+      ],
+      "bite": [
+       0.675,
+       191
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.751,
+     "readout": {
+      "observation": 0.904,
+      "code": 0.887,
+      "state": 0.866,
+      "newborn": 0.521,
+      "moments": 1672
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.653,
+   "own": 0.59,
+   "eaten": 7.031,
+   "teacher": 0.693,
+   "turn_observation": 0.904,
+   "turn_code": 0.887,
+   "turn_state": 0.813,
+   "turn_newborn": 0.521
+  },
+  "seconds": 33.1,
+  "baselines": {
+   "teacher": 11.5,
+   "random": 0.375
+  }
+ },
+ {
+  "founder": 1011102,
+  "arm": "both",
+  "parameters": 57928,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.69625
+    },
+    "own": {
+     "eaten": 7.875,
+     "agreement": 0.646,
+     "by_action": {
+      "walk": [
+       0.695,
+       1077
+      ],
+      "left": [
+       0.528,
+       754
+      ],
+      "right": [
+       0.657,
+       426
+      ],
+      "bite": [
+       0.867,
+       143
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.64,
+     "readout": {
+      "observation": 0.904,
+      "code": 0.887,
+      "state": 0.865,
+      "newborn": 0.521,
+      "moments": 1672
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.72875
+    },
+    "own": {
+     "eaten": 10.25,
+     "agreement": 0.813,
+     "by_action": {
+      "walk": [
+       0.84,
+       1372
+      ],
+      "left": [
+       0.729,
+       399
+      ],
+      "right": [
+       0.784,
+       444
+      ],
+      "bite": [
+       0.865,
+       185
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.791,
+     "readout": {
+      "observation": 0.904,
+      "code": 0.887,
+      "state": 0.882,
+      "newborn": 0.521,
+      "moments": 1672
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.760625
+    },
+    "own": {
+     "eaten": 4.375,
+     "agreement": 0.411,
+     "by_action": {
+      "walk": [
+       0.29,
+       1960
+      ],
+      "left": [
+       0.919,
+       197
+      ],
+      "right": [
+       0.977,
+       174
+      ],
+      "bite": [
+       0.957,
+       69
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.54,
+     "readout": {
+      "observation": 0.904,
+      "code": 0.887,
+      "state": 0.881,
+      "newborn": 0.521,
+      "moments": 1672
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.74625
+    },
+    "own": {
+     "eaten": 10.6875,
+     "agreement": 0.772,
+     "by_action": {
+      "walk": [
+       0.858,
+       1301
+      ],
+      "left": [
+       0.883,
+       300
+      ],
+      "right": [
+       0.493,
+       612
+      ],
+      "bite": [
+       0.904,
+       187
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.814,
+     "readout": {
+      "observation": 0.904,
+      "code": 0.887,
+      "state": 0.895,
+      "newborn": 0.521,
+      "moments": 1672
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.733,
+   "own": 0.661,
+   "eaten": 8.297,
+   "teacher": 0.696,
+   "turn_observation": 0.904,
+   "turn_code": 0.887,
+   "turn_state": 0.881,
+   "turn_newborn": 0.521
+  },
+  "seconds": 33.8,
+  "baselines": {
+   "teacher": 11.5,
+   "random": 0.375
+  }
+ },
+ {
+  "founder": 1011102,
+  "arm": "observation",
+  "parameters": 52912,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.668125
+    },
+    "own": {
+     "eaten": 2.5,
+     "agreement": 0.279,
+     "by_action": {
+      "walk": [
+       0.169,
+       1886
+      ],
+      "left": [
+       0.522,
+       226
+      ],
+      "right": [
+       0.785,
+       247
+      ],
+      "bite": [
+       0.951,
+       41
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.623,
+     "readout": {
+      "observation": 0.904,
+      "code": 0.887,
+      "state": 0.822,
+      "newborn": 0.649,
+      "moments": 1672
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.68625
+    },
+    "own": {
+     "eaten": 9.3125,
+     "agreement": 0.733,
+     "by_action": {
+      "walk": [
+       0.753,
+       1394
+      ],
+      "left": [
+       0.705,
+       315
+      ],
+      "right": [
+       0.648,
+       532
+      ],
+      "bite": [
+       0.899,
+       159
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.774,
+     "readout": {
+      "observation": 0.904,
+      "code": 0.887,
+      "state": 0.865,
+      "newborn": 0.649,
+      "moments": 1672
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.753125
+    },
+    "own": {
+     "eaten": 8.375,
+     "agreement": 0.6,
+     "by_action": {
+      "walk": [
+       0.629,
+       1228
+      ],
+      "left": [
+       0.328,
+       708
+      ],
+      "right": [
+       0.95,
+       322
+      ],
+      "bite": [
+       0.923,
+       142
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.679,
+     "readout": {
+      "observation": 0.904,
+      "code": 0.887,
+      "state": 0.857,
+      "newborn": 0.649,
+      "moments": 1672
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.71875
+    },
+    "own": {
+     "eaten": 9.75,
+     "agreement": 0.726,
+     "by_action": {
+      "walk": [
+       0.733,
+       1436
+      ],
+      "left": [
+       0.629,
+       356
+      ],
+      "right": [
+       0.701,
+       452
+      ],
+      "bite": [
+       0.949,
+       156
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.746,
+     "readout": {
+      "observation": 0.904,
+      "code": 0.887,
+      "state": 0.848,
+      "newborn": 0.649,
+      "moments": 1672
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.707,
+   "own": 0.585,
+   "eaten": 7.484,
+   "teacher": 0.706,
+   "turn_observation": 0.904,
+   "turn_code": 0.887,
+   "turn_state": 0.848,
+   "turn_newborn": 0.649
+  },
+  "seconds": 38.0,
+  "baselines": {
+   "teacher": 11.5,
+   "random": 0.375
+  }
+ },
+ {
+  "founder": 1011102,
+  "arm": "none",
+  "parameters": 42760,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.664375
+    },
+    "own": {
+     "eaten": 5.375,
+     "agreement": 0.605,
+     "by_action": {
+      "walk": [
+       0.521,
+       1034
+      ],
+      "left": [
+       0.582,
+       491
+      ],
+      "right": [
+       0.82,
+       667
+      ],
+      "bite": [
+       0.38,
+       208
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.716,
+     "readout": {
+      "observation": 0.904,
+      "code": 0.904,
+      "state": 0.797,
+      "newborn": 0.631,
+      "moments": 1672
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.72
+    },
+    "own": {
+     "eaten": 5.9375,
+     "agreement": 0.523,
+     "by_action": {
+      "walk": [
+       0.451,
+       1554
+      ],
+      "left": [
+       0.916,
+       179
+      ],
+      "right": [
+       0.524,
+       571
+      ],
+      "bite": [
+       0.958,
+       96
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.667,
+     "readout": {
+      "observation": 0.904,
+      "code": 0.904,
+      "state": 0.876,
+      "newborn": 0.631,
+      "moments": 1672
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.73375
+    },
+    "own": {
+     "eaten": 6.6875,
+     "agreement": 0.553,
+     "by_action": {
+      "walk": [
+       0.455,
+       1533
+      ],
+      "left": [
+       0.699,
+       302
+      ],
+      "right": [
+       0.701,
+       448
+      ],
+      "bite": [
+       0.889,
+       117
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.623,
+     "readout": {
+      "observation": 0.904,
+      "code": 0.904,
+      "state": 0.856,
+      "newborn": 0.631,
+      "moments": 1672
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.6925
+    },
+    "own": {
+     "eaten": 7.0,
+     "agreement": 0.661,
+     "by_action": {
+      "walk": [
+       0.616,
+       1318
+      ],
+      "left": [
+       0.906,
+       180
+      ],
+      "right": [
+       0.647,
+       774
+      ],
+      "bite": [
+       0.859,
+       128
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.668,
+     "readout": {
+      "observation": 0.904,
+      "code": 0.904,
+      "state": 0.883,
+      "newborn": 0.631,
+      "moments": 1672
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.703,
+   "own": 0.586,
+   "eaten": 6.25,
+   "teacher": 0.669,
+   "turn_observation": 0.904,
+   "turn_code": 0.904,
+   "turn_state": 0.853,
+   "turn_newborn": 0.631
+  },
+  "seconds": 31.0,
+  "baselines": {
+   "teacher": 11.5,
+   "random": 0.375
+  }
+ },
+ {
+  "founder": 1011103,
+  "arm": "code",
+  "parameters": 54496,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.56
+    },
+    "own": {
+     "eaten": 0.5625,
+     "agreement": 0.384,
+     "by_action": {
+      "walk": [
+       0.048,
+       1322
+      ],
+      "left": [
+       0.883,
+       426
+      ],
+      "right": [
+       0.744,
+       637
+      ],
+      "bite": [
+       0.6,
+       15
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.463,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.862,
+      "state": 0.65,
+      "newborn": 0.518,
+      "moments": 1894
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.61875
+    },
+    "own": {
+     "eaten": 9.0625,
+     "agreement": 0.608,
+     "by_action": {
+      "walk": [
+       0.623,
+       1085
+      ],
+      "left": [
+       0.499,
+       700
+      ],
+      "right": [
+       0.659,
+       452
+      ],
+      "bite": [
+       0.834,
+       163
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.696,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.862,
+      "state": 0.746,
+      "newborn": 0.518,
+      "moments": 1894
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.653125
+    },
+    "own": {
+     "eaten": 7.875,
+     "agreement": 0.6,
+     "by_action": {
+      "walk": [
+       0.476,
+       1259
+      ],
+      "left": [
+       0.691,
+       492
+      ],
+      "right": [
+       0.739,
+       521
+      ],
+      "bite": [
+       0.898,
+       128
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.683,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.862,
+      "state": 0.793,
+      "newborn": 0.518,
+      "moments": 1894
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.641875
+    },
+    "own": {
+     "eaten": 2.6875,
+     "agreement": 0.458,
+     "by_action": {
+      "walk": [
+       0.181,
+       1376
+      ],
+      "left": [
+       0.813,
+       738
+      ],
+      "right": [
+       0.905,
+       231
+      ],
+      "bite": [
+       0.745,
+       55
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.578,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.862,
+      "state": 0.799,
+      "newborn": 0.518,
+      "moments": 1894
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.618,
+   "own": 0.513,
+   "eaten": 5.047,
+   "teacher": 0.605,
+   "turn_observation": 0.879,
+   "turn_code": 0.862,
+   "turn_state": 0.747,
+   "turn_newborn": 0.518
+  },
+  "seconds": 34.3,
+  "baselines": {
+   "teacher": 14.25,
+   "random": 0.125
+  }
+ },
+ {
+  "founder": 1011103,
+  "arm": "both",
+  "parameters": 57928,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.564375
+    },
+    "own": {
+     "eaten": 6.125,
+     "agreement": 0.354,
+     "by_action": {
+      "walk": [
+       0.712,
+       437
+      ],
+      "left": [
+       0.366,
+       735
+      ],
+      "right": [
+       0.159,
+       1133
+      ],
+      "bite": [
+       0.937,
+       95
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.738,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.862,
+      "state": 0.82,
+      "newborn": 0.59,
+      "moments": 1894
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.690625
+    },
+    "own": {
+     "eaten": 7.5625,
+     "agreement": 0.465,
+     "by_action": {
+      "walk": [
+       0.475,
+       701
+      ],
+      "left": [
+       0.989,
+       358
+      ],
+      "right": [
+       0.262,
+       1217
+      ],
+      "bite": [
+       0.895,
+       124
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.448,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.862,
+      "state": 0.847,
+      "newborn": 0.59,
+      "moments": 1894
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.716875
+    },
+    "own": {
+     "eaten": 10.875,
+     "agreement": 0.775,
+     "by_action": {
+      "walk": [
+       0.822,
+       1335
+      ],
+      "left": [
+       0.669,
+       481
+      ],
+      "right": [
+       0.676,
+       401
+      ],
+      "bite": [
+       0.923,
+       183
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.822,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.862,
+      "state": 0.867,
+      "newborn": 0.59,
+      "moments": 1894
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.7275
+    },
+    "own": {
+     "eaten": 7.8125,
+     "agreement": 0.518,
+     "by_action": {
+      "walk": [
+       0.709,
+       940
+      ],
+      "left": [
+       0.453,
+       587
+      ],
+      "right": [
+       0.256,
+       735
+      ],
+      "bite": [
+       0.891,
+       138
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.782,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.862,
+      "state": 0.875,
+      "newborn": 0.59,
+      "moments": 1894
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.675,
+   "own": 0.528,
+   "eaten": 8.094,
+   "teacher": 0.698,
+   "turn_observation": 0.879,
+   "turn_code": 0.862,
+   "turn_state": 0.852,
+   "turn_newborn": 0.59
+  },
+  "seconds": 34.3,
+  "baselines": {
+   "teacher": 14.25,
+   "random": 0.125
+  }
+ },
+ {
+  "founder": 1011103,
+  "arm": "observation",
+  "parameters": 52912,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.609375
+    },
+    "own": {
+     "eaten": 8.75,
+     "agreement": 0.667,
+     "by_action": {
+      "walk": [
+       0.739,
+       973
+      ],
+      "left": [
+       0.667,
+       642
+      ],
+      "right": [
+       0.598,
+       540
+      ],
+      "bite": [
+       0.539,
+       245
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.772,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.862,
+      "state": 0.807,
+      "newborn": 0.556,
+      "moments": 1894
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.686875
+    },
+    "own": {
+     "eaten": 1.375,
+     "agreement": 0.121,
+     "by_action": {
+      "walk": [
+       0.066,
+       1963
+      ],
+      "left": [
+       0.222,
+       320
+      ],
+      "right": [
+       0.72,
+       100
+      ],
+      "bite": [
+       1.0,
+       17
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.694,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.862,
+      "state": 0.862,
+      "newborn": 0.556,
+      "moments": 1894
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.713125
+    },
+    "own": {
+     "eaten": 4.1875,
+     "agreement": 0.344,
+     "by_action": {
+      "walk": [
+       0.203,
+       1865
+      ],
+      "left": [
+       0.822,
+       242
+      ],
+      "right": [
+       0.798,
+       228
+      ],
+      "bite": [
+       1.0,
+       65
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.697,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.862,
+      "state": 0.874,
+      "newborn": 0.556,
+      "moments": 1894
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.714375
+    },
+    "own": {
+     "eaten": 6.25,
+     "agreement": 0.545,
+     "by_action": {
+      "walk": [
+       0.343,
+       1471
+      ],
+      "left": [
+       0.844,
+       623
+      ],
+      "right": [
+       0.908,
+       196
+      ],
+      "bite": [
+       0.909,
+       110
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.606,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.862,
+      "state": 0.859,
+      "newborn": 0.556,
+      "moments": 1894
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.681,
+   "own": 0.419,
+   "eaten": 5.141,
+   "teacher": 0.692,
+   "turn_observation": 0.879,
+   "turn_code": 0.862,
+   "turn_state": 0.851,
+   "turn_newborn": 0.556
+  },
+  "seconds": 38.2,
+  "baselines": {
+   "teacher": 14.25,
+   "random": 0.125
+  }
+ },
+ {
+  "founder": 1011103,
+  "arm": "none",
+  "parameters": 42760,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.595625
+    },
+    "own": {
+     "eaten": 2.5,
+     "agreement": 0.193,
+     "by_action": {
+      "walk": [
+       0.143,
+       1439
+      ],
+      "left": [
+       0.611,
+       208
+      ],
+      "right": [
+       0.138,
+       719
+      ],
+      "bite": [
+       0.912,
+       34
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.625,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.879,
+      "state": 0.729,
+      "newborn": 0.578,
+      "moments": 1894
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.664375
+    },
+    "own": {
+     "eaten": 1.0625,
+     "agreement": 0.124,
+     "by_action": {
+      "walk": [
+       0.065,
+       1992
+      ],
+      "left": [
+       0.54,
+       161
+      ],
+      "right": [
+       0.284,
+       232
+      ],
+      "bite": [
+       1.0,
+       15
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.503,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.879,
+      "state": 0.784,
+      "newborn": 0.578,
+      "moments": 1894
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.683125
+    },
+    "own": {
+     "eaten": 9.6875,
+     "agreement": 0.665,
+     "by_action": {
+      "walk": [
+       0.59,
+       1375
+      ],
+      "left": [
+       0.648,
+       537
+      ],
+      "right": [
+       0.867,
+       331
+      ],
+      "bite": [
+       0.949,
+       157
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.741,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.879,
+      "state": 0.844,
+      "newborn": 0.578,
+      "moments": 1894
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.678125
+    },
+    "own": {
+     "eaten": 5.75,
+     "agreement": 0.496,
+     "by_action": {
+      "walk": [
+       0.363,
+       1654
+      ],
+      "left": [
+       0.757,
+       420
+      ],
+      "right": [
+       0.769,
+       238
+      ],
+      "bite": [
+       1.0,
+       88
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.655,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.879,
+      "state": 0.833,
+      "newborn": 0.578,
+      "moments": 1894
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.655,
+   "own": 0.369,
+   "eaten": 4.75,
+   "teacher": 0.631,
+   "turn_observation": 0.879,
+   "turn_code": 0.879,
+   "turn_state": 0.797,
+   "turn_newborn": 0.578
+  },
+  "seconds": 31.1,
+  "baselines": {
+   "teacher": 14.25,
+   "random": 0.125
+  }
+ },
+ {
+  "founder": 1011104,
+  "arm": "code",
+  "parameters": 54496,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.54625
+    },
+    "own": {
+     "eaten": 0.5,
+     "agreement": 0.343,
+     "by_action": {
+      "walk": [
+       0.046,
+       1375
+      ],
+      "left": [
+       0.786,
+       449
+      ],
+      "right": [
+       0.709,
+       561
+      ],
+      "bite": [
+       0.533,
+       15
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.356,
+     "readout": {
+      "observation": 0.881,
+      "code": 0.846,
+      "state": 0.744,
+      "newborn": 0.512,
+      "moments": 1765
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.66875
+    },
+    "own": {
+     "eaten": 7.625,
+     "agreement": 0.475,
+     "by_action": {
+      "walk": [
+       0.673,
+       801
+      ],
+      "left": [
+       0.369,
+       585
+      ],
+      "right": [
+       0.308,
+       896
+      ],
+      "bite": [
+       0.915,
+       118
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.738,
+     "readout": {
+      "observation": 0.881,
+      "code": 0.846,
+      "state": 0.79,
+      "newborn": 0.512,
+      "moments": 1765
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.663125
+    },
+    "own": {
+     "eaten": 9.1875,
+     "agreement": 0.661,
+     "by_action": {
+      "walk": [
+       0.686,
+       1077
+      ],
+      "left": [
+       0.805,
+       365
+      ],
+      "right": [
+       0.542,
+       764
+      ],
+      "bite": [
+       0.716,
+       194
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.668,
+     "readout": {
+      "observation": 0.881,
+      "code": 0.846,
+      "state": 0.805,
+      "newborn": 0.512,
+      "moments": 1765
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.7225
+    },
+    "own": {
+     "eaten": 6.5625,
+     "agreement": 0.507,
+     "by_action": {
+      "walk": [
+       0.459,
+       1335
+      ],
+      "left": [
+       0.652,
+       273
+      ],
+      "right": [
+       0.473,
+       695
+      ],
+      "bite": [
+       0.99,
+       97
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.674,
+     "readout": {
+      "observation": 0.881,
+      "code": 0.846,
+      "state": 0.827,
+      "newborn": 0.512,
+      "moments": 1765
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.65,
+   "own": 0.497,
+   "eaten": 5.969,
+   "teacher": 0.609,
+   "turn_observation": 0.881,
+   "turn_code": 0.846,
+   "turn_state": 0.791,
+   "turn_newborn": 0.512
+  },
+  "seconds": 39.6,
+  "baselines": {
+   "teacher": 13.25,
+   "random": 0.3125
+  }
+ },
+ {
+  "founder": 1011104,
+  "arm": "both",
+  "parameters": 57928,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.695625
+    },
+    "own": {
+     "eaten": 8.0625,
+     "agreement": 0.58,
+     "by_action": {
+      "walk": [
+       0.821,
+       859
+      ],
+      "left": [
+       0.443,
+       594
+      ],
+      "right": [
+       0.39,
+       775
+      ],
+      "bite": [
+       0.709,
+       172
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.75,
+     "readout": {
+      "observation": 0.881,
+      "code": 0.846,
+      "state": 0.821,
+      "newborn": 0.501,
+      "moments": 1765
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.750625
+    },
+    "own": {
+     "eaten": 8.875,
+     "agreement": 0.637,
+     "by_action": {
+      "walk": [
+       0.681,
+       1295
+      ],
+      "left": [
+       0.727,
+       440
+      ],
+      "right": [
+       0.366,
+       528
+      ],
+      "bite": [
+       0.978,
+       137
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.745,
+     "readout": {
+      "observation": 0.881,
+      "code": 0.846,
+      "state": 0.855,
+      "newborn": 0.501,
+      "moments": 1765
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.770625
+    },
+    "own": {
+     "eaten": 9.6875,
+     "agreement": 0.691,
+     "by_action": {
+      "walk": [
+       0.755,
+       1254
+      ],
+      "left": [
+       0.793,
+       333
+      ],
+      "right": [
+       0.454,
+       658
+      ],
+      "bite": [
+       0.955,
+       155
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.696,
+     "readout": {
+      "observation": 0.881,
+      "code": 0.846,
+      "state": 0.868,
+      "newborn": 0.501,
+      "moments": 1765
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.69125
+    },
+    "own": {
+     "eaten": 7.375,
+     "agreement": 0.527,
+     "by_action": {
+      "walk": [
+       0.761,
+       735
+      ],
+      "left": [
+       0.3,
+       1195
+      ],
+      "right": [
+       0.668,
+       367
+      ],
+      "bite": [
+       0.99,
+       103
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.662,
+     "readout": {
+      "observation": 0.881,
+      "code": 0.846,
+      "state": 0.876,
+      "newborn": 0.501,
+      "moments": 1765
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.727,
+   "own": 0.609,
+   "eaten": 8.5,
+   "teacher": 0.713,
+   "turn_observation": 0.881,
+   "turn_code": 0.846,
+   "turn_state": 0.855,
+   "turn_newborn": 0.501
+  },
+  "seconds": 38.8,
+  "baselines": {
+   "teacher": 13.25,
+   "random": 0.3125
+  }
+ },
+ {
+  "founder": 1011104,
+  "arm": "observation",
+  "parameters": 52912,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.681875
+    },
+    "own": {
+     "eaten": 7.75,
+     "agreement": 0.61,
+     "by_action": {
+      "walk": [
+       0.556,
+       1363
+      ],
+      "left": [
+       0.564,
+       534
+      ],
+      "right": [
+       0.82,
+       344
+      ],
+      "bite": [
+       0.767,
+       159
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.644,
+     "readout": {
+      "observation": 0.881,
+      "code": 0.846,
+      "state": 0.833,
+      "newborn": 0.625,
+      "moments": 1765
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.771875
+    },
+    "own": {
+     "eaten": 9.0,
+     "agreement": 0.634,
+     "by_action": {
+      "walk": [
+       0.728,
+       1126
+      ],
+      "left": [
+       0.47,
+       642
+      ],
+      "right": [
+       0.567,
+       460
+      ],
+      "bite": [
+       0.808,
+       172
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.784,
+     "readout": {
+      "observation": 0.881,
+      "code": 0.846,
+      "state": 0.829,
+      "newborn": 0.625,
+      "moments": 1765
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.716875
+    },
+    "own": {
+     "eaten": 5.8125,
+     "agreement": 0.5,
+     "by_action": {
+      "walk": [
+       0.497,
+       1284
+      ],
+      "left": [
+       0.538,
+       325
+      ],
+      "right": [
+       0.426,
+       698
+      ],
+      "bite": [
+       0.957,
+       93
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.655,
+     "readout": {
+      "observation": 0.881,
+      "code": 0.846,
+      "state": 0.855,
+      "newborn": 0.625,
+      "moments": 1765
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.735
+    },
+    "own": {
+     "eaten": 9.5625,
+     "agreement": 0.67,
+     "by_action": {
+      "walk": [
+       0.795,
+       919
+      ],
+      "left": [
+       0.482,
+       939
+      ],
+      "right": [
+       0.785,
+       349
+      ],
+      "bite": [
+       0.782,
+       193
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.71,
+     "readout": {
+      "observation": 0.881,
+      "code": 0.846,
+      "state": 0.862,
+      "newborn": 0.625,
+      "moments": 1765
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.726,
+   "own": 0.604,
+   "eaten": 8.031,
+   "teacher": 0.698,
+   "turn_observation": 0.881,
+   "turn_code": 0.846,
+   "turn_state": 0.845,
+   "turn_newborn": 0.625
+  },
+  "seconds": 36.8,
+  "baselines": {
+   "teacher": 13.25,
+   "random": 0.3125
+  }
+ },
+ {
+  "founder": 1011104,
+  "arm": "none",
+  "parameters": 42760,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.610625
+    },
+    "own": {
+     "eaten": 3.3125,
+     "agreement": 0.302,
+     "by_action": {
+      "walk": [
+       0.208,
+       1570
+      ],
+      "left": [
+       0.275,
+       546
+      ],
+      "right": [
+       0.867,
+       225
+      ],
+      "bite": [
+       0.898,
+       59
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.544,
+     "readout": {
+      "observation": 0.881,
+      "code": 0.881,
+      "state": 0.727,
+      "newborn": 0.617,
+      "moments": 1765
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.728125
+    },
+    "own": {
+     "eaten": 7.25,
+     "agreement": 0.535,
+     "by_action": {
+      "walk": [
+       0.394,
+       1176
+      ],
+      "left": [
+       0.549,
+       859
+      ],
+      "right": [
+       1.0,
+       241
+      ],
+      "bite": [
+       0.871,
+       124
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.537,
+     "readout": {
+      "observation": 0.881,
+      "code": 0.881,
+      "state": 0.808,
+      "newborn": 0.617,
+      "moments": 1765
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.76
+    },
+    "own": {
+     "eaten": 8.5625,
+     "agreement": 0.634,
+     "by_action": {
+      "walk": [
+       0.707,
+       1191
+      ],
+      "left": [
+       0.545,
+       580
+      ],
+      "right": [
+       0.515,
+       441
+      ],
+      "bite": [
+       0.723,
+       188
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.755,
+     "readout": {
+      "observation": 0.881,
+      "code": 0.881,
+      "state": 0.794,
+      "newborn": 0.617,
+      "moments": 1765
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.736875
+    },
+    "own": {
+     "eaten": 5.3125,
+     "agreement": 0.633,
+     "by_action": {
+      "walk": [
+       0.396,
+       1165
+      ],
+      "left": [
+       0.921,
+       369
+      ],
+      "right": [
+       0.922,
+       689
+      ],
+      "bite": [
+       0.469,
+       177
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.597,
+     "readout": {
+      "observation": 0.881,
+      "code": 0.881,
+      "state": 0.796,
+      "newborn": 0.617,
+      "moments": 1765
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.709,
+   "own": 0.526,
+   "eaten": 6.109,
+   "teacher": 0.608,
+   "turn_observation": 0.881,
+   "turn_code": 0.881,
+   "turn_state": 0.781,
+   "turn_newborn": 0.617
+  },
+  "seconds": 30.9,
+  "baselines": {
+   "teacher": 13.25,
+   "random": 0.3125
+  }
+ },
+ {
+  "founder": 1011105,
+  "arm": "code",
+  "parameters": 54496,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.58625
+    },
+    "own": {
+     "eaten": 6.5625,
+     "agreement": 0.474,
+     "by_action": {
+      "walk": [
+       0.432,
+       1191
+      ],
+      "left": [
+       0.367,
+       622
+      ],
+      "right": [
+       0.628,
+       470
+      ],
+      "bite": [
+       0.863,
+       117
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.686,
+     "readout": {
+      "observation": 0.864,
+      "code": 0.856,
+      "state": 0.706,
+      "newborn": 0.524,
+      "moments": 1789
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.596875
+    },
+    "own": {
+     "eaten": 6.125,
+     "agreement": 0.45,
+     "by_action": {
+      "walk": [
+       0.463,
+       1185
+      ],
+      "left": [
+       0.636,
+       393
+      ],
+      "right": [
+       0.264,
+       728
+      ],
+      "bite": [
+       0.936,
+       94
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.653,
+     "readout": {
+      "observation": 0.864,
+      "code": 0.856,
+      "state": 0.764,
+      "newborn": 0.524,
+      "moments": 1789
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.658125
+    },
+    "own": {
+     "eaten": 7.5625,
+     "agreement": 0.501,
+     "by_action": {
+      "walk": [
+       0.545,
+       1170
+      ],
+      "left": [
+       0.329,
+       624
+      ],
+      "right": [
+       0.517,
+       474
+      ],
+      "bite": [
+       0.864,
+       132
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.76,
+     "readout": {
+      "observation": 0.864,
+      "code": 0.856,
+      "state": 0.825,
+      "newborn": 0.524,
+      "moments": 1789
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.675
+    },
+    "own": {
+     "eaten": 7.25,
+     "agreement": 0.468,
+     "by_action": {
+      "walk": [
+       0.528,
+       1048
+      ],
+      "left": [
+       0.447,
+       544
+      ],
+      "right": [
+       0.319,
+       690
+      ],
+      "bite": [
+       0.915,
+       118
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.766,
+     "readout": {
+      "observation": 0.864,
+      "code": 0.856,
+      "state": 0.829,
+      "newborn": 0.524,
+      "moments": 1789
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.629,
+   "own": 0.473,
+   "eaten": 6.875,
+   "teacher": 0.716,
+   "turn_observation": 0.864,
+   "turn_code": 0.856,
+   "turn_state": 0.781,
+   "turn_newborn": 0.524
+  },
+  "seconds": 40.3,
+  "baselines": {
+   "teacher": 13.1875,
+   "random": 0.1875
+  }
+ },
+ {
+  "founder": 1011105,
+  "arm": "both",
+  "parameters": 57928,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.698125
+    },
+    "own": {
+     "eaten": 4.8125,
+     "agreement": 0.41,
+     "by_action": {
+      "walk": [
+       0.309,
+       1745
+      ],
+      "left": [
+       0.523,
+       348
+      ],
+      "right": [
+       0.833,
+       228
+      ],
+      "bite": [
+       0.924,
+       79
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.673,
+     "readout": {
+      "observation": 0.864,
+      "code": 0.856,
+      "state": 0.825,
+      "newborn": 0.519,
+      "moments": 1789
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.710625
+    },
+    "own": {
+     "eaten": 5.5,
+     "agreement": 0.565,
+     "by_action": {
+      "walk": [
+       0.282,
+       1154
+      ],
+      "left": [
+       0.948,
+       213
+      ],
+      "right": [
+       0.791,
+       939
+      ],
+      "bite": [
+       0.904,
+       94
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.425,
+     "readout": {
+      "observation": 0.864,
+      "code": 0.856,
+      "state": 0.855,
+      "newborn": 0.519,
+      "moments": 1789
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.7025
+    },
+    "own": {
+     "eaten": 10.5625,
+     "agreement": 0.658,
+     "by_action": {
+      "walk": [
+       0.772,
+       1069
+      ],
+      "left": [
+       0.369,
+       841
+      ],
+      "right": [
+       0.881,
+       319
+      ],
+      "bite": [
+       0.959,
+       171
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.82,
+     "readout": {
+      "observation": 0.864,
+      "code": 0.856,
+      "state": 0.857,
+      "newborn": 0.519,
+      "moments": 1789
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.736875
+    },
+    "own": {
+     "eaten": 10.5625,
+     "agreement": 0.676,
+     "by_action": {
+      "walk": [
+       0.891,
+       944
+      ],
+      "left": [
+       0.37,
+       902
+      ],
+      "right": [
+       0.755,
+       375
+      ],
+      "bite": [
+       0.922,
+       179
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.823,
+     "readout": {
+      "observation": 0.864,
+      "code": 0.856,
+      "state": 0.862,
+      "newborn": 0.519,
+      "moments": 1789
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.712,
+   "own": 0.577,
+   "eaten": 7.859,
+   "teacher": 0.685,
+   "turn_observation": 0.864,
+   "turn_code": 0.856,
+   "turn_state": 0.85,
+   "turn_newborn": 0.519
+  },
+  "seconds": 40.1,
+  "baselines": {
+   "teacher": 13.1875,
+   "random": 0.1875
+  }
+ },
+ {
+  "founder": 1011105,
+  "arm": "observation",
+  "parameters": 52912,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.631875
+    },
+    "own": {
+     "eaten": 2.75,
+     "agreement": 0.213,
+     "by_action": {
+      "walk": [
+       0.121,
+       1656
+      ],
+      "left": [
+       0.283,
+       396
+      ],
+      "right": [
+       0.521,
+       309
+      ],
+      "bite": [
+       1.0,
+       39
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.635,
+     "readout": {
+      "observation": 0.864,
+      "code": 0.856,
+      "state": 0.786,
+      "newborn": 0.641,
+      "moments": 1789
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.754375
+    },
+    "own": {
+     "eaten": 9.125,
+     "agreement": 0.625,
+     "by_action": {
+      "walk": [
+       0.754,
+       919
+      ],
+      "left": [
+       0.361,
+       935
+      ],
+      "right": [
+       0.884,
+       372
+      ],
+      "bite": [
+       0.799,
+       174
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.823,
+     "readout": {
+      "observation": 0.864,
+      "code": 0.856,
+      "state": 0.843,
+      "newborn": 0.641,
+      "moments": 1789
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.713125
+    },
+    "own": {
+     "eaten": 7.9375,
+     "agreement": 0.547,
+     "by_action": {
+      "walk": [
+       0.469,
+       1227
+      ],
+      "left": [
+       0.512,
+       887
+      ],
+      "right": [
+       0.982,
+       166
+      ],
+      "bite": [
+       0.992,
+       120
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.636,
+     "readout": {
+      "observation": 0.864,
+      "code": 0.856,
+      "state": 0.846,
+      "newborn": 0.641,
+      "moments": 1789
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.72375
+    },
+    "own": {
+     "eaten": 6.1875,
+     "agreement": 0.49,
+     "by_action": {
+      "walk": [
+       0.312,
+       1631
+      ],
+      "left": [
+       0.912,
+       376
+      ],
+      "right": [
+       0.792,
+       289
+      ],
+      "bite": [
+       0.923,
+       104
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.611,
+     "readout": {
+      "observation": 0.864,
+      "code": 0.856,
+      "state": 0.833,
+      "newborn": 0.641,
+      "moments": 1789
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.706,
+   "own": 0.469,
+   "eaten": 6.5,
+   "teacher": 0.676,
+   "turn_observation": 0.864,
+   "turn_code": 0.856,
+   "turn_state": 0.827,
+   "turn_newborn": 0.641
+  },
+  "seconds": 37.9,
+  "baselines": {
+   "teacher": 13.1875,
+   "random": 0.1875
+  }
+ },
+ {
+  "founder": 1011105,
+  "arm": "none",
+  "parameters": 42760,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.574375
+    },
+    "own": {
+     "eaten": 6.6875,
+     "agreement": 0.559,
+     "by_action": {
+      "walk": [
+       0.685,
+       780
+      ],
+      "left": [
+       0.456,
+       925
+      ],
+      "right": [
+       0.536,
+       537
+      ],
+      "bite": [
+       0.614,
+       158
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.718,
+     "readout": {
+      "observation": 0.864,
+      "code": 0.864,
+      "state": 0.712,
+      "newborn": 0.615,
+      "moments": 1789
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.641875
+    },
+    "own": {
+     "eaten": 5.125,
+     "agreement": 0.321,
+     "by_action": {
+      "walk": [
+       0.37,
+       970
+      ],
+      "left": [
+       0.809,
+       220
+      ],
+      "right": [
+       0.141,
+       1138
+      ],
+      "bite": [
+       1.0,
+       72
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.705,
+     "readout": {
+      "observation": 0.864,
+      "code": 0.864,
+      "state": 0.78,
+      "newborn": 0.615,
+      "moments": 1789
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.675625
+    },
+    "own": {
+     "eaten": 3.6875,
+     "agreement": 0.346,
+     "by_action": {
+      "walk": [
+       0.178,
+       1399
+      ],
+      "left": [
+       0.99,
+       201
+      ],
+      "right": [
+       0.442,
+       747
+      ],
+      "bite": [
+       1.0,
+       53
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.491,
+     "readout": {
+      "observation": 0.864,
+      "code": 0.864,
+      "state": 0.847,
+      "newborn": 0.615,
+      "moments": 1789
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.7475
+    },
+    "own": {
+     "eaten": 6.75,
+     "agreement": 0.452,
+     "by_action": {
+      "walk": [
+       0.357,
+       1598
+      ],
+      "left": [
+       0.635,
+       329
+      ],
+      "right": [
+       0.555,
+       380
+      ],
+      "bite": [
+       1.0,
+       93
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.655,
+     "readout": {
+      "observation": 0.864,
+      "code": 0.864,
+      "state": 0.845,
+      "newborn": 0.615,
+      "moments": 1789
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.66,
+   "own": 0.419,
+   "eaten": 5.562,
+   "teacher": 0.642,
+   "turn_observation": 0.864,
+   "turn_code": 0.864,
+   "turn_state": 0.796,
+   "turn_newborn": 0.615
+  },
+  "seconds": 30.9,
+  "baselines": {
+   "teacher": 13.1875,
+   "random": 0.1875
+  }
+ },
+ {
+  "founder": 1011106,
+  "arm": "code",
+  "parameters": 54496,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.5425
+    },
+    "own": {
+     "eaten": 4.9375,
+     "agreement": 0.398,
+     "by_action": {
+      "walk": [
+       0.362,
+       1336
+      ],
+      "left": [
+       0.404,
+       621
+      ],
+      "right": [
+       0.425,
+       351
+      ],
+      "bite": [
+       0.783,
+       92
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.693,
+     "readout": {
+      "observation": 0.884,
+      "code": 0.86,
+      "state": 0.735,
+      "newborn": 0.553,
+      "moments": 1817
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.5875
+    },
+    "own": {
+     "eaten": 8.1875,
+     "agreement": 0.569,
+     "by_action": {
+      "walk": [
+       0.738,
+       907
+      ],
+      "left": [
+       0.523,
+       503
+      ],
+      "right": [
+       0.383,
+       815
+      ],
+      "bite": [
+       0.697,
+       175
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.74,
+     "readout": {
+      "observation": 0.884,
+      "code": 0.86,
+      "state": 0.765,
+      "newborn": 0.553,
+      "moments": 1817
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.6375
+    },
+    "own": {
+     "eaten": 8.1875,
+     "agreement": 0.578,
+     "by_action": {
+      "walk": [
+       0.412,
+       1470
+      ],
+      "left": [
+       0.93,
+       315
+      ],
+      "right": [
+       0.806,
+       453
+      ],
+      "bite": [
+       0.753,
+       162
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.645,
+     "readout": {
+      "observation": 0.884,
+      "code": 0.86,
+      "state": 0.833,
+      "newborn": 0.553,
+      "moments": 1817
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.64625
+    },
+    "own": {
+     "eaten": 4.5,
+     "agreement": 0.497,
+     "by_action": {
+      "walk": [
+       0.243,
+       1436
+      ],
+      "left": [
+       0.96,
+       298
+      ],
+      "right": [
+       0.861,
+       568
+      ],
+      "bite": [
+       0.694,
+       98
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.541,
+     "readout": {
+      "observation": 0.884,
+      "code": 0.86,
+      "state": 0.848,
+      "newborn": 0.553,
+      "moments": 1817
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.603,
+   "own": 0.51,
+   "eaten": 6.453,
+   "teacher": 0.655,
+   "turn_observation": 0.884,
+   "turn_code": 0.86,
+   "turn_state": 0.795,
+   "turn_newborn": 0.553
+  },
+  "seconds": 41.9,
+  "baselines": {
+   "teacher": 12.875,
+   "random": 0.25
+  }
+ },
+ {
+  "founder": 1011106,
+  "arm": "both",
+  "parameters": 57928,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.621875
+    },
+    "own": {
+     "eaten": 8.0,
+     "agreement": 0.689,
+     "by_action": {
+      "walk": [
+       0.582,
+       1145
+      ],
+      "left": [
+       0.938,
+       560
+      ],
+      "right": [
+       0.707,
+       478
+      ],
+      "bite": [
+       0.571,
+       217
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.599,
+     "readout": {
+      "observation": 0.884,
+      "code": 0.86,
+      "state": 0.814,
+      "newborn": 0.584,
+      "moments": 1817
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.745625
+    },
+    "own": {
+     "eaten": 8.4375,
+     "agreement": 0.562,
+     "by_action": {
+      "walk": [
+       0.559,
+       1256
+      ],
+      "left": [
+       0.545,
+       387
+      ],
+      "right": [
+       0.497,
+       636
+      ],
+      "bite": [
+       1.0,
+       121
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.69,
+     "readout": {
+      "observation": 0.884,
+      "code": 0.86,
+      "state": 0.878,
+      "newborn": 0.584,
+      "moments": 1817
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.7325
+    },
+    "own": {
+     "eaten": 9.5625,
+     "agreement": 0.695,
+     "by_action": {
+      "walk": [
+       0.644,
+       1452
+      ],
+      "left": [
+       0.839,
+       342
+      ],
+      "right": [
+       0.654,
+       459
+      ],
+      "bite": [
+       1.0,
+       147
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.692,
+     "readout": {
+      "observation": 0.884,
+      "code": 0.86,
+      "state": 0.883,
+      "newborn": 0.584,
+      "moments": 1817
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.75125
+    },
+    "own": {
+     "eaten": 11.8125,
+     "agreement": 0.765,
+     "by_action": {
+      "walk": [
+       0.762,
+       1307
+      ],
+      "left": [
+       0.965,
+       343
+      ],
+      "right": [
+       0.58,
+       559
+      ],
+      "bite": [
+       0.974,
+       191
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.722,
+     "readout": {
+      "observation": 0.884,
+      "code": 0.86,
+      "state": 0.901,
+      "newborn": 0.584,
+      "moments": 1817
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.713,
+   "own": 0.678,
+   "eaten": 9.453,
+   "teacher": 0.676,
+   "turn_observation": 0.884,
+   "turn_code": 0.86,
+   "turn_state": 0.869,
+   "turn_newborn": 0.584
+  },
+  "seconds": 39.7,
+  "baselines": {
+   "teacher": 12.875,
+   "random": 0.25
+  }
+ },
+ {
+  "founder": 1011106,
+  "arm": "observation",
+  "parameters": 52912,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.61625
+    },
+    "own": {
+     "eaten": 9.9375,
+     "agreement": 0.697,
+     "by_action": {
+      "walk": [
+       0.696,
+       1042
+      ],
+      "left": [
+       0.579,
+       832
+      ],
+      "right": [
+       0.891,
+       357
+      ],
+      "bite": [
+       0.87,
+       169
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.653,
+     "readout": {
+      "observation": 0.884,
+      "code": 0.86,
+      "state": 0.8,
+      "newborn": 0.55,
+      "moments": 1817
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.68375
+    },
+    "own": {
+     "eaten": 10.375,
+     "agreement": 0.762,
+     "by_action": {
+      "walk": [
+       0.723,
+       1181
+      ],
+      "left": [
+       0.746,
+       672
+      ],
+      "right": [
+       0.923,
+       337
+      ],
+      "bite": [
+       0.781,
+       210
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.689,
+     "readout": {
+      "observation": 0.884,
+      "code": 0.86,
+      "state": 0.812,
+      "newborn": 0.55,
+      "moments": 1817
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.69125
+    },
+    "own": {
+     "eaten": 9.5,
+     "agreement": 0.6,
+     "by_action": {
+      "walk": [
+       0.814,
+       953
+      ],
+      "left": [
+       0.32,
+       966
+      ],
+      "right": [
+       0.631,
+       336
+      ],
+      "bite": [
+       0.986,
+       145
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.77,
+     "readout": {
+      "observation": 0.884,
+      "code": 0.86,
+      "state": 0.846,
+      "newborn": 0.55,
+      "moments": 1817
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.728125
+    },
+    "own": {
+     "eaten": 3.5,
+     "agreement": 0.32,
+     "by_action": {
+      "walk": [
+       0.167,
+       1878
+      ],
+      "left": [
+       0.823,
+       367
+      ],
+      "right": [
+       0.98,
+       101
+      ],
+      "bite": [
+       1.0,
+       54
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.631,
+     "readout": {
+      "observation": 0.884,
+      "code": 0.86,
+      "state": 0.849,
+      "newborn": 0.55,
+      "moments": 1817
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.68,
+   "own": 0.595,
+   "eaten": 8.328,
+   "teacher": 0.686,
+   "turn_observation": 0.884,
+   "turn_code": 0.86,
+   "turn_state": 0.827,
+   "turn_newborn": 0.55
+  },
+  "seconds": 37.8,
+  "baselines": {
+   "teacher": 12.875,
+   "random": 0.25
+  }
+ },
+ {
+  "founder": 1011106,
+  "arm": "none",
+  "parameters": 42760,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.544375
+    },
+    "own": {
+     "eaten": 0.625,
+     "agreement": 0.082,
+     "by_action": {
+      "walk": [
+       0.047,
+       1303
+      ],
+      "left": [
+       0.125,
+       559
+      ],
+      "right": [
+       0.108,
+       529
+      ],
+      "bite": [
+       1.0,
+       9
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.437,
+     "readout": {
+      "observation": 0.884,
+      "code": 0.884,
+      "state": 0.679,
+      "newborn": 0.616,
+      "moments": 1817
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.618125
+    },
+    "own": {
+     "eaten": 5.875,
+     "agreement": 0.435,
+     "by_action": {
+      "walk": [
+       0.372,
+       1269
+      ],
+      "left": [
+       0.479,
+       568
+      ],
+      "right": [
+       0.455,
+       470
+      ],
+      "bite": [
+       0.925,
+       93
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.77,
+     "readout": {
+      "observation": 0.884,
+      "code": 0.884,
+      "state": 0.788,
+      "newborn": 0.616,
+      "moments": 1817
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.750625
+    },
+    "own": {
+     "eaten": 3.6875,
+     "agreement": 0.363,
+     "by_action": {
+      "walk": [
+       0.196,
+       1847
+      ],
+      "left": [
+       0.882,
+       304
+      ],
+      "right": [
+       0.979,
+       187
+      ],
+      "bite": [
+       0.935,
+       62
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.663,
+     "readout": {
+      "observation": 0.884,
+      "code": 0.884,
+      "state": 0.865,
+      "newborn": 0.616,
+      "moments": 1817
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.719375
+    },
+    "own": {
+     "eaten": 8.5625,
+     "agreement": 0.568,
+     "by_action": {
+      "walk": [
+       0.558,
+       1266
+      ],
+      "left": [
+       0.771,
+       363
+      ],
+      "right": [
+       0.387,
+       643
+      ],
+      "bite": [
+       0.984,
+       128
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.769,
+     "readout": {
+      "observation": 0.884,
+      "code": 0.884,
+      "state": 0.838,
+      "newborn": 0.616,
+      "moments": 1817
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.658,
+   "own": 0.362,
+   "eaten": 4.688,
+   "teacher": 0.66,
+   "turn_observation": 0.884,
+   "turn_code": 0.884,
+   "turn_state": 0.792,
+   "turn_newborn": 0.616
+  },
+  "seconds": 30.4,
+  "baselines": {
+   "teacher": 12.875,
+   "random": 0.25
+  }
+ },
+ {
+  "founder": 1011107,
+  "arm": "code",
+  "parameters": 54496,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.47875
+    },
+    "own": {
+     "eaten": 1.9375,
+     "agreement": 0.3,
+     "by_action": {
+      "walk": [
+       0.118,
+       1352
+      ],
+      "left": [
+       0.482,
+       641
+      ],
+      "right": [
+       0.608,
+       370
+      ],
+      "bite": [
+       0.757,
+       37
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.603,
+     "readout": {
+      "observation": 0.88,
+      "code": 0.865,
+      "state": 0.597,
+      "newborn": 0.448,
+      "moments": 1793
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.593125
+    },
+    "own": {
+     "eaten": 4.125,
+     "agreement": 0.527,
+     "by_action": {
+      "walk": [
+       0.333,
+       1034
+      ],
+      "left": [
+       0.715,
+       459
+      ],
+      "right": [
+       0.657,
+       810
+      ],
+      "bite": [
+       0.629,
+       97
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.604,
+     "readout": {
+      "observation": 0.88,
+      "code": 0.865,
+      "state": 0.696,
+      "newborn": 0.448,
+      "moments": 1793
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.608125
+    },
+    "own": {
+     "eaten": 3.0625,
+     "agreement": 0.55,
+     "by_action": {
+      "walk": [
+       0.535,
+       621
+      ],
+      "left": [
+       0.697,
+       633
+      ],
+      "right": [
+       0.803,
+       623
+      ],
+      "bite": [
+       0.092,
+       523
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.672,
+     "readout": {
+      "observation": 0.88,
+      "code": 0.865,
+      "state": 0.695,
+      "newborn": 0.448,
+      "moments": 1793
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.67
+    },
+    "own": {
+     "eaten": 7.9375,
+     "agreement": 0.623,
+     "by_action": {
+      "walk": [
+       0.739,
+       1060
+      ],
+      "left": [
+       0.718,
+       447
+      ],
+      "right": [
+       0.352,
+       773
+      ],
+      "bite": [
+       0.983,
+       120
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.766,
+     "readout": {
+      "observation": 0.88,
+      "code": 0.865,
+      "state": 0.797,
+      "newborn": 0.448,
+      "moments": 1793
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.588,
+   "own": 0.5,
+   "eaten": 4.266,
+   "teacher": 0.661,
+   "turn_observation": 0.88,
+   "turn_code": 0.865,
+   "turn_state": 0.696,
+   "turn_newborn": 0.448
+  },
+  "seconds": 38.2,
+  "baselines": {
+   "teacher": 13.4375,
+   "random": 0.3125
+  }
+ },
+ {
+  "founder": 1011107,
+  "arm": "both",
+  "parameters": 57928,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.61125
+    },
+    "own": {
+     "eaten": 4.0,
+     "agreement": 0.52,
+     "by_action": {
+      "walk": [
+       0.252,
+       1272
+      ],
+      "left": [
+       0.785,
+       790
+      ],
+      "right": [
+       0.897,
+       273
+      ],
+      "bite": [
+       0.969,
+       65
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.614,
+     "readout": {
+      "observation": 0.88,
+      "code": 0.865,
+      "state": 0.82,
+      "newborn": 0.461,
+      "moments": 1793
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.801875
+    },
+    "own": {
+     "eaten": 7.0,
+     "agreement": 0.496,
+     "by_action": {
+      "walk": [
+       0.482,
+       1456
+      ],
+      "left": [
+       0.405,
+       558
+      ],
+      "right": [
+       0.564,
+       282
+      ],
+      "bite": [
+       1.0,
+       104
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.755,
+     "readout": {
+      "observation": 0.88,
+      "code": 0.865,
+      "state": 0.848,
+      "newborn": 0.461,
+      "moments": 1793
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.770625
+    },
+    "own": {
+     "eaten": 10.125,
+     "agreement": 0.753,
+     "by_action": {
+      "walk": [
+       0.767,
+       1174
+      ],
+      "left": [
+       0.957,
+       370
+      ],
+      "right": [
+       0.572,
+       696
+      ],
+      "bite": [
+       0.963,
+       160
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.747,
+     "readout": {
+      "observation": 0.88,
+      "code": 0.865,
+      "state": 0.856,
+      "newborn": 0.461,
+      "moments": 1793
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.7725
+    },
+    "own": {
+     "eaten": 4.375,
+     "agreement": 0.393,
+     "by_action": {
+      "walk": [
+       0.257,
+       1632
+      ],
+      "left": [
+       0.589,
+       593
+      ],
+      "right": [
+       1.0,
+       107
+      ],
+      "bite": [
+       0.985,
+       68
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.516,
+     "readout": {
+      "observation": 0.88,
+      "code": 0.865,
+      "state": 0.857,
+      "newborn": 0.461,
+      "moments": 1793
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.739,
+   "own": 0.54,
+   "eaten": 6.375,
+   "teacher": 0.658,
+   "turn_observation": 0.88,
+   "turn_code": 0.865,
+   "turn_state": 0.845,
+   "turn_newborn": 0.461
+  },
+  "seconds": 38.5,
+  "baselines": {
+   "teacher": 13.4375,
+   "random": 0.3125
+  }
+ },
+ {
+  "founder": 1011107,
+  "arm": "observation",
+  "parameters": 52912,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.56625
+    },
+    "own": {
+     "eaten": 2.5625,
+     "agreement": 0.412,
+     "by_action": {
+      "walk": [
+       0.143,
+       1247
+      ],
+      "left": [
+       0.907,
+       225
+      ],
+      "right": [
+       0.655,
+       865
+      ],
+      "bite": [
+       0.635,
+       63
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.546,
+     "readout": {
+      "observation": 0.88,
+      "code": 0.865,
+      "state": 0.83,
+      "newborn": 0.61,
+      "moments": 1793
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.7
+    },
+    "own": {
+     "eaten": 2.1875,
+     "agreement": 0.417,
+     "by_action": {
+      "walk": [
+       0.151,
+       1473
+      ],
+      "left": [
+       0.823,
+       706
+      ],
+      "right": [
+       0.994,
+       164
+      ],
+      "bite": [
+       0.614,
+       57
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.436,
+     "readout": {
+      "observation": 0.88,
+      "code": 0.865,
+      "state": 0.856,
+      "newborn": 0.61,
+      "moments": 1793
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.716875
+    },
+    "own": {
+     "eaten": 10.1875,
+     "agreement": 0.698,
+     "by_action": {
+      "walk": [
+       0.805,
+       1123
+      ],
+      "left": [
+       0.8,
+       320
+      ],
+      "right": [
+       0.454,
+       782
+      ],
+      "bite": [
+       0.909,
+       175
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.773,
+     "readout": {
+      "observation": 0.88,
+      "code": 0.865,
+      "state": 0.898,
+      "newborn": 0.61,
+      "moments": 1793
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.70625
+    },
+    "own": {
+     "eaten": 6.875,
+     "agreement": 0.787,
+     "by_action": {
+      "walk": [
+       0.905,
+       804
+      ],
+      "left": [
+       0.772,
+       1075
+      ],
+      "right": [
+       0.881,
+       253
+      ],
+      "bite": [
+       0.399,
+       268
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.821,
+     "readout": {
+      "observation": 0.88,
+      "code": 0.865,
+      "state": 0.899,
+      "newborn": 0.61,
+      "moments": 1793
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.672,
+   "own": 0.579,
+   "eaten": 5.453,
+   "teacher": 0.644,
+   "turn_observation": 0.88,
+   "turn_code": 0.865,
+   "turn_state": 0.871,
+   "turn_newborn": 0.61
+  },
+  "seconds": 36.3,
+  "baselines": {
+   "teacher": 13.4375,
+   "random": 0.3125
+  }
+ },
+ {
+  "founder": 1011107,
+  "arm": "none",
+  "parameters": 42760,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.526875
+    },
+    "own": {
+     "eaten": 4.5,
+     "agreement": 0.419,
+     "by_action": {
+      "walk": [
+       0.425,
+       1097
+      ],
+      "left": [
+       0.577,
+       418
+      ],
+      "right": [
+       0.3,
+       803
+      ],
+      "bite": [
+       0.707,
+       82
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.664,
+     "readout": {
+      "observation": 0.88,
+      "code": 0.88,
+      "state": 0.661,
+      "newborn": 0.599,
+      "moments": 1793
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.72375
+    },
+    "own": {
+     "eaten": 7.3125,
+     "agreement": 0.507,
+     "by_action": {
+      "walk": [
+       0.627,
+       964
+      ],
+      "left": [
+       0.367,
+       706
+      ],
+      "right": [
+       0.395,
+       612
+      ],
+      "bite": [
+       0.949,
+       118
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.757,
+     "readout": {
+      "observation": 0.88,
+      "code": 0.88,
+      "state": 0.822,
+      "newborn": 0.599,
+      "moments": 1793
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.75125
+    },
+    "own": {
+     "eaten": 5.5,
+     "agreement": 0.474,
+     "by_action": {
+      "walk": [
+       0.286,
+       1499
+      ],
+      "left": [
+       0.992,
+       261
+      ],
+      "right": [
+       0.682,
+       537
+      ],
+      "bite": [
+       0.816,
+       103
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.613,
+     "readout": {
+      "observation": 0.88,
+      "code": 0.88,
+      "state": 0.873,
+      "newborn": 0.599,
+      "moments": 1793
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.765
+    },
+    "own": {
+     "eaten": 9.0,
+     "agreement": 0.666,
+     "by_action": {
+      "walk": [
+       0.895,
+       898
+      ],
+      "left": [
+       0.515,
+       585
+      ],
+      "right": [
+       0.505,
+       703
+      ],
+      "bite": [
+       0.65,
+       214
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.844,
+     "readout": {
+      "observation": 0.88,
+      "code": 0.88,
+      "state": 0.843,
+      "newborn": 0.599,
+      "moments": 1793
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.692,
+   "own": 0.516,
+   "eaten": 6.578,
+   "teacher": 0.719,
+   "turn_observation": 0.88,
+   "turn_code": 0.88,
+   "turn_state": 0.8,
+   "turn_newborn": 0.599
+  },
+  "seconds": 30.8,
+  "baselines": {
+   "teacher": 13.4375,
+   "random": 0.3125
+  }
+ },
+ {
+  "founder": 1011108,
+  "arm": "code",
+  "parameters": 54496,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.569375
+    },
+    "own": {
+     "eaten": 6.5625,
+     "agreement": 0.55,
+     "by_action": {
+      "walk": [
+       0.507,
+       1058
+      ],
+      "left": [
+       0.798,
+       381
+      ],
+      "right": [
+       0.526,
+       725
+      ],
+      "bite": [
+       0.419,
+       236
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.54,
+     "readout": {
+      "observation": 0.868,
+      "code": 0.833,
+      "state": 0.639,
+      "newborn": 0.485,
+      "moments": 1747
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.678125
+    },
+    "own": {
+     "eaten": 8.375,
+     "agreement": 0.482,
+     "by_action": {
+      "walk": [
+       0.862,
+       653
+      ],
+      "left": [
+       0.279,
+       973
+      ],
+      "right": [
+       0.323,
+       610
+      ],
+      "bite": [
+       0.768,
+       164
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.806,
+     "readout": {
+      "observation": 0.868,
+      "code": 0.833,
+      "state": 0.718,
+      "newborn": 0.485,
+      "moments": 1747
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.640625
+    },
+    "own": {
+     "eaten": 8.75,
+     "agreement": 0.626,
+     "by_action": {
+      "walk": [
+       0.872,
+       837
+      ],
+      "left": [
+       0.484,
+       677
+      ],
+      "right": [
+       0.436,
+       715
+      ],
+      "bite": [
+       0.778,
+       171
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.807,
+     "readout": {
+      "observation": 0.868,
+      "code": 0.833,
+      "state": 0.785,
+      "newborn": 0.485,
+      "moments": 1747
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.663125
+    },
+    "own": {
+     "eaten": 8.125,
+     "agreement": 0.616,
+     "by_action": {
+      "walk": [
+       0.507,
+       1437
+      ],
+      "left": [
+       0.758,
+       422
+      ],
+      "right": [
+       0.83,
+       371
+      ],
+      "bite": [
+       0.724,
+       170
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.606,
+     "readout": {
+      "observation": 0.868,
+      "code": 0.833,
+      "state": 0.755,
+      "newborn": 0.485,
+      "moments": 1747
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.638,
+   "own": 0.569,
+   "eaten": 7.953,
+   "teacher": 0.69,
+   "turn_observation": 0.868,
+   "turn_code": 0.833,
+   "turn_state": 0.724,
+   "turn_newborn": 0.485
+  },
+  "seconds": 125.6,
+  "baselines": {
+   "teacher": 14.0,
+   "random": 0.3125
+  }
+ },
+ {
+  "founder": 1011108,
+  "arm": "both",
+  "parameters": 57928,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.665625
+    },
+    "own": {
+     "eaten": 7.8125,
+     "agreement": 0.71,
+     "by_action": {
+      "walk": [
+       0.649,
+       966
+      ],
+      "left": [
+       0.745,
+       607
+      ],
+      "right": [
+       0.86,
+       587
+      ],
+      "bite": [
+       0.5,
+       240
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.658,
+     "readout": {
+      "observation": 0.868,
+      "code": 0.833,
+      "state": 0.788,
+      "newborn": 0.5,
+      "moments": 1747
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.6475
+    },
+    "own": {
+     "eaten": 8.5,
+     "agreement": 0.584,
+     "by_action": {
+      "walk": [
+       0.664,
+       992
+      ],
+      "left": [
+       0.38,
+       1007
+      ],
+      "right": [
+       0.897,
+       252
+      ],
+      "bite": [
+       0.899,
+       149
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.569,
+     "readout": {
+      "observation": 0.868,
+      "code": 0.833,
+      "state": 0.816,
+      "newborn": 0.5,
+      "moments": 1747
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.715
+    },
+    "own": {
+     "eaten": 8.5625,
+     "agreement": 0.662,
+     "by_action": {
+      "walk": [
+       0.624,
+       1292
+      ],
+      "left": [
+       0.957,
+       258
+      ],
+      "right": [
+       0.577,
+       693
+      ],
+      "bite": [
+       0.86,
+       157
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.699,
+     "readout": {
+      "observation": 0.868,
+      "code": 0.833,
+      "state": 0.854,
+      "newborn": 0.5,
+      "moments": 1747
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.706875
+    },
+    "own": {
+     "eaten": 10.25,
+     "agreement": 0.66,
+     "by_action": {
+      "walk": [
+       0.553,
+       1652
+      ],
+      "left": [
+       0.825,
+       418
+      ],
+      "right": [
+       0.971,
+       170
+      ],
+      "bite": [
+       0.994,
+       160
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.65,
+     "readout": {
+      "observation": 0.868,
+      "code": 0.833,
+      "state": 0.835,
+      "newborn": 0.5,
+      "moments": 1747
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.684,
+   "own": 0.654,
+   "eaten": 8.781,
+   "teacher": 0.644,
+   "turn_observation": 0.868,
+   "turn_code": 0.833,
+   "turn_state": 0.823,
+   "turn_newborn": 0.5
+  },
+  "seconds": 111.6,
+  "baselines": {
+   "teacher": 14.0,
+   "random": 0.3125
+  }
+ },
+ {
+  "founder": 1011108,
+  "arm": "observation",
+  "parameters": 52912,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.57125
+    },
+    "own": {
+     "eaten": 6.9375,
+     "agreement": 0.482,
+     "by_action": {
+      "walk": [
+       0.39,
+       1273
+      ],
+      "left": [
+       0.615,
+       447
+      ],
+      "right": [
+       0.502,
+       570
+      ],
+      "bite": [
+       0.909,
+       110
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.602,
+     "readout": {
+      "observation": 0.868,
+      "code": 0.833,
+      "state": 0.716,
+      "newborn": 0.551,
+      "moments": 1747
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.729375
+    },
+    "own": {
+     "eaten": 8.5,
+     "agreement": 0.479,
+     "by_action": {
+      "walk": [
+       0.913,
+       609
+      ],
+      "left": [
+       0.257,
+       1252
+      ],
+      "right": [
+       0.357,
+       395
+      ],
+      "bite": [
+       0.91,
+       144
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.809,
+     "readout": {
+      "observation": 0.868,
+      "code": 0.833,
+      "state": 0.819,
+      "newborn": 0.551,
+      "moments": 1747
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.785625
+    },
+    "own": {
+     "eaten": 11.75,
+     "agreement": 0.743,
+     "by_action": {
+      "walk": [
+       0.716,
+       1290
+      ],
+      "left": [
+       0.883,
+       386
+      ],
+      "right": [
+       0.632,
+       530
+      ],
+      "bite": [
+       0.943,
+       194
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.742,
+     "readout": {
+      "observation": 0.868,
+      "code": 0.833,
+      "state": 0.831,
+      "newborn": 0.551,
+      "moments": 1747
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.744375
+    },
+    "own": {
+     "eaten": 11.25,
+     "agreement": 0.782,
+     "by_action": {
+      "walk": [
+       0.87,
+       1151
+      ],
+      "left": [
+       0.627,
+       627
+      ],
+      "right": [
+       0.764,
+       399
+      ],
+      "bite": [
+       0.798,
+       223
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.824,
+     "readout": {
+      "observation": 0.868,
+      "code": 0.833,
+      "state": 0.852,
+      "newborn": 0.551,
+      "moments": 1747
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.708,
+   "own": 0.621,
+   "eaten": 9.609,
+   "teacher": 0.744,
+   "turn_observation": 0.868,
+   "turn_code": 0.833,
+   "turn_state": 0.804,
+   "turn_newborn": 0.551
+  },
+  "seconds": 73.6,
+  "baselines": {
+   "teacher": 14.0,
+   "random": 0.3125
+  }
+ },
+ {
+  "founder": 1011108,
+  "arm": "none",
+  "parameters": 42760,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.564375
+    },
+    "own": {
+     "eaten": 1.8125,
+     "agreement": 0.185,
+     "by_action": {
+      "walk": [
+       0.085,
+       1585
+      ],
+      "left": [
+       0.463,
+       354
+      ],
+      "right": [
+       0.272,
+       430
+      ],
+      "bite": [
+       0.871,
+       31
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.61,
+     "readout": {
+      "observation": 0.868,
+      "code": 0.868,
+      "state": 0.703,
+      "newborn": 0.552,
+      "moments": 1747
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.714375
+    },
+    "own": {
+     "eaten": 7.8125,
+     "agreement": 0.507,
+     "by_action": {
+      "walk": [
+       0.794,
+       826
+      ],
+      "left": [
+       0.343,
+       708
+      ],
+      "right": [
+       0.268,
+       740
+      ],
+      "bite": [
+       0.944,
+       126
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.8,
+     "readout": {
+      "observation": 0.868,
+      "code": 0.868,
+      "state": 0.789,
+      "newborn": 0.552,
+      "moments": 1747
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.74625
+    },
+    "own": {
+     "eaten": 7.125,
+     "agreement": 0.5,
+     "by_action": {
+      "walk": [
+       0.622,
+       1014
+      ],
+      "left": [
+       0.343,
+       924
+      ],
+      "right": [
+       0.411,
+       341
+      ],
+      "bite": [
+       0.926,
+       121
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.691,
+     "readout": {
+      "observation": 0.868,
+      "code": 0.868,
+      "state": 0.846,
+      "newborn": 0.552,
+      "moments": 1747
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.730625
+    },
+    "own": {
+     "eaten": 1.3125,
+     "agreement": 0.125,
+     "by_action": {
+      "walk": [
+       0.068,
+       2155
+      ],
+      "left": [
+       0.837,
+       104
+      ],
+      "right": [
+       0.38,
+       121
+      ],
+      "bite": [
+       1.0,
+       20
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.668,
+     "readout": {
+      "observation": 0.868,
+      "code": 0.868,
+      "state": 0.821,
+      "newborn": 0.552,
+      "moments": 1747
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.689,
+   "own": 0.329,
+   "eaten": 4.516,
+   "teacher": 0.692,
+   "turn_observation": 0.868,
+   "turn_code": 0.868,
+   "turn_state": 0.79,
+   "turn_newborn": 0.552
+  },
+  "seconds": 53.6,
+  "baselines": {
+   "teacher": 14.0,
+   "random": 0.3125
+  }
+ },
+ {
+  "founder": 1011109,
+  "arm": "code",
+  "parameters": 54496,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.5675
+    },
+    "own": {
+     "eaten": 2.125,
+     "agreement": 0.287,
+     "by_action": {
+      "walk": [
+       0.139,
+       1603
+      ],
+      "left": [
+       0.744,
+       254
+      ],
+      "right": [
+       0.493,
+       497
+      ],
+      "bite": [
+       0.674,
+       46
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.555,
+     "readout": {
+      "observation": 0.851,
+      "code": 0.803,
+      "state": 0.664,
+      "newborn": 0.45,
+      "moments": 1903
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.68125
+    },
+    "own": {
+     "eaten": 1.9375,
+     "agreement": 0.165,
+     "by_action": {
+      "walk": [
+       0.13,
+       1473
+      ],
+      "left": [
+       0.603,
+       126
+      ],
+      "right": [
+       0.135,
+       776
+      ],
+      "bite": [
+       0.96,
+       25
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.743,
+     "readout": {
+      "observation": 0.851,
+      "code": 0.803,
+      "state": 0.734,
+      "newborn": 0.45,
+      "moments": 1903
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.6725
+    },
+    "own": {
+     "eaten": 8.625,
+     "agreement": 0.585,
+     "by_action": {
+      "walk": [
+       0.727,
+       1068
+      ],
+      "left": [
+       0.521,
+       461
+      ],
+      "right": [
+       0.365,
+       718
+      ],
+      "bite": [
+       0.83,
+       153
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.792,
+     "readout": {
+      "observation": 0.851,
+      "code": 0.803,
+      "state": 0.765,
+      "newborn": 0.45,
+      "moments": 1903
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.716875
+    },
+    "own": {
+     "eaten": 7.9375,
+     "agreement": 0.605,
+     "by_action": {
+      "walk": [
+       0.558,
+       1141
+      ],
+      "left": [
+       0.901,
+       282
+      ],
+      "right": [
+       0.549,
+       804
+      ],
+      "bite": [
+       0.694,
+       173
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.645,
+     "readout": {
+      "observation": 0.851,
+      "code": 0.803,
+      "state": 0.741,
+      "newborn": 0.45,
+      "moments": 1903
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.66,
+   "own": 0.41,
+   "eaten": 5.156,
+   "teacher": 0.684,
+   "turn_observation": 0.851,
+   "turn_code": 0.803,
+   "turn_state": 0.726,
+   "turn_newborn": 0.45
+  },
+  "seconds": 126.9,
+  "baselines": {
+   "teacher": 13.9375,
+   "random": 0.3125
+  }
+ },
+ {
+  "founder": 1011109,
+  "arm": "both",
+  "parameters": 57928,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.689375
+    },
+    "own": {
+     "eaten": 0.5,
+     "agreement": 0.075,
+     "by_action": {
+      "walk": [
+       0.053,
+       1571
+      ],
+      "left": [
+       0.101,
+       446
+      ],
+      "right": [
+       0.119,
+       377
+      ],
+      "bite": [
+       1.0,
+       6
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.578,
+     "readout": {
+      "observation": 0.851,
+      "code": 0.803,
+      "state": 0.81,
+      "newborn": 0.445,
+      "moments": 1903
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.696875
+    },
+    "own": {
+     "eaten": 7.5,
+     "agreement": 0.593,
+     "by_action": {
+      "walk": [
+       0.447,
+       1567
+      ],
+      "left": [
+       0.94,
+       265
+      ],
+      "right": [
+       0.801,
+       448
+      ],
+      "bite": [
+       0.958,
+       120
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.657,
+     "readout": {
+      "observation": 0.851,
+      "code": 0.803,
+      "state": 0.832,
+      "newborn": 0.445,
+      "moments": 1903
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.7275
+    },
+    "own": {
+     "eaten": 9.8125,
+     "agreement": 0.707,
+     "by_action": {
+      "walk": [
+       0.729,
+       1390
+      ],
+      "left": [
+       0.461,
+       458
+      ],
+      "right": [
+       0.804,
+       404
+      ],
+      "bite": [
+       1.0,
+       148
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.765,
+     "readout": {
+      "observation": 0.851,
+      "code": 0.803,
+      "state": 0.831,
+      "newborn": 0.445,
+      "moments": 1903
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.755625
+    },
+    "own": {
+     "eaten": 8.5625,
+     "agreement": 0.684,
+     "by_action": {
+      "walk": [
+       0.684,
+       1294
+      ],
+      "left": [
+       0.942,
+       277
+      ],
+      "right": [
+       0.53,
+       679
+      ],
+      "bite": [
+       0.9,
+       150
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.708,
+     "readout": {
+      "observation": 0.851,
+      "code": 0.803,
+      "state": 0.82,
+      "newborn": 0.445,
+      "moments": 1903
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.717,
+   "own": 0.515,
+   "eaten": 6.594,
+   "teacher": 0.677,
+   "turn_observation": 0.851,
+   "turn_code": 0.803,
+   "turn_state": 0.823,
+   "turn_newborn": 0.445
+  },
+  "seconds": 110.1,
+  "baselines": {
+   "teacher": 13.9375,
+   "random": 0.3125
+  }
+ },
+ {
+  "founder": 1011109,
+  "arm": "observation",
+  "parameters": 52912,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.59375
+    },
+    "own": {
+     "eaten": 0.3125,
+     "agreement": 0.308,
+     "by_action": {
+      "walk": [
+       0.037,
+       1645
+      ],
+      "left": [
+       0.932,
+       221
+      ],
+      "right": [
+       0.887,
+       529
+      ],
+      "bite": [
+       0.8,
+       5
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.427,
+     "readout": {
+      "observation": 0.851,
+      "code": 0.803,
+      "state": 0.747,
+      "newborn": 0.61,
+      "moments": 1903
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.673125
+    },
+    "own": {
+     "eaten": 8.9375,
+     "agreement": 0.707,
+     "by_action": {
+      "walk": [
+       0.757,
+       1204
+      ],
+      "left": [
+       0.654,
+       616
+      ],
+      "right": [
+       0.637,
+       383
+      ],
+      "bite": [
+       0.701,
+       197
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.759,
+     "readout": {
+      "observation": 0.851,
+      "code": 0.803,
+      "state": 0.831,
+      "newborn": 0.61,
+      "moments": 1903
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.7525
+    },
+    "own": {
+     "eaten": 8.25,
+     "agreement": 0.657,
+     "by_action": {
+      "walk": [
+       0.553,
+       1470
+      ],
+      "left": [
+       0.938,
+       227
+      ],
+      "right": [
+       0.748,
+       571
+      ],
+      "bite": [
+       0.939,
+       132
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.648,
+     "readout": {
+      "observation": 0.851,
+      "code": 0.803,
+      "state": 0.827,
+      "newborn": 0.61,
+      "moments": 1903
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.750625
+    },
+    "own": {
+     "eaten": 7.6875,
+     "agreement": 0.532,
+     "by_action": {
+      "walk": [
+       0.612,
+       1191
+      ],
+      "left": [
+       0.493,
+       304
+      ],
+      "right": [
+       0.36,
+       773
+      ],
+      "bite": [
+       0.909,
+       132
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.759,
+     "readout": {
+      "observation": 0.851,
+      "code": 0.803,
+      "state": 0.826,
+      "newborn": 0.61,
+      "moments": 1903
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.693,
+   "own": 0.551,
+   "eaten": 6.297,
+   "teacher": 0.648,
+   "turn_observation": 0.851,
+   "turn_code": 0.803,
+   "turn_state": 0.808,
+   "turn_newborn": 0.61
+  },
+  "seconds": 74.4,
+  "baselines": {
+   "teacher": 13.9375,
+   "random": 0.3125
+  }
+ },
+ {
+  "founder": 1011109,
+  "arm": "none",
+  "parameters": 42760,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.583125
+    },
+    "own": {
+     "eaten": 3.5,
+     "agreement": 0.359,
+     "by_action": {
+      "walk": [
+       0.29,
+       978
+      ],
+      "left": [
+       0.383,
+       1054
+      ],
+      "right": [
+       0.417,
+       307
+      ],
+      "bite": [
+       0.754,
+       61
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.698,
+     "readout": {
+      "observation": 0.851,
+      "code": 0.851,
+      "state": 0.697,
+      "newborn": 0.575,
+      "moments": 1903
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.695
+    },
+    "own": {
+     "eaten": 3.875,
+     "agreement": 0.362,
+     "by_action": {
+      "walk": [
+       0.245,
+       1748
+      ],
+      "left": [
+       0.662,
+       290
+      ],
+      "right": [
+       0.631,
+       309
+      ],
+      "bite": [
+       1.0,
+       53
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.652,
+     "readout": {
+      "observation": 0.851,
+      "code": 0.851,
+      "state": 0.76,
+      "newborn": 0.575,
+      "moments": 1903
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.78375
+    },
+    "own": {
+     "eaten": 10.0,
+     "agreement": 0.655,
+     "by_action": {
+      "walk": [
+       0.77,
+       1037
+      ],
+      "left": [
+       0.403,
+       813
+      ],
+      "right": [
+       0.747,
+       396
+      ],
+      "bite": [
+       0.961,
+       154
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.756,
+     "readout": {
+      "observation": 0.851,
+      "code": 0.851,
+      "state": 0.798,
+      "newborn": 0.575,
+      "moments": 1903
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.78625
+    },
+    "own": {
+     "eaten": 9.75,
+     "agreement": 0.746,
+     "by_action": {
+      "walk": [
+       0.748,
+       1363
+      ],
+      "left": [
+       0.896,
+       289
+      ],
+      "right": [
+       0.613,
+       594
+      ],
+      "bite": [
+       0.968,
+       154
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.795,
+     "readout": {
+      "observation": 0.851,
+      "code": 0.851,
+      "state": 0.809,
+      "newborn": 0.575,
+      "moments": 1903
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.712,
+   "own": 0.53,
+   "eaten": 6.781,
+   "teacher": 0.725,
+   "turn_observation": 0.851,
+   "turn_code": 0.851,
+   "turn_state": 0.766,
+   "turn_newborn": 0.575
+  },
+  "seconds": 54.1,
+  "baselines": {
+   "teacher": 13.9375,
+   "random": 0.3125
+  }
+ },
+ {
+  "founder": 1011110,
+  "arm": "code",
+  "parameters": 54496,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.563125
+    },
+    "own": {
+     "eaten": 6.4375,
+     "agreement": 0.47,
+     "by_action": {
+      "walk": [
+       0.533,
+       1064
+      ],
+      "left": [
+       0.46,
+       594
+      ],
+      "right": [
+       0.318,
+       623
+      ],
+      "bite": [
+       0.765,
+       119
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.695,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.867,
+      "state": 0.741,
+      "newborn": 0.47,
+      "moments": 1846
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.5775
+    },
+    "own": {
+     "eaten": 5.25,
+     "agreement": 0.34,
+     "by_action": {
+      "walk": [
+       0.666,
+       521
+      ],
+      "left": [
+       0.218,
+       1003
+      ],
+      "right": [
+       0.23,
+       782
+      ],
+      "bite": [
+       0.755,
+       94
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.78,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.867,
+      "state": 0.782,
+      "newborn": 0.47,
+      "moments": 1846
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.610625
+    },
+    "own": {
+     "eaten": 5.125,
+     "agreement": 0.45,
+     "by_action": {
+      "walk": [
+       0.292,
+       1217
+      ],
+      "left": [
+       0.966,
+       264
+      ],
+      "right": [
+       0.48,
+       814
+      ],
+      "bite": [
+       0.743,
+       105
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.496,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.867,
+      "state": 0.783,
+      "newborn": 0.47,
+      "moments": 1846
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.614375
+    },
+    "own": {
+     "eaten": 4.0625,
+     "agreement": 0.404,
+     "by_action": {
+      "walk": [
+       0.531,
+       718
+      ],
+      "left": [
+       0.57,
+       272
+      ],
+      "right": [
+       0.276,
+       1342
+      ],
+      "bite": [
+       0.912,
+       68
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.695,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.867,
+      "state": 0.822,
+      "newborn": 0.47,
+      "moments": 1846
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.591,
+   "own": 0.416,
+   "eaten": 5.219,
+   "teacher": 0.666,
+   "turn_observation": 0.879,
+   "turn_code": 0.867,
+   "turn_state": 0.782,
+   "turn_newborn": 0.47
+  },
+  "seconds": 127.4,
+  "baselines": {
+   "teacher": 13.1875,
+   "random": 0.1875
+  }
+ },
+ {
+  "founder": 1011110,
+  "arm": "both",
+  "parameters": 57928,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.66875
+    },
+    "own": {
+     "eaten": 5.75,
+     "agreement": 0.479,
+     "by_action": {
+      "walk": [
+       0.353,
+       1507
+      ],
+      "left": [
+       0.719,
+       442
+      ],
+      "right": [
+       0.58,
+       362
+      ],
+      "bite": [
+       1.0,
+       89
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.617,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.867,
+      "state": 0.821,
+      "newborn": 0.543,
+      "moments": 1846
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.656875
+    },
+    "own": {
+     "eaten": 5.9375,
+     "agreement": 0.43,
+     "by_action": {
+      "walk": [
+       0.882,
+       510
+      ],
+      "left": [
+       0.243,
+       1336
+      ],
+      "right": [
+       0.387,
+       437
+      ],
+      "bite": [
+       0.744,
+       117
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.791,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.867,
+      "state": 0.824,
+      "newborn": 0.543,
+      "moments": 1846
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.68125
+    },
+    "own": {
+     "eaten": 4.125,
+     "agreement": 0.457,
+     "by_action": {
+      "walk": [
+       0.229,
+       1576
+      ],
+      "left": [
+       0.852,
+       576
+      ],
+      "right": [
+       0.989,
+       183
+      ],
+      "bite": [
+       0.985,
+       65
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.53,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.867,
+      "state": 0.842,
+      "newborn": 0.543,
+      "moments": 1846
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.75
+    },
+    "own": {
+     "eaten": 8.9375,
+     "agreement": 0.633,
+     "by_action": {
+      "walk": [
+       0.891,
+       952
+      ],
+      "left": [
+       0.305,
+       643
+      ],
+      "right": [
+       0.532,
+       634
+      ],
+      "bite": [
+       0.807,
+       171
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.848,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.867,
+      "state": 0.829,
+      "newborn": 0.543,
+      "moments": 1846
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.689,
+   "own": 0.5,
+   "eaten": 6.188,
+   "teacher": 0.697,
+   "turn_observation": 0.879,
+   "turn_code": 0.867,
+   "turn_state": 0.829,
+   "turn_newborn": 0.543
+  },
+  "seconds": 41.4,
+  "baselines": {
+   "teacher": 13.1875,
+   "random": 0.1875
+  }
+ },
+ {
+  "founder": 1011110,
+  "arm": "observation",
+  "parameters": 52912,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.569375
+    },
+    "own": {
+     "eaten": 8.125,
+     "agreement": 0.663,
+     "by_action": {
+      "walk": [
+       0.732,
+       934
+      ],
+      "left": [
+       0.563,
+       583
+      ],
+      "right": [
+       0.716,
+       644
+      ],
+      "bite": [
+       0.498,
+       239
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.65,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.867,
+      "state": 0.766,
+      "newborn": 0.598,
+      "moments": 1846
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.7175
+    },
+    "own": {
+     "eaten": 8.9375,
+     "agreement": 0.624,
+     "by_action": {
+      "walk": [
+       0.606,
+       1398
+      ],
+      "left": [
+       0.496,
+       559
+      ],
+      "right": [
+       0.773,
+       304
+      ],
+      "bite": [
+       0.993,
+       139
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.7,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.867,
+      "state": 0.85,
+      "newborn": 0.598,
+      "moments": 1846
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.650625
+    },
+    "own": {
+     "eaten": 8.3125,
+     "agreement": 0.59,
+     "by_action": {
+      "walk": [
+       0.544,
+       1497
+      ],
+      "left": [
+       0.678,
+       338
+      ],
+      "right": [
+       0.595,
+       415
+      ],
+      "bite": [
+       0.833,
+       150
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.785,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.867,
+      "state": 0.835,
+      "newborn": 0.598,
+      "moments": 1846
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.710625
+    },
+    "own": {
+     "eaten": 8.0,
+     "agreement": 0.603,
+     "by_action": {
+      "walk": [
+       0.483,
+       1639
+      ],
+      "left": [
+       0.856,
+       195
+      ],
+      "right": [
+       0.845,
+       427
+      ],
+      "bite": [
+       0.914,
+       139
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.736,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.867,
+      "state": 0.822,
+      "newborn": 0.598,
+      "moments": 1846
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.662,
+   "own": 0.62,
+   "eaten": 8.344,
+   "teacher": 0.718,
+   "turn_observation": 0.879,
+   "turn_code": 0.867,
+   "turn_state": 0.818,
+   "turn_newborn": 0.598
+  },
+  "seconds": 33.3,
+  "baselines": {
+   "teacher": 13.1875,
+   "random": 0.1875
+  }
+ },
+ {
+  "founder": 1011110,
+  "arm": "none",
+  "parameters": 42760,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.53
+    },
+    "own": {
+     "eaten": 2.9375,
+     "agreement": 0.325,
+     "by_action": {
+      "walk": [
+       0.175,
+       1398
+      ],
+      "left": [
+       0.502,
+       566
+      ],
+      "right": [
+       0.543,
+       385
+      ],
+      "bite": [
+       0.824,
+       51
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.601,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.879,
+      "state": 0.67,
+      "newborn": 0.57,
+      "moments": 1846
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.659375
+    },
+    "own": {
+     "eaten": 8.8125,
+     "agreement": 0.615,
+     "by_action": {
+      "walk": [
+       0.804,
+       1003
+      ],
+      "left": [
+       0.458,
+       513
+      ],
+      "right": [
+       0.405,
+       741
+      ],
+      "bite": [
+       0.951,
+       143
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.812,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.879,
+      "state": 0.788,
+      "newborn": 0.57,
+      "moments": 1846
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.711875
+    },
+    "own": {
+     "eaten": 3.3125,
+     "agreement": 0.346,
+     "by_action": {
+      "walk": [
+       0.185,
+       1774
+      ],
+      "left": [
+       0.827,
+       214
+      ],
+      "right": [
+       0.76,
+       363
+      ],
+      "bite": [
+       1.0,
+       49
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.537,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.879,
+      "state": 0.84,
+      "newborn": 0.57,
+      "moments": 1846
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.7875
+    },
+    "own": {
+     "eaten": 11.1875,
+     "agreement": 0.816,
+     "by_action": {
+      "walk": [
+       0.823,
+       1402
+      ],
+      "left": [
+       0.705,
+       332
+      ],
+      "right": [
+       0.855,
+       461
+      ],
+      "bite": [
+       0.863,
+       205
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.816,
+     "readout": {
+      "observation": 0.879,
+      "code": 0.879,
+      "state": 0.871,
+      "newborn": 0.57,
+      "moments": 1846
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.672,
+   "own": 0.525,
+   "eaten": 6.562,
+   "teacher": 0.692,
+   "turn_observation": 0.879,
+   "turn_code": 0.879,
+   "turn_state": 0.792,
+   "turn_newborn": 0.57
+  },
+  "seconds": 26.5,
+  "baselines": {
+   "teacher": 13.1875,
+   "random": 0.1875
+  }
+ },
+ {
+  "founder": 1011111,
+  "arm": "code",
+  "parameters": 54496,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.56875
+    },
+    "own": {
+     "eaten": 3.0,
+     "agreement": 0.3,
+     "by_action": {
+      "walk": [
+       0.186,
+       1270
+      ],
+      "left": [
+       0.302,
+       895
+      ],
+      "right": [
+       0.93,
+       185
+      ],
+      "bite": [
+       0.86,
+       50
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.535,
+     "readout": {
+      "observation": 0.878,
+      "code": 0.831,
+      "state": 0.693,
+      "newborn": 0.484,
+      "moments": 1664
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.625
+    },
+    "own": {
+     "eaten": 6.8125,
+     "agreement": 0.525,
+     "by_action": {
+      "walk": [
+       0.486,
+       1217
+      ],
+      "left": [
+       0.612,
+       472
+      ],
+      "right": [
+       0.473,
+       601
+      ],
+      "bite": [
+       0.882,
+       110
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.669,
+     "readout": {
+      "observation": 0.878,
+      "code": 0.831,
+      "state": 0.731,
+      "newborn": 0.484,
+      "moments": 1664
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.660625
+    },
+    "own": {
+     "eaten": 9.1875,
+     "agreement": 0.649,
+     "by_action": {
+      "walk": [
+       0.677,
+       1058
+      ],
+      "left": [
+       0.685,
+       515
+      ],
+      "right": [
+       0.548,
+       640
+      ],
+      "bite": [
+       0.738,
+       187
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.704,
+     "readout": {
+      "observation": 0.878,
+      "code": 0.831,
+      "state": 0.731,
+      "newborn": 0.484,
+      "moments": 1664
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.658125
+    },
+    "own": {
+     "eaten": 10.1875,
+     "agreement": 0.707,
+     "by_action": {
+      "walk": [
+       0.681,
+       1349
+      ],
+      "left": [
+       0.832,
+       370
+      ],
+      "right": [
+       0.616,
+       508
+      ],
+      "bite": [
+       0.902,
+       173
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.692,
+     "readout": {
+      "observation": 0.878,
+      "code": 0.831,
+      "state": 0.742,
+      "newborn": 0.484,
+      "moments": 1664
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.628,
+   "own": 0.545,
+   "eaten": 7.297,
+   "teacher": 0.65,
+   "turn_observation": 0.878,
+   "turn_code": 0.831,
+   "turn_state": 0.724,
+   "turn_newborn": 0.484
+  },
+  "seconds": 103.9,
+  "baselines": {
+   "teacher": 12.375,
+   "random": 0.125
+  }
+ },
+ {
+  "founder": 1011111,
+  "arm": "both",
+  "parameters": 57928,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.715
+    },
+    "own": {
+     "eaten": 9.75,
+     "agreement": 0.744,
+     "by_action": {
+      "walk": [
+       0.69,
+       1297
+      ],
+      "left": [
+       0.743,
+       443
+      ],
+      "right": [
+       0.881,
+       469
+      ],
+      "bite": [
+       0.775,
+       191
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.655,
+     "readout": {
+      "observation": 0.878,
+      "code": 0.831,
+      "state": 0.747,
+      "newborn": 0.504,
+      "moments": 1664
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.690625
+    },
+    "own": {
+     "eaten": 8.75,
+     "agreement": 0.602,
+     "by_action": {
+      "walk": [
+       0.743,
+       1039
+      ],
+      "left": [
+       0.908,
+       283
+      ],
+      "right": [
+       0.303,
+       922
+      ],
+      "bite": [
+       0.878,
+       156
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.718,
+     "readout": {
+      "observation": 0.878,
+      "code": 0.831,
+      "state": 0.814,
+      "newborn": 0.504,
+      "moments": 1664
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.769375
+    },
+    "own": {
+     "eaten": 9.3125,
+     "agreement": 0.578,
+     "by_action": {
+      "walk": [
+       0.628,
+       904
+      ],
+      "left": [
+       0.36,
+       1045
+      ],
+      "right": [
+       1.0,
+       300
+      ],
+      "bite": [
+       0.947,
+       151
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.522,
+     "readout": {
+      "observation": 0.878,
+      "code": 0.831,
+      "state": 0.842,
+      "newborn": 0.504,
+      "moments": 1664
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.72375
+    },
+    "own": {
+     "eaten": 4.375,
+     "agreement": 0.412,
+     "by_action": {
+      "walk": [
+       0.233,
+       1814
+      ],
+      "left": [
+       0.939,
+       181
+      ],
+      "right": [
+       0.979,
+       337
+      ],
+      "bite": [
+       0.985,
+       68
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.632,
+     "readout": {
+      "observation": 0.878,
+      "code": 0.831,
+      "state": 0.814,
+      "newborn": 0.504,
+      "moments": 1664
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.725,
+   "own": 0.584,
+   "eaten": 8.047,
+   "teacher": 0.632,
+   "turn_observation": 0.878,
+   "turn_code": 0.831,
+   "turn_state": 0.804,
+   "turn_newborn": 0.504
+  },
+  "seconds": 39.9,
+  "baselines": {
+   "teacher": 12.375,
+   "random": 0.125
+  }
+ },
+ {
+  "founder": 1011111,
+  "arm": "observation",
+  "parameters": 52912,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.545625
+    },
+    "own": {
+     "eaten": 2.5,
+     "agreement": 0.265,
+     "by_action": {
+      "walk": [
+       0.145,
+       1287
+      ],
+      "left": [
+       0.465,
+       540
+      ],
+      "right": [
+       0.307,
+       537
+      ],
+      "bite": [
+       0.944,
+       36
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.491,
+     "readout": {
+      "observation": 0.878,
+      "code": 0.831,
+      "state": 0.676,
+      "newborn": 0.628,
+      "moments": 1664
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.694375
+    },
+    "own": {
+     "eaten": 7.9375,
+     "agreement": 0.522,
+     "by_action": {
+      "walk": [
+       0.58,
+       1059
+      ],
+      "left": [
+       0.936,
+       236
+      ],
+      "right": [
+       0.313,
+       999
+      ],
+      "bite": [
+       0.991,
+       106
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.591,
+     "readout": {
+      "observation": 0.878,
+      "code": 0.831,
+      "state": 0.684,
+      "newborn": 0.628,
+      "moments": 1664
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.724375
+    },
+    "own": {
+     "eaten": 10.0,
+     "agreement": 0.614,
+     "by_action": {
+      "walk": [
+       0.733,
+       1082
+      ],
+      "left": [
+       0.449,
+       559
+      ],
+      "right": [
+       0.462,
+       586
+      ],
+      "bite": [
+       0.919,
+       173
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.711,
+     "readout": {
+      "observation": 0.878,
+      "code": 0.831,
+      "state": 0.745,
+      "newborn": 0.628,
+      "moments": 1664
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.73375
+    },
+    "own": {
+     "eaten": 7.3125,
+     "agreement": 0.585,
+     "by_action": {
+      "walk": [
+       0.466,
+       1636
+      ],
+      "left": [
+       0.796,
+       339
+      ],
+      "right": [
+       0.878,
+       296
+      ],
+      "bite": [
+       0.86,
+       129
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.65,
+     "readout": {
+      "observation": 0.878,
+      "code": 0.831,
+      "state": 0.819,
+      "newborn": 0.628,
+      "moments": 1664
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.675,
+   "own": 0.496,
+   "eaten": 6.938,
+   "teacher": 0.611,
+   "turn_observation": 0.878,
+   "turn_code": 0.831,
+   "turn_state": 0.731,
+   "turn_newborn": 0.628
+  },
+  "seconds": 32.6,
+  "baselines": {
+   "teacher": 12.375,
+   "random": 0.125
+  }
+ },
+ {
+  "founder": 1011111,
+  "arm": "none",
+  "parameters": 42760,
+  "readings": [
+   {
+    "moments": 300,
+    "taught": {
+     "agreement": 0.40875
+    },
+    "own": {
+     "eaten": 0.625,
+     "agreement": 0.146,
+     "by_action": {
+      "walk": [
+       0.048,
+       1585
+      ],
+      "left": [
+       0.425,
+       388
+      ],
+      "right": [
+       0.246,
+       414
+      ],
+      "bite": [
+       0.615,
+       13
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.482,
+     "readout": {
+      "observation": 0.878,
+      "code": 0.878,
+      "state": 0.629,
+      "newborn": 0.602,
+      "moments": 1664
+     }
+    }
+   },
+   {
+    "moments": 600,
+    "taught": {
+     "agreement": 0.646875
+    },
+    "own": {
+     "eaten": 1.8125,
+     "agreement": 0.176,
+     "by_action": {
+      "walk": [
+       0.157,
+       1534
+      ],
+      "left": [
+       0.806,
+       93
+      ],
+      "right": [
+       0.111,
+       749
+      ],
+      "bite": [
+       1.0,
+       24
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.592,
+     "readout": {
+      "observation": 0.878,
+      "code": 0.878,
+      "state": 0.759,
+      "newborn": 0.602,
+      "moments": 1664
+     }
+    }
+   },
+   {
+    "moments": 900,
+    "taught": {
+     "agreement": 0.7125
+    },
+    "own": {
+     "eaten": 9.4375,
+     "agreement": 0.66,
+     "by_action": {
+      "walk": [
+       0.65,
+       1269
+      ],
+      "left": [
+       0.538,
+       734
+      ],
+      "right": [
+       0.902,
+       244
+      ],
+      "bite": [
+       0.941,
+       153
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.71,
+     "readout": {
+      "observation": 0.878,
+      "code": 0.878,
+      "state": 0.767,
+      "newborn": 0.602,
+      "moments": 1664
+     }
+    }
+   },
+   {
+    "moments": 1200,
+    "taught": {
+     "agreement": 0.76625
+    },
+    "own": {
+     "eaten": 11.3125,
+     "agreement": 0.786,
+     "by_action": {
+      "walk": [
+       0.73,
+       1482
+      ],
+      "left": [
+       0.782,
+       335
+      ],
+      "right": [
+       0.915,
+       399
+      ],
+      "bite": [
+       0.962,
+       184
+      ]
+     }
+    },
+    "teacher": {
+     "agreement": 0.697,
+     "readout": {
+      "observation": 0.878,
+      "code": 0.878,
+      "state": 0.791,
+      "newborn": 0.602,
+      "moments": 1664
+     }
+    }
+   }
+  ],
+  "mean": {
+   "taught": 0.634,
+   "own": 0.442,
+   "eaten": 5.797,
+   "teacher": 0.62,
+   "turn_observation": 0.878,
+   "turn_code": 0.878,
+   "turn_state": 0.736,
+   "turn_newborn": 0.602
+  },
+  "seconds": 25.9,
+  "baselines": {
+   "teacher": 12.375,
+   "random": 0.125
+  }
+ }
+]

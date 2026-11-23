@@ -1,0 +1,852 @@
+[
+ {
+  "founder": 1011200,
+  "cortex_reads": "code",
+  "records": 109,
+  "parameters": 7180417,
+  "Y1": {
+   "named": 0.925,
+   "said_from": {
+    "heard": 40
+   }
+  },
+  "Y2": {
+   "records": 1.0,
+   "state": 1.0,
+   "barred": 0.125,
+   "dealt": 0.0,
+   "dealt_records": 0.0
+  },
+  "Y3": {
+   "names_paid": {
+    "exchanges": [
+     9,
+     13,
+     15,
+     10
+    ],
+    "right": 0.2553191489361702,
+    "held_out": 1.0
+   },
+   "colours_paid": {
+    "exchanges": [
+     9,
+     15,
+     10,
+     8
+    ],
+    "right": 0.2857142857142857
+   },
+   "names_unpaid": {
+    "exchanges": [
+     null,
+     null,
+     null,
+     null
+    ],
+    "right": 0.0625,
+    "held_out": 0.05
+   },
+   "colours_unpaid": {
+    "exchanges": [
+     null,
+     null,
+     null,
+     null
+    ],
+    "right": 0.078125
+   },
+   "table": {
+    "names": {
+     "exchanges": [
+      10,
+      6,
+      17,
+      20
+     ]
+    },
+    "colours": {
+     "exchanges": [
+      4,
+      11,
+      9,
+      12
+     ]
+    }
+   },
+   "delta": {
+    "names": {
+     "exchanges": [
+      21,
+      19,
+      23,
+      22
+     ]
+    },
+    "colours": {
+     "exchanges": [
+      19,
+      7,
+      16,
+      13
+     ]
+    }
+   }
+  },
+  "N": {
+   "taught": {
+    "in view": 1.0,
+    "behind a screen": 1.0
+   },
+   "untaught": {
+    "in view": 0.0,
+    "behind a screen": 0.0
+   }
+  },
+  "seconds": 146.2
+ },
+ {
+  "founder": 1011201,
+  "cortex_reads": "code",
+  "records": 109,
+  "parameters": 7180417,
+  "Y1": {
+   "named": 0.875,
+   "said_from": {
+    "heard": 39,
+    "babble": 1
+   }
+  },
+  "Y2": {
+   "records": 1.0,
+   "state": 1.0,
+   "barred": 0.15,
+   "dealt": 0.0,
+   "dealt_records": 0.0
+  },
+  "Y3": {
+   "names_paid": {
+    "exchanges": [
+     14,
+     15,
+     7,
+     9
+    ],
+    "right": 0.26666666666666666,
+    "held_out": 1.0
+   },
+   "colours_paid": {
+    "exchanges": [
+     9,
+     10,
+     13,
+     8
+    ],
+    "right": 0.3
+   },
+   "names_unpaid": {
+    "exchanges": [
+     null,
+     null,
+     null,
+     null
+    ],
+    "right": 0.0625,
+    "held_out": 0.05
+   },
+   "colours_unpaid": {
+    "exchanges": [
+     null,
+     null,
+     null,
+     null
+    ],
+    "right": 0.0625
+   },
+   "table": {
+    "names": {
+     "exchanges": [
+      14,
+      4,
+      15,
+      4
+     ]
+    },
+    "colours": {
+     "exchanges": [
+      18,
+      19,
+      6,
+      6
+     ]
+    }
+   },
+   "delta": {
+    "names": {
+     "exchanges": [
+      21,
+      8,
+      23,
+      26
+     ]
+    },
+    "colours": {
+     "exchanges": [
+      15,
+      38,
+      26,
+      19
+     ]
+    }
+   }
+  },
+  "N": {
+   "taught": {
+    "in view": 1.0,
+    "behind a screen": 1.0
+   },
+   "untaught": {
+    "in view": 0.0,
+    "behind a screen": 0.0
+   }
+  },
+  "seconds": 90.0
+ },
+ {
+  "founder": 1011202,
+  "cortex_reads": "code",
+  "records": 109,
+  "parameters": 7180417,
+  "Y1": {
+   "named": 0.925,
+   "said_from": {
+    "heard": 40
+   }
+  },
+  "Y2": {
+   "records": 1.0,
+   "state": 1.0,
+   "barred": 0.125,
+   "dealt": 0.1,
+   "dealt_records": 0.0
+  },
+  "Y3": {
+   "names_paid": {
+    "exchanges": [
+     17,
+     5,
+     4,
+     8
+    ],
+    "right": 0.35294117647058826,
+    "held_out": 1.0
+   },
+   "colours_paid": {
+    "exchanges": [
+     7,
+     16,
+     8,
+     7
+    ],
+    "right": 0.3157894736842105
+   },
+   "names_unpaid": {
+    "exchanges": [
+     null,
+     null,
+     null,
+     null
+    ],
+    "right": 0.071875,
+    "held_out": 0.15
+   },
+   "colours_unpaid": {
+    "exchanges": [
+     null,
+     null,
+     null,
+     null
+    ],
+    "right": 0.0875
+   },
+   "table": {
+    "names": {
+     "exchanges": [
+      29,
+      3,
+      9,
+      14
+     ]
+    },
+    "colours": {
+     "exchanges": [
+      7,
+      29,
+      12,
+      4
+     ]
+    }
+   },
+   "delta": {
+    "names": {
+     "exchanges": [
+      28,
+      20,
+      12,
+      23
+     ]
+    },
+    "colours": {
+     "exchanges": [
+      3,
+      null,
+      3,
+      7
+     ]
+    }
+   }
+  },
+  "N": {
+   "taught": {
+    "in view": 0.9166666666666666,
+    "behind a screen": 1.0
+   },
+   "untaught": {
+    "in view": 0.0,
+    "behind a screen": 0.0
+   }
+  },
+  "seconds": 95.7
+ },
+ {
+  "founder": 1011203,
+  "cortex_reads": "code",
+  "records": 109,
+  "parameters": 7180417,
+  "Y1": {
+   "named": 0.825,
+   "said_from": {
+    "heard": 40
+   }
+  },
+  "Y2": {
+   "records": 1.0,
+   "state": 1.0,
+   "barred": 0.05,
+   "dealt": 0.0,
+   "dealt_records": 0.0
+  },
+  "Y3": {
+   "names_paid": {
+    "exchanges": [
+     5,
+     6,
+     15,
+     3
+    ],
+    "right": 0.41379310344827586,
+    "held_out": 1.0
+   },
+   "colours_paid": {
+    "exchanges": [
+     15,
+     10,
+     12,
+     17
+    ],
+    "right": 0.2222222222222222
+   },
+   "names_unpaid": {
+    "exchanges": [
+     null,
+     null,
+     null,
+     null
+    ],
+    "right": 0.06875,
+    "held_out": 0.15
+   },
+   "colours_unpaid": {
+    "exchanges": [
+     null,
+     null,
+     null,
+     null
+    ],
+    "right": 0.05625
+   },
+   "table": {
+    "names": {
+     "exchanges": [
+      4,
+      3,
+      28,
+      31
+     ]
+    },
+    "colours": {
+     "exchanges": [
+      3,
+      10,
+      10,
+      19
+     ]
+    }
+   },
+   "delta": {
+    "names": {
+     "exchanges": [
+      7,
+      34,
+      30,
+      16
+     ]
+    },
+    "colours": {
+     "exchanges": [
+      24,
+      27,
+      6,
+      13
+     ]
+    }
+   }
+  },
+  "N": {
+   "taught": {
+    "in view": 0.9166666666666666,
+    "behind a screen": 1.0
+   },
+   "untaught": {
+    "in view": 0.0,
+    "behind a screen": 0.0
+   }
+  },
+  "seconds": 94.6
+ },
+ {
+  "founder": 1011200,
+  "cortex_reads": "both",
+  "records": 109,
+  "parameters": 7523769,
+  "Y1": {
+   "named": 0.925,
+   "said_from": {
+    "heard": 40
+   }
+  },
+  "Y2": {
+   "records": 1.0,
+   "state": 1.0,
+   "barred": 0.175,
+   "dealt": 0.0,
+   "dealt_records": 0.0
+  },
+  "Y3": {
+   "names_paid": {
+    "exchanges": [
+     9,
+     13,
+     15,
+     10
+    ],
+    "right": 0.2553191489361702,
+    "held_out": 1.0
+   },
+   "colours_paid": {
+    "exchanges": [
+     9,
+     15,
+     10,
+     8
+    ],
+    "right": 0.2857142857142857
+   },
+   "names_unpaid": {
+    "exchanges": [
+     null,
+     null,
+     null,
+     null
+    ],
+    "right": 0.0625,
+    "held_out": 0.05
+   },
+   "colours_unpaid": {
+    "exchanges": [
+     null,
+     null,
+     null,
+     null
+    ],
+    "right": 0.078125
+   },
+   "table": {
+    "names": {
+     "exchanges": [
+      10,
+      6,
+      17,
+      20
+     ]
+    },
+    "colours": {
+     "exchanges": [
+      4,
+      11,
+      9,
+      12
+     ]
+    }
+   },
+   "delta": {
+    "names": {
+     "exchanges": [
+      21,
+      19,
+      23,
+      22
+     ]
+    },
+    "colours": {
+     "exchanges": [
+      19,
+      7,
+      16,
+      13
+     ]
+    }
+   }
+  },
+  "N": {
+   "taught": {
+    "in view": 1.0,
+    "behind a screen": 1.0
+   },
+   "untaught": {
+    "in view": 0.0,
+    "behind a screen": 0.0
+   }
+  },
+  "seconds": 153.9
+ },
+ {
+  "founder": 1011201,
+  "cortex_reads": "both",
+  "records": 109,
+  "parameters": 7523769,
+  "Y1": {
+   "named": 0.875,
+   "said_from": {
+    "heard": 39,
+    "babble": 1
+   }
+  },
+  "Y2": {
+   "records": 1.0,
+   "state": 1.0,
+   "barred": 0.125,
+   "dealt": 0.0,
+   "dealt_records": 0.0
+  },
+  "Y3": {
+   "names_paid": {
+    "exchanges": [
+     14,
+     15,
+     7,
+     9
+    ],
+    "right": 0.26666666666666666,
+    "held_out": 1.0
+   },
+   "colours_paid": {
+    "exchanges": [
+     9,
+     10,
+     13,
+     8
+    ],
+    "right": 0.3
+   },
+   "names_unpaid": {
+    "exchanges": [
+     null,
+     null,
+     null,
+     null
+    ],
+    "right": 0.0625,
+    "held_out": 0.05
+   },
+   "colours_unpaid": {
+    "exchanges": [
+     null,
+     null,
+     null,
+     null
+    ],
+    "right": 0.0625
+   },
+   "table": {
+    "names": {
+     "exchanges": [
+      14,
+      4,
+      15,
+      4
+     ]
+    },
+    "colours": {
+     "exchanges": [
+      18,
+      19,
+      6,
+      6
+     ]
+    }
+   },
+   "delta": {
+    "names": {
+     "exchanges": [
+      21,
+      8,
+      23,
+      26
+     ]
+    },
+    "colours": {
+     "exchanges": [
+      15,
+      38,
+      26,
+      19
+     ]
+    }
+   }
+  },
+  "N": {
+   "taught": {
+    "in view": 1.0,
+    "behind a screen": 1.0
+   },
+   "untaught": {
+    "in view": 0.0,
+    "behind a screen": 0.0
+   }
+  },
+  "seconds": 96.3
+ },
+ {
+  "founder": 1011202,
+  "cortex_reads": "both",
+  "records": 109,
+  "parameters": 7523769,
+  "Y1": {
+   "named": 0.925,
+   "said_from": {
+    "heard": 40
+   }
+  },
+  "Y2": {
+   "records": 1.0,
+   "state": 1.0,
+   "barred": 0.125,
+   "dealt": 0.0,
+   "dealt_records": 0.0
+  },
+  "Y3": {
+   "names_paid": {
+    "exchanges": [
+     17,
+     5,
+     4,
+     8
+    ],
+    "right": 0.35294117647058826,
+    "held_out": 1.0
+   },
+   "colours_paid": {
+    "exchanges": [
+     7,
+     16,
+     8,
+     7
+    ],
+    "right": 0.3157894736842105
+   },
+   "names_unpaid": {
+    "exchanges": [
+     null,
+     null,
+     null,
+     null
+    ],
+    "right": 0.071875,
+    "held_out": 0.15
+   },
+   "colours_unpaid": {
+    "exchanges": [
+     null,
+     null,
+     null,
+     null
+    ],
+    "right": 0.0875
+   },
+   "table": {
+    "names": {
+     "exchanges": [
+      29,
+      3,
+      9,
+      14
+     ]
+    },
+    "colours": {
+     "exchanges": [
+      7,
+      29,
+      12,
+      4
+     ]
+    }
+   },
+   "delta": {
+    "names": {
+     "exchanges": [
+      28,
+      20,
+      12,
+      23
+     ]
+    },
+    "colours": {
+     "exchanges": [
+      3,
+      null,
+      3,
+      7
+     ]
+    }
+   }
+  },
+  "N": {
+   "taught": {
+    "in view": 0.9166666666666666,
+    "behind a screen": 1.0
+   },
+   "untaught": {
+    "in view": 0.0,
+    "behind a screen": 0.0
+   }
+  },
+  "seconds": 106.3
+ },
+ {
+  "founder": 1011203,
+  "cortex_reads": "both",
+  "records": 109,
+  "parameters": 7523769,
+  "Y1": {
+   "named": 0.825,
+   "said_from": {
+    "heard": 40
+   }
+  },
+  "Y2": {
+   "records": 1.0,
+   "state": 1.0,
+   "barred": 0.125,
+   "dealt": 0.0,
+   "dealt_records": 0.0
+  },
+  "Y3": {
+   "names_paid": {
+    "exchanges": [
+     5,
+     6,
+     15,
+     3
+    ],
+    "right": 0.41379310344827586,
+    "held_out": 1.0
+   },
+   "colours_paid": {
+    "exchanges": [
+     15,
+     10,
+     12,
+     17
+    ],
+    "right": 0.2222222222222222
+   },
+   "names_unpaid": {
+    "exchanges": [
+     null,
+     null,
+     null,
+     null
+    ],
+    "right": 0.06875,
+    "held_out": 0.15
+   },
+   "colours_unpaid": {
+    "exchanges": [
+     null,
+     null,
+     null,
+     null
+    ],
+    "right": 0.05625
+   },
+   "table": {
+    "names": {
+     "exchanges": [
+      4,
+      3,
+      28,
+      31
+     ]
+    },
+    "colours": {
+     "exchanges": [
+      3,
+      10,
+      10,
+      19
+     ]
+    }
+   },
+   "delta": {
+    "names": {
+     "exchanges": [
+      7,
+      34,
+      30,
+      16
+     ]
+    },
+    "colours": {
+     "exchanges": [
+      24,
+      27,
+      6,
+      13
+     ]
+    }
+   }
+  },
+  "N": {
+   "taught": {
+    "in view": 0.9166666666666666,
+    "behind a screen": 1.0
+   },
+   "untaught": {
+    "in view": 0.0,
+    "behind a screen": 0.0
+   }
+  },
+  "seconds": 85.5
+ }
+]

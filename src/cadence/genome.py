@@ -145,7 +145,8 @@ class Genome:
         region (an image's visual cortex), the code region with ``learned_code``, the modules
         ending in the association region, the prefrontal region of the working trace, the
         motor region, the observers, and the efference, history, recall and next regions its
-        memory settings add, with their projections. Settings that do not shape the layout
+        memory settings add, with their projections, and with ``cortex_reads="both"`` the
+        observation region. Settings that do not shape the layout
         change nothing here. Mutate it with the sensory region fixed and the prefrontal region
         tied to the association region, then wrap it with
         ``Brain.compose(inputs, actions, connectome=develop(genome, seed=seed), seed=seed)``."""
@@ -154,6 +155,7 @@ class Genome:
         keywords = (
             "modules", "observers", "lateral", "scales", "features", "field", "code",
             "learned_code", "seed", "slots", "learned_fields", "ports", "tied", "fields_motor",
+            "cortex_reads",
         )
         layout = {name: settings.pop(name) for name in keywords if name in settings}
         return _layout(inputs, actions, settings, **layout)[0]

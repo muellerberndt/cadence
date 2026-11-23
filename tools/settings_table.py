@@ -146,6 +146,8 @@ NOTES: dict[str, str] = {
     "bound": "unset (a count of records, with `senses=` and `code=`)",
     "voice": "unset (a declared sense, with `bound=`)",
     "code": "unset: the observation itself",
+    "cortex_reads": '`"code"`: with `code=units` the cortex reads the code (`"both"` adds the '
+                    'senses beside it, `"observation"` reads them in its place)',
     "connectome": "unset: the composed layout",
     "history_decays": "`(0.0,)`: the moment before (`()` builds none)",
     "efference_amplitude": "`0.0`: none (a positive amplitude at construction adds the copy)",
@@ -158,7 +160,8 @@ FAMILIES: tuple[tuple[str, str, str], ...] = (
     ("slots lateral", "motor competition", "#operating-point-and-motor-competition"),
     ("modules observers apical tied scales connectome", "the brain's layout", "#brain"),
     ("features field learned_fields ports fields_motor", "image inputs", "senses.md#image-inputs"),
-    ("code learned_code learned_code_fields attention", "codes", "senses.md#the-observation-code"),
+    ("code cortex_reads learned_code learned_code_fields attention", "codes",
+     "senses.md#the-observation-code"),
     ("trained", "modules", "modules.md#modules-parts-that-arrive-as-files"),
     ("teaching temperature learning learning_", "teaching", "teach.md#choosing-rates-and-steps"),
     ("reward actor_", "reward", "reward.md#settings"),

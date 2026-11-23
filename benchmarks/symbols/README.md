@@ -252,3 +252,29 @@ on one or two.
 | S7 | 10 of 12 (.83 to 1.00 in view, .92 to 1.00 behind a screen, .00 after listening alone) | holds |
 
 Without a bar: Y1h .80 to .95.
+
+### The senses beside the code (0.102.0)
+
+`--cortex-reads both` composes every brain of the life with `cortex_reads="both"`: the cortex
+reads the senses beside the code, and every memory keys on the code as before. A quick reading of
+the gates on four fresh founders, **1011200 to 1011203**, against the same founders with the code
+alone, the chamber and the bars of the fourth run, at `e8718323`
+([receipt](results/cortex_reads.json)).
+
+| founder | arm | S1 | S2 | barred | dealt | names (exchanges) | colours (exchanges) | unpaid names | unpaid colours | S6 | S7 in view | S7 screen | untaught | Y1h |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1011200 | code | 1.0 | 1.0 | .125 | .0 | [9, 13, 15, 10] | [9, 15, 10, 8] | .062 | .078 | 1.0 | 1.0 | 1.0 | .0 | .925 |
+| 1011200 | both | 1.0 | 1.0 | .175 | .0 | [9, 13, 15, 10] | [9, 15, 10, 8] | .062 | .078 | 1.0 | 1.0 | 1.0 | .0 | .925 |
+| 1011201 | code | 1.0 | 1.0 | .15 | .0 | [14, 15, 7, 9] | [9, 10, 13, 8] | .062 | .062 | 1.0 | 1.0 | 1.0 | .0 | .875 |
+| 1011201 | both | 1.0 | 1.0 | .125 | .0 | [14, 15, 7, 9] | [9, 10, 13, 8] | .062 | .062 | 1.0 | 1.0 | 1.0 | .0 | .875 |
+| 1011202 | code | 1.0 | 1.0 | .125 | .1 | [17, 5, 4, 8] | [7, 16, 8, 7] | .072 | .087 | 1.0 | .92 | 1.0 | .0 | .925 |
+| 1011202 | both | 1.0 | 1.0 | .125 | .0 | [17, 5, 4, 8] | [7, 16, 8, 7] | .072 | .087 | 1.0 | .92 | 1.0 | .0 | .925 |
+| 1011203 | code | 1.0 | 1.0 | .05 | .0 | [5, 6, 15, 3] | [15, 10, 12, 17] | .069 | .056 | 1.0 | .92 | 1.0 | .0 | .825 |
+| 1011203 | both | 1.0 | 1.0 | .125 | .0 | [5, 6, 15, 3] | [15, 10, 12, 17] | .069 | .056 | 1.0 | .92 | 1.0 | .0 | .825 |
+
+Every gate holds on every founder in both arms, and the two arms read alike at every gate: a
+name heard alone brings its thing back from the records and in the settled state at 1.00, the
+exchanges a reward takes are the same, and so are the named things at new places and the focus a
+heard name draws. The controls of S3 move within their bar (.25): with the records barred
+the state reads .125 to .175 against .05 to .15, and with their values dealt .00 against .00 to
+.10. The brain holds 7,523,769 parameters against 7,180,417.

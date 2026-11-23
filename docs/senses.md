@@ -25,6 +25,7 @@ how the brain reads them:
 | `inputs=(height, width)` | the image through a visual cortex | [image inputs](#image-inputs) |
 | `inputs=(height, width)` with `learned_fields=features` (opt-in) | the image through receptive fields a local rule shapes, pooled over overlapping regions | [learned receptive fields](#learned-receptive-fields) |
 | `code=units` | a fixed sparse code of the observation, which the memories key on and a vector brain's cortex reads | [the observation code](#the-observation-code) |
+| `code=units` with `cortex_reads="both"` (opt-in) | the code, and the observation itself beside it in a region of its own; the memories key on the code | [what the cortex reads](#what-the-cortex-reads) |
 | `learned_code=units` (opt-in) | a code that a region of the brain's own neurons learns while the brain lives | [the learned code](#the-learned-code) |
 | `attention=True` with `learned_code` | Recall selects a recent event and its successor by an ordered pair of learned codes | [single-head attention](memory.md#single-head-learned-code-attention-opt-in) |
 | `PopulationCode(ranges)` before the brain | a few continuous readings (an angle, a velocity, a distance), each spread over tuned inputs | [continuous readings](#continuous-readings-a-population-code) |
@@ -282,7 +283,9 @@ with a fixed random sparse code of `units` width and unit length, one unit in te
 saved with the brain as `brain.sparse_code`. The code is fixed and learns nothing.
 
 - In `compose` a vector brain's sensory region reads the code too; on an image brain and in
-  `Brain(connectome, code=units)` only the memories use it.
+  `Brain(connectome, code=units)` only the memories use it. `cortex_reads` chooses what a
+  vector brain's cortex reads: the code, the code and the observation itself, or the
+  observation itself ([what the cortex reads](#what-the-cortex-reads)).
 - Keys stored under one code do not match another.
 - `Genome.observation_width(inputs, code)` gives the key width before building, the size of a
   custom anatomy's `recall` and `next` regions.
@@ -302,6 +305,79 @@ assert key.shape == (1, 1024) and (key > 0).sum() == 102 and np.isclose(np.linal
 assert Genome.observation_width(2048, 1024) == 1024     # the key width before building
 assert len(coded.connectome.populations["sensory"]) == 1024  # the cortex reads the code
 ```
+
+### What the cortex reads
+
+A fixed code where a body's senses meet holds which of them are on together, the conjunctions
+a record of a bound moment and a heard name need. It holds a bearing, a distance or a speed
+less directly: each field enters the code at unit length among every other field, and the
+code keeps its largest sums. A body whose action follows the geometry of what it senses (turn
+toward the nearest food, stop at reach) needs the senses themselves in its cortex, and its
+memories need the code. `cortex_reads` (construction, with `code=units` on a vector brain)
+chooses what the cortex reads:
+
+| `cortex_reads` | The cortex reads | For |
+| --- | --- | --- |
+| `"code"` (the founder) | the code: the sensory region is the code | senses whose meaning lies in what is on together: words, things named |
+| `"both"` (opt-in) | the code, and the observation itself in a region of its own, `observation`, one neuron per input, which projects into the first module beside the code | a body that acts on the geometry of its senses and keeps records or names keyed on the code |
+| `"observation"` (opt-in) | the observation itself, as a brain without a code reads it; the code keys the memories alone, as on an image brain | a wide observation whose code serves to bound the memories' keys |
+
+Every memory keys on the code whichever the cortex reads: the recall memory, the associative
+store, records of bound moments, and with `"code"` and `"both"` a held message and the long-term
+records keyed on it, which hear the sensory region's code (`"observation"` refuses a held
+message, which would hear the observation itself). The heard history hears what the sensory
+region holds (the code with `"code"` and `"both"`, the observation with `"observation"`). The brain with
+`cortex_reads="both"` is the brain with the code plus the `observation` region and its one
+projection into the first module, at the sensory scale (`scales={"sensory": ...}`), drawn after
+every other part, so every other synapse and bias starts as in the brain with the code: it
+holds `inputs` more neurons and `inputs` times the first module's width more synapses. The
+`observation` region reads the senses as they are given, and the code reads them at equal
+length ([equal senses](#equal-senses-in-the-fixed-code)): scale a sense to the range its
+meaning needs, as for a brain without a code.
+
+```python
+senses = {"eyes": 32, "food": {"bearing": 8, "distance": 4}, "body": 8}
+body = Brain.compose(senses=senses, actions=5, code=128, cortex_reads="both", seed=0)
+coded = Brain.compose(senses=senses, actions=5, code=128, seed=0)
+seen = {"eyes": np.random.default_rng(1).random((1, 32)),
+        "food": {"bearing": np.eye(8)[[2]], "distance": np.eye(4)[[1]]}}
+assert len(body.connectome.populations["observation"]) == body.inputs == 52
+assert np.array_equal(body.observation_code(seen), coded.observation_code(seen))  # the key
+assert body.parameters() == coded.parameters() + 52 * 64 + 52   # synapses and biases
+assert body.describe()["layout"]["code"]["cortex"] == "both"
+assert body.act(seen, greedy=True).shape == (1,)
+```
+
+**What it reads.** In the [forager chamber](../benchmarks/forager/README.md) a brain with an
+animal's senses (104 inputs: eyes in eight sectors, ears, a call heard, the thing it attends,
+the nearest food's bearing and distance, its body), modules of 32 and `code=128` is taught to
+forage by a teacher that turns to the nearest plant in sight, walks to it and bites it. On twelve
+fresh founders of its declared run, a linear readout of the teacher's turn from the
+association's settled state reads .837 with `"both"` against .756 with the code alone (.804 to
+.881 against .696 to .813, higher on 12 of 12), where the senses themselves hold it at .875. On
+its own path the brain agrees with the teacher at .601 against .500 and eats 8.0 plants a body
+in 150 moments against 6.2 (the teacher 13.2), higher on 12 of 12 founders. On the teacher's
+path its agreement is .679 against .672, higher on 6 of 12 (the declared bar was 10): the walks
+are three in five of those moments, and the brain that reads the bearing turns at more of them.
+`"observation"` reads .824, .571 and 7.5 plants, and a brain without a code .788, .471 and 6.0.
+
+In the [symbols chamber](../benchmarks/symbols/README.md#the-senses-beside-the-code-01020),
+where a brain learns names from a trainer, every gate holds on four fresh founders with
+`"both"` as with the code alone, at the same readings: a name heard alone brings its thing back
+from the records and in the settled state at 1.00, a reward teaches names and colours in the same
+exchanges, and a heard name draws the focus as before.
+
+A checkpoint of a brain with `cortex_reads` other than `"code"` saves as `cadence-brain/5` with
+the feature `cortex_reads`, which 0.101.0 refuses by name; `describe()` names it under the
+layout's `code` as `cortex` and under the genes. `grow` keeps it, and `graft` carries the
+`observation` region between brains that hold it. Refused with `ValueError`: a value other than
+the three, `cortex_reads` other than `"code"` without `code=units`, beside a learned code, on an
+image brain, and beside a trained module, and `"observation"` beside a held message; `Lives`
+refuses it as it refuses a code, and `grow` and `retune` refuse to change it. A custom anatomy
+reads both with a population named `observation` of one neuron per input
+(`Genome.composed(..., cortex_reads="both")` lays it out), which is driven only with
+`cortex_reads="both"`. With `surprise=True`, `places` gives a place to each neuron of the
+sensory region, the code's units; the `observation` region takes no place in the focus.
 
 ## Senses by name
 
@@ -542,6 +618,14 @@ while attempted-work counters and refusal diagnostics may advance.
 Custom controls such as `top_down=0` with a large negative-branch leak need that separate
 check: damping cannot stabilize an intrinsically growing mode.
 
+The code phase runs in float64 on every backend. On `"cpu"`, on `"mlx"` and on a torch MPS
+device, which has no float64, it runs on the host. On any other torch device (CUDA, the CPU
+device) it runs on that device, whatever the brain's precision: the sub-network settles there,
+and the factorizations and eigenvalues of the step are read there, or on the host with a
+warning where the device fails in them. `brain.learned_code.device` names the device, `None`
+on the host. The tables, their learning rules and the memories' key stay on the host
+([a learned code on torch](backends.md#a-learned-code-on-torch)).
+
 The top-down boundary reads the working trace, the settled association activity of the moment
 before, and never the association region of the moment: a prediction read from the moment's
 own association activity would copy the code it reads.
@@ -603,7 +687,7 @@ and `IDENTITY` 0.9 (the weight of the observation's own identity in the memories
 
 Refused with `ValueError`: `learned_code` below 2, `learned_code_fields` without the region,
 fields that do not sum to the inputs or leave a field fewer than two units, `code` beside
-`learned_code`, an image brain, the `torch` backend, and a custom connectome without a
+`learned_code`, an image brain, and a custom connectome without a
 `code` population and the complete dictionary, lateral and predictor synapses, or whose
 sensory neurons project anywhere but to the code region.
 

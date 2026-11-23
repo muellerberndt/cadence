@@ -120,6 +120,7 @@ continuous readings, an image, a wide vector.
 | [Learned receptive fields](senses.md#learned-receptive-fields) | A rendered screen or a spectrogram, where an object reads the same wherever it appears | `learned_fields=features` with an image `inputs` | nothing | yes, by a local rule of their own at every moment the brain accepts | blank | at birth; refused | Fresh frames .974 and a band of places no lesson showed .948, where a convolutional network trained by gradient reads 1.000 and .145, six fresh founders ([pixel chamber](../benchmarks/pixels/README.md), [#284](https://github.com/muellerberndt/cadence/issues/284)) |
 | [Ports beside the screen](senses.md#ports-beside-the-screen) | A body's own readings beside an image: health, a joint, the last action | `ports=k` with `learned_fields` | nothing | no: the values are read as given | fixed | at birth; refused, with the fields | |
 | [A fixed sparse code](senses.md#the-observation-code) | Wide observations: the code bounds the size of every memory's key | `code=units` | nothing | no | fixed | at birth; by region (`sensory`, which is the code) | At 12,824 inputs the recall memory's address map takes 1,322 MB uncoded and 8.9 MB at `code=1024` ([recall cost](memory.md#recall-cost)) |
+| [The senses beside the code](senses.md#what-the-cortex-reads) | A body that acts on the geometry of its senses (a bearing, a distance) and keys its memories on the code | `cortex_reads="both"` with `code=units`; `"observation"` reads the senses alone | nothing | its synapses into the first module, by lessons and rewards | blank | at birth; by region (`observation`, beside `sensory`) | A linear readout of a forager teacher's turn from the settled state .837 against .756 with the code alone, and 8.0 plants eaten against 6.2, twelve fresh founders ([forager chamber](../benchmarks/forager/README.md)) |
 | [A learned code](senses.md#the-learned-code) | Observations met in the same contexts are read alike, so a lesson on some reaches the rest | `learned_code=units`, with `learned_code_fields` for independent channels | the stream's code, which the next settle starts from | yes, by local rules at accepted acts and aroused `live` moments | blank | at birth; `graft` takes other regions of the brain and never the `code` region | Held-out members of a group answered at 1.000 on 12 of 12 fresh founders, where the raw observation answers at chance ([the learned code](senses.md#what-the-code-is-for)) |
 | [A sense for things](senses.md#a-sense-for-things-and-an-ear) | A seen thing's colour, form or place as inputs, each reading spread over tuned cells | `things = cadence.senses.Things({"hue": (0.0, 1.0)})`, then `senses={"eyes": things.widths}` and `things.rows(readings)` | nothing | no | fixed | beside the brain; a checkpoint does not hold it | The symbols chamber's eyes ([symbols chamber](../benchmarks/symbols/README.md)) |
 | [An ear](senses.md#a-sense-for-things-and-an-ear) | A heard utterance, onset to the quiet after it, as one code from its log-mel frames | `ear = cadence.senses.Ear(frames=16, bands=40)`, then `senses={"ear": ear.width}` and `ear.code(frames)` or `ear.hear(audio)` | nothing | no | fixed | beside the brain; a checkpoint does not hold it | The symbols chamber's ear: a name heard alone brings its thing back at 1.00 on 12 of 12 fresh founders ([symbols chamber](../benchmarks/symbols/README.md)) |
@@ -784,7 +785,9 @@ brain's own path drops every founder to 0 starts, and two of three reach 32 of 3
 round. Following each of its own episodes with a watched one, no founder falls below 259 steps
 of 500. The rounds swing, so read several founders and keep the best checkpoint
 ([teach on the brain's own path](teach.md#teach-on-the-brains-own-path)). A body with a camera
-adds `learned_fields` and `ports` ([senses](#senses)).
+adds `learned_fields` and `ports` ([senses](#senses)). A body with many senses by name and a
+code its memories key on reads its senses beside the code (`cortex_reads="both"`,
+[what the cortex reads](senses.md#what-the-cortex-reads)).
 
 ### A creature that lives on what the world pays
 
@@ -1096,7 +1099,7 @@ Each row below was read from the library's own refusal.
 
 | Part | The library refuses | Do instead |
 | --- | --- | --- |
-| `grow` | A part inside the brain's own loop: `modules`, `observers`, `code`, `learned_code`, `lateral`, `apical`, other `inputs`. At zero such a part learns nothing, and at any other start it changes the brain | Compose the larger layout and `graft` the trained brain into it |
+| `grow` | A part inside the brain's own loop: `modules`, `observers`, `code`, `cortex_reads`, `learned_code`, `lateral`, `apical`, other `inputs`. At zero such a part learns nothing, and at any other start it changes the brain | Compose the larger layout and `graft` the trained brain into it |
 | `grow` | `arousal`, `maturity`, `memory_choice`, `memory_fade`, `message`, `longterm`, `learned_fields`, `tied`: choices of a brain's construction | Compose the brain with them |
 | `grow` | New slots where a memory is laid out per action (`recall_action`, `recall_tokens`, `memory_choice`), where a tie cuts the motor region into blocks, or where observers sit above the motor of a deep brain | Compose the slots at birth |
 | `grow` | A recall memory with `recall_tokens`, and heads for a brain with them | Compose the memory with its tokens |
@@ -1105,12 +1108,13 @@ Each row below was read from the library's own refusal.
 | `graft` | A brain with tied projections or rates set by hand, as host or as donor | Graft untied brains |
 | `graft` | A learned code's `code` region, or a joint that lands on it | Graft the regions above the code |
 | `graft` | Regions that share no synapse; regions of different sizes; a donor synapse the host lacks; another neuron model or apical compartment | Graft the regions a trained pathway runs through, into a host laid out alike |
-| `Lives` | `tied`, `memory_choice`, the efference copy, a held message, long-term records, a fixed or learned code, image inputs, an apical compartment, rehearsal, qualified teaching, `actor_entropy`, and a recall memory with several heads, a window, the command, the read of when, tokens, the cortex at unit norm or a slot's strength | One brain's streams, or lone brains in a process pool |
+| `Lives` | `tied`, `memory_choice`, the efference copy, a held message, long-term records, a fixed or learned code and `cortex_reads`, image inputs, an apical compartment, rehearsal, qualified teaching, `actor_entropy`, and a recall memory with several heads, a window, the command, the read of when, tokens, the cortex at unit norm or a slot's strength | One brain's streams, or lone brains in a process pool |
 | `Lives` | `trained=`, with a module or a map; `senses=` | Brains composed with them, one by one |
 | `Lives` | `backend="mlx"` and the MPS device | `backend="torch"` on CUDA or the torch CPU device, or `backend="cpu"` |
 | Learned fields | A vector brain; `code` or `learned_code` beside them; an image under 8 by 8 pixels; fewer than 2 fields | An image `inputs` with `learned_fields` alone |
 | `ports`, `fields_motor` | A brain without `learned_fields` | Add `learned_fields=features` |
-| A learned code | An image brain; `code` beside it; the `torch` backend | A vector brain on `cpu` or `mlx` |
+| A learned code | An image brain; `code` beside it | A vector brain, on any backend |
+| `cortex_reads` | A value other than `"code"`, `"both"` and `"observation"`; `"both"` or `"observation"` without `code=units`, beside a learned code, on an image brain or beside a trained module; `"observation"` beside a held message; a custom anatomy that reads both without a population `observation` of one neuron per input | `code=units, cortex_reads="both"` on a vector brain; `Genome.composed(..., cortex_reads="both")` lays out an anatomy |
 | `attention=True` | A brain without `learned_code`, or with `recall=False` | `learned_code=units, attention=True` |
 | A held message | An image brain; a learned code | A vector brain, with or without `code=units` |
 | Long-term records | A brain without `message=units`, or without a turn | `message_boundary=channel, message_boundary_holds=True`, or `longterm_turn=channel` |

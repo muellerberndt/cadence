@@ -3156,6 +3156,18 @@ class _SmallGroups:
             )
 
 
+def _read_only(nudge: Nudge) -> bool:
+    """Whether none of the arrays a device's buffers take from ``nudge`` can be written: the
+    buffers filled from it then hold it for as long as the nudge lives."""
+    return all(
+        value is None or not isinstance(value, np.ndarray) or not value.flags.writeable
+        for value in (
+            nudge.target, nudge.mask, nudge.weight, nudge.groups, nudge.softmax_temperature,
+            nudge.anchor, nudge.anchor_gain,
+        )
+    )
+
+
 def _host_copy(x: Any) -> np.ndarray:
     """A float64 host array that shares no memory with the tensor (a CPU tensor's ``numpy``
     would: the workspace buffers are overwritten by the next sweep)."""
@@ -3202,6 +3214,9 @@ class _NudgeBuffers:
         self.weight = torch.zeros(1, batch, dtype=dtype, device=device) if weight else None
         self.anchor = torch.zeros(m, batch, dtype=dtype, device=device) if anchor else None
         self.gain = torch.zeros(m, 1, dtype=dtype, device=device) if anchor else None
+        # the nudge these buffers were filled from, where none of its arrays can be written (a
+        # weak reference): while it lives they hold it, and a settle under it fills nothing
+        self.filled: Any = None
         # equal groups side by side over a contiguous reach: one Triton launch on CUDA
         self.launch: Any = None
         if (
@@ -3382,8 +3397,9 @@ class _TorchKernel:
         Its states rest on this kernel (``root``). A qualified solve's damping halves the step
         (``Brain.equilibrate``); a kernel made at every halving would build its plan and read
         every parameter back to the host each time. The live kernel keeps one per step it was
-        asked for (at most the damping's halvings), each holding the transport's weights once
-        on the device; a kernel of another step asks the live kernel."""
+        asked for (the damping's halvings, and for a learned code's sub-network each step its
+        phase took), each holding the transport's weights once on the device; a kernel of
+        another step asks the live kernel."""
         root = self.root
         if root is not self:
             return root.stepped(neuron_model)
@@ -3937,6 +3953,9 @@ class _TorchKernel:
             buffers = ws.nudges[full] = _NudgeBuffers(
                 self.torch, self.device, self.dtype, spec, batch, weight, anchor
             )
+        elif buffers.filled is not None and buffers.filled() is nudge:
+            return buffers  # a read-only nudge, as these buffers hold it
+        buffers.filled = None
         if buffers.groups is not None:
             temperatures = []
             tiny = float(self.torch.finfo(self.dtype).tiny)
@@ -3956,6 +3975,8 @@ class _TorchKernel:
             assert nudge.anchor is not None
             buffers.anchor.copy_(self._upload(np.broadcast_to(nudge.anchor, (batch, n))[:, u]).T)
             buffers.gain.copy_(self._upload(np.asarray(nudge.anchor_gain)[u])[:, None])
+        if _read_only(nudge):
+            buffers.filled = weakref.ref(nudge)
         return buffers
 
     def _held_into(self, out: Any, nudge: Nudge | None, batch: int) -> bool:
