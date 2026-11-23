@@ -2926,8 +2926,6 @@ class Brain:
             raise ValueError(_LEARNED_CODE_TOGETHER)
         if learned and sensory != "sensory":
             raise ValueError("a learned code needs a vector brain with a 'sensory' population")
-        if learned and backend == "torch":
-            raise ValueError("a learned code settles on the cpu or mlx backend in this version")
         for name in ("code", "prefrontal") if learned else ():
             if name not in populations:
                 raise ValueError(
@@ -3070,6 +3068,8 @@ class Brain:
         # dopamine leave them alone.
         self.learned_code: LearnedCode | None = None
         self._code_synapses: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+        # on torch: the region's synapses as one array, which the kernel indexes once
+        self._code_region: np.ndarray | None = None
         # the neurons that read a learned code at unit length (``_learned_code_forward``)
         self._code_readers: np.ndarray = self.association_index
         plastic_synapses = plastic_neurons = None
@@ -3081,6 +3081,11 @@ class Brain:
                 seed=seed,
                 **{name: learned[name] for name in LearnedCode.GENES},
             )
+            kernel = brain._torch
+            if kernel is not None and kernel.device.type != "mps":
+                # on torch the region's own phase runs on the brain's device, in float64
+                # whatever the brain's precision; MPS has no float64, and keeps it on the host
+                self.learned_code.place(kernel.device)
             self._code_synapses = self._learned_code_synapses()
             self._code_forward = self._learned_code_forward()
             # the first module reads the code alone: the sensory neurons project to the code
@@ -3631,6 +3636,30 @@ class Brain:
         weights and predictor act in the region's own phase."""
         code = self.learned_code
         assert code is not None
+        kernel = graph._torch
+        if kernel is not None:
+            # on a torch device the parameters rest there and the kernel takes the new ones in
+            # place, as it takes a lesson's: its plan and workspaces stay, and a state settled
+            # on it continues on it
+            torch = kernel.torch
+            scale, placed = kernel.scale, kernel.bias_param.clone()
+            placed[kernel.index_of(self.code_index)] = kernel._placed(-code.thresholds)
+            region = self._code_region
+            if region is None:
+                region = self._code_region = np.concatenate(
+                    [synapses for synapses, _, _ in self._code_synapses.values()]
+                )
+            index = kernel.index_of(region)
+            # every one of the region's synapses +0.0: read as integers, a negative zero is not
+            whole = torch.int64 if scale.dtype == torch.float64 else torch.int32
+            moved = bool(scale[index].view(whole).any().item())
+            if moved:
+                scale = scale.clone()
+                scale[index] = 0.0
+            installed = graph._with_device_parameters(scale, placed)
+            if not moved:  # the same synapses: what the host has read of them holds
+                installed._efficacy, installed._weights_host = graph._efficacy, graph._weights_host
+            return installed
         efficacy, bias = graph.efficacy, graph.bias.copy()
         bias[self.code_index] = -code.thresholds
         regions = [synapses for synapses, _, _ in self._code_synapses.values()]
@@ -3641,6 +3670,23 @@ class Brain:
         for synapses in regions:
             efficacy[synapses] = 0.0
         return graph.with_parameters(efficacy=efficacy, bias=bias)
+
+    def _code_installed(self, graph: NeuralGraph) -> bool:
+        """Whether ``graph`` holds what ``_installed`` gives it, entry for entry: the region's
+        synapses at zero and the code units' biases the negated thresholds, as float64 holds them
+        or as a float32 device does (a file a float32 brain saved, or a file read onto one). A
+        read, on the host, of a graph on any backend; a loaded file's parameters are checked by
+        it."""
+        code = self.learned_code
+        assert code is not None
+        efficacy, bias = graph.efficacy, graph.bias
+        if any(efficacy[synapses].any() for synapses, _, _ in self._code_synapses.values()):
+            return False
+        held, wanted = bias[self.code_index], -code.thresholds
+        return bool(
+            np.array_equal(held, wanted)
+            or np.array_equal(held, wanted.astype(np.float32).astype(np.float64))
+        )
 
     def _learn_code(self, state: BrainState) -> None:
         """The learned code's step from an accepted moment's settled ``state``: the sensory,
@@ -4988,7 +5034,11 @@ class Brain:
             steps = state.steps
         bias = self.brain.bias
         for index in (self.sensory_index, self.prefrontal_index):
-            v[:, index] = drive[:, index] + bias[index]
+            if _resident(drive):  # a drive on its device: these columns alone come to the host
+                columns = _host_copy(drive[:, self.brain._torch.index_of(index)])
+            else:
+                columns = drive[:, index]
+            v[:, index] = columns + bias[index]
         v[:, self.code_index] = np.atleast_2d(coded[2].v)
         a[:, self.code_index] = np.atleast_2d(coded[2].adaptation)
         return BrainState(v, self.brain.neuron_model.activation(v), a, steps)
@@ -8255,14 +8305,14 @@ class Brain:
                 region.work.update(
                     {k: int(v) for k, v in meta["learned_code"]["work"].items() if k in region.work}
                 )
-                installed = result._installed(learner.brain)
-                if not np.array_equal(installed.efficacy, learner.brain.efficacy) or not (
-                    np.array_equal(installed.bias, learner.brain.bias)
-                ):
+                if not result._code_installed(learner.brain):
                     raise ValueError(
                         "the saved learned code tables disagree with the saved synapses and "
                         "biases of the code region"
                     )
+                kernel = learner.brain._torch
+                if kernel is not None and kernel.device.type != "mps":
+                    region.place(kernel.device)  # the region's phase where the loaded brain runs
                 # the region's phase at the step it was saved at, and its two switches
                 region.restep(int(meta["learned_code"]["stepping"]))
                 region.learning = bool(meta["learned_code"]["learning"])

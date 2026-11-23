@@ -463,6 +463,7 @@ DEVICE_CELLS = [
     {**{n: v[0] for n, v in FACTORS.items()}, "recall": "heads2", "arousal": "on"},
     {**{n: v[0] for n, v in FACTORS.items()}, "recall": "strength", "memory_choice": "on"},
     {**{n: v[0] for n, v in FACTORS.items()}, "surprise": "on"},
+    {**{n: v[0] for n, v in FACTORS.items()}, "code": "learned"},
 ]
 
 

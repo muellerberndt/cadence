@@ -95,10 +95,18 @@ the region can reach, using the largest slope on either activation branch: a cod
 phase that does not settle at its step is settled once more at that bound before the moment
 is refused. This bound is available from the first moment even when the dictionary's
 columns all overlap (one input: every column is plus or minus the same vector).
+
+The region's own phase runs in float64 on every backend. A brain on the ``"cpu"`` or ``"mlx"``
+backend, or on a torch device without float64 (MPS), settles it on the host. A brain on
+another torch device settles it there (``place``): the sub-network is a graph on that device,
+whose kernel takes the tables in place after a learning step, and the step's factorization
+tests run there in batches of rows. The tables, their rules and the code the memories key on
+stay on the host.
 """
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -209,6 +217,9 @@ class LearnedCode:
     # Contraction also requires its upper end below one.
     STEP_MARGIN = 1.5
     BOUND_MARGIN = 1e-9  # how clear of a step bound a factorization test must be, relative
+    # On a device the step's tests hold at most this many bytes of couplings at a time: the
+    # rows of a batch are factorized in groups of ``DEVICE_BYTES / (8 * units^2)``, at least one.
+    DEVICE_BYTES = 1 << 27
 
     @staticmethod
     def joins(inputs: int, units: int) -> bool:
@@ -302,6 +313,14 @@ class LearnedCode:
         # the connectome sorts its synapses by (post, pre); the lateral weights are read in it
         self._pre, self._post = self.connectome.pre, self.connectome.post
         self.halvings = 0  # the step's halvings the settled code needs (``stability``)
+        # the torch device the region's own phase runs on (``place``), None on the host; there
+        # ``_base`` is the sub-network at the model's step, whose kernel holds the tables, and
+        # ``_coupled`` the dictionary with its lateral weights at the model's gain on the
+        # device, read again when another dictionary takes its place
+        self._device: Any = None
+        self._base: NeuralGraph | None = None
+        self._coupled: Any = None
+        self._anchor: tuple[float, Nudge] | None = None  # the standing boundary, made once
         self.graph = NeuralGraph(
             self.connectome, self.model, efficacy=self.lateral_efficacy(), bias=-self.thresholds
         )
@@ -310,6 +329,147 @@ class LearnedCode:
             "updates": 0, "update_rows": 0, "repairs": 0,
         }
         self.last: dict[str, Any] | None = None
+
+    # -- the device
+
+    @property
+    def device(self) -> Any:
+        """The torch device the region's own phase runs on; None on the host."""
+        return self._device
+
+    def place(self, device: Any) -> None:
+        """Run the region's own phase on ``device``, a torch device that has float64, or on
+        the host again with None: the settle of its sub-network and the tests of its step
+        (``stability``), in float64 as on the host. The tables and their rules stay on the
+        host; the kernel on the device takes the lateral weights and the thresholds in place
+        after each learning step, so its plan, its workspaces and a state settled on it stay
+        with it. MPS has no float64 and is refused: a brain there keeps the phase on the host."""
+        if device is None:
+            if self._device is not None:
+                self._device, self._base, self._coupled = None, None, None
+                model = self.model
+                if self.halvings:
+                    model = model.replace(dt=float(np.ldexp(self.model.dt, -self.halvings)))
+                self.graph = NeuralGraph(
+                    self.connectome, model, efficacy=self.lateral_efficacy(),
+                    bias=-self.thresholds,
+                )
+            return
+        import torch
+
+        device = torch.device(device)
+        if device.type == "mps":
+            raise ValueError(
+                "the learned code's phase is float64, which MPS does not have; it stays on the "
+                "host there (place(None))"
+            )
+        base = NeuralGraph(
+            self.connectome, self.model, efficacy=self.lateral_efficacy(),
+            bias=-self.thresholds, backend="torch", device=str(device), precision="float64",
+        )
+        self._device, self._base, self._coupled = device, base, None
+        self.graph = self._stepped()
+
+    def _stepped(self) -> NeuralGraph:
+        """On a device: the sub-network at the present step. The kernel at the model's step
+        holds the tables; a halved step settles on the kernel of that step it keeps
+        (``NeuralGraph._with_dt``), on the same parameters, and its states rest on the first."""
+        base = self._base
+        assert base is not None
+        if not self.halvings:
+            return base
+        return base._with_dt(float(np.ldexp(self.model.dt, -self.halvings)))
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> LearnedCode:
+        """An independent copy. On a device the copy builds its own sub-network there from its
+        own tables, so neither region's learning step writes the other's kernel."""
+        twin = type(self).__new__(type(self))
+        memo[id(self)] = twin
+        # what rests on the device, and the standing boundary it holds, are made again
+        placed = ("graph", "_base", "_coupled", "_anchor") if self._device is not None else ()
+        for name, value in self.__dict__.items():
+            twin.__dict__[name] = None if name in placed else copy.deepcopy(value, memo)
+        if self._device is not None:
+            twin._device = None
+            twin.place(self._device)
+        return twin
+
+    def _stability_device(self, v: np.ndarray) -> int:
+        """``stability`` on the region's device: the slopes are read on the host, as there;
+        the couplings are made, bounded and factorized on the device, ``DEVICE_BYTES`` of
+        them at a time, and the lateral weights at the model's gain rest there for as long as
+        the region holds the same dictionary array. The same tests in the same order as
+        ``_held_halvings``, each clear of
+        its bound by ``BOUND_MARGIN``, so the answer is the one the eigenvalues give, as on
+        the host; where a test is not clear the eigenvalues are read on the device."""
+        import torch
+
+        device = self._device
+        slopes_host = np.maximum(self.model.slope_at(v), 0.0)
+        kept = self._coupled
+        if kept is None or kept[0] is not self.dictionary:  # another dictionary since
+            kept = self._coupled = (self.dictionary, torch.from_numpy(
+                np.ascontiguousarray(self.model.gain * self.lateral())
+            ).to(device))
+        lateral = kept[1]
+        slopes = torch.from_numpy(np.ascontiguousarray(slopes_host)).to(device)
+        roots = torch.sqrt(slopes)
+        rows, units = slopes.shape
+        group = max(1, int(self.DEVICE_BYTES // (8 * units * units)))
+
+        def coupling(index: Any) -> Any:  # the rows' couplings, a tensor of their own
+            root = roots[index]
+            out = root[:, :, None] * lateral[None, :, :] * root[:, None, :]
+            # the standing boundary's restoring term, -top_down on every unit's own diagonal
+            out.diagonal(dim1=1, dim2=2).sub_(self.top_down * slopes[index])
+            return out
+
+        def above(index: np.ndarray, t: float) -> bool:  # every one of the rows above t
+            for start in range(0, len(index), group):
+                part = torch.from_numpy(index[start:start + group]).to(device)
+                shifted = coupling(part)
+                shifted.diagonal(dim1=1, dim2=2).sub_(t)
+                factor, info = torch.linalg.cholesky_ex(shifted)
+                # a factorization holds where it reports no failure and its factor is finite
+                if not bool(((info == 0).all() & torch.isfinite(factor).all()).item()):
+                    return False
+            return True
+
+        parts = []
+        for start in range(0, rows, group):
+            block = coupling(slice(start, start + group))
+            diagonal = block.diagonal(dim1=1, dim2=2)
+            parts.append((diagonal - (block.abs().sum(dim=2) - diagonal.abs())).min(dim=1).values)
+        floors = torch.cat(parts).cpu().numpy()
+        del parts, block, diagonal
+        dt, margin, halvings = self.model.dt, self.STEP_MARGIN, self.halvings
+
+        def bound(h: int) -> float:  # the least smallest eigenvalue h halvings allow
+            return 1.0 - margin * float(np.ldexp(1.0, h)) / dt
+
+        held = False
+        if np.isfinite(floors).all():
+            clear = self.BOUND_MARGIN * max(1.0, abs(bound(halvings)))
+            allowed = bound(halvings) + clear
+            if np.isfinite(allowed):  # else a step halved past what the bound can state
+                doubtful = np.flatnonzero(floors < allowed)
+                held = not len(doubtful) or above(doubtful, allowed)
+                if held and halvings:
+                    fewer = bound(halvings - 1) - clear
+                    # some row clear below the bound one halving fewer would need: the rows
+                    # with the lowest floors are tried first, one at a time
+                    held = not all(
+                        above(np.array([row]), fewer)
+                        for row in np.argsort(floors, kind="stable")
+                    )
+        if held:
+            return halvings
+        mu = min(
+            float(torch.linalg.eigvalsh(coupling(slice(start, start + group)))[:, 0].min().item())
+            for start in range(0, rows, group)
+        )
+        need = self.model.dt * (1.0 - mu) / self.STEP_MARGIN
+        return 0 if need <= 1.0 else int(np.ceil(np.log2(need)))
 
     # -- the step
 
@@ -323,6 +483,8 @@ class LearnedCode:
         the bound holds at the model's own step. Local contraction also requires the largest
         coupling eigenvalue below one, as the founder standing gain ensures."""
         v = np.atleast_2d(np.asarray(v, dtype=float))
+        if self._device is not None:
+            return self._stability_device(v)
         slopes = np.maximum(self.model.slope_at(v), 0.0)
         root = np.sqrt(slopes)
         lateral = self.model.gain * self.lateral()
@@ -406,9 +568,22 @@ class LearnedCode:
         if not self.top_down:
             return None
         zeros = np.zeros(self.units)
-        return Nudge(
-            zeros, zeros, 0.0, anchor=zeros, anchor_gain=np.full(self.units, self.top_down)
-        )
+        if self._device is None:
+            return Nudge(
+                zeros, zeros, 0.0, anchor=zeros, anchor_gain=np.full(self.units, self.top_down)
+            )
+        # on a device: one boundary per gain, its arrays read-only, so the kernel fills its
+        # buffers from it once and every later sweep and check of the phase reads them there
+        kept = self._anchor
+        if kept is None or kept[0] != self.top_down:
+            nudge = Nudge(
+                zeros, zeros, 0.0, anchor=zeros, anchor_gain=np.full(self.units, self.top_down)
+            )
+            for held in (nudge.target, nudge.mask, nudge.anchor, nudge.anchor_gain):
+                assert held is not None
+                held.flags.writeable = False
+            kept = self._anchor = (self.top_down, nudge)
+        return kept[1]
 
     def restep(self, halvings: int) -> None:
         """The sub-network at the model's step halved ``halvings`` times."""
@@ -423,6 +598,15 @@ class LearnedCode:
             return
         if halvings > 1074 or np.ldexp(self.model.dt, -halvings) <= 0.0:
             raise ValueError("the learned code's step must remain positive")
+        if self._device is not None:
+            held = self.halvings
+            self.halvings = halvings
+            try:
+                self.graph = self._stepped()
+            except BaseException:
+                self.halvings = held
+                raise
+            return
         graph = NeuralGraph(
             self.connectome,
             self.model.replace(dt=float(np.ldexp(self.model.dt, -halvings))),
@@ -449,7 +633,19 @@ class LearnedCode:
 
     def install(self) -> None:
         """The sub-network takes the tables as they are: the lateral weights and the
-        thresholds as biases."""
+        thresholds as biases. On a device its kernel takes them in place, checked finite
+        before anything is written."""
+        base = self._base
+        if base is not None:
+            kernel, lateral = base._torch, self.lateral()
+            self._base = base._with_device_parameters(
+                kernel._placed(np.asarray(lateral[self._pre, self._post])),
+                kernel._placed(-self.thresholds),
+            )
+            # the same lateral weights at the model's gain, for the step's tests
+            self._coupled = (self.dictionary, kernel._placed(self.model.gain * lateral))
+            self.graph = self._stepped()
+            return
         self.graph = self.graph.with_parameters(
             efficacy=self.lateral_efficacy(), bias=-self.thresholds
         )
@@ -504,8 +700,17 @@ class LearnedCode:
         """The region settled under ``stimulus`` by the brain's solver policy: the fast
         repair at the model's step, then halved steps within the same ``budget``, to the
         residual ``tolerance``; counted as work."""
+        drive: Any = stimulus
+        kernel = self.graph._torch
+        if kernel is not None:
+            # the stimulus goes to the device once, where every sweep and check of the phase
+            # reads it; a resident drive is read as it rests, so it is refused here
+            host = np.atleast_2d(np.asarray(stimulus, dtype=float))
+            if not np.isfinite(host).all():
+                raise ValueError("drive must be finite and the brain must contain neurons")
+            drive = kernel._upload(host)
         phase = self.graph.equilibrate(
-            stimulus, state=warm, budget=budget, tolerance=tolerance, damping=damping,
+            drive, state=warm, budget=budget, tolerance=tolerance, damping=damping,
             nudge=self.standing(),
         )
         self.work["settles"] += 1
@@ -571,10 +776,12 @@ class LearnedCode:
         if not n or not self.learning or not (self.rate or self.predictor or self.threshold_rate):
             return False
         saved = self.dictionary, self.weights, self.thresholds, self.graph, self.work.copy()
+        base = self._base  # on a device: written only by a complete, checked install
         try:
             return self._learn(x, a, z, own)
         except Exception:
             self.dictionary, self.weights, self.thresholds, self.graph, work = saved
+            self._base = base
             self.work.clear()
             self.work.update(work)
             raise
