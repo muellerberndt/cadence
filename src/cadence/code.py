@@ -222,7 +222,8 @@ class LearnedCode:
     # On a device the step's tests work within this many bytes: the rows of a batch are
     # factorized in groups of ``DEVICE_BYTES / (32 * units^2)`` and solved for their eigenvalues
     # in groups of half as many, at least one. A group's couplings with their factors take 2.4
-    # times the couplings' bytes on a CUDA card, and with an eigenvalue read's workspace 6.2 times.
+    # times the couplings' bytes on a CUDA card, and with an eigenvalue read's workspace 6.2
+    # times, so one row alone passes the bytes from about 1,650 units at this value.
     DEVICE_BYTES = 1 << 27
 
     @staticmethod
@@ -494,10 +495,15 @@ class LearnedCode:
         the bound holds at the model's own step. Local contraction also requires the largest
         coupling eigenvalue below one, as the founder standing gain ensures."""
         v = np.atleast_2d(np.asarray(v, dtype=float))
-        if self._device is not None and len(v):
+        if (
+            self._device is not None and v.ndim == 2 and len(v) and v.shape[1] == self.units
+            and np.isfinite(v).all()  # the host answers for what is not a batch of potentials
+        ):
             failed = None
             try:
                 return self._stability_device(v)
+            except (NotImplementedError, RecursionError):  # no failure of a device
+                raise
             except RuntimeError as error:  # the device's solver, or its memory
                 failed = (str(error).splitlines() or [type(error).__name__])[0]
             # the same step read on the host, as the eigenvalues give it there
@@ -664,11 +670,12 @@ class LearnedCode:
             bias = kernel._placed(-self.thresholds)
             coupled = (self.dictionary.copy(), kernel._placed(self.model.gain * lateral))
             held = kernel.scale, kernel.bias_param
+            back = kernel.parameter_check(*held)  # a return to them, as writes in place alone
             self._base = base._with_device_parameters(scale, bias)
             try:
                 graph = self._stepped()
             except BaseException:  # the kernel of a halved step did not take them
-                kernel.set_parameters(*held)
+                kernel.set_parameters(*held, checked=back)
                 self._base = base
                 raise
             self._coupled, self.graph = coupled, graph
@@ -697,8 +704,13 @@ class LearnedCode:
             raise ValueError("a learned code's dictionary has unit-length columns")
         if self.mask is not None and dictionary[~self.mask].any():
             raise ValueError("a learned code's dictionary reads its own fields only")
+        held = self.dictionary, self.weights, self.thresholds
         self.dictionary, self.weights, self.thresholds = dictionary, weights, thresholds
-        self.install()
+        try:
+            self.install()
+        except BaseException:  # a device that fails in it: the tables it holds stay
+            self.dictionary, self.weights, self.thresholds = held
+            raise
 
     # -- the settle
 

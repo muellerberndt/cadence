@@ -50,7 +50,8 @@ The guides are [a learned code on torch](docs/backends.md#a-learned-code-on-torc
   lateral weights and the thresholds in place after each learning step, and the brain's kernel
   takes the thresholds as its code units' biases the same way, so no kernel is built again and a
   state settled on either continues on it. The step's tests read the rows of a batch in groups
-  that work within 128 MiB (`LearnedCode.DEVICE_BYTES`), factorized there and solved for their
+  that work within 128 MiB (`LearnedCode.DEVICE_BYTES`; a group is at least one row, which
+  passes those bytes from about 1,650 units), factorized there and solved for their
   eigenvalues there when the factorizations do not settle the step. Where the device fails in a
   test, by a solver's error or by its memory, the host reads the same step and a
   `RuntimeWarning` names the failure. The standing boundary goes to the device once: the torch
@@ -58,10 +59,12 @@ The guides are [a learned code on torch](docs/backends.md#a-learned-code-on-torc
   their three learning rules, the memories' key and the memories themselves stay on the host.
 - **What agrees with the CPU.** In float64 with `learning_fast_settle=False` a life on torch
   reads as the life on the CPU within rounding at each moment, with the same step of every code
-  phase; a phase the solver damps can end a stalled attempt one check (32 sweeps) apart
-  (`tests/test_learned_code_torch.py`, to 1e-9 on a torch CPU device and on CUDA: lessons,
+  phase (`tests/test_learned_code_torch.py`, to 1e-9 on a torch CPU device and on CUDA: lessons,
   outcomes, `live` and `wait`, `value`, imagined branches, copies, a refused moment, `grow`,
-  `graft`, `retune`, files saved on either backend and continued on the other). On the brain of
+  `graft`, `retune`, files saved on either backend and continued on the other). A phase the
+  solver damps can end a stalled attempt a check (32 sweeps) apart on the two; where its last
+  attempt then runs to the end of its share of the budget, the two settled codes agree within
+  the solver's tolerance (4 of 5,760 damped settles read on a torch CPU device). On the brain of
   the reading below at 32 rows on an A10G, twelve lessons with a greedy act each left the
   dictionary within 5.5e-12 of the CPU's, the predictor within 3.9e-12, the thresholds equal and
   the efficacies within 1.6e-10, with every action equal. In float32, the device's default, the

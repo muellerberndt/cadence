@@ -229,15 +229,21 @@ brain's kernel takes the thresholds as its code units' biases the same way, so n
 state settled on either continues on it. The step's tests read the rows of a batch in groups that work within
 128 MiB (`LearnedCode.DEVICE_BYTES`; `brain.learned_code.DEVICE_BYTES = bytes` sets it for a brain while it
 is held, and a file does not carry it): at 1,024 units four rows are factorized at a time, and two are solved
-for their eigenvalues where the factorizations do not settle the step. Where the device fails in a test, by a
-solver's error or by its memory, the host reads the same step and a `RuntimeWarning` names the failure. The
+for their eigenvalues where the factorizations do not settle the step. A group is at least one row, so a wider
+region passes those bytes: an eigenvalue read of one row from about 1,650 units, a factorization from about
+2,650. Where the device fails in a test, by a solver's error or by its memory, the host reads the same step
+and a `RuntimeWarning` names the failure. The
 region's tables and their three learning rules, the key of the memories and the memories themselves
 ([the options that keep them on the host](#memories-on-the-device)) run on the host in NumPy, where a moment
 also makes its warm start from the stream's state and the phase.
 
 In float64 with `learning_fast_settle=False` a life on torch reads as the life on the CPU within rounding at
-each moment, with the same step of every code phase. A phase the solver damps can end a stalled attempt one
-check apart on the two (32 sweeps, the settled state within rounding), so `code_steps` can differ by that.
+each moment, with the same step of every code phase. One case reads within the solver's tolerance instead. A
+phase the solver damps ends a stalled attempt at two repeated states at rounding, which the host and a device
+can reach a check (32 sweeps) apart, so `code_steps` can differ; the later attempts then take other portions
+of the budget, and where the last of them runs to its portion's end the two settled codes agree within the
+tolerance. Of 5,760 damped settles read on a torch CPU device beside the host, 19 ended a check apart with
+their states within rounding and 4 by other sweeps with their states within the tolerance.
 [`tests/test_learned_code_torch.py`](../tests/test_learned_code_torch.py) reads small brains to 1e-9 on a torch
 CPU device and on CUDA where there is one: lessons, outcomes, `live` and `wait`, `value`, imagined branches,
 copies, a refused moment, `grow`, `graft`, `retune`, and files saved on either backend and continued on the

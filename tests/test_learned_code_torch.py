@@ -306,7 +306,7 @@ def test_a_float32_brain_starts_as_the_host_and_keeps_its_kernels(device):
         brain.lesson(x, labels)
         brain.act(x, greedy=True)
     ours, theirs = tables(reference), tables(placed)
-    for name, value in ours.items():
+    for name, value in ours.items():  # one moment of this brain, far above float32's rounding
         np.testing.assert_allclose(theirs[name], value, rtol=0, atol=1e-5, err_msg=name)
     for _ in range(12):
         x = observations(rng, 2)
@@ -454,6 +454,35 @@ def test_a_device_that_fails_in_the_steps_tests_leaves_the_step_to_the_host(
         taught((reference, placed), rng, 6)  # the life goes on, as the host's
     same(reference, placed)
     assert region.device is not None
+
+
+@pytest.mark.parametrize("device", DEVICES)
+def test_the_host_answers_alone_for_what_is_no_failure_of_the_device(device, monkeypatch):
+    """What is not a batch of finite potentials is the host's to refuse, as it refuses it,
+    with no warning of a device; an error that names a defect and no device passes through."""
+    placed, reference = on(device).learned_code, host().learned_code
+    rng = np.random.default_rng(0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        for bad in (np.full((2, placed.units), np.nan), rng.random((2, placed.units + 1))):
+            raised = []
+            for code in (reference, placed):
+                with pytest.raises(Exception) as refusal:
+                    code.stability(bad)
+                raised.append(type(refusal.value))
+            assert raised[0] is raised[1] and issubclass(raised[0], ValueError)
+        assert placed.stability(np.zeros((0, placed.units))) == reference.stability(
+            np.zeros((0, placed.units))
+        )
+
+    def unfinished(*args, **kwargs):
+        raise NotImplementedError("no such solver")
+
+    monkeypatch.setattr(torch.linalg, "cholesky_ex", unfinished)
+    placed.restep(1)
+    v = rng.normal(placed.model.threshold, 0.1, (2, placed.units))
+    with pytest.raises(NotImplementedError, match="no such solver"):
+        placed.stability(v)
 
 
 def _peak_of(device: str, call) -> int | None:
@@ -638,6 +667,20 @@ def test_an_install_the_device_fails_in_returns_the_kernel_as_it_was(device):
     assert region.learn(sensory, activation, context)  # and the same step takes afterwards
     np.testing.assert_array_equal(region.graph.efficacy, region.lateral_efficacy())
     np.testing.assert_array_equal(region._base._torch.host_bias(), -region.thresholds)
+    # tables taken whole (a checkpoint's) return with the kernel too
+    kept = region.dictionary, region.weights, region.thresholds, region.graph, region._base
+    scale, bias = kernel.host_scale(), kernel.host_bias()
+    other = on(device, seed=8).learned_code
+    kernel.stepped = fails
+    try:
+        with pytest.raises(RuntimeError, match="out of memory"):
+            region.take(other.dictionary, other.weights, other.thresholds + 0.25)
+    finally:
+        kernel.stepped = stepped
+    assert (region.dictionary, region.weights, region.thresholds) == kept[:3]
+    assert region.graph is kept[3] and region._base is kept[4]
+    np.testing.assert_array_equal(kernel.host_scale(), scale)
+    np.testing.assert_array_equal(kernel.host_bias(), bias)
 
 
 @pytest.mark.parametrize("device", DEVICES)
