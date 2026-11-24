@@ -29,9 +29,48 @@ import numpy as np
 from .decode import BLANK
 
 
+def _symbols(transcript: Any) -> np.ndarray:
+    """A transcript as its symbols: a sequence of whole numbers from zero. A fraction is refused,
+    where a conversion would round it to another symbol."""
+    given = np.asarray(transcript)
+    if given.ndim != 1 or (len(given) and (
+        given.dtype.kind not in "iuf"
+        or not np.isfinite(given).all()
+        or (given != np.floor(given)).any()
+        or (given < 0).any()
+    )):
+        raise ValueError("a transcript is a sequence of symbols, each a whole number from zero")
+    return given.astype(np.int64)
+
+
+def _beliefs(name: str, log_beliefs: Any, transcript: Any, blank: Any
+             ) -> tuple[np.ndarray, np.ndarray]:
+    """What ``forced_path`` and ``soft_path`` lay a path through: ``(steps, symbols)`` beliefs
+    and a transcript of one symbol or more, each one of the beliefs' symbols. The blank is one
+    of them too, and no symbol of the transcript: a path says it between symbols, and its
+    reading (``collapse``) holds none."""
+    scores = np.asarray(log_beliefs, dtype=np.float64)
+    sequence = _symbols(transcript)
+    if scores.ndim != 2 or len(sequence) == 0:
+        raise ValueError(f"{name} needs (steps, symbols) beliefs and a symbol")
+    symbols = scores.shape[1]
+    if (
+        isinstance(blank, (bool, np.bool_))
+        or not isinstance(blank, (int, np.integer))
+        or not 0 <= blank < symbols
+    ):
+        raise ValueError(f"blank must be one of the beliefs' {symbols} symbols")
+    if (sequence >= symbols).any():
+        raise ValueError(f"the transcript holds a symbol outside the beliefs' {symbols} symbols")
+    if (sequence == blank).any():
+        raise ValueError("the transcript holds the blank, which is no symbol of a transcript")
+    return scores, sequence
+
+
 def even_path(steps: int, transcript: Any) -> np.ndarray:
-    """Each step's symbol on an even split of ``steps`` among the transcript's symbols."""
-    symbols = np.asarray(transcript, dtype=np.int64)
+    """Each step's symbol on an even split of ``steps`` among the transcript's symbols, which
+    are whole numbers from zero."""
+    symbols = _symbols(transcript)
     if steps < 1 or len(symbols) == 0:
         raise ValueError("even_path needs a step and a symbol")
     n = len(symbols)
@@ -44,14 +83,19 @@ def forced_path(log_beliefs: Any, transcript: Any, *, blank: int = BLANK,
     ``(steps, symbols)`` log beliefs, blank allowed on any step and required between a symbol
     and the same symbol after it (CTC's forced alignment, by Viterbi). With ``states`` the
     path's state at each step instead: ``2k + 1`` on the transcript's k-th symbol, even on a
-    blank. A transcript longer than the steps allow is refused."""
-    scores = np.asarray(log_beliefs, dtype=np.float64)
-    sequence = np.asarray(transcript, dtype=np.int64)
-    if scores.ndim != 2 or len(sequence) == 0:
-        raise ValueError("forced_path needs (steps, symbols) beliefs and a symbol")
+    blank. The path's symbols read as the transcript (``collapse``). A belief may be zero (a
+    log belief of ``-inf``) on steps the path does not take.
+
+    Refused: a transcript longer than the steps allow; a transcript the beliefs leave no path,
+    every one of its paths passing a step of belief zero; symbols that are not whole numbers
+    among the beliefs' symbols, or that hold the blank; a blank that is not one of the beliefs'
+    symbols; beliefs with NaN or positive infinity."""
+    scores, sequence = _beliefs("forced_path", log_beliefs, transcript, blank)
     repeats = int(np.sum(sequence[1:] == sequence[:-1]))
     if len(scores) < len(sequence) + repeats:
         raise ValueError("the transcript needs more steps than the utterance holds")
+    if np.isnan(scores).any() or np.isposinf(scores).any():
+        raise ValueError("forced_path needs beliefs without NaN or positive infinity")
     frames = len(scores)
     labels = np.full(2 * len(sequence) + 1, blank, dtype=np.int64)
     labels[1::2] = sequence
@@ -70,6 +114,10 @@ def forced_path(log_beliefs: Any, transcript: Any, *, blank: int = BLANK,
         best[t] = np.choose(choice, [stay, one, two]) + scores[t, labels]
         back[t] = choice
     k = n - 1 if best[-1, n - 1] >= best[-1, n - 2] else n - 2
+    if not best[-1, k] > -np.inf:
+        # neither end state is reached: tracing back from one would give a path that begins
+        # past the transcript's first symbols
+        raise ValueError("the beliefs leave the transcript no path")
     path = np.zeros(frames, dtype=np.int64)
     for t in range(frames - 1, -1, -1):
         path[t] = k if states else labels[k]
@@ -87,7 +135,8 @@ def soft_path(log_beliefs: Any, transcript: Any, *, blank: int = BLANK,
     each symbol over the steps it can take. ``sharpness`` raises every path's weight to that
     power: at 1 a path counts by its probability (CTC's shares), above 1 the better paths count
     for more, and at a large value the rows are the forced path's symbols. A transcript longer
-    than the steps allow is refused."""
+    than the steps allow is refused, and the transcript's symbols and the blank are taken and
+    refused as ``forced_path`` takes them."""
     if (
         isinstance(sharpness, (bool, np.bool_))
         or not isinstance(sharpness, (int, float, np.integer, np.floating))
@@ -95,10 +144,7 @@ def soft_path(log_beliefs: Any, transcript: Any, *, blank: int = BLANK,
         or sharpness <= 0
     ):
         raise ValueError("sharpness must be a positive finite number")
-    scores = np.asarray(log_beliefs, dtype=np.float64)
-    sequence = np.asarray(transcript, dtype=np.int64)
-    if scores.ndim != 2 or len(sequence) == 0:
-        raise ValueError("soft_path needs (steps, symbols) beliefs and a symbol")
+    scores, sequence = _beliefs("soft_path", log_beliefs, transcript, blank)
     if sharpness != 1.0:
         scores = scores * float(sharpness)
     repeats = int(np.sum(sequence[1:] == sequence[:-1]))
