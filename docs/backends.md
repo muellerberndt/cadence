@@ -576,7 +576,8 @@ and use within 1e-9.
 A life leaves with `lives.life(i, stream=True)`: a lone brain that carries its stream as it stands, its pending
 sampled action and that action's eligibility among it, and continues the life where it left. A life joins with
 `lives.join(i, brain)`, taking the place of life `i` with its stream afresh, so a life whose episode finished makes
-room for another without holding the batch. Lives that left mid-stream, sampled and calm, continue on their own as
+room for another without holding the batch. On either backend the brain that leaves is its own and the
+brain that joins stays its caller's. Lives that left mid-stream, sampled and calm, continue on their own as
 their lone brains over 12 moments of `live`, every action the same and every learned part within 1e-9; a brain
 that joins after living alone and a `reset` lives on in the batch as alone over 14 moments, every action and mood
 the same and every learned part within 1e-9.

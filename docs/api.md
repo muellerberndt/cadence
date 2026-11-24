@@ -441,13 +441,13 @@ one call per moment for all of them ([many lives at once](backends.md#many-lives
 | `act(observations, *, greedy=False)` | each life's `Brain.act` on its own row: `(lives, inputs)` in, `(lives,)` out |
 | `step(observations, *, reward=None, done=None, teacher=None)` | each life's `Brain.step`, its own reward, ending and teacher label; a life with no sampled action pending takes a zero reward and no end |
 | `live(observations, *, reward=None, done=None)` | each life's `Brain.live` with its own arousal: a sampled life learns from its outcome, a calm life answers greedily from its forecast, each ends its own episodes; a life with no preceding action takes a zero reward and no end. `salience`, `decision_id` and `lesson` are a lone brain's: `Lives.live` takes none of them |
-| `learn(reward, done, next_observations)` | each life's `Brain.learn`; after `live` the calm lives hold |
-| `lesson(observations, labels)` | each life's `Brain.lesson`; under `learning_surprise` each life is judged by its own answer |
+| `learn(reward, done, next_observations)` | each life's `Brain.learn`; after `live` the calm lives hold; `reward` and `done` are given for every life |
+| `lesson(observations, labels)` | each life's `Brain.lesson`; under `learning_surprise` each life is judged by its own answer; refused for every life while a life's sampled action awaits its outcome |
 | `values(observations)` | each life's `Brain.value` of its own row, `(lives,)`: the bootstrap of a truncated episode, read without changing anything |
 | `reset()` | every life's stream starts afresh; what the lives learned stays |
 | `parameters(i)` | life `i`'s learned state on the host: `efficacy`, `bias`, `w_critic`, `b_critic`, the optimizer's four moments and its counts `updates` and `contrast_updates`, with a recall memory `recall` (its maps by kind), with carried gains `carried_gains`, `carried_second` and `carried_count`, with the store `store` (`consolidated`, `writes`, and `gate_noise`, `fade_depth`, `fade_recent` where named), with maturity `maturity_use` |
-| `life(i, *, stream=False, backend="cpu", device=None, precision=None)` | life `i` as a lone `Brain` with all of that, its arousal and its random state, on the CPU or the place named; its stream starts afresh, and with `stream=True` it carries the life's stream as it stands (its activity, its pending sampled action with its eligibility phases, its eligibility traces, working trace, recall slots, store residual and the record of its last `live`), so the lone brain continues the life where it left |
-| `join(i, brain)` | life `i` becomes the lone `brain` of the lives' anatomy and composition: its learned state, arousal and random state take the place, and its stream begins afresh there, as after `brain.reset()` |
+| `life(i, *, stream=False, backend="cpu", device=None, precision=None)` | life `i` as a lone `Brain` with all of that, its arousal and its random state, on the CPU or the place named; its stream starts afresh, and with `stream=True` it carries the life's stream as it stands (its activity, its pending sampled action with its eligibility phases, its eligibility traces, working trace, recall slots, store residual and the record of its last `live`), so the lone brain continues the life where it left. The brain is its own: what it lives through reaches no life. On the CPU it is a deep copy of the life's lone brain (arrays, stores, stream and random generators its own, the immutable connectome shared), for another place that copy's checkpoint loaded there; without `stream=True` its store holds no residual |
+| `join(i, brain)` | life `i` becomes the lone `brain` of the lives' anatomy and composition: its learned state, arousal and random state take the place, and its stream begins afresh there, as after `brain.reset()`. `brain` stays its caller's, stream and all: the lives hold their own copy |
 | `arousals`, `last_arousal` | each life's `Arousal`, and each life's readings of its latest `live` as `Brain.last_arousal` gives them (on a device the sweeps are the batch's) |
 | `lives`, `seeds`, `brain`, `brains` | the count, the seeds, the batched brain (torch) or the lone brains (CPU) |
 
@@ -458,8 +458,18 @@ teaching point, with one or several regions, observers and motor slots. It refus
 `memory_choice`, a store with a separator, a learned or fixed code, an apical compartment, rehearsal, qualified
 teaching, the efference copy, a held message (`message`), long-term records (`longterm`), tied projections
 (`tied`), `actor_entropy`, `surprise`, a recall memory with several heads, a window, the command, the read of
-when, tokens, the cortex at unit norm or a slot's strength, image inputs, and MPS, which has no float64 for the settles' checks. A
-moment any life refuses is refused for every life.
+when, tokens, the cortex at unit norm or a slot's strength, image inputs, and MPS, which has no float64 for the settles' checks.
+
+On a torch device a moment any life refuses is refused for every life. On the CPU the lives take a
+call in row order: each life's row, label, reward, ending and the action an outcome belongs to are
+checked for every life before any life moves, and a call refused there leaves every life as it was
+(`ValueError` for a row, a label, a reward or an ending, `RuntimeError` for an outcome or a lesson
+no life's action allows). A life that refuses a call it was validly given, as its lone brain does
+(a settle that does not qualify, a step that is not finite), stops the lives there: the lives
+before it have completed their part, it is as its lone brain's refusal leaves it, and the lives
+after it have not begun. Its exception is the lone brain's own with a note that says so, `life`
+(the life that refused) and `completed` (what the lives before it returned, in row order); finish
+such a call life by life through `lives.brains`.
 
 ## Arousal (`cadence.arousal`)
 
