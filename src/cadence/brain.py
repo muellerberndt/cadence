@@ -6553,12 +6553,18 @@ class _MlxKernel:
         the settling neurons' standing input at each of the first ``ramp`` sweeps, ``fixed``, at
         every later one, and the source ranges' ``goals``, ``gaps``, activations and products at
         the ramp's end. ``needed`` counts the sweeps until the sources stand at their drive. A
-        state that settled there under this drive and these parameters already holds them."""
+        state that settled there under this drive and these parameters already holds them, and
+        under new parameters too where its sources' potentials under them read the same."""
         mx, plan = self.mx, self.plan
         assert plan is not None
         held = start.get("drive")
         rows = len(drive)
         same = bool(start.get("relaxed")) and _same_drive(held, drive)
+        goals: dict[int, Any] | None = None
+        gaps: dict[int, Any] | None = None
+        if same and start.get("version") != self.version:  # new biases may move the sources
+            goals, gaps = self._goals(start, drive)
+            same = self._goals_held(start.get("goals"), goals)
         if same:
             fixed, outer = start.get("fixed"), start.get("outer")
             if start.get("version") != self.version:  # the sources stand, under new parameters
@@ -6569,7 +6575,8 @@ class _MlxKernel:
                     "sources": start["sources"], "goals": start["goals"], "gaps": None,
                     "outer": outer, "before": None, "path": None, "peaks": None}
         standing = self._standing(drive)
-        goals, gaps = self._goals(start, drive)
+        if goals is None or gaps is None:
+            goals, gaps = self._goals(start, drive)
         kept = None
         if not (start.get("rest") and plan.at_rest == 0.0):
             kept = start.get("outer") if start.get("version") == self.version else None
@@ -6627,6 +6634,17 @@ class _MlxKernel:
         }
         potentials = start["potentials"]
         return goals, {r: np.array(potentials[r], copy=False) - goals[r] for r in plan.sources}
+
+    def _goals_held(self, held: Mapping[int, Any] | None, goals: Mapping[int, Any]) -> bool:
+        """Whether each source range's potential under this kernel's biases (``goals``) is the
+        one a state ``held``, to the bit: its sources then stand where it left them."""
+        if held is None:
+            return False
+        if not any(_resident(goal) for goal in goals.values()):
+            return all(np.array_equal(held[r], goal) for r, goal in goals.items())
+        mx = self.mx
+        same = [mx.array_equal(_on_device(mx, held[r]), goal) for r, goal in goals.items()]
+        return bool(mx.all(mx.stack(same)).item())
 
     def _ramped(
         self, start: _MlxState, goals: dict[int, Any], gaps: dict[int, Any],

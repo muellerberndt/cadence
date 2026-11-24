@@ -1174,3 +1174,29 @@ def test_the_launchs_check_reads_the_drive_it_ran_under():
         graph.residual(drive, state), graph.residual(drive, state, on_device=False)
     )
     assert graph.residual(drive, state).min() > 1.0
+
+
+@pytest.mark.parametrize("dt", [1.0, 0.5])
+def test_an_update_that_moves_a_source_bias_moves_the_sources_of_a_settled_state(dt):
+    """A state settled under a drive continues under the same drive after an update that moved
+    the bias of neurons no synapse reaches: they go to their new drive, as on the CPU, and the
+    launch's check reads them there."""
+    connectome = cd.layered(8, 12, 4, density=1.0, seed=2)
+    drive = np.zeros((3, connectome.n))
+    drive[:, :8] = np.random.default_rng(0).random((3, 8))
+    step = np.zeros(connectome.n)
+    step[:8] = 0.5  # the input layer: no synapse reaches it
+    after = {}
+    for backend in ("cpu", "mlx"):
+        learner = cd.Learner(
+            cd.NeuralGraph(connectome, cd.learning_neuron_model(dt=dt), backend=backend),
+            connectome.populations["output"],
+        )
+        state = learner.brain.settle_batch(drive, steps=120)
+        learner.apply(np.zeros(connectome.synapses), step)
+        after[backend] = (learner.brain, learner.brain.settle_batch(drive, steps=1, state=state))
+    (cpu, a), (mlx, b) = after["cpu"], after["mlx"]
+    assert launched(b) and mlx._mlx.plan is not None
+    np.testing.assert_allclose(b.v, a.v, rtol=0, atol=1e-5)
+    np.testing.assert_allclose(b.activation, a.activation, rtol=0, atol=1e-5)
+    np.testing.assert_allclose(mlx.residual(drive, b), cpu.residual(drive, a), rtol=0, atol=1e-5)
