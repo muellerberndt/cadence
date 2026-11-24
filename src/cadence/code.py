@@ -326,6 +326,8 @@ class LearnedCode:
         self._base: NeuralGraph | None = None
         self._coupled: Any = None
         self._anchor: tuple[float, Nudge] | None = None  # the standing boundary, made once
+        # the step of a solve from rest and, on the host, the sub-network at it (``rest``)
+        self._rest: tuple[Any, ...] | None = None
         self.graph = NeuralGraph(
             self.connectome, self.model, efficacy=self.lateral_efficacy(), bias=-self.thresholds
         )
@@ -361,7 +363,7 @@ class LearnedCode:
                     bias=-self.thresholds,
                 )
                 self._device, self._base, self._coupled = None, None, None
-                self.graph = graph
+                self.graph, self._rest = graph, None
             return
         import torch
 
@@ -377,7 +379,7 @@ class LearnedCode:
         )
         graph = self._stepped(base)
         self._device, self._base, self._coupled = device, base, None
-        self.graph = graph
+        self.graph, self._rest = graph, None
 
     def _stepped(self, base: NeuralGraph | None = None) -> NeuralGraph:
         """On a device: the sub-network at the present step, of ``base`` where a placement is
@@ -593,6 +595,29 @@ class LearnedCode:
         mu = s_max * (self.model.gain * (1.0 - largest) - self.top_down)
         need = self.model.dt * (1.0 - mu) / self.STEP_MARGIN
         return 0 if need <= 1.0 else int(np.ceil(np.log2(need)))
+
+    def rest(self) -> None:
+        """Take the step every state of the region is stable under (``rest_stability``): the
+        step of a solve that starts from rest and owes nothing to the step a stream has reached.
+        It is a function of the dictionary and the standing gain. The halvings and, on the
+        host, the sub-network at that step are kept while the tables stand, so a run of such
+        solves reads the dictionary's largest eigenvalue and builds the graph once; on a
+        device the base keeps the kernel of each step."""
+        kept = self._rest
+        if (
+            kept is None or kept[0] is not self.dictionary or kept[1] is not self.thresholds
+            or kept[2] != self.top_down
+        ):
+            kept = self._rest = (
+                self.dictionary, self.thresholds, self.top_down, self.rest_stability(), None,
+            )
+        halvings, graph = kept[3], kept[4]
+        if graph is not None:
+            self.halvings, self.graph = halvings, graph
+            return
+        self.restep(halvings)
+        if self._device is None:
+            self._rest = (*kept[:4], self.graph)
 
     def standing(self) -> Nudge | None:
         """The region's standing boundary over its own units: the quadratic anchor toward

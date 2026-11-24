@@ -4853,24 +4853,29 @@ class Brain:
         x = self._observations(observations)
         if self.learned_code is None:
             return self._code(x)
-        key, _ = self._independent_code(x, for_drive=False)
+        key, _ = self._independent_code(x)
         return key
 
-    def _independent_code(self, x: np.ndarray, *, for_drive: bool) -> tuple[np.ndarray, BrainState]:
-        """The learned key from rest and its phase, with the stream's numerical policy preserved."""
+    def _independent_code(self, x: np.ndarray) -> tuple[np.ndarray, BrainState]:
+        """The learned key of observations and the code phase it is read from, for a read that
+        owes nothing to a stream: the region settled once, from rest, at the step every state
+        of it is stable under (``LearnedCode.rest``). Both are functions of the tables and the
+        observations alone, whatever the stream last settled and whatever step it reached. The
+        stream's step, sub-network and latest phase stay as they are; the report of the solve
+        is the read's (``last_settlement``)."""
         region = self.learned_code
         assert region is not None
-        saved_region = region.halvings, region.graph, region.last
+        held = region.halvings, region.graph, region.last
         try:
-            self._step_region(0)
-            phase = self._settle_code(x, context=False, cold=True)
-            key = self._moment_key(x, region.code_of(phase.state.activation))
-            if for_drive and region.halvings:
-                # Build the drive under the selected step if qualification changed it.
-                phase = self._settle_code(x, context=False, report=False, cold=True)
-            return key, phase.state
+            region.rest()
+            phase = self._settle_code(x, context=False, report=False, cold=True)
         finally:
-            region.halvings, region.graph, region.last = saved_region
+            region.halvings, region.graph, region.last = held
+        self._code_settlement = {
+            "code_steps": int(phase.steps),
+            "code_residual": float(np.max(phase.residual)),
+        }
+        return self._moment_key(x, region.code_of(phase.state.activation)), phase.state
 
     def _code(self, x: np.ndarray) -> np.ndarray:
         """The observation code of validated observations; the observations themselves,
@@ -5133,7 +5138,7 @@ class Brain:
         if not memory and region is not None:
             # Independent rows share neither live activity nor a step inherited from the stream.
             x = self._observations(observations, memory=False)
-            key, phase = self._independent_code(x, for_drive=True)
+            key, phase = self._independent_code(x)
             drive = self._stimulus(x, key, memory=False, code_phase=phase)
         elif coded is not None and coded[0] is observations:
             drive = self._stimulus(coded[0], coded[1], memory=memory)

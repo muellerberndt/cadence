@@ -73,20 +73,18 @@ def test_independent_learned_code_is_cold_after_an_unrelated_stream(monkeypatch)
     solve = brain._settle_code
 
     def counted(*args, **options):
-        assert options["cold"]
+        assert options["cold"] and not options["report"]
         phase = solve(*args, **options)
         observed.append(brain.learned_code.halvings)
         return phase
 
     monkeypatch.setattr(brain, "_settle_code", counted)
+    live = brain.learned_code.graph
     brain.predict(query)
-    assert len(observed) == 1 + int(observed[0] != 0)
-    # A settled code on the original step is reused directly.
-    monkeypatch.setattr(brain.learned_code, "stability", lambda v: 0)
-    observed.clear()
-    brain.predict(query)
-    assert observed == [0]
-    assert brain.learned_code.halvings == 1  # independent reads leave the live policy alone
+    # one solve from rest, at the step the dictionary allows over every state
+    assert observed == [brain.learned_code.rest_stability()]
+    # independent reads leave the live policy alone
+    assert brain.learned_code.halvings == 1 and brain.learned_code.graph is live
 
 
 def test_actor_requalifies_after_public_parameter_replacement(tmp_path):
