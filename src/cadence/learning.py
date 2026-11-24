@@ -49,7 +49,16 @@ from typing import Any, cast
 import numpy as np
 
 from .blocks import block_contrast
-from .brain import Backend, Brain, BrainState, Equilibrium, Nudge, _MlxState, _resident
+from .brain import (
+    Backend,
+    Brain,
+    BrainState,
+    Equilibrium,
+    Nudge,
+    _MlxState,
+    _resident,
+    _rows_finite,
+)
 from .connectome import Connectome
 from .neuron import NeuronModel
 
@@ -1616,8 +1625,10 @@ class Learner:
         label does. A distribution has no single answer to agree with: ``surprise`` judges
         labels, and every row of targets is taught.
 
-        A lesson whose taught rows all weigh zero pulls nothing and is the lesson of no row:
-        no nudged phase runs, and the parameters, the optimizer's moments and its count of
+        The drive is refused as the solver refuses it (one column per neuron, finite) before
+        any answer is compared, so a batch that agrees is refused as one that does not. A
+        lesson whose taught rows all weigh zero pulls nothing and is the lesson of no row: no
+        nudged phase runs, and the parameters, the optimizer's moments and its count of
         updates stay as they are.
         """
         target: np.ndarray | None = None
@@ -1637,6 +1648,7 @@ class Learner:
             drive = drive[None, :]
         if drive.ndim != 2 or drive.shape[0] != batch:
             raise ValueError("drive and labels must have the same batch size")
+        self._refuse_drive(drive)
         if weight is not None:
             weight = self._row_weights(weight, batch)
         cfg = self.config
@@ -1751,6 +1763,15 @@ class Learner:
         report["free_budget_exhausted"] = float(exhausted)
         self._warn_exhausted(exhausted)
         return LearnedState(free, nudged, opposite, taught), report
+
+    def _refuse_drive(self, drive: Any) -> None:
+        """Refuse a drive as the solver refuses it, before a lesson reads its labels: one
+        column per neuron, and on the host every entry finite."""
+        n = self.brain.connectome.n
+        if drive.shape[1] != n:
+            raise ValueError("drive must have one column per neuron")
+        if n == 0 or not (_resident(drive) or _rows_finite(drive)):
+            raise ValueError("drive must be finite and the brain must contain neurons")
 
     @staticmethod
     def _row_weights(weight: Any, batch: int) -> np.ndarray:
