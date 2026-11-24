@@ -156,7 +156,7 @@ def _same(given: np.ndarray, kept: np.ndarray) -> bool:
     """Whether ``given``, a float64 array handed to a caller, still reads to the bit as
     ``kept``, the array the library kept beside it: no one wrote it since."""
     return (
-        given.dtype == kept.dtype and given.shape == kept.shape
+        isinstance(given, np.ndarray) and given.dtype == kept.dtype and given.shape == kept.shape
         and bool((given.view(np.int64) == kept.view(np.int64)).all())
     )
 
@@ -576,6 +576,11 @@ class BrainState:
     A state the compiled CPU kernels settled or checked keeps the block products of its
     activations, so a check of it or a settle from it computes only the products whose
     activations differ (the same bits); ``copy`` and ``pickle`` leave them out.
+
+    ``v``, ``activation`` and ``adaptation`` are the caller's to write on every backend: the
+    next settle, check or contrast of the state reads them as they stand. A state settled on
+    a device rests there (``device``) until an array it handed out is written; from then on
+    its host arrays are the state, as they are on the NumPy backend.
     """
 
     v: np.ndarray
@@ -600,7 +605,7 @@ class BrainState:
         handle = self.__dict__.get("device")
         if self.__dict__.get("v") is None and handle is not None and "s" in handle:
             return len(handle["s"].shape) == 2  # the shape alone; no fetch from the device
-        return self.v.ndim == 2
+        return bool(np.ndim(_on_host(self, "v")) == 2)
 
     def row(self, i: int = 0) -> np.ndarray:
         return self.activation[i] if self.batched else self.activation
@@ -729,22 +734,68 @@ class Equilibrium:
         return self.converged
 
 
+# A settled state's host arrays and the device arrays of its handle they are fetched from. A
+# state has one authority. While it rests on a device the device holds it, and the host keeps,
+# with the handle, what it fetched of it (``_image``): the library reads that array and hands a
+# caller a copy of its own. A copy that no longer reads as the kept array was written, and the
+# state is then its host arrays alone (``_resting``).
+_HOST = {"v": "v", "activation": "s", "adaptation": "a"}
+# what an MLX launch's handle reads each of them from: the image holds while that array is the same
+_MLX_SOURCE = {"v": "vm", "s": "sm", "a": "a_host"}
+
+
+def _image(handle: Any, key: str, fetch: bool = True) -> np.ndarray | None:
+    """The host's float64 array of a handle's device array ``key`` (``"v"``, ``"s"``, ``"a"``),
+    as the device holds it: fetched once, kept with the handle beside the device array it was
+    read from, and handed to no caller. A handle made over other arrays (rows of a state)
+    reads its own. Without ``fetch``, None where none is kept."""
+    kept = dict.get(handle, "host")
+    source = dict.get(handle, _MLX_SOURCE[key] if isinstance(handle, _MlxState) else key)
+    held = None if kept is None else kept.get(key)
+    if held is not None and held[0] is source:
+        return cast(np.ndarray, held[1])
+    if not fetch:
+        return None
+    image: np.ndarray = handle["fetch"](key)
+    handle["host"] = {**(kept or {}), key: (source, image)}
+    return image
+
+
+def _on_host(state: BrainState, name: str) -> np.ndarray:
+    """A state's host array ``name`` for the library's own reading. Of a state that rests on a
+    device it is the array kept with the handle, fetched once: no caller holds it, so reading
+    it leaves the state resting where it is (``BrainState.device``)."""
+    value: np.ndarray | None = state.__dict__.get(name)
+    if value is None:
+        handle = state.__dict__.get("device")
+        if handle is None or "fetch" not in handle:
+            raise AttributeError(name)
+        value = state.__dict__[name] = _image(handle, _HOST[name])
+    assert value is not None
+    return value
+
+
 def _lazy(name: str, key: str) -> property:
     """A host array of a settled state that is fetched from the device on first use.
 
     The accelerator kernels leave the state on the device and hand back a fetch; a
     continuation, a contrast on the device and the step count never need the host copy,
-    so it is made only when something reads it.
+    so it is made only when something reads it. The array a caller reads is the caller's to
+    write: of a state that rests on a device it is a copy of the one kept with the handle,
+    and a write to it makes the host arrays the state (``BrainState.device``).
     """
 
     def get(self: BrainState) -> np.ndarray:
         value = self.__dict__.get(name)
+        handle = self.__dict__.get("device")
+        if handle is not None:
+            kept = _image(handle, key, fetch=value is None and "fetch" in handle)
+            if value is None:
+                value = kept
+            if value is not None and value is kept:
+                value = self.__dict__[name] = kept.copy()
         if value is None:
-            handle = self.__dict__.get("device")
-            if handle is None or "fetch" not in handle:
-                raise AttributeError(name)
-            value = handle["fetch"](key)
-            self.__dict__[name] = value
+            raise AttributeError(name)
         return np.asarray(value)
 
     def put(self: BrainState, value: np.ndarray | None) -> None:
@@ -753,8 +804,55 @@ def _lazy(name: str, key: str) -> property:
     return property(get, put)
 
 
-for _name, _key in (("v", "v"), ("activation", "s"), ("adaptation", "a")):
+for _name, _key in _HOST.items():
     setattr(BrainState, _name, _lazy(_name, _key))
+
+
+def _resting(self: BrainState) -> Any:
+    """``BrainState.device``: the handle of the state on its device, while it rests there.
+
+    A host array the state handed to a caller is the caller's to write. Each read of the
+    handle compares those arrays with the ones kept beside it, on the host and with no read of
+    the device; a state none of them was written to keeps its handle, and a settle, a check or
+    a contrast continues on the device. Once one reads otherwise, or the state holds a host
+    array the handle keeps nothing of, the host arrays are the state: the ones not read yet
+    come from the device as it held them, the handle goes, and every reader takes the state
+    as a host state, as on the NumPy backend. None for a state on the host."""
+    held = self.__dict__
+    handle = held.get("device")
+    if handle is None:
+        return None
+    for name, key in _HOST.items():
+        value = held.get(name)
+        if value is not None:
+            kept = _image(handle, key, fetch=False)
+            if value is not kept and (kept is None or not _same(value, kept)):
+                _to_host(self, handle)
+                return None
+    return handle
+
+
+def _to_host(state: BrainState, handle: Any) -> None:
+    """Make the host arrays the state: each one not read yet, or read by the library alone,
+    becomes the state's own copy of what the device holds, the movement comes with them, and
+    the handle goes."""
+    held = state.__dict__
+    for name, key in _HOST.items():
+        value = held.get(name)
+        if value is None or value is _image(handle, key, fetch=False):
+            kept = _image(handle, key)
+            assert kept is not None
+            held[name] = kept.copy()
+    _lazy_change(state)
+    held["device"] = None
+    held.pop("_parts", None)
+
+
+def _put_device(self: BrainState, value: Any) -> None:
+    self.__dict__["device"] = value
+
+
+BrainState.device = property(_resting, _put_device)
 
 
 def _lazy_change(self: BrainState) -> np.ndarray | None:
@@ -1279,9 +1377,7 @@ class Brain:
                     )
                 if result.qualified.all() or used >= budget:
                     return result
-                if not all(np.isfinite(value).all() for value in (
-                    phase.state.v, phase.state.activation, phase.state.adaptation
-                )):
+                if not all(np.isfinite(_on_host(phase.state, name)).all() for name in _HOST):
                     return result
                 current_state = phase.state
             return result
@@ -1324,9 +1420,8 @@ class Brain:
                 np.all(np.abs(after - before) <= rounding * (
                     1 + np.maximum(np.abs(after), np.abs(before))
                 ))
-                for before, after in zip(
-                    (previous.v, previous.activation, previous.adaptation),
-                    (current.v, current.activation, current.adaptation), strict=True,
+                for before, after in (
+                    (_on_host(previous, name), _on_host(current, name)) for name in _HOST
                 )
             )
 
@@ -1368,8 +1463,7 @@ class Brain:
         used, checks, stagnation_checks, repeats = 0, 1, 0, 0
         while used < budget and not (error <= tolerance).all():
             if not np.isfinite(error).all() and any(
-                not np.isfinite(value).all()
-                for value in (current.v, current.activation, current.adaptation)
+                not np.isfinite(_on_host(current, name)).all() for name in _HOST
             ):
                 # A divergent numerical state is not a valid warm start for
                 # another chunk. Return its failed diagnostic instead of raising.
@@ -1543,7 +1637,7 @@ class Brain:
         batch, n = drive.shape
         if n != self.connectome.n:
             raise ValueError("drive must have one column per neuron")
-        if n == 0 or not _drive_finite(drive):
+        if n == 0 or not (_drive_finite(drive) if resident else _rows_finite(drive)):
             raise ValueError("drive must be finite and the brain must contain neurons")
         if mask is not None:
             keep = np.asarray(mask, float)
@@ -1564,11 +1658,12 @@ class Brain:
                 (batch, n),
             ):
                 raise ValueError("nudge anchor must match the drive's neurons and batch size")
+        # the state's handle while it rests on a device; None once its host arrays are the state
+        rests = None if state is None else state.device
         on_kernel = (
-            state is not None
-            and state.device is not None
+            rests is not None
             and self.backend in ("torch", "mlx")
-            and state.device.get("holder")
+            and rests.get("holder")
             is (self._torch if self.backend == "torch" else self._mlx).root
         )
         v: Any
@@ -1578,18 +1673,18 @@ class Brain:
             v = a = None if self.backend == "torch" else np.zeros((batch, n))
             if self.backend != "torch":
                 a = np.zeros((batch, n))
-        elif on_kernel:  # the state never left the device: no host array is read
-            assert state is not None and state.device is not None
+        elif on_kernel:  # the state rests on the device: no host array is read
+            assert rests is not None
             v = a = None
-            if tuple(state.device["s"].shape) != (batch, n):
+            if tuple(rests["s"].shape) != (batch, n):
                 raise ValueError("state batch does not match the drive batch")
         elif self.backend in ("torch", "mlx"):  # the kernels never write the host arrays
-            v, a = np.atleast_2d(state.v), np.atleast_2d(state.adaptation)
+            v, a = np.atleast_2d(_on_host(state, "v")), np.atleast_2d(_on_host(state, "adaptation"))
         else:
             # CPU kernels update in place; integer or float32 warm states must not
             # truncate potentials or silently lower the documented float64 precision.
-            v = np.array(state.v, dtype=np.float64, copy=True, ndmin=2)
-            a = np.array(state.adaptation, dtype=np.float64, copy=True, ndmin=2)
+            v = np.array(_on_host(state, "v"), dtype=np.float64, copy=True, ndmin=2)
+            a = np.array(_on_host(state, "adaptation"), dtype=np.float64, copy=True, ndmin=2)
         if v is not None and (v.shape != (batch, n) or a.shape != (batch, n)):
             raise ValueError("state batch does not match the drive batch")
         if v is not None and not (
@@ -1655,24 +1750,31 @@ class Brain:
     ) -> tuple[np.ndarray, np.ndarray] | None:
         """``sum_b s+ s+ - s- s-`` per synapse and ``sum_b (s+ - s-)`` per neuron, on the device.
 
-        Returns ``None`` when the brain has no device kernel or either state does not carry
-        this brain's device handle; the learner then reads the activations on the host.
+        Returns ``None`` when the brain has no device kernel or either state does not rest on
+        it (one settled elsewhere, or one whose host arrays a caller wrote); the learner then
+        reads the activations on the host.
         """
         kernel = self._torch if self.backend == "torch" else self._mlx
-        if kernel is None or plus.device is None or minus.device is None:
+        if kernel is None:
+            return None
+        ours, theirs = plus.device, minus.device
+        if ours is None or theirs is None:
             return None
         holder = kernel.root
-        if plus.device.get("holder") is not holder or minus.device.get("holder") is not holder:
+        if ours.get("holder") is not holder or theirs.get("holder") is not holder:
             return None
-        out: tuple[np.ndarray, np.ndarray] = kernel.contrast(plus.device["s"], minus.device["s"])
+        out: tuple[np.ndarray, np.ndarray] = kernel.contrast(ours["s"], theirs["s"])
         return out
 
     def _small_contrast(self, plus: BrainState) -> bool:
         """Whether a contrast costs the host less than the synchronization its launch takes: on
         MLX, few rows of small blocks whose activations the host reads anyway."""
-        if self._mlx is None or self._mlx.plan is None or not isinstance(plus.device, _MlxState):
+        if self._mlx is None or self._mlx.plan is None:
             return False
-        rows = int(plus.device["vm"].shape[0])
+        handle = plus.device
+        if not isinstance(handle, _MlxState):
+            return False
+        rows = int(handle["vm"].shape[0])
         return rows * self.layout.size < _MLX_CONTRAST_ENTRIES
 
     def residual(
@@ -1757,8 +1859,8 @@ class Brain:
             ))
         if _resident(d):
             d = _host_copy(d)
-        v = np.atleast_2d(state.v)
-        a = np.atleast_2d(state.adaptation)
+        v = np.atleast_2d(_on_host(state, "v"))
+        a = np.atleast_2d(_on_host(state, "adaptation"))
         if v.shape != d.shape or a.shape != d.shape:
             raise ValueError("state batch does not match the drive batch")
         if not per_unit and _FUSED and (compiled := self._fused_blocks()) is not None:
@@ -1879,12 +1981,13 @@ class Brain:
             return gain
         if _resident(d):
             d = _host_copy(d)
-        s = np.atleast_2d(np.asarray(state.activation, dtype=float))
+        s = np.atleast_2d(np.asarray(_on_host(state, "activation"), dtype=float))
         basal, raw = self._split_input(s, *self._apical_transports())
         basal += d + self.bias
         adapt = self.neuron_model.adaptation
         if adapt is not None:
-            basal -= adapt.strength * np.atleast_2d(np.asarray(state.adaptation, dtype=float))
+            held = np.asarray(_on_host(state, "adaptation"), dtype=float)
+            basal -= adapt.strength * np.atleast_2d(held)
         return apical.gain(basal, raw)
 
     def _fused_blocks(self) -> tuple[np.ndarray, Any] | None:
@@ -4588,7 +4691,8 @@ class _TorchKernel:
     ) -> tuple[Any, Any, Any, np.ndarray | None, int, np.ndarray | None, Any]:
         torch = self.torch
         batch = drive.shape[0]
-        handle = state.device if state is not None and state.device is not None else None
+        # ``settle_batch`` read the state's handle: it is taken here as it stands
+        handle = None if state is None else state.__dict__.get("device")
         if (
             steps == 0 and not want and capture is None and handle is not None
             and handle.get("holder") is self.root and handle.get("unmasked")
@@ -4608,6 +4712,10 @@ class _TorchKernel:
                 ws.v[0].zero_()
             else:
                 a_in = self._upload(a0)
+                if ws.a is None and self.device.type == "cpu":
+                    # the state keeps this array: an upload on the CPU can read the host
+                    # array's own memory, which is the caller's to write
+                    a_in = a_in.clone()
                 ws.v[0].copy_(self._upload(v0).T)
             if ws.a is not None:
                 ws.a[0].copy_(a_in.T)
@@ -5744,7 +5852,7 @@ class _MlxKernel:
         def to(x: np.ndarray) -> Any:
             return mx.array(np.asarray(x, dtype=np.float32))
 
-        handle = state.device if state is not None and state.device is not None else None
+        handle = None if state is None else state.__dict__.get("device")  # as ``settle_batch`` read
         if handle is not None and handle.get("holder") is self.root:
             v, a = handle["v"], handle["a"]
         else:
@@ -5806,14 +5914,18 @@ class _MlxKernel:
             taken = t + 1
             if bounded and tolerance is not None and float(out[4].item()) < tolerance:
                 break
+        # the state's host arrays are what the device holds, kept with the handle (``_image``)
+        resting = {"v": v, "a": a, "s": s}
+        hosted = {key: np.array(array, dtype=np.float64) for key, array in resting.items()}
         return (
-            np.array(v, dtype=np.float64),
-            np.array(a, dtype=np.float64),
-            np.array(s, dtype=np.float64),
+            hosted["v"],
+            hosted["a"],
+            hosted["s"],
             (np.stack(traj) if traj else np.empty((0, batch, self.n))) if want else None,
             taken,
             np.array(activity_change, dtype=np.float64),
-            {"kernel": "mlx", "holder": self.root, "v": v, "a": a, "s": s},
+            {"kernel": "mlx", "holder": self.root, **resting,
+             "host": {key: (resting[key], hosted[key]) for key in resting}},
         )
 
     # -- a lesson's update on the device: the same arithmetic per block entry, in float32
@@ -6310,10 +6422,11 @@ class _MlxKernel:
         self, v0: np.ndarray | None, a0: np.ndarray | None, state: BrainState | None, rows: int,
     ) -> _MlxState:
         """A settle's start on the device: the state's own handle where it rests here; else its
-        arrays cut by range, uploaded where they stand on the host."""
+        arrays cut by range, uploaded where they stand on the host. The caller read the
+        state's handle (``BrainState.device``), and it is taken here as it stands."""
         mx, plan = self.mx, self.plan
         assert plan is not None
-        handle = None if state is None else state.device
+        handle = None if state is None else state.__dict__.get("device")
         if isinstance(handle, _MlxState) and handle.get("holder") is self.root:
             return handle
         spans = plan.spans
@@ -6345,7 +6458,8 @@ class _MlxKernel:
             else:
                 sm = plan.activate(vm)
                 sources = {r: plan.activate(mx.array(p)) for r, p in potentials.items()}
-            a_host = a0
+            # the state keeps the adaptation: its own copy of a caller's array, which may be written
+            a_host = a0 if rest else np.array(a0, dtype=np.float64)
         return _MlxState(
             kernel="mlx", holder=self.root, plan=plan, vm=vm, sm=sm, sources=sources,
             potentials=potentials, a_host=a_host, moved=[], source_moves=[], rest=rest,
@@ -6735,8 +6849,8 @@ class _MlxKernel:
         ):
             return np.array(handle["gains"], dtype=np.float64)
         on_device = handle is not None and handle.get("holder") is self.root
-        v0 = None if on_device else np.atleast_2d(state.v)
-        a0 = None if on_device else np.atleast_2d(state.adaptation)
+        v0 = None if on_device else np.atleast_2d(_on_host(state, "v"))
+        a0 = None if on_device else np.atleast_2d(_on_host(state, "adaptation"))
         start = self._start(v0, a0, state, rows)
         if int(start["vm"].shape[0]) != rows:
             raise ValueError("state batch does not match the drive batch")
