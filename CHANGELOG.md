@@ -11,7 +11,9 @@ around the settle (the map of things, the bound records' read) have compiled for
 arithmetic, with one stated exception: natively a map of things moves in its last bits
 ([what moves](#what-moves-in-its-last-bits)). Every brain acts and learns as on 0.102.0 in the
 lives read, and a brain without a map describes itself and saves as on 0.102.0 too, to the bit
-(the version string apart).
+(the version string apart). The release also fixes the defects an audit of 0.102.0 reproduced
+([fixes](#fixes)): each changes what happens in the case it names, and the lives read against
+0.102.0 are the same with them.
 
 ```js
 // a page: the module of the library's version, named before cadence is imported
@@ -90,6 +92,107 @@ The guides are [in a browser](docs/backends.md#in-a-browser) and
   `ValueError` before anything changes; a lesson whose phase is refused leaves the outcome
   learned and nothing pending ([qualification and refusal](docs/life.md#qualification-and-refusal)).
   `Lives.live` takes no lesson.
+
+### Fixes
+
+An audit of 0.102.0 reproduced nineteen defects of the library and three of its release tooling.
+Each is fixed with tests that fail on 0.102.0.
+
+Learning and evaluation:
+
+- **`fit` teaches a learned code's minibatches on the drive of the present weights.** `fit` made
+  the drive of the whole dataset once. With a learned code a row's drive reads the weights the
+  lessons move, so from the second minibatch on a row was taught under a drive its brain no
+  longer gives. `fit` now makes a learned code's minibatch drive as its lesson begins, as
+  `predict` makes it; without a learned code nothing changes.
+- **A lesson whose rows all weigh zero is the lesson of no row.** On a brain that had learned,
+  the optimizer's momentum moved the weights under a lesson of weight zero and its count of
+  updates advanced. No teaching phase runs now, and the weights, the optimizer's history and
+  its counts stay. An episodic memory records no demonstration for a row of weight zero.
+- **An independent sample reads no bound record.** `predict`, `accuracy`, `fit` and
+  `stimulus(memory=False)` completed an observation given by name from the records of bound
+  moments, so a cold answer could come from a stored association. The senses such an
+  observation leaves silent now stay silent, by name as for rows of the whole width.
+- **`Learner.step` refuses a malformed drive before it compares answers.** A batch whose answer
+  agreed with its labels returned before the drive's width and finiteness were checked. The
+  whole drive is refused as the solver refuses it, on the host and on a device.
+
+Reward and episodes:
+
+- **A reward pays the record of the moment the brain acted at.** A moment `wait` sensed before
+  the reward, or another stream's moment, could take the awaited record's slot in a full store
+  of bound records, and the reward paid the record that replaced it. The record a reward is
+  awaited for is not replaced (`LongTermMemory.write(spare=)`): a sensed moment replaces another
+  record, and in a store whose every record awaits a reward it is not written.
+- **An episode's end begins the long-term records' turn afresh in a learned outcome too.**
+  `done` given with a sampled outcome (`step`, `learn`, aroused `live`) left the turn of the
+  brain's long-term records as it was, and the next episode's fact was not recorded. The turn
+  now begins afresh as after `reset()`; the records stay.
+
+Many lives on the CPU:
+
+- **`Lives` checks a call for every life before any life moves.** A row that was not finite or
+  a label outside its choices was refused after the lives before it had acted or learned. Rows,
+  labels, outcomes and their owners are checked first, and a refused call leaves every life as
+  it was. A life that refuses a call it was validly given still stops the lives in row order;
+  its exception now says which lives have moved (`life`, `completed`). On a torch device a
+  moment any life refuses is refused for every life, as before.
+- **A life that leaves, and a brain that joins, is a brain of its own.** `Lives.life(i)` on the
+  CPU returned the population's own brain, and `join` installed its argument, so two rows could
+  be one brain. `life` returns a copy with its stream afresh (the life's with `stream=True`) on
+  the place named, and `join` keeps a copy.
+
+Backends:
+
+- **A drive that rests on a device is refused where a host array is.** `settle_batch` passed a
+  torch tensor or an MLX array unread, and a drive that was not finite settled into a state that
+  was not finite.
+- **A state's selected activity is read at the neurons its index names.** `BrainState.part` and
+  the torch kernel kept what they fetched under the index array's identity, so an index written
+  in place read the neurons it named before.
+- **A learned code's placement that fails leaves the region where it was.**
+  `LearnedCode.place` published the new device before the whole sub-network of that place
+  stood.
+- **A nudge whose arrays were written is checked and solved as it reads now.** The compiled
+  CPU kernels kept a copy of a nudge's target under the batch size, and MLX the check of its
+  last launch under the nudge's identity. After a target written in place the residual read
+  below 1e-7 where the reference reads 0.30, and a solve took no sweep. What is made from a
+  nudge is now kept under the bytes it was made from, and the kernels read whole rows in place.
+- **A state whose host arrays were written is those arrays, on every backend.** On MLX and MPS
+  a settle from a state continued the device's buffers whatever the caller had written to the
+  arrays it was given, and the write was lost at the first sweep. A state now has one
+  authority: a state that was written becomes its host arrays, and a state nobody wrote
+  continues on its device with no upload. The arrays a device state hands out are copies.
+- **The residual of a written state is the residual of its arrays.** On MLX `residual` answered
+  with its launch's own check, 0 where the float64 reference of the arrays reads 1; the apical
+  gain a launch had read was returned the same way.
+
+Files and speech:
+
+- **A map or module save that fails leaves the file that was there.** `Map.save`, `save_module`
+  and `Space.save` opened the destination before the archive was written; they now write the
+  whole file beside it and move it into place, as `Brain.save` does.
+- **A forced path reads as its transcript, or the transcript is refused.** `forced_path`
+  returned a path of blanks for a transcript its beliefs leave no path. `forced_path`,
+  `soft_path` and `even_path` also refuse symbols that are no whole numbers among the beliefs'
+  symbols.
+- **A correction the brain would refuse is refused whole.** `Rehearsal.correct` taught the
+  steps before a bad label and left the brain in the middle of the utterance. Every step is
+  checked before the brain is reset, and a settle refused in the middle of a correction leaves
+  the brain at rest.
+- **The rehearsal bank holds copies of its own.** It kept the caller's arrays, and a capture
+  buffer filled again replaced the utterances in the bank.
+
+Release tooling and tests:
+
+- `benchmarks/forager/summary.py` gives a gate's verdict on the declared panel alone; an
+  incomplete panel reads `incomplete`, and a second life of a founder's arm is refused.
+- The source archive holds `.github/ISSUE_TEMPLATE.md`, which its `AGENTS.md` links, so its own
+  documentation tests pass.
+- `.gitattributes` checks every text file out with LF line endings: under `core.autocrlf` the
+  archived sources and receipts that tests hash keep their bytes (#368).
+- The option-combination test accepts last bits of numbers as the known difference of #346 and
+  fails on any other difference between two continued lives.
 
 ### What moves in its last bits
 
