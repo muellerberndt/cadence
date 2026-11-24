@@ -3508,8 +3508,9 @@ class Brain:
         ran for the preceding outcome; ``recorded`` that the outcome which woke
         the brain was written to its memory. ``sweeps`` counts the free-solve
         sweeps of this moment's forecast and answer; ``learning_sweeps`` the
-        eligibility and feedback sweeps. These are counts of numerical work,
-        not energy. Diagnostics are not checkpointed.
+        eligibility and feedback sweeps (a lesson given to the moment reports its own, as
+        ``lesson`` does: ``last_learning["demonstration_total_steps"]``). These are counts
+        of numerical work, not energy. Diagnostics are not checkpointed.
         """
         return self._last_arousal
 

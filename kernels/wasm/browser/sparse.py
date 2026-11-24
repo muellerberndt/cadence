@@ -1,10 +1,10 @@
 """The blocks read by their synapses (``fused.sparse_offset``) against the whole blocks: the
 same lives with each low-density block's product summed over its synapses and over its whole
-block (``sparse_offset`` handing the kernels ``layout.offset`` alone). Wild's map over lives
-whose things move in and out of view, and Wild's pocket brain (an apical compartment, recall
-heads, bound records) living on random observations. Under Pyodide to the bit: the product of
-a whole block sums its rows in order, as the synapses' sum does. Natively the whole blocks'
-products run in BLAS, so the lives agree within rounding.
+block (``sparse_offset`` handing the kernels ``layout.offset`` alone). A map of valued things
+over lives whose things move in and out of view, and the composed brain (an apical compartment,
+recall heads, bound records) living on random observations. Under Pyodide to the bit: the
+product of a whole block sums its rows in order, as the synapses' sum does. Natively the whole
+blocks' products run in BLAS, so the lives agree within rounding.
 
     python kernels/wasm/browser/run.py sparse.py [moments]      # Pyodide, the WebAssembly kernel
     python kernels/wasm/browser/sparse.py fused [moments]        # native, Numba
@@ -19,16 +19,15 @@ engine.choose("wasm" if engine.BROWSER else "fused")
 MOMENTS = int(sys.argv[-1]) if len(sys.argv) > 1 and sys.argv[-1].isdigit() else 120
 
 import numpy as np  # noqa: E402
-from compositions import POCKET, observation, pocket_map  # noqa: E402
+from compositions import COMPOSED, observation, things_map  # noqa: E402
 
 import cadence as cd  # noqa: E402
 from cadence import fused  # noqa: E402
 
-engine.fit_32_bit_numpy()
 
 
 def map_life(moments):
-    held = pocket_map()
+    held = things_map()
     side = held.plane[1] - held.plane[0]
     rng = np.random.default_rng(2)
     kinds = len(held.codes)
@@ -51,15 +50,15 @@ def map_life(moments):
 
 
 def brain_life(moments):
-    brain = cd.Brain.compose(**POCKET, backend="cpu", seed=4, arousal=True)
-    space = brain.space = pocket_map()
+    brain = cd.Brain.compose(**COMPOSED, backend="cpu", seed=4, arousal=True)
+    space = brain.space = things_map()
     rng = np.random.default_rng(5)
     out = []
     for i in range(moments):
         seen = [(0, [6.0, 6.0], {"hue": np.eye(4)[0]}),
                 (1, [4.0 + 0.1 * (i % 120), 12.0], {"hue": np.eye(4)[2]})]
         space.moment(seen=seen, lit=lambda points: points[:, 0] < 16.0)
-        x = observation(POCKET, rng)
+        x = observation(COMPOSED, rng)
         if i % 5 == 4:
             action = brain.act(x, greedy=True)
         elif brain.pending_feedback:
@@ -74,7 +73,7 @@ def brain_life(moments):
 
 failures = 0
 sparse = fused.sparse_offset
-for label, life in (("Wild's map", map_life), ("pocket brain", brain_life)):
+for label, life in (("valued map", map_life), ("composed brain", brain_life)):
     by_synapses = life(MOMENTS)
     fused.sparse_offset = lambda layout, apical=None: np.asarray(layout.offset, dtype=np.int64)
     try:

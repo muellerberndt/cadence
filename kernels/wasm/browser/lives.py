@@ -21,11 +21,10 @@ ENGINE = engine.choose(sys.argv[1] if len(sys.argv) > 1 else "fused")
 MOMENTS = int(sys.argv[2]) if len(sys.argv) > 2 else 300
 
 import numpy as np  # noqa: E402
-from compositions import COMPOSITIONS, POCKET, observation, pocket_map  # noqa: E402
+from compositions import COMPOSED, COMPOSITIONS, observation, things_map  # noqa: E402
 
 import cadence as cd  # noqa: E402
 
-engine.fit_32_bit_numpy()
 
 def packed(x):
     return base64.b64encode(np.ascontiguousarray(x, dtype=np.float64).tobytes()).decode()
@@ -34,8 +33,8 @@ def packed(x):
 def life(label, options, moments, seed=0):
     brain = cd.Brain.compose(**options, backend="cpu", seed=seed, arousal=True)
     space = None
-    if options is POCKET:
-        space = brain.space = pocket_map()
+    if options is COMPOSED:
+        space = brain.space = things_map()
     rng = np.random.default_rng(seed + 1)
     actions = []
     began = time.perf_counter()

@@ -88,3 +88,48 @@ def test_an_invalid_lesson_refuses_before_any_live_state_changes(tmp_path, lesso
         body.live(OBSERVATIONS[[1]], reward=[0.0], decision_id=decision, lesson=lesson)
     assert body.decision_id == decision and body.pending_feedback
     same_archives(before, archive(body, tmp_path / "after"))
+
+
+def test_the_lesson_reports_beside_the_outcome_and_a_calm_brain_takes_it():
+    body = brain(youth=0)  # calm from its first moment: nothing rouses it here
+    body.live(OBSERVATIONS[[0]])
+    before = body.learner.updates
+    body.live(OBSERVATIONS[[1]], reward=[0.0], lesson=(shown(1), None))
+    assert body.last_arousal["mode"] == "routine" and not body.last_arousal["learned"]
+    assert body.learner.updates == before + 1  # the lesson's step alone
+    assert body.last_learning["demonstration_accepted"]
+    assert body.last_learning["demonstration_total_steps"] > 0
+
+
+def test_a_life_saved_after_a_lesson_continues_as_the_life_that_went_on(tmp_path):
+    body = brain()
+    body.live(OBSERVATIONS[[0]])
+    for t in range(1, 5):
+        body.live(OBSERVATIONS[[t]], reward=[0.3], lesson=(shown(t % 3), 0.5))
+    resumed = cd.Brain.load(body.save(tmp_path / "between"))
+    for t in range(5, 9):
+        mine = body.live(OBSERVATIONS[[t % 6]], reward=[-0.1], lesson=(shown(t % 3), None))
+        theirs = resumed.live(OBSERVATIONS[[t % 6]], reward=[-0.1], lesson=(shown(t % 3), None))
+        assert np.array_equal(mine, theirs)
+    same_archives(archive(body, tmp_path / "body"), archive(resumed, tmp_path / "resumed"))
+
+
+def test_a_refused_lesson_leaves_the_outcome_learned_and_nothing_pending(monkeypatch):
+    body = brain()
+    body.live(OBSERVATIONS[[0]])
+    before = body.learner.updates
+    teach = body._teach
+
+    def refuse(*args, **kwargs):  # stands for a phase that does not qualify
+        raise RuntimeError("the lesson's phase is refused")
+
+    monkeypatch.setattr(body, "_teach", refuse)
+    with pytest.raises(RuntimeError, match="phase is refused"):
+        body.live(OBSERVATIONS[[1]], reward=[0.2], lesson=(shown(1), None))
+    assert body.learner.updates == before + 1  # the outcome was learned, the lesson was not
+    assert not body.pending_feedback
+    monkeypatch.setattr(body, "_teach", teach)
+    with pytest.raises(RuntimeError, match="preceding action"):
+        body.live(OBSERVATIONS[[1]], reward=[0.2], lesson=(shown(1), None))
+    body.live(OBSERVATIONS[[1]], lesson=(shown(1), None))  # the retry: without the outcome
+    assert body.learner.updates == before + 2 and body.pending_feedback

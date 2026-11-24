@@ -1,7 +1,7 @@
 """The map of things on the compiled path against its Python: moments with reports, sight and
-physics, the moves its surprise reads, questions by place and by value, on Wild's map and two
-others. Under Pyodide to the bit; natively within 1e-9 (NumPy's BLAS sums a piece's weighted
-middle in another order than the compiled loop).
+physics, the moves its surprise reads, questions by place and by value, on a map of valued
+things with physics and surprise and on two others. Under Pyodide to the bit; natively within
+1e-9 (NumPy's BLAS sums a piece's weighted middle in another order than the compiled loop).
 
     python kernels/wasm/browser/run.py maps.py           # Pyodide, the WebAssembly kernel
     python kernels/wasm/browser/maps.py fused            # native, Numba
@@ -23,7 +23,7 @@ assert compiled.available(), "the map's kernel is not in use"
 
 
 def maps():
-    yield "Wild's map", lambda: Map((0.0, 24.0, 0.0, 24.0), (8, 8), units=4, values={"hue": 4},
+    yield "valued map", lambda: Map((0.0, 24.0, 0.0, 24.0), (8, 8), units=4, values={"hue": 4},
                                     reach=3.0, step=1.8, stride=6.0, margin=0.3,
                                     physics={"noise": 0.3}, surprise=True)
     yield "plain map", lambda: Map((0.0, 10.0, 0.0, 10.0), (6, 5), units=3, empty="near")

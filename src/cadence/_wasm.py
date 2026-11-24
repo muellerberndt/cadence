@@ -9,14 +9,10 @@ before ``cadence`` is imported::
     pyodide.runPython(
       "import os; os.environ['CADENCE_WASM'] = '/home/pyodide/cadence_kernel.wasm'");
 
-or by calling ``cadence._wasm.load(path_or_bytes)`` before its first brain. The library then
-takes its compiled path as it does with Numba: ``cadence.fused`` holds a function of the same
-name and arguments for each kernel, which hands its arrays to the module. ``CADENCE_FUSED=0``
-keeps the NumPy loop, as everywhere.
-
-This file also serves a release of the library from before it (0.101.0, whose kernels it
-speaks): saved beside that wheel as ``cadence_wasm.py``, ``import cadence_wasm;
-cadence_wasm.load(path)`` gives that release's ``cadence.fused`` the same kernels.
+The library then takes its compiled path as it does with Numba: ``cadence.fused`` holds a
+function of the same name and arguments for each kernel, which hands its arrays to the module,
+and ``cadence.compiled`` the kernels of the parts around the settle. ``CADENCE_FUSED=0`` keeps
+the NumPy loop, as everywhere.
 
 The module runs in Pyodide's own memory: it imports Pyodide's memory, its stack pointer,
 ``malloc``, ``free`` and the C library's ``exp`` (the one NumPy calls). An array is handed over as
@@ -99,14 +95,6 @@ def load(source: str | bytes | None = None) -> bool:
     path ``CADENCE_WASM`` names) and give ``cadence.fused`` its kernels. Returns whether they are
     in use; outside Pyodide, without a file, or with ``CADENCE_FUSED=0`` nothing is loaded."""
     global _EXPORTS
-    if __name__ != "cadence._wasm":  # this file beside a wheel: the wheel's own loader, if any
-        inside: Any
-        try:
-            from cadence import _wasm as inside
-        except ImportError:  # a release before it: this file stands in
-            inside = None
-        if inside is not None:
-            return bool(inside.load(source))
     if _EXPORTS is not None:
         return True
     if sys.platform != "emscripten" or os.environ.get("CADENCE_FUSED", "1") == "0":
@@ -130,33 +118,14 @@ def load(source: str | bytes | None = None) -> bool:
                       RuntimeWarning, stacklevel=2)
         return False
     _EXPORTS = exports
-    import cadence  # noqa: F401  (every module first: each reads at import that Numba is absent)
-    from cadence import brain, fused
+    from . import brain, fused
+    from . import compiled as parts
 
     install(vars(fused))
-    try:
-        from cadence import compiled as parts
-    except ImportError:  # a release before the parts' kernels
-        parts = None
-    if parts is not None:
-        parts._map_settle = _caller("map_settle")
-        parts._bound_recall = _caller("bound_recall")
-        parts._map_pieces = _caller("map_pieces")
-        parts._map_moves = _caller("map_moves")
-        parts._map_write_values = _caller("map_write_values")
-        if hasattr(parts, "_map_report"):  # a release before the report's kernel has none
-            parts._map_report = _caller("map_report")
-    if not hasattr(fused, "_wasm"):  # a release before this file: its kernels assert Numba
-        fused.njit = _no_numba
-        fused._threads = lambda: False
+    for name in _PARTS:
+        setattr(parts, "_" + name, _caller(name))
     brain._FUSED = brain._fused_available()
     return True
-
-
-def _no_numba(*args: Any, **kwargs: Any) -> Any:
-    """What a release's ``fused.njit`` holds once the module stands in for Numba there: its
-    kernels are made, and nothing compiles another."""
-    raise RuntimeError("cadence: the kernels here are the WebAssembly module's; Numba is absent")
 
 
 # -- the calls: each export takes its arrays as object addresses ------------------------------
@@ -167,6 +136,10 @@ def _no_numba(*args: Any, **kwargs: Any) -> Any:
 # module takes it, the written ones copied back.
 
 _ARRAYS = {"d": np.float64, "w": np.float64, "q": np.int64, "i": np.int64, "?": np.bool_}
+
+# the kernels of ``cadence.compiled``, each held there under its name with an underscore
+_PARTS = ("map_settle", "bound_recall", "map_pieces", "map_moves", "map_write_values",
+          "map_report")
 
 _KINDS = {
     "settle_rows": "wwwddqdqqqqq?dbfffffbffbddqnfddddbqqqqfffdbnfbdbww",

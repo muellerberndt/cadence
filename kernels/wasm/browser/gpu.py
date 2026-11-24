@@ -1,5 +1,5 @@
 """A batch of lives settled on the GPU (``kernels/webgpu/lives.js``, WebGPU, float32) against the
-WebAssembly kernel (float64) on the same lives: Wild's pocket brain, each life its own synapses,
+WebAssembly kernel (float64) on the same lives: the composed brain, each life its own synapses,
 a free settle of ``SWEEPS`` sweeps from rest under a drive of its own. Reads the milliseconds per
 life of the WebAssembly lives kernel, of lone settles and of the GPU (upload, sweeps, read back),
 and how far the GPU's activations lie from the float64 ones (passing under 1e-5 on activations,
@@ -22,7 +22,7 @@ SWEEPS = int(sys.argv[1]) if len(sys.argv) > 1 else 30
 SIZES = [int(x) for x in sys.argv[2:]] or [12, 50, 200, 1000]
 
 import numpy as np  # noqa: E402
-from compositions import POCKET  # noqa: E402
+from compositions import COMPOSED  # noqa: E402
 from js import Object  # noqa: E402
 from pyodide.code import run_js  # noqa: E402
 from pyodide.ffi import to_js  # noqa: E402
@@ -30,10 +30,10 @@ from pyodide.ffi import to_js  # noqa: E402
 import cadence as cd  # noqa: E402
 from cadence import _wasm, fused  # noqa: E402
 
-engine.fit_32_bit_numpy()
 lives_call = _wasm._caller("settle_lives")
 TOLERANCE = 1e-5
-module = await run_js("import('/webgpu/lives.js')")  # noqa: F704
+# the page's own origin: under Pyodide a bare path resolves against Pyodide's folder
+module = await run_js("import(location.origin + '/webgpu/lives.js')")  # noqa: F704
 try:
     gpu = await module.GpuLives.create()  # noqa: F704
     print("adapter", gpu.adapter.info.vendor, gpu.adapter.info.architecture, flush=True)
@@ -97,7 +97,7 @@ def settler(graph, block, m: int):
 
 rows, failures = [], 0
 for lives in SIZES:
-    distinct = [cd.Brain.compose(**POCKET, backend="cpu", seed=s, arousal=True).learner.brain
+    distinct = [cd.Brain.compose(**COMPOSED, backend="cpu", seed=s, arousal=True).learner.brain
                 for s in range(min(lives, 100))]
     graphs = [distinct[k % len(distinct)] for k in range(lives)]
     g0 = graphs[0]

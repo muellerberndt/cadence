@@ -21,7 +21,6 @@ import numpy as np  # noqa: E402
 from cadence import _wasm, fused  # noqa: E402
 
 assert _wasm.available(), "the WebAssembly kernels did not load"
-engine.fit_32_bit_numpy()
 EVERY = 1
 
 fake = types.ModuleType("numba")

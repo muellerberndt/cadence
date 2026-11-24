@@ -19,7 +19,7 @@ pytestmark = pytest.mark.skipif(not compiled.available(), reason="the map's kern
 KERNELS = ("_map_settle", "_map_pieces", "_map_moves", "_map_write_values", "_map_report")
 
 
-def wild_map() -> Map:
+def valued_map() -> Map:
     return Map((0.0, 24.0, 0.0, 24.0), (8, 8), units=4, values={"hue": 4}, reach=3.0, step=1.8,
                stride=6.0, margin=0.3, physics={"noise": 0.3}, surprise=True)
 
@@ -56,7 +56,7 @@ def life(make, moments: int = 90) -> list[np.ndarray]:
     return out
 
 
-@pytest.mark.parametrize("make", [wild_map, plain_map])
+@pytest.mark.parametrize("make", [valued_map, plain_map])
 def test_the_compiled_map_lives_as_its_python(make, monkeypatch: pytest.MonkeyPatch) -> None:
     calls = []
     report = compiled.map_report

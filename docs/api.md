@@ -440,7 +440,7 @@ one call per moment for all of them ([many lives at once](backends.md#many-lives
 | --- | --- |
 | `act(observations, *, greedy=False)` | each life's `Brain.act` on its own row: `(lives, inputs)` in, `(lives,)` out |
 | `step(observations, *, reward=None, done=None, teacher=None)` | each life's `Brain.step`, its own reward, ending and teacher label; a life with no sampled action pending takes a zero reward and no end |
-| `live(observations, *, reward=None, done=None)` | each life's `Brain.live` with its own arousal: a sampled life learns from its outcome, a calm life answers greedily from its forecast, each ends its own episodes; a life with no preceding action takes a zero reward and no end |
+| `live(observations, *, reward=None, done=None)` | each life's `Brain.live` with its own arousal: a sampled life learns from its outcome, a calm life answers greedily from its forecast, each ends its own episodes; a life with no preceding action takes a zero reward and no end. `salience`, `decision_id` and `lesson` are a lone brain's: `Lives.live` takes none of them |
 | `learn(reward, done, next_observations)` | each life's `Brain.learn`; after `live` the calm lives hold |
 | `lesson(observations, labels)` | each life's `Brain.lesson`; under `learning_surprise` each life is judged by its own answer |
 | `values(observations)` | each life's `Brain.value` of its own row, `(lives,)`: the bootstrap of a truncated episode, read without changing anything |

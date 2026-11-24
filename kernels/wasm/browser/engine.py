@@ -29,25 +29,6 @@ def choose(name: str) -> str:
     return name
 
 
-def fit_32_bit_numpy() -> None:
-    """Pyodide's NumPy is 32-bit: ``np.repeat`` with int64 counts refuses the cast (a gap of the
-    library under Pyodide, outside the kernels); the learning module gets a ``repeat`` that
-    casts the counts."""
-    import types
-
-    import numpy as np
-
-    if np.dtype(np.intp).itemsize >= 8:
-        return
-    import cadence.learning as learning
-
-    shim = types.ModuleType("numpy")
-    shim.__dict__.update(np.__dict__)
-    shim.repeat = lambda a, repeats, axis=None: np.repeat(  # type: ignore[attr-defined]
-        a, np.asarray(repeats).astype(np.intp), axis=axis)
-    learning.np = shim  # type: ignore[attr-defined]
-
-
 def finish(ok: bool) -> None:
     """The script's verdict: its exit status natively; under Pyodide a failure raises, which the
     page reports as the script's error."""

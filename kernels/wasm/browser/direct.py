@@ -1,5 +1,5 @@
 """The launches lives rarely make, each checked against the kernels' own Python
-(t/reference.py): masks, adaptation, plain, softmax and anchored nudges, weights, held apical
+(reference.py): masks, adaptation, plain, softmax and anchored nudges, weights, held apical
 gains, warm starts, tolerances and the solves, on a layered graph and on a deep brain's graph.
 
     python kernels/wasm/browser/run.py direct.py
