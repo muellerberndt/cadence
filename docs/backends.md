@@ -678,10 +678,11 @@ absent and a brain runs the NumPy loop. One WebAssembly module, `cadence_kernel.
 CPU path's kernels for it: the kernels of `cadence.fused` and the compiled parts around the settle
 ([`cadence.compiled`](#the-parts-around-the-settle)). Every
 [release](https://github.com/muellerberndt/cadence/releases) from 0.103.0 attaches the module
-built from its tag (about 130 KB) with its SHA-256, and `python kernels/wasm/build.py` builds it
-from [`kernels/wasm`](../kernels/wasm): Rust through `rustup`, the compiler pinned in that folder,
-the same bytes on any machine. Take the module of the library's own version; the library checks
-the version of the kernels it loads. A page opts in: it writes the file into Pyodide's file system
+CI built on its tag's commit (about 130 KB, Linux on x86-64) with its SHA-256, and
+`python kernels/wasm/build.py` builds it from [`kernels/wasm`](../kernels/wasm): Rust through
+`rustup`, the compiler pinned in that folder. A build repeats its bytes on one platform, wherever
+the checkout lies, and a build on another platform (macOS on arm64) differs in its bytes. Take
+the module of the library's own version; the library checks the version of the kernels it loads. A page opts in: it writes the file into Pyodide's file system
 and names it in `CADENCE_WASM` before `cadence` is imported.
 
 ```js

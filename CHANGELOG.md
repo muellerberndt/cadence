@@ -40,10 +40,11 @@ The guides are [in a browser](docs/backends.md#in-a-browser) and
   solve and its fast form, publication, the optimizer's passes, the relative floor, the tied
   step, the trace step, scatter and gather, the recall read's episode terms, the greedy choice)
   and of `cadence.compiled` (below) as one WebAssembly module of about 130 KB, built from
-  [`kernels/wasm`](kernels/wasm) (Rust, `no_std`, SIMD128). The release attaches the module built
-  from its tag with its SHA-256; `python kernels/wasm/build.py` builds the same bytes from the
-  pinned compiler. A page opts in by naming the file in `CADENCE_WASM` before `cadence` is
-  imported. A page without it keeps the NumPy loop, and so does `CADENCE_FUSED=0`.
+  [`kernels/wasm`](kernels/wasm) (Rust, `no_std`, SIMD128). The release attaches the module CI
+  built on its tag's commit (Linux, x86-64) with its SHA-256; `python kernels/wasm/build.py`
+  builds it with the pinned compiler, the same bytes on one platform and other bytes on
+  another. A page opts in by naming the file in `CADENCE_WASM` before `cadence` is imported. A
+  page without it keeps the NumPy loop, and so does `CADENCE_FUSED=0`.
 - **No copy.** The module works inside Pyodide's own memory: it imports Pyodide's memory, stack
   pointer, `malloc`, `free` and the C library's `exp` and `tanh` (the functions NumPy calls
   there), and reads each array from NumPy's array object at its address. The build refuses a

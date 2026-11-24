@@ -1,4 +1,5 @@
-# the compiler the released module is built with: one version, so a build repeats its bytes
+# the compiler the released module is built with: one version, so a build on one platform
+# repeats its bytes
 [toolchain]
 channel = "1.95.0"
 targets = ["wasm32-unknown-unknown"]

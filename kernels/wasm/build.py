@@ -8,8 +8,10 @@ target that ``rust-toolchain.toml`` names; ``Cargo.lock`` pins the one dependenc
 the module with SIMD128 against an imported memory; this script then makes the module's stack
 pointer an import too, so the kernels run on the host's stack inside Pyodide's own memory, and
 refuses a module that holds data of its own (it would be written into the host's memory at a
-fixed address when the module starts). The module holds no path and no name, so the same
-source and compiler give the same bytes on any machine; the script prints their SHA-256.
+fixed address when the module starts). The module holds no path and no name, so on one
+platform the same source and compiler give the same bytes wherever the checkout lies; a build
+on another platform (macOS on arm64 beside Linux on x86-64) differs in its bytes. The script
+prints their SHA-256.
 """
 from __future__ import annotations
 
