@@ -305,6 +305,33 @@ def test_a_kind_that_names_none_of_the_map_s_kinds_is_refused_and_changes_nothin
         np.testing.assert_array_equal(value, before[name])
 
 
+@pytest.mark.parametrize("given", ["flags", "function"])
+@pytest.mark.parametrize("flag", [np.nan, 0.4, 2, -1, np.inf, "False"])
+def test_sight_that_is_no_boolean_or_zero_or_one_is_refused_and_changes_nothing(given, flag):
+    held = Map(PLANE, (8, 7), units=3)
+    held.moment(seen=[(0, [0.2, 0.5])])
+    before = {name: value.copy() for name, value in held.arrays().items()}
+    lit = np.full(held.count, flag) if given == "flags" else (
+        lambda points: np.full(len(points), flag))
+    with pytest.raises(ValueError, match="flags"):
+        held.moment(lit=lit)
+    for name, value in held.arrays().items():
+        np.testing.assert_array_equal(value, before[name])
+
+
+def test_sight_as_zeros_and_ones_is_sight_as_booleans():
+    flags = Map(PLANE, (8, 7), units=3).centers[:, 0] > 0.0
+    lives = []
+    for form in (flags, flags.astype(np.float32), flags.astype(np.int8), flags.astype(float).tolist()):
+        held = Map(PLANE, (8, 7), units=3)
+        held.moment(seen=[(0, [0.2, 0.5]), (1, [-0.4, 0.5])])
+        held.moment(lit=form)
+        lives.append(held.arrays())
+    for life in lives[1:]:
+        for name, value in lives[0].items():
+            np.testing.assert_array_equal(life[name], value)
+
+
 def test_the_built_in_place_module_and_a_file_from_outside_load_alike_and_refusals(tmp_path):
     import pickle
 

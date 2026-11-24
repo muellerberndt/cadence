@@ -136,6 +136,10 @@ room.moment(seen=[(HAND, [0.05, 0.6])], lit=camera_sees)         # it comes out
 assert np.allclose(room.where_is(HAND), [[0.05, 0.6]], atol=0.001)
 ```
 
+`lit` is the camera's sight: flags on the cells, `(cells,)`, or a function of `(points, 2)`
+places that gives one flag a place. A flag is a boolean or a number that is 0 or 1; flags of any
+other value (NaN, a fraction, a string) are refused.
+
 ## The regions
 
 Sizes for the founder, 32 by 26 cells and 16 code units: 29,168 neurons and 39,936 synapses.
