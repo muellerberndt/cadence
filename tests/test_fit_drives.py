@@ -21,6 +21,7 @@ COMPOSITIONS = [
     pytest.param({"code": 64}, id="fixed code"),
     pytest.param({}, id="no code"),
 ]
+FIELDS = pytest.param({"learned_fields": 4, "recall": False}, id="learned fields")
 MOMENTS = ("velocity", "velocity_bias", "second_moment", "second_moment_bias")
 
 
@@ -82,9 +83,17 @@ def test_a_learned_code_s_drive_follows_the_weights_a_fit_moves():
     np.testing.assert_array_equal(plain.stimulus(X[:8], memory=False), fixed)
 
 
-@pytest.mark.parametrize("options", COMPOSITIONS)
+def eyes(**options) -> cd.Brain:
+    """A brain of 16 x 16 frames: learned fields read frames of two dimensions."""
+    return cd.Brain.compose((16, 16), 4, modules=(16,), backend="cpu", learning_surprise=False,
+                            seed=2, **options)
+
+
+@pytest.mark.parametrize("options", [*COMPOSITIONS, FIELDS])
 def test_a_fit_refuses_its_input_before_anything_changes(options, tmp_path):
-    brain = pupil(**options)
+    framed = "learned_fields" in options
+    brain = eyes(**options) if framed else pupil(**options)
+    X = RNG.random((64, 256)) if framed else globals()["X"]
     with np.load(brain.save(tmp_path / "before.npz")) as saved:
         before = {name: saved[name].copy() for name in saved.files}
     bad = X.copy()

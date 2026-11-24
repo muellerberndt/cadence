@@ -5512,7 +5512,6 @@ class Brain:
         drive of a row is fixed and is made once for the whole fit."""
         coded = self.learned_code is not None
         x = self._observations(observations, memory=False)
-        drive = None if coded else self.stimulus(x, memory=False)
         labels = self.learner._labels(np.asarray(labels))
         if len(labels) != len(x):
             raise ValueError("observations and labels must have the same batch size")
@@ -5523,6 +5522,8 @@ class Brain:
                 or value < minimum
             ):
                 raise ValueError(f"{name} must be an integer >= {minimum}")
+        # every argument is valid before anything is read: a refused fit leaves the brain
+        drive = None if coded else self.stimulus(x, memory=False)
         if self._unplaced:
             self._place_at(min(batch, len(labels)))
         # Supervision changes the parameters under any previously cached decision.
