@@ -69,6 +69,7 @@ PANEL: dict[str, tuple[str, dict[str, Any]]] = {
         {"senses": {"eyes": {"hue": 8, "shape": 8}, "ear": EAR}, "code": 64, "bound": 16,
          "voice": "ear"},
     ),
+    "cortex_reads": ("0.102.0", {"inputs": 40, "code": 64, "cortex_reads": "both"}),
 }
 
 

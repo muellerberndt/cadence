@@ -30,7 +30,7 @@ assert resumed.pending_feedback                                  # the outcome i
 
 ## Routine and repair: `live`
 
-`live(observations, *, reward=None, done=None, salience=None, decision_id=None)` follows one
+`live(observations, *, reward=None, done=None, salience=None, decision_id=None, lesson=None)` follows one
 stream of a brain composed with `arousal=True`. A calm brain answers with the greedy choice of
 one qualified settle and learns nothing: no eligibility phases, no parameter change, no
 associative write, and earlier eligibility fades by one step. Two things rouse it:
@@ -55,6 +55,37 @@ consolidation's importance for the outcome that wakes a calm brain. A mark does 
 brain or permit a calm write, and it needs an awaited action (after `wait` or a saved
 continuation too). The caller decides what to mark; marking every outcome can harm a reward
 chain ([episodic limits](memory.md#episodic-limits)).
+
+`lesson=(targets, weights)` teaches the moment as `lesson(observations, targets=targets,
+weights=weights)` does ([supervised lessons](teach.md#supervised-lessons)): `targets` one row of
+the actions, each slot's summing to one, and `weights` the row's weight (a number, one row, or
+None). It is taught at its place in the moment, after the preceding action's outcome is taken
+and before the moment's act, which settles under the taught parameters. There no outcome is
+pending, so a lesson given every moment (a young animal shown what its parent does) is taken
+where `lesson` before `live` is refused while a sampled action awaits its outcome. An invalid
+lesson raises `ValueError` before anything changes. The lesson's report is in
+`brain.last_learning` under the `demonstration_` keys, beside the outcome's; its sweeps are
+there (`demonstration_total_steps`) and, as with `lesson`, outside `learning_sweeps`. A calm
+brain takes the lesson too: it teaches whether or not the outcome roused the brain.
+
+```python
+import numpy as np
+from cadence import Brain
+
+cues = np.eye(4)
+pupil = Brain.compose(4, 2, modules=(16,), seed=0, arousal=True)
+rng = np.random.default_rng(0)
+cue = 0
+action = pupil.live(cues[[cue]])
+for moment in range(60):
+    reward = [1.0 if action[0] == cue % 2 else -1.0]
+    cue = int(rng.integers(4))
+    shown = np.eye(2)[[cue % 2]]                       # what a teacher does at this cue
+    action = pupil.live(cues[[cue]], reward=reward, lesson=(shown, 1.0))
+
+assert pupil.last_learning["demonstration_accepted"]   # the moment's lesson was taken
+assert all(pupil.act(cues[[c]], greedy=True)[0] == c % 2 for c in range(4))
+```
 
 ```python
 import numpy as np
@@ -172,6 +203,7 @@ feedback. The retry depends on what was accepted first:
 | --- | --- | --- |
 | the forecast settle of `live`, before feedback | unchanged | the same call |
 | the answer, after the outcome was accepted (`live`, `step`) | outcome learned and counted | `live(observations)` or `act(observations)` without the outcome |
+| the moment's lesson, after the outcome was accepted (`live(lesson=)`) | outcome learned and counted; the lesson changed nothing | `live(observations, lesson=...)` without the outcome |
 | learning from the outcome (`learn` feedback solve) | memory writes, trace resets and actor changes rolled back; action pending | the same outcome |
 
 `brain.pending_feedback` says whether the current action awaits its outcome, including a routine

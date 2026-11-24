@@ -255,6 +255,17 @@ class BoundRecords:
                 out[field] = parts[groups[best]].mean(axis=0)
         return out
 
+    def _read(self, code: np.ndarray, row: np.ndarray) -> dict[str, np.ndarray]:
+        """``_agreed(_taking(code), row)``, in one compiled call where the kernels run
+        (``cadence.compiled.bound_recall``, the same read)."""
+        from . import compiled
+
+        # a cue of another width than the keys takes the Python, which refuses it
+        if (compiled.available("_bound_recall") and self.store.keys.dtype == np.float64
+                and np.shape(code) == self.store.keys.shape[1:]):
+            return compiled.bound_recall(self, code)
+        return self._agreed(self._taking(code), row)
+
     def complete(self, rows: np.ndarray, codes: np.ndarray) -> np.ndarray:
         """``rows`` with each field they leave silent given what the records bring back for the
         moment's ``codes``; the voice is left as given. Changes nothing in the records."""
@@ -262,7 +273,7 @@ class BoundRecords:
         for i in range(len(out)):
             if not self.holds(out[i]):
                 continue
-            for field, part in self._agreed(self._taking(codes[i]), out[i]).items():
+            for field, part in self._read(codes[i], out[i]).items():
                 first, last = self.fields[field]
                 if not np.any(out[i, first:last]):
                     out[i, first:last] = part
@@ -270,7 +281,7 @@ class BoundRecords:
 
     def recall(self, row: np.ndarray, code: np.ndarray) -> dict[str, np.ndarray]:
         """What the records bring back for one moment: each field held alike, as its mean."""
-        return self._agreed(self._taking(code), np.asarray(row, dtype=np.float64))
+        return self._read(code, np.asarray(row, dtype=np.float64))
 
     # -- the voice
 

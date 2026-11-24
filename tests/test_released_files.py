@@ -29,12 +29,14 @@ assert _spec is not None and _spec.loader is not None
 panel = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(panel)
 
-# What 0.101.0, the release before this one, reads (its ``Brain.load``)
-PREVIOUS = "0.101.0"
+# What 0.102.0, the release before this one, reads (its ``Brain.load``)
+PREVIOUS = "0.102.0"
 PREVIOUS_FORMATS = frozenset(
     {"cadence-brain/1", "cadence-brain/2", "cadence-brain/3", "cadence-brain/4", "cadence-brain/5"}
 )
-PREVIOUS_FEATURES = frozenset({"strength", "heads", "recall_strength", "surprise", "map", "bound"})
+PREVIOUS_FEATURES = frozenset(
+    {"strength", "heads", "recall_strength", "surprise", "map", "bound", "cortex_reads"}
+)
 
 FILES = [
     pytest.param(version, name, id=f"{version}-{name}")
@@ -50,10 +52,10 @@ def _load(path: Path) -> cd.Brain:
 
 
 def test_the_fixtures_cover_every_released_version_from_0_99_0():
-    assert set(RELEASED) == {"0.99.0", "0.99.1", "0.100.0", PREVIOUS}
+    assert set(RELEASED) == {"0.99.0", "0.99.1", "0.100.0", "0.101.0", PREVIOUS}
     assert set(RELEASED[PREVIOUS]["brains"]) == set(panel.PANEL)
     size = sum(path.stat().st_size for path in HERE.rglob("*") if path.is_file())
-    assert size < 3_000_000
+    assert size < 5_000_000
 
 
 @pytest.mark.parametrize("version,name", FILES)
@@ -116,16 +118,14 @@ def test_a_brain_without_the_new_options_saves_what_the_previous_release_reads(n
     }
 
 
-def test_a_brain_whose_cortex_reads_the_senses_names_the_feature_the_previous_release_refuses(
-    tmp_path,
-):
+def test_a_brain_whose_cortex_reads_the_senses_names_its_feature(tmp_path):
+    """The feature a release without ``cortex_reads`` refuses by name; 0.102.0 holds it."""
     for reads in ("both", "observation"):
         brain = cd.Brain.compose(inputs=40, actions=2, code=64, cortex_reads=reads,
                                  modules=(8,), seed=0, backend="cpu")
         brain.act(np.full((1, 40), 0.5), greedy=True)
         saved = panel.record(brain.save(tmp_path / f"{reads}.npz"))
         assert saved == {"format": "cadence-brain/5", "features": ["cortex_reads"]}
-        assert "cortex_reads" not in PREVIOUS_FEATURES
 
 
 def test_the_previous_release_job_saves_brains_that_continue_as_recorded(tmp_path):
@@ -143,4 +143,3 @@ def test_the_previous_release_job_saves_brains_that_continue_as_recorded(tmp_pat
     for name in ("default", "records", "map_values", "bound"):
         brain = _load(tmp_path / f"{name}.npz")
         assert panel.continuation(brain, name) == table["brains"][name]["acts"]
-    assert panel.record(tmp_path / "refused-cortex_reads.npz")["features"] == ["cortex_reads"]

@@ -14,3 +14,7 @@ data/
 htmlcov/
 
 .DS_Store
+
+# the browser kernel: Cargo builds and the built module (a release artefact)
+kernels/wasm/target/
+kernels/wasm/cadence_kernel.wasm

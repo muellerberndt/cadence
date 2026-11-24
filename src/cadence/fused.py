@@ -29,12 +29,17 @@ what it published (``_keep_published``), so a launch from it makes no activation
 Every kernel above keeps the NumPy loop's bits. ``_fast_solve``, under ``learning_fast_settle``, is
 another solve of the same equations and does not: rows that stop apart and an activation that
 vectorizes.
+
+Under Pyodide, where Numba is not available, the same kernels come from a WebAssembly module
+built from ``kernels/wasm`` (``cadence._wasm``): a function of each kernel's name and arguments
+takes its place here, the Python of this file stays the glue, and the rows run on one thread.
 """
 
 from __future__ import annotations
 
 import functools
 import os
+import sys
 import types
 import weakref
 from collections.abc import Callable, Sequence
@@ -51,6 +56,8 @@ try:
 except ImportError:  # pragma: no cover
     _numba = njit = None
     prange = range
+
+from . import _wasm
 
 if TYPE_CHECKING:
     from .blocks import Layout
@@ -113,15 +120,17 @@ def _unreferenced(kernel: _Kernel) -> _Kernel:
 
 
 def available() -> bool:
-    return njit is not None
+    """Whether the kernels are here: compiled by Numba, or under Pyodide from the WebAssembly
+    module (``cadence._wasm``)."""
+    return njit is not None or _wasm.available()
 
 
 def compiled() -> bool:
-    """Whether the compiled passes are in use: Numba is installed and ``CADENCE_FUSED`` is not
+    """Whether the compiled passes are in use: the kernels are here and ``CADENCE_FUSED`` is not
     ``0`` (``Brain``'s switch for the fused kernels, read at call time)."""
     from . import brain
 
-    return njit is not None and bool(brain._FUSED)
+    return available() and bool(brain._FUSED)
 
 
 # A process forked from one whose GNU OpenMP threads had started cannot start them again
@@ -158,8 +167,9 @@ _PARALLEL_WORK = 1 << 16
 
 
 def _threads() -> bool:
-    """Whether Numba runs more than one thread here. ``NUMBA_NUM_THREADS=1`` never starts them."""
-    if _FORKED_FROM_OPENMP or int(_numba.config.NUMBA_NUM_THREADS) < 2:
+    """Whether Numba runs more than one thread here. ``NUMBA_NUM_THREADS=1`` never starts them,
+    and the WebAssembly kernels run on one."""
+    if _numba is None or _FORKED_FROM_OPENMP or int(_numba.config.NUMBA_NUM_THREADS) < 2:
         return False
     return bool(_numba.get_num_threads() > 1)
 
@@ -488,16 +498,34 @@ if njit is not None:
         offset: np.ndarray,
         cache: np.ndarray,
         c0: int,
+        which: int,
     ) -> None:
         """Block ``k``'s product for the whole batch into its cache slot at ``c0``: one BLAS
-        call on the whole batch, the same call whichever thread makes it."""
+        call on the whole batch, the same call whichever thread makes it. A block that
+        ``offset`` holds by its synapses (``which``: 0 for ``flat``'s, 1 for the apical
+        blocks', ``sparse_offset``) sums each column's synapses instead; such a column holds
+        one synapse at most, so its sum is the product's own, to the bit."""
         a, b = pair_pre[k], pair_post[k]
         a0, a1 = starts[a], starts[a + 1]
         na, nb = a1 - a0, starts[b + 1] - starts[b]
         batch = columns.shape[0] // starts[starts.shape[0] - 1]
-        source = columns[batch * a0 : batch * a1].reshape(batch, na)
-        block = flat[offset[k] : offset[k + 1]].reshape(na, nb)
-        np.dot(source, block, cache[c0 : c0 + batch * nb].reshape(batch, nb))
+        blocks = pair_pre.shape[0]
+        at = offset[blocks + 1 + which * blocks + k] if offset.shape[0] > blocks + 1 else -1
+        if at < 0:
+            source = columns[batch * a0 : batch * a1].reshape(batch, na)
+            block = flat[offset[k] : offset[k + 1]].reshape(na, nb)
+            np.dot(source, block, cache[c0 : c0 + batch * nb].reshape(batch, nb))
+            return
+        base = offset[k]
+        rows = at + nb + 2
+        for row in range(batch):
+            x0 = batch * a0 + row * na
+            for j in range(nb):
+                acc = 0.0
+                for q in range(offset[at + 1 + j], offset[at + 2 + j]):
+                    i = offset[rows + q]
+                    acc += columns[x0 + i] * flat[base + i * nb + j]
+                cache[c0 + row * nb + j] = acc
 
     @_inlined
     def _gather(
@@ -1140,11 +1168,11 @@ if njit is not None:
                 q = todo[j]
                 if q < basal_count:
                     _block_product(columns, flat, pairs[q], pair_pre, pair_post, starts, offset,
-                                   cache, cache_offset[q])
+                                   cache, cache_offset[q], 0)
                 else:
                     _block_product(columns, flat_apical, apical_pairs[q - basal_count], pair_pre,
                                    pair_post, starts, offset, cache_up,
-                                   cache_up_offset[q - basal_count])
+                                   cache_up_offset[q - basal_count], 1)
             for r in range(ranges):
                 moving[r] = feeds[r] and not frozen[r]
             # every row's step, the rows on distinct threads
@@ -1441,11 +1469,11 @@ if njit is not None:
             if q < basal_count:
                 if moved_range[pair_pre[pairs[q]]]:
                     _block_product(columns, flat, pairs[q], pair_pre, pair_post, starts, offset,
-                                   cache, cache_offset[q])
+                                   cache, cache_offset[q], 0)
             elif moved_range[pair_pre[apical_pairs[q - basal_count]]]:
                 _block_product(columns, flat_apical, apical_pairs[q - basal_count], pair_pre,
                                pair_post, starts, offset, cache_up,
-                               cache_up_offset[q - basal_count])
+                               cache_up_offset[q - basal_count], 1)
         synaptic_input = np.zeros((batch, n))
         raw = np.zeros((batch, n if has_apical else 1))
         basal = np.empty((batch, n if has_apical else 1))
@@ -1524,12 +1552,18 @@ if njit is not None:
         given: np.ndarray,
         has_given: bool,
         in_place: bool,
+        has_apical: bool,
+        fraction: float,
+        floor2: float,
+        tiny: float,
     ) -> tuple[int, int, int, np.ndarray, np.ndarray]:
         """A free solve of a state whose activations ``s`` are published, in one compiled call:
         the check, then chunks of sweeps and their checks while a row is over ``tolerance``
         and sweeps are left, as ``Brain._equilibrate_local`` makes them one launch each, in place
-        on ``v``, ``a`` and ``s``. ``out`` ends on each row's error. Returns the sweeps, the
-        checks, the last chunk's sweeps and activity change, and what the state keeps."""
+        on ``v``, ``a`` and ``s``; a graph with an apical compartment (``has_apical``) settles
+        and is checked with it, no gain held. ``out`` ends on each row's error. Returns the
+        sweeps, the checks, the last chunk's sweeps and activity change, and what the state
+        keeps."""
         batch = v.shape[0]
         # variables and not the constants: to the compiler a constant argument is a type of its
         # own, and the kernels would compile again for the calls a launch makes
@@ -1538,8 +1572,8 @@ if njit is not None:
             v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, pair_pre,
             pair_post, offset, keep, off, dt, slope, threshold, rest, leak, off, strength,
             off, target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain,
-            off, pool_of, pool_index, pool_starts, pool_run, 1.0, 1.0, 0.0, held, off, out,
-            given, has_given, in_place,
+            has_apical, pool_of, pool_index, pool_starts, pool_run, fraction, floor2, tiny,
+            held, off, out, given, has_given, in_place,
         )
         used, checks, taken = 0, 1, 0
         change = np.zeros(batch)
@@ -1557,16 +1591,17 @@ if njit is not None:
                 v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, pair_pre,
                 pair_post, offset, freezable, keep, off, dt, slope, threshold, rest, leak,
                 off, strength, tau, off, target, nmask, gid, ngroups, beta, softmax_t,
-                weight, anchor, anchor_gain, off, pool_of, pool_index, pool_starts, pool_run,
-                1.0, 1.0, 0.0, held, off, min(chunk, budget - used), 0.0, off, kept, on,
+                weight, anchor, anchor_gain, has_apical, pool_of, pool_index, pool_starts,
+                pool_run, fraction, floor2, tiny, held, off, min(chunk, budget - used), 0.0,
+                off, kept, on,
             )
             used += taken
             kept = _check(
                 v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, pair_pre,
                 pair_post, offset, keep, off, dt, slope, threshold, rest, leak, off, strength,
                 off, target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain,
-                off, pool_of, pool_index, pool_starts, pool_run, 1.0, 1.0, 0.0, held, off,
-                out, kept, on, on,
+                has_apical, pool_of, pool_index, pool_starts, pool_run, fraction, floor2, tiny,
+                held, off, out, kept, on, on,
             )
             checks += 1
         return used, checks, taken, change, kept
@@ -1893,6 +1928,59 @@ def _fed_ranges(layout: Layout) -> np.ndarray:
 # compartment; the ``flat`` beside it then holds the basal synapses alone
 ApicalBlocks = tuple["Apical", Sequence[int], np.ndarray, Sequence[int]]
 
+# Under Pyodide the kernels read every block whole: the WebAssembly product skips the rows of
+# silent sources, which reads faster there than the synapses' sums.
+_WHOLE_BLOCKS = sys.platform == "emscripten"
+
+
+def sparse_offset(layout: Layout, apical: ApicalBlocks | None = None) -> np.ndarray:
+    """``layout.offset`` followed by the blocks the Numba kernels read by their synapses: a
+    block in which no neuron receives more than one synapse (the map's one-to-one wiring, a
+    block that holds none). Its product sums each column's one synapse where BLAS would
+    multiply the whole block, and a neuron's input is the same to the bit: under finite
+    activations every other term of the whole product is a zero (a state that is not finite
+    is refused either way). A block in which a neuron receives several synapses keeps BLAS's
+    product, whose order of summing is its own.
+    After the ``blocks + 1`` offsets come two rows of ``blocks``: where each block's form by
+    synapses begins in this array, for ``flat`` and for the apical blocks, or -1 for the
+    whole block; each form is its synapse count, its column starts (``nb + 1``) and its
+    presynaptic rows. Made once per layout and compartment and kept on the layout. Under
+    Pyodide the offsets alone (``_WHOLE_BLOCKS``)."""
+    offset = np.asarray(layout.offset, dtype=np.int64)
+    if _WHOLE_BLOCKS:
+        return offset
+    mask = None if apical is None else np.asarray(apical[0].synapses, dtype=bool)
+    held = layout.__dict__.get("_sparse_offset")
+    if held is not None and held[0] is (None if apical is None else apical[0].synapses):
+        return held[1]  # type: ignore[no-any-return]
+    blocks = layout.pairs
+    head = np.full(2 * blocks, -1, dtype=np.int64)
+    forms: list[np.ndarray] = []
+    at = blocks + 1 + 2 * blocks
+    edges = np.asarray(layout.edge_index, dtype=np.int64)
+    for which, chosen in enumerate((edges if mask is None else edges[~mask],
+                                    np.zeros(0, dtype=np.int64) if mask is None else edges[mask])):
+        if which == 1 and mask is None:
+            break
+        positions = np.unique(chosen)
+        owner = np.searchsorted(offset, positions, side="right") - 1
+        for k in range(blocks):
+            _, _, b0, b1 = layout.bounds(k)
+            nb = b1 - b0
+            local = positions[owner == k] - offset[k]
+            row, col = np.divmod(local, nb)
+            if len(local) and np.bincount(col, minlength=nb).max() > 1:
+                continue
+            order = np.lexsort((row, col))  # by column, then by presynaptic neuron
+            form = np.concatenate([[len(local)], np.searchsorted(col[order], np.arange(nb + 1)),
+                                   row[order]]).astype(np.int64)
+            head[which * blocks + k] = at
+            forms.append(form)
+            at += len(form)
+    out = np.concatenate([offset, head, *forms]).astype(np.int64)
+    layout.__dict__["_sparse_offset"] = (None if apical is None else apical[0].synapses, out)
+    return out
+
 
 def _compartment(
     apical: ApicalBlocks | None, layout: Layout, flat: np.ndarray, nudge: Nudge | None,
@@ -2027,7 +2115,7 @@ def fused_settle(
     the first sweep reads them where they hold; the products returned are the last state's
     (at no sweeps, the given ones).
     """
-    assert njit is not None
+    assert available()
     batch, n = v.shape
     if keep is None:
         masked = False
@@ -2081,7 +2169,7 @@ def fused_settle(
         lay.starts,
         lay.pair_pre,
         lay.pair_post,
-        lay.offset,
+        sparse_offset(lay, apical),
         freezable,
         keep,
         masked,
@@ -2125,14 +2213,15 @@ def fused_solve(
     chunk: int,
     tolerance: float,
     products: Products | None,
+    apical: ApicalBlocks | None = None,
 ) -> tuple[np.ndarray, int, int, int, np.ndarray, Products] | None:
-    """A free solve without a mask, a nudge or a compartment in one compiled call, in place on a
-    C-ordered state of published activations ``s``: what ``Brain._equilibrate_local`` makes of the
-    state in launches of one settle or one check. Returns each row's error, the sweeps, the
-    checks, the last chunk's sweeps and activity change and the products; None for adaptation,
-    rows that settle on Numba's threads, or a state in another memory order, which the launches
-    serve."""
-    assert njit is not None
+    """A free solve without a mask or a nudge in one compiled call, in place on a C-ordered state
+    of published activations ``s``: what ``Brain._equilibrate_local`` makes of the state in
+    launches of one settle or one check, with the apical compartment ``apical`` where the graph
+    has one. Returns each row's error, the sweeps, the checks, the last chunk's sweeps and
+    activity change and the products; None for adaptation, rows that settle on Numba's threads,
+    or a state in another memory order, which the launches serve."""
+    assert available()
     batch, n = v.shape
     if (
         neuron_model.adaptation is not None
@@ -2144,10 +2233,10 @@ def fused_solve(
     target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain = _nudge_arrays(
         None, batch, n
     )
-    compartment = _compartment(None, layout, flat, None, batch, n)
-    pairs, flat_apical, apical_pairs = compartment[:3]
+    compartment = _compartment(apical, layout, flat, None, batch, n)
+    pairs, flat_apical, apical_pairs, has_apical = compartment[:4]
     pool_of, pool_index, pool_starts, pool_run = compartment[4:8]
-    held = compartment[11]
+    fraction, floor2, tiny, held = compartment[8:12]
     freezable = ~_fed_ranges(layout)
     # the check's activations are the state's own: published under no mask, they are the rule's
     given, has_given = _given(products, flat, flat_apical, batch)
@@ -2155,10 +2244,12 @@ def fused_solve(
     out = np.empty(batch)
     used, checks, taken, change, kept = _solve_rows(
         v, a, s, _standing(np.ascontiguousarray(drive), bias), flat, pairs, flat_apical,
-        apical_pairs, layout.starts, layout.pair_pre, layout.pair_post, layout.offset, freezable,
-        _NO_MASK, dt, slope, threshold, rest, leak, strength, tau, target, nmask, gid, ngroups,
+        apical_pairs, layout.starts, layout.pair_pre, layout.pair_post,
+        sparse_offset(layout, apical), freezable, _NO_MASK, dt, slope, threshold, rest, leak,
+        strength, tau, target, nmask, gid, ngroups,
         beta, softmax_t, weight, anchor, anchor_gain, pool_of, pool_index, pool_starts, pool_run,
-        held, budget, chunk, float(tolerance), out, given, has_given, in_place,
+        held, budget, chunk, float(tolerance), out, given, has_given, in_place, has_apical,
+        fraction, floor2, tiny,
     )
     return out, used, checks, taken, change, _kept(flat, flat_apical, batch, kept)
 
@@ -2180,7 +2271,7 @@ def fused_fast_solve(
     (``_fast_solve``). Returns each row's error, the sweeps, the checks, the last chunk's sweeps,
     the sweeps over the rows and what the state keeps; None under adaptation or another ``dt``,
     which take the ordinary solve."""
-    assert njit is not None
+    assert available()
     batch, n = v.shape
     if (
         neuron_model.adaptation is not None
@@ -2221,7 +2312,7 @@ def fused_residual(
     The transport reads the products the state keeps (``products``) where they hold and makes
     the rest; the products returned are all current. Nothing is changed.
     """
-    assert njit is not None
+    assert available()
     batch, n = v.shape
     dt, slope, threshold, rest, leak, strength, _ = _rule(neuron_model)
     if keep is None:
@@ -2259,7 +2350,7 @@ def fused_residual(
         layout.starts,
         layout.pair_pre,
         layout.pair_post,
-        layout.offset,
+        sparse_offset(layout, apical),
         keep,
         masked,
         dt,
@@ -2341,7 +2432,7 @@ def trace_step(
     delta: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Fused three-factor step: returns ``(step_scale, step_bias)``; traces are updated in place."""
-    assert njit is not None
+    assert available()
     step_scale = np.empty(trace.shape[1])
     step_bias = np.empty(trace_bias.shape[1])
     _trace_step(
@@ -2415,7 +2506,7 @@ if njit is not None:
 
 def scatter(size: int, index: np.ndarray, values: np.ndarray) -> np.ndarray:
     """``out = zeros(size); out[index] = values`` for distinct indices, in one compiled pass."""
-    assert njit is not None
+    assert available()
     out = np.zeros(size)
     count = len(index)
     kernel = _place_parallel if _elements_in_parallel(count) else _place
@@ -2425,7 +2516,7 @@ def scatter(size: int, index: np.ndarray, values: np.ndarray) -> np.ndarray:
 
 def gather(values: np.ndarray, index: np.ndarray, divisor: float = 1.0) -> np.ndarray:
     """``values[index] / divisor`` in one compiled pass."""
-    assert njit is not None
+    assert available()
     out = np.empty(len(index))
     kernel = _pick_parallel if _elements_in_parallel(len(index)) else _pick
     kernel(np.ascontiguousarray(values, dtype=float), index, float(divisor), out)
@@ -2438,7 +2529,7 @@ def relative_floor(
     """``values + share * sqrt(power / count)[group] + tiny``, ``power`` and ``count`` each
     group's ``np.bincount`` of ``values ** 2`` and of members (at least one): the divisor of a
     projection-relative floor, to the bit."""
-    assert njit is not None
+    assert available()
     values = np.ascontiguousarray(values, dtype=float)
     power, count = _group_power(values, group, int(size))
     root = np.sqrt(power / count)
@@ -2627,7 +2718,7 @@ def add_episode_terms(
 ) -> None:
     """The recall read's anchored and relative position terms added to ``term``, a new array
     (``_add_episode_terms``)."""
-    assert njit is not None
+    assert available()
     _add_episode_terms(
         term, _NO_TERM if anchored is None else anchored,
         _NO_TERM if relative is None else relative, anchored is not None, relative is not None,
@@ -2671,7 +2762,7 @@ if njit is not None:
 def clear_choice(s: np.ndarray, temperature: float) -> np.ndarray | None:
     """The greedy choice of one slot's activations ``(rows, width)`` where every row's largest
     stands clear of the rest, which is ``np.argmax`` of their softmax; None where one does not."""
-    assert njit is not None
+    assert available()
     choice, clear = _clear_choice(np.ascontiguousarray(s, dtype=float), float(temperature))
     return choice if clear else None
 
@@ -2697,7 +2788,7 @@ def optimizer_step(
     and the rate. Returns ``(velocity, second moment, step)``; the moments a setting leaves off
     come back as given. One pass without the relative floor; with it, a second after every
     projection's mean square is summed."""
-    assert njit is not None
+    assert available()
     count = len(raw)
     raw = np.ascontiguousarray(raw, dtype=float)
     has_momentum, has_normalize = momentum > 0, rho > 0
@@ -2739,7 +2830,7 @@ def tied_step(
     is ``gain_pre`` times it (the product ``Brain`` takes). Returns ``(step, efficacy, weights,
     finite)``, ``finite`` saying whether every step, every efficacy and every weight is finite,
     as ``np.isfinite(...).all()`` would."""
-    assert njit is not None
+    assert available()
     count = len(delta)
     out_delta, out_scale, out_weight = np.empty(count), np.empty(count), np.empty(count)
     bad = (_tied_parallel if _elements_in_parallel(count) else _tied)(
@@ -2748,3 +2839,7 @@ def tied_step(
         float(cap), out_delta, out_scale, out_weight,
     )
     return out_delta, out_scale, out_weight, (bad[0] == 0, bad[1] == 0, bad[2] == 0)
+
+
+if njit is None:  # under Pyodide: the kernels of the WebAssembly module, where a page loads it
+    _wasm.load()
