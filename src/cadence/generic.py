@@ -7461,13 +7461,16 @@ class Brain:
         self, x: np.ndarray, drive: np.ndarray, free: BrainState
     ) -> np.ndarray | None:
         """``_choose(x, drive, free, greedy=True)`` of the compiled moment in the calls it makes
-        for a brain of one motor slot without an episodic vote, a learned code, an efference
-        copy, a heard history or rehearsal: the same action and state to the bit; None for any
-        other brain (the caller then chooses)."""
+        for a brain of one motor slot without an episodic vote, a learned code, learned fields,
+        an efference copy, a held message, long-term records, a heard history or rehearsal: the
+        same action and state to the bit; None for any other brain (the caller then chooses)."""
         agent = self.basal_ganglia
         if (
             self._episodic is not None or self.learned_code is not None
             or self.efference is not None
+            # a held message and long-term records hear the moment, learned fields learn from
+            # it: ``_choose`` takes them
+            or self.message is not None or self.longterm is not None or self.fields is not None
             or (self.history is not None and type(self.history) is not History)
             or self.learner.slot_count != 1 or self.learner.config.rehearsal
             or type(agent).act is not ActorCritic.act or _resident(drive)
