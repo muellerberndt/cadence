@@ -2132,11 +2132,15 @@ tellings a unit of reward, counted as its pay (`brain.bound.paid`). A record of 
 answers only once paid; a reward of zero or less refuses it (`brain.bound.refused`), and its
 sound is passed over at moments like it until a reward pays it. Telling a said moment again, or
 the brain's surprise at it, deepens its record and pays nothing. A life with no reward given
-pays and refuses nothing. A sensed repeat of the exact stored event may deepen it. A different
-event cannot revise the record while its action awaits reward. The record is not replaced
-before the reward comes: in a full store a moment `wait` senses replaces another record, the
-streams of one moment take records of their own, and in a store whose every record awaits a
-reward the moment is not written.
+pays and refuses nothing. A moment told again is the same situation with the same sound: a
+record that holds another sound, or a sound where the moment holds none, is another event and
+the moment takes a record of its own, so a reward pays the sound the brain said, whichever of two
+near moments came first. The record awaited keeps its value until the reward comes: a moment
+`wait` senses deepens it only where it holds that moment exactly; it is neither replaced nor
+forgotten, in a full store a sensed moment replaces another record, and in a store whose every
+record awaits a reward the moment is not written. The streams of one moment that act at one
+event share its record: a reward any of them is paid pays it, and it is refused only where none
+of them is paid.
 
 ```python
 for word in (said_cup, np.random.default_rng(1).normal(size=(20, 10))):
