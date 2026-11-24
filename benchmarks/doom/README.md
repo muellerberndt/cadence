@@ -282,6 +282,9 @@ five episodes of every scenario per player ([`results/timing/`](results/timing))
 
 ## What the next stage needs from the library
 
+The list as this stage's runs left it on 10 November 2026, before release 0.97.0. Two of its
+items shipped in that release and are marked; the others stand.
+
 - **An image beside declared ports.** `Brain.compose(inputs=(h, w, c))` reads an image through a
   visual cortex, but takes no vector port beside it, so the own-body and history ports have no
   way in. The player here is a vector brain over a pooled retina. A composition with an image and
@@ -300,8 +303,15 @@ at that load;
 - **Many lives with arousal and episode ends.** `cadence.Lives` steps many brains of one
   composition on a device, and refuses arousal, image inputs and codes; the store, arousal and
   episode ends are #293. A Doom population (founders, controls, curricula) needs them.
+  *Shipped in 0.97.0:* `Lives.live` runs each life's moment with its own arousal, outcomes and
+  episode ends, and `Lives` holds each life's store of place records
+  ([many lives at once](../../docs/backends.md#many-lives-at-once)). It still refuses image
+  inputs and codes by name ([`Lives`](../../docs/api.md#lives-cadence)).
 - **A public value read.** A truncated episode bootstraps from the value of its last frame; the
   player reads it as `brain.basal_ganglia.value_of(brain.stimulus(x, memory=False))`, and a
   public read of a brain's value of an observation would serve every adapter.
+  *Shipped in 0.97.0:* `Brain.value(observations)`
+  ([decision and reset contract](../../docs/reward.md#decision-and-reset-contract)). The runs
+  on this page predate it and read the value as above.
 - The checkpoint needs nothing more: `Brain.save` carries the pending action and the brain
   resumes to the bit.
