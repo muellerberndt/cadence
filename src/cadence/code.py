@@ -348,17 +348,20 @@ class LearnedCode:
         (``stability``), in float64 as on the host. The tables and their rules stay on the
         host; the kernel on the device takes the lateral weights and the thresholds in place
         after each learning step, so its plan, its workspaces and a state settled on it stay
-        with it. MPS has no float64 and is refused: a brain there keeps the phase on the host."""
+        with it. MPS has no float64 and is refused: a brain there keeps the phase on the host.
+        The sub-network of the new place is made whole, at the present step, before the region
+        takes it: a placement that fails leaves the region where it was, on the graphs it had."""
         if device is None:
             if self._device is not None:
-                self._device, self._base, self._coupled = None, None, None
                 model = self.model
                 if self.halvings:
                     model = model.replace(dt=float(np.ldexp(self.model.dt, -self.halvings)))
-                self.graph = NeuralGraph(
+                graph = NeuralGraph(
                     self.connectome, model, efficacy=self.lateral_efficacy(),
                     bias=-self.thresholds,
                 )
+                self._device, self._base, self._coupled = None, None, None
+                self.graph = graph
             return
         import torch
 
@@ -372,14 +375,17 @@ class LearnedCode:
             self.connectome, self.model, efficacy=self.lateral_efficacy(),
             bias=-self.thresholds, backend="torch", device=str(device), precision="float64",
         )
+        graph = self._stepped(base)
         self._device, self._base, self._coupled = device, base, None
-        self.graph = self._stepped()
+        self.graph = graph
 
-    def _stepped(self) -> NeuralGraph:
-        """On a device: the sub-network at the present step. The kernel at the model's step
+    def _stepped(self, base: NeuralGraph | None = None) -> NeuralGraph:
+        """On a device: the sub-network at the present step, of ``base`` where a placement is
+        making one, else of the region's own. The kernel at the model's step
         holds the tables; a halved step settles on the kernel of that step it keeps
         (``NeuralGraph._with_dt``), on the same parameters, and its states rest on the first."""
-        base = self._base
+        if base is None:
+            base = self._base
         assert base is not None
         if not self.halvings:
             return base
