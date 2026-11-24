@@ -3,11 +3,13 @@ for the library under Pyodide (``cadence/_wasm.py`` loads it).
 
     python kernels/wasm/build.py [--out PATH]
 
-Needs Rust with the ``wasm32-unknown-unknown`` target (``rustup target add
-wasm32-unknown-unknown``). Cargo builds the module with SIMD128 against an imported memory; this
-script then makes the module's stack pointer an import too, so the kernels run on the host's
-stack inside Pyodide's own memory, and refuses a module that holds data of its own (it would
-be written into the host's memory at a fixed address when the module starts).
+Needs Rust through ``rustup``, which installs the compiler and the ``wasm32-unknown-unknown``
+target that ``rust-toolchain.toml`` names; ``Cargo.lock`` pins the one dependency. Cargo builds
+the module with SIMD128 against an imported memory; this script then makes the module's stack
+pointer an import too, so the kernels run on the host's stack inside Pyodide's own memory, and
+refuses a module that holds data of its own (it would be written into the host's memory at a
+fixed address when the module starts). The module holds no path and no name, so the same
+source and compiler give the same bytes on any machine; the script prints their SHA-256.
 """
 from __future__ import annotations
 
@@ -93,10 +95,9 @@ def build(out: Path) -> Path:
     env = dict(os.environ)
     env["RUSTFLAGS"] = " ".join(FLAGS)
     env["CARGO_TARGET_DIR"] = str(HERE / "target")
-    subprocess.run(
-        ["cargo", "build", "--release", "--target", TARGET, "--quiet",
-         "--manifest-path", str(HERE / "Cargo.toml")],
-        check=True, env=env,
+    subprocess.run(  # in this folder, where rustup reads rust-toolchain.toml
+        ["cargo", "build", "--release", "--locked", "--target", TARGET, "--quiet"],
+        check=True, env=env, cwd=HERE,
     )
     built = HERE / "target" / TARGET / "release" / "cadence_kernel.wasm"
     module = import_stack_pointer(built.read_bytes())

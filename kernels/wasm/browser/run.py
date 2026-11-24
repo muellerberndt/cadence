@@ -107,9 +107,12 @@ def main() -> int:
     url = f"http://127.0.0.1:{server.server_address[1]}/page.html?{urlencode(query)}"
     status = "error"
     with sync_playwright() as p:
-        # WebGPU on the machine's own GPU (Metal on a Mac), for the scripts that use it
-        browser = p.chromium.launch(headless=True, args=[
-            "--enable-unsafe-webgpu", "--use-angle=metal", "--enable-features=Vulkan,WebGPU"])
+        flags: list[str] = []
+        if options.script == "gpu.py":  # WebGPU on the machine's own GPU (Metal on a Mac)
+            flags = ["--enable-unsafe-webgpu", "--enable-features=Vulkan,WebGPU"]
+            if sys.platform == "darwin":
+                flags.append("--use-angle=metal")
+        browser = p.chromium.launch(headless=True, args=flags)
         page = browser.new_page()
         page.goto(url)
         printed, began = 0, time.time()

@@ -54,7 +54,7 @@ jobs:
     # release before it, and a brain with a new feature is refused there by the feature's name
     runs-on: ubuntu-latest
     env:
-      PREVIOUS_RELEASE: "0.101.0"
+      PREVIOUS_RELEASE: "0.102.0"
       CADENCE_FUSED: "0"
       OMP_NUM_THREADS: "1"
       OPENBLAS_NUM_THREADS: "1"
@@ -73,6 +73,37 @@ jobs:
           python -m venv previous
           previous/bin/python -m pip install "cadence-net==${PREVIOUS_RELEASE}"
           previous/bin/python tests/compat/previous_release.py load saved
+  browser-kernel:
+    # the WebAssembly kernels built from kernels/wasm and read under Pyodide in headless
+    # Chromium: every kernel call of the suite's lives and launches against fused.py's own
+    # Python, the map's and the records' kernels against theirs, to the bit. The built module
+    # is kept as the run's artifact; a release attaches the one built on its tag's commit.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build the module
+        run: |
+          python kernels/wasm/build.py
+          sha256sum kernels/wasm/cadence_kernel.wasm
+      - name: Install Playwright with Chromium
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Read the kernels in the browser
+        run: |
+          for script in shadow.py direct.py maps.py records.py pieces.py sparse.py; do
+            echo "::group::$script"
+            python kernels/wasm/browser/run.py --timeout 900 "$script"
+            echo "::endgroup::"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cadence_kernel.wasm
+          path: kernels/wasm/cadence_kernel.wasm
+          if-no-files-found: error
   test:
     runs-on: ${{ matrix.os }}
     strategy:
