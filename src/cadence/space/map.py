@@ -50,7 +50,10 @@ def _in_order(products: np.ndarray) -> Any:
     """A sum over the first axis, entry after entry from zero: a product's sum as NumPy sums it
     without BLAS (under Pyodide) and as the compiled kernels sum it. NumPy's
     BLAS (Accelerate, OpenBLAS) sums in orders of its own, which part in the last bits, and a
-    thing seen empty with a cell exactly two reaches from its middle is decided by them."""
+    thing seen empty with a cell exactly two reaches from its middle is decided by them. A
+    sum of no entries is zero, as the product's is."""
+    if len(products) == 0:
+        return np.zeros(np.shape(products)[1:])
     return np.cumsum(products, axis=0)[-1] + 0.0
 
 

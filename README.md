@@ -18,10 +18,10 @@ way: its connections change locally while the brain keeps running.
 ## Install
 
 ```sh
-python -m pip install cadence-net==0.102.0
+python -m pip install cadence-net==0.103.0
 ```
 
-Python 3.11 or later and NumPy. `"cadence-net[fast]==0.102.0"` adds Numba and SciPy for speed
+Python 3.11 or later and NumPy. `"cadence-net[fast]==0.103.0"` adds Numba and SciPy for speed
 (recommended); `[apple]` adds MLX for Apple silicon GPUs and `[accel]` PyTorch for NVIDIA GPUs.
 
 ## A first brain
@@ -56,7 +56,7 @@ is no backward pass and no switch between training and use.
 More guides: [a continuing life](https://github.com/muellerberndt/cadence/blob/main/docs/life.md), [train a brain](https://github.com/muellerberndt/cadence/blob/main/docs/teach.md), [learning from reward](https://github.com/muellerberndt/cadence/blob/main/docs/reward.md),
 [memory](https://github.com/muellerberndt/cadence/blob/main/docs/memory.md), [tune and read a living brain](https://github.com/muellerberndt/cadence/blob/main/docs/tune.md),
 [backends](https://github.com/muellerberndt/cadence/blob/main/docs/backends.md); the [documentation index](https://github.com/muellerberndt/cadence/blob/main/docs/README.md) lists them all. The
-[released documentation](https://github.com/muellerberndt/cadence/blob/v0.102.0/docs/README.md)
+[released documentation](https://github.com/muellerberndt/cadence/blob/v0.103.0/docs/README.md)
 describes the installed package. Integrated learned world prediction, repair localized to what
 failed and cheap stable operation are work in progress; Cadence is alpha research software.
 
@@ -238,7 +238,7 @@ No read revises its query during that settle
 | Exact-gradient conditions | A differentiable computation | For the contrast: a stable smooth equilibrium, symmetric effective weights, converged phases and a vanishing nudge |
 | Work | A forward and a backward pass | Every step of the free and nudged phases plus the update |
 | Memory of one event | A replay buffer or fine-tuning | One write into the store, read back at the same reading |
-| Hardware | GPU tensors | NumPy float64 on the CPU, with Numba where installed; a new brain takes a CUDA (torch) or Apple (MLX) GPU in float32 where its size makes the device faster ([backends](https://github.com/muellerberndt/cadence/blob/main/docs/backends.md)) |
+| Hardware | GPU tensors | NumPy float64 on the CPU, with Numba where installed; a new brain takes a CUDA (torch) or Apple (MLX) GPU in float32 where its size makes the device faster; in a web page under Pyodide, the same kernels in WebAssembly ([backends](https://github.com/muellerberndt/cadence/blob/main/docs/backends.md)) |
 
 The table compares update mechanisms. Networks trained by backprop can also be
 recurrent, online, model-based and memory-using, so a fair comparison measures

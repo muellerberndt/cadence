@@ -1,6 +1,8 @@
 """The compiled kernels of the brain's parts around the settle, each one call of the Python it
-stands for, to the bit: the map of things' settle, pieces, moves, written values and a report's
-claims and writes, and the bound records' read.
+stands for: the map of things' settle, pieces, moves, written values and a report's claims and
+writes, and the bound records' read. Under Pyodide each equals its Python to the bit; natively
+within rounding, where NumPy's BLAS and vectorized functions round the last bits their own way
+(``tests/test_compiled_map.py``, ``tests/test_compiled_bound.py``).
 
 The map. ``Map._settle`` makes a drive, a mask and a start from the map's carried state and
 settles the map's graph for one or two sweeps through ``Brain.settle_batch``. At the map's size

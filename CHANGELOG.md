@@ -1,5 +1,125 @@
 # Changelog
 
+## 0.103.0 - 2026-11-24
+
+Brains in a browser on the compiled path. Under Pyodide, where Numba is absent, a brain ran the
+NumPy loop; one WebAssembly module, `cadence_kernel.wasm`, now holds the CPU path's kernels there,
+and a page that names it takes the compiled path a native machine takes with Numba: the same
+action at every moment of the lives read, three to five times the NumPy loop's rate. The parts
+around the settle (the map of things, the bound records' read) have compiled forms on both, and
+`live` takes a lesson for its moment. Everything is opt-in or a faster form of the same
+arithmetic, with one stated exception: natively a map of things moves in its last bits
+([what moves](#what-moves-in-its-last-bits)). Every brain acts and learns as on 0.102.0 in the
+lives read, and a brain without a map describes itself and saves as on 0.102.0 too, to the bit
+(the version string apart).
+
+```js
+// a page: the module of the library's version, named before cadence is imported
+const kernel = await (await fetch('cadence_kernel.wasm')).arrayBuffer();
+pyodide.FS.writeFile('/home/pyodide/cadence_kernel.wasm', new Uint8Array(kernel));
+pyodide.runPython("import os; os.environ['CADENCE_WASM'] = '/home/pyodide/cadence_kernel.wasm'");
+```
+
+```python
+import numpy as np
+from cadence import Brain
+
+pupil = Brain.compose(4, 2, modules=(16,), seed=0, arousal=True)
+action = pupil.live(np.eye(4)[[0]])
+shown = np.eye(2)[[1]]                                   # what a teacher does at the next cue
+action = pupil.live(np.eye(4)[[1]], reward=[1.0], lesson=(shown, 1.0))
+assert pupil.last_learning["demonstration_accepted"]
+```
+
+The guides are [in a browser](docs/backends.md#in-a-browser) and
+[routine and repair](docs/life.md#routine-and-repair-live).
+
+### Brains in a browser
+
+- **`cadence_kernel.wasm`**: the kernels of `cadence.fused` (the settle, the residual, the free
+  solve and its fast form, publication, the optimizer's passes, the relative floor, the tied
+  step, the trace step, scatter and gather, the recall read's episode terms, the greedy choice)
+  and of `cadence.compiled` (below) as one WebAssembly module of about 130 KB, built from
+  [`kernels/wasm`](kernels/wasm) (Rust, `no_std`, SIMD128). The release attaches the module built
+  from its tag with its SHA-256; `python kernels/wasm/build.py` builds the same bytes from the
+  pinned compiler. A page opts in by naming the file in `CADENCE_WASM` before `cadence` is
+  imported. A page without it keeps the NumPy loop, and so does `CADENCE_FUSED=0`.
+- **No copy.** The module works inside Pyodide's own memory: it imports Pyodide's memory, stack
+  pointer, `malloc`, `free` and the C library's `exp` and `tanh` (the functions NumPy calls
+  there), and reads each array from NumPy's array object at its address. The build refuses a
+  module that holds data of its own. A module of another version, or a NumPy whose arrays it
+  cannot read, leaves the NumPy loop in place with a `RuntimeWarning` that says why.
+- **What agrees.** In headless Chromium every kernel call of the suite's lives and launches
+  equals `fused.py`'s own kernels run as Python on the same arrays, to the bit, and the map's and
+  the records' kernels equal their Python to the bit. A life on the module chooses the NumPy
+  loop's action at every moment and ends on its arrays to the bit wherever the compiled path
+  keeps its bits (the fast form of a free solve is another solve, and a softmax nudge over eight
+  or more motor neurons sums in another order, as with Numba). Against Numba on a native machine
+  the lives choose the same actions and end within 1e-11.
+- **How fast.** Milliseconds a moment under Pyodide in headless Chromium 159 on an Apple M4, one
+  thread: a plain brain 0.83 against 3.08 on the NumPy loop, a deep apical one 1.74 against
+  9.56, a brain of most of the library's parts with its map 4.28 against 12.99
+  ([the table](docs/backends.md#in-a-browser)). Twelve such brains with their maps take 5.6 ms
+  a brain and moment against 17.1; natively Numba takes 3.7.
+- **In CI.** The `browser-kernel` job builds the module and reads it under Pyodide in headless
+  Chromium on every pull request: `shadow.py`, `direct.py`, `maps.py`, `records.py` and
+  `pieces.py` of [`kernels/wasm/browser`](kernels/wasm/browser), each a check to the bit.
+
+### The parts around the settle, compiled
+
+- **`cadence.compiled`**: the map of things' settle, pieces, moves, written values and each
+  report's claims and writes, and the bound records' read, each one call of the Python it stands
+  for, with Numba natively and in the WebAssembly module under Pyodide. The Python of each part
+  stays the reference and runs under `CADENCE_FUSED=0`, a trace or a wrapped `settle_batch`. A
+  map's moment takes 1.16 ms against 1.77 natively on an Apple M4 and
+  1.52 against 2.72 under Pyodide.
+- **A free solve with an apical compartment** runs in one compiled call (`fused_solve` takes the
+  compartment), to the bit of the launches it replaces.
+- **The map's one-to-one sheet read by its synapses**, natively: a block in which no neuron
+  receives more than one synapse sums that synapse where BLAS multiplied the whole block, the same
+  sum to the bit (`fused.sparse_offset`).
+
+### A lesson inside `live`
+
+- **`live(observations, ..., lesson=(targets, weights))`** teaches the moment as `lesson` does,
+  after the preceding action's outcome is taken and before the act, which settles under the
+  taught parameters. Nothing is pending there, so a lesson given every moment is taken where
+  `lesson` before `live` is refused while a sampled action awaits its outcome. A first moment's
+  lesson through `live` is the lesson before `live`, to the bit. An invalid lesson raises
+  `ValueError` before anything changes; a lesson whose phase is refused leaves the outcome
+  learned and nothing pending ([qualification and refusal](docs/life.md#qualification-and-refusal)).
+  `Lives.live` takes no lesson.
+
+### What moves in its last bits
+
+- **A map of things, natively.** The map's products and lengths (a thing's middle, its kind's
+  score, a view's distance, sight's share of a bump, a speed) sum entry after entry from zero, as
+  NumPy sums them without BLAS, where they ran in BLAS's order; and on the compiled path a
+  report's claims and writes run as kernels that sum in that order. Against 0.102.0 on an Apple
+  M4, over lives of 90 moments of eight maps (with and without values, physics and surprise):
+  the place `thing_at` answers moves within 7.2e-15 on a plane 24 wide, on both paths;
+  surprise's usual residuals within 1.8e-15 on the compiled path and 8.9e-16 on the NumPy loop;
+  and on the compiled path up to 20 of a map's potentials within 3.5e-18. Every kind answered is
+  the same. A brain that holds a map chooses the same actions and ends on the same weights to
+  the bit in the lives read; of its file, the map's surprise residuals alone differ. Under
+  Pyodide nothing moves. In exchange the map sums in one order on every machine: a thing seen
+  empty with a cell exactly two reaches from its middle is decided alike everywhere.
+- **Everything else is as on 0.102.0, to the bit**, on the compiled path and on the NumPy loop:
+  the default composition, two modules, a fixed and a learned code, an apical brain under the
+  deep lesson, recall heads, surprise, a message with long-term records, bound records with a
+  voice, and free solves of layered graphs from a fiftieth to a half filled. The files of
+  0.102.0 load and continue as 0.102.0 continued them, and 0.102.0 reads this release's files
+  and continues them to the bit (the `previous-release` job).
+
+### Experimental
+
+- **A batch of lives on WebGPU** ([`kernels/webgpu/lives.js`](kernels/webgpu/lives.js), float32):
+  many lives of one anatomy, each with its own synapses, settled for a given number of sweeps. It
+  is a kernel beside the library and no brain runs on it. Over 30 sweeps of a composed brain its
+  activations lie within 1.2e-6 of the WebAssembly kernel's float64 ones; on an Apple M4 it
+  overtakes that kernel at about 12 lives and settles 200 lives 6.7 to 7.0 times faster and 1,000
+  lives 7.6 to 8.3 times ([the table](docs/backends.md#a-batch-of-lives-on-webgpu-experimental)).
+
 ## 0.102.0 - 2026-11-24
 
 A learned code on a GPU, and a cortex that reads the senses beside its fixed code. A brain with
@@ -167,40 +287,6 @@ the sound ([#304](https://github.com/muellerberndt/cadence/issues/304)). The kno
 0.101.0 ([#346](https://github.com/muellerberndt/cadence/issues/346)) is open.
 
 ### Also in this release
-
-- **A lesson inside `live`**: `live(observations, ..., lesson=(targets, weights))` teaches the
-  moment as `lesson` does, after the preceding action's outcome is taken and before the act, which
-  settles under the taught parameters. A lesson given every moment is taken there where `lesson`
-  before `live` is refused while a sampled action awaits its outcome: in Wild's watching worlds,
-  where a young animal is shown its parent's action, `lesson` before `live` was refused in 95% of
-  the moments ([routine and repair](docs/start.md#routine-and-repair-live)).
-- **Brains in a browser on the compiled path**: under Pyodide, where Numba is absent, the CPU
-  kernels of `cadence.fused` come from one WebAssembly module built from `kernels/wasm`
-  (`cadence_kernel.wasm`, a release file of about 115 KB). A page opts in by naming the file in
-  `CADENCE_WASM` before `cadence` is imported, or by `cadence._wasm.load(path)`; the module works
-  inside Pyodide's memory, so arrays pass without a copy. Every kernel call equals `fused.py`'s own
-  kernels to the bit in headless Chromium, and a life chooses the NumPy loop's action at every
-  moment ([backends](docs/backends.md#in-a-browser)). Wild's pocket brain takes 25.2 ms a moment
-  in Chromium against 43.8 ms on the NumPy loop; demo-sized brains three to five times less.
-- **The parts around the settle compiled** (`cadence.compiled`): the map of things' settle, pieces,
-  moves, written values and each report's claims and writes, and the bound records' read, each
-  one call of the Python it stands for, with Numba natively and in the WebAssembly module under
-  Pyodide, where each equals its Python to the bit. A free solve with an apical compartment runs
-  in one compiled call.
-- **The map sums in one order on every machine**: the map of things' products and lengths (a
-  thing's middle, its kind's score, a view's distance, sight's share of a bump, a speed) sum
-  entry after entry from zero, as NumPy sums them without BLAS, where they ran in BLAS's order
-  natively. Under Pyodide the bits are as before; natively they move in the last bits, and a
-  thing exactly two reaches from a cell is decided alike on every machine.
-- **Blocks read by their synapses**: a block whose synapses fill less than six tenths of it sums
-  its product over them (`fused.sparse_offset`), to the bit of the whole block's product in a
-  browser. Wild's founders take 8.8 ms an animal-moment natively against 11.2 ms, and 14.8 ms
-  under Pyodide against 20.3 ms.
-- **A batch of lives on the GPU** (`kernels/webgpu/lives.js`, WebGPU, float32): many lives of one
-  anatomy, each with its own synapses, settle within 1.1e-6 of the WebAssembly kernel's float64
-  activations. On an Apple M4 the GPU overtakes the WebAssembly kernel at about 12 lives of Wild's
-  pocket brain and settles 200 lives 5.6 to 6.3 times faster
-  ([backends](docs/backends.md#a-batch-of-lives-on-the-gpu)).
 
 - **Corrections beside watched episodes, and many streams, on the brain's own path**
   (`benchmarks/coaching/cartpole.py`, twelve founders): each own episode corrected through

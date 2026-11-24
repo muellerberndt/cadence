@@ -25,7 +25,7 @@ compares it with networks trained by backpropagation.
 ## Install
 
 ```sh
-python -m pip install cadence-net==0.102.0
+python -m pip install cadence-net==0.103.0
 ```
 
 Cadence needs Python 3.11 or later and NumPy. Optional extras add speed and hardware:
@@ -36,10 +36,10 @@ Cadence needs Python 3.11 or later and NumPy. Optional extras add speed and hard
 | `[accel]` | PyTorch | NVIDIA GPUs (CUDA) |
 | `[apple]` | MLX | Apple silicon GPUs |
 
-For example `python -m pip install "cadence-net[fast]==0.102.0"`. From a checkout of the
+For example `python -m pip install "cadence-net[fast]==0.103.0"`. From a checkout of the
 repository, run `python -m pip install -e .` at its root. A new brain picks the fastest backend
 the machine has for its size by itself ([backends](backends.md)). The
-[v0.102.0 documentation](https://github.com/muellerberndt/cadence/blob/v0.102.0/docs/README.md)
+[v0.103.0 documentation](https://github.com/muellerberndt/cadence/blob/v0.103.0/docs/README.md)
 is pinned to the release tag.
 
 ## Your first brain
@@ -143,6 +143,7 @@ Then, as your brain needs them:
 | To read or change a living brain | `describe`, `retune`, `last_settlement` | [Tune and read a living brain](tune.md) |
 | A deep or wide brain | `modules=(64, 32, 32)`, `apical=0.25`, `teaching="deep"` | [Larger brains](tune.md#larger-brains) |
 | A GPU, another device or precision | `backend`, `device`, `precision` | [Backends](backends.md) |
+| A brain in a web page, on the compiled path | Pyodide with `cadence_kernel.wasm` named in `CADENCE_WASM` | [In a browser](backends.md#in-a-browser) |
 | A brain that keeps learning after it has acquired a skill | `maturity=True` | [Maturity](reward.md#maturity-opt-in) |
 | To give a trained brain a memory, more outputs or another brain's regions | `grow`, `graft` | [Grow and combine brains](grow.md) |
 | A module that arrives as a file: the built-in map of things, or a trained brain's regions of your own | `trained=["place"]`, `cd.modules.load("place")`, `cd.load_module(path)`, `brain.space`, `save_module`, `trained=[module]`, `graft(module)` | [Modules](modules.md#modules-parts-that-arrive-as-files) |

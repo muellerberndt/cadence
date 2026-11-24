@@ -69,3 +69,25 @@ def test_the_compiled_map_lives_as_its_python(make, monkeypatch: pytest.MonkeyPa
     assert len(fast) == len(slow)
     for a, b in zip(fast, slow, strict=True):
         np.testing.assert_allclose(a, b, rtol=0, atol=1e-9)
+
+
+@pytest.mark.parametrize("cells", [(8, 8), (6, 5), (3, 17), (20, 20)])
+def test_the_compiled_pieces_are_the_python_s_in_cells_and_order(cells) -> None:
+    """The kernel takes the pieces in the order a Python set pops their seeds, on every Python
+    the library runs on."""
+    nx, ny = cells
+    held = Map((0.0, 1.0 * nx, 0.0, 1.0 * ny), (nx, ny), units=2)
+    rng = np.random.default_rng(11)
+    kernel = compiled._map_pieces
+    for _ in range(120):
+        active = rng.random(nx * ny) < rng.uniform(0.0, 0.7)
+        fast = held._pieces(active)
+        compiled._map_pieces = None
+        try:
+            slow = held._pieces(active)
+        finally:
+            compiled._map_pieces = kernel
+        assert len(fast) == len(slow)
+        for a, b in zip(fast, slow, strict=True):
+            assert a.dtype == b.dtype
+            np.testing.assert_array_equal(a, b)

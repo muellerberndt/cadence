@@ -1937,9 +1937,10 @@ def sparse_offset(layout: Layout, apical: ApicalBlocks | None = None) -> np.ndar
     """``layout.offset`` followed by the blocks the Numba kernels read by their synapses: a
     block in which no neuron receives more than one synapse (the map's one-to-one wiring, a
     block that holds none). Its product sums each column's one synapse where BLAS would
-    multiply the whole block, and the sum is the same to the bit: every other term of the
-    whole product is a zero, and a sum begun at 0.0 is never -0.0. A block in which a neuron
-    receives several synapses keeps BLAS's product, whose order of summing is its own.
+    multiply the whole block, and a neuron's input is the same to the bit: under finite
+    activations every other term of the whole product is a zero (a state that is not finite
+    is refused either way). A block in which a neuron receives several synapses keeps BLAS's
+    product, whose order of summing is its own.
     After the ``blocks + 1`` offsets come two rows of ``blocks``: where each block's form by
     synapses begins in this array, for ``flat`` and for the apical blocks, or -1 for the
     whole block; each form is its synapse count, its column starts (``nb + 1``) and its
