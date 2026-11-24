@@ -7634,8 +7634,9 @@ class Brain:
     ) -> dict[str, float]:
         """Dopamine from the reward of the last action; ``done`` rows start a new episode.
 
-        A ``done`` row's working trace, efference copy and heard history begin afresh, and its
-        recall memory's slots are emptied.
+        A ``done`` row's working trace, efference copy, heard history, held message and
+        long-term records' turn begin afresh, and its recall memory's slots are emptied; the
+        long-term records themselves stay.
         The hippocampus records the reward of the chosen action for the situation it was
         chosen in, and the next choice in that situation reads the record. A refused
         feedback update preserves that pending action and both memories; retry this
@@ -7692,6 +7693,8 @@ class Brain:
             None if told is None or not done.any()
             else {name: value.copy() for name, value in told.streams().items()}
         )
+        kept = self.longterm
+        kept_streams = None if kept is None or not done.any() else kept.snapshot()
         recalled = self.recall
         recalled_state = None if recalled is None or not done.any() else recalled.snapshot()
         episodic = self._episodic  # its context records, temporal contexts and paths
@@ -7720,6 +7723,9 @@ class Brain:
                 heard.reset(len(done), rows=np.flatnonzero(done))
             if told is not None and done.any():
                 told.reset(len(done), rows=np.flatnonzero(done))
+            if kept is not None and done.any():
+                # the streams whose episode ended hold no turn; every record stays
+                kept.reset(len(done), rows=np.flatnonzero(done))
             if recalled is not None and done.any():
                 recalled.reset(len(done), rows=np.flatnonzero(done))
             next_drive = self._moment_drive(following)
@@ -7750,6 +7756,8 @@ class Brain:
             if told is not None and told_streams is not None:
                 for name, value in told_streams.items():
                     setattr(told, name, value)
+            if kept is not None and kept_streams is not None:
+                kept.resume(kept_streams)
             if recalled is not None and recalled_state is not None:
                 recalled.restore(recalled_state)
             if episodic is not None and episode_values is not None:

@@ -1903,6 +1903,26 @@ class LongTermRecords:
                         self._asked[row] = np.zeros(0, dtype=np.int64)
         self._cache = {}
 
+    def snapshot(self) -> dict[str, Any]:
+        """What ``reset`` changes of the streams (their turns, windows, keys and reads; no
+        record), for ``resume`` to put back where the moment that ended an episode is
+        refused."""
+        return {
+            "since": self.since.copy(), "read_slots": self.read_slots.copy(),
+            "window": self.window.copy(), "key": self.key.copy(),
+            "_wsets": [set(held) for held in self._wsets],
+            "_cues": [held.copy() for held in self._cues],
+            "_wlists": [list(held) for held in self._wlists],
+            "_asked": [held.copy() for held in self._asked],
+            "_delivered": list(self._delivered),
+        }
+
+    def resume(self, held: Mapping[str, Any]) -> None:
+        """The streams as a ``snapshot`` held them."""
+        for name, value in held.items():
+            setattr(self, name, value)
+        self._cache = {}
+
     def keep(self, rows: np.ndarray) -> None:
         """Keep the streams of ``rows``, their records with them."""
         index = np.arange(len(self.since))[rows]
