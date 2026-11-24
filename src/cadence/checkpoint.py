@@ -95,15 +95,10 @@ def _learner_data(learner: Learner) -> dict[str, np.ndarray]:
     )
 
 
-def _write(data: dict[str, Any], path: str | Path, *, compressed: bool = True) -> Path:
-    """Replace only after a complete archive has been written, keeping the previous checkpoint.
-
-    ``compressed=False`` writes a plain archive: float parameters compress little, and a
-    brain of tens of millions of synapses takes minutes to deflate but seconds to write."""
-    path = Path(path)
-    if path.suffix != ".npz":
-        path = path.with_suffix(path.suffix + ".npz")
-    path.parent.mkdir(parents=True, exist_ok=True)
+def _replace(data: dict[str, Any], path: Path, *, compressed: bool = True) -> None:
+    """Write ``data`` as the archive at ``path``: the complete archive is written to a file
+    beside it, which then takes its place, so a write that fails leaves the file that was there
+    as it was. The path is taken as given, and its directory exists."""
     temporary: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".npz", delete=False) as handle:
@@ -115,6 +110,18 @@ def _write(data: dict[str, Any], path: str | Path, *, compressed: bool = True) -
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
+
+
+def _write(data: dict[str, Any], path: str | Path, *, compressed: bool = True) -> Path:
+    """Replace only after a complete archive has been written, keeping the previous checkpoint.
+
+    ``compressed=False`` writes a plain archive: float parameters compress little, and a
+    brain of tens of millions of synapses takes minutes to deflate but seconds to write."""
+    path = Path(path)
+    if path.suffix != ".npz":
+        path = path.with_suffix(path.suffix + ".npz")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _replace(data, path, compressed=compressed)
     return path
 
 

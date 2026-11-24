@@ -115,7 +115,7 @@ from typing import Any
 import numpy as np
 
 from .brain import Brain as NeuralGraph
-from .brain import BrainState, Equilibrium, Nudge
+from .brain import BrainState, Equilibrium, Nudge, _trusted
 from .connectome import Connectome
 from .neuron import NeuronModel
 
@@ -348,17 +348,20 @@ class LearnedCode:
         (``stability``), in float64 as on the host. The tables and their rules stay on the
         host; the kernel on the device takes the lateral weights and the thresholds in place
         after each learning step, so its plan, its workspaces and a state settled on it stay
-        with it. MPS has no float64 and is refused: a brain there keeps the phase on the host."""
+        with it. MPS has no float64 and is refused: a brain there keeps the phase on the host.
+        The sub-network of the new place is made whole, at the present step, before the region
+        takes it: a placement that fails leaves the region where it was, on the graphs it had."""
         if device is None:
             if self._device is not None:
-                self._device, self._base, self._coupled = None, None, None
                 model = self.model
                 if self.halvings:
                     model = model.replace(dt=float(np.ldexp(self.model.dt, -self.halvings)))
-                self.graph = NeuralGraph(
+                graph = NeuralGraph(
                     self.connectome, model, efficacy=self.lateral_efficacy(),
                     bias=-self.thresholds,
                 )
+                self._device, self._base, self._coupled = None, None, None
+                self.graph = graph
             return
         import torch
 
@@ -372,14 +375,17 @@ class LearnedCode:
             self.connectome, self.model, efficacy=self.lateral_efficacy(),
             bias=-self.thresholds, backend="torch", device=str(device), precision="float64",
         )
+        graph = self._stepped(base)
         self._device, self._base, self._coupled = device, base, None
-        self.graph = self._stepped()
+        self.graph = graph
 
-    def _stepped(self) -> NeuralGraph:
-        """On a device: the sub-network at the present step. The kernel at the model's step
+    def _stepped(self, base: NeuralGraph | None = None) -> NeuralGraph:
+        """On a device: the sub-network at the present step, of ``base`` where a placement is
+        making one, else of the region's own. The kernel at the model's step
         holds the tables; a halved step settles on the kernel of that step it keeps
         (``NeuralGraph._with_dt``), on the same parameters, and its states rest on the first."""
-        base = self._base
+        if base is None:
+            base = self._base
         assert base is not None
         if not self.halvings:
             return base
@@ -743,11 +749,12 @@ class LearnedCode:
         kernel = self.graph._torch
         if kernel is not None:
             # the stimulus goes to the device once, where every sweep and check of the phase
-            # reads it; a drive that rests there is not read for finiteness, so it is read here
+            # reads it; it is read for finiteness here, on the host, and marked, so no settle
+            # of the phase reads it again there
             host = np.atleast_2d(np.asarray(stimulus, dtype=float))
             if not np.isfinite(host).all():
                 raise ValueError("drive must be finite and the brain must contain neurons")
-            drive = kernel._upload(host)
+            drive = _trusted(kernel._upload(host))
         phase = self.graph.equilibrate(
             drive, state=warm, budget=budget, tolerance=tolerance, damping=damping,
             nudge=self.standing(),

@@ -22,6 +22,8 @@ and +.049 with the earlier speakers losing .021 and .030.
 
 ``Rehearsal`` keeps the earlier utterances in a bank under a byte budget. ``remember`` adds an
 utterance; when the bank would pass its budget, utterances chosen at random (seeded) leave it.
+The bank holds a copy of each utterance and ``chosen`` gives copies, so the bytes it counts are
+its own: an array filled again after ``remember``, or a selection changed, leaves it as it was.
 ``correct`` resets the brain, hears the correction and the chosen earlier utterances side by side
 from rest, each step a lesson before a greedy act, and leaves the brain at rest. Earlier
 utterances of the correction's own length are chosen first, then the nearest in length; each
@@ -84,18 +86,24 @@ class Rehearsal:
 
     def remember(self, rows: Any, labels: Any = None, *, targets: Any = None) -> None:
         """Keep one earlier utterance: its rows ``(steps, inputs)`` and a label per step, or
-        ``targets``, a distribution over the actions per step ``(steps, actions)``."""
+        ``targets``, a distribution over the actions per step ``(steps, actions)``. The bank
+        keeps copies of its own, so the arrays given may be filled again."""
         x, y = _utterance(rows, labels, targets)
         size = x.nbytes + y.nbytes
         if size > self.budget:
             raise ValueError("one utterance holds more bytes than the bank's budget")
         while self._bank and self.nbytes + size > self.budget:
             self._bank.pop(int(self._rng.integers(len(self._bank))))
-        self._bank.append((x, y))
+        self._bank.append((x.copy(), y.copy()))
 
     def chosen(self, steps: int) -> list[tuple[np.ndarray, np.ndarray]]:
         """The earlier utterances a correction of ``steps`` steps hears: those of its length
-        first, then the nearest, each group in a seeded order."""
+        first, then the nearest, each group in a seeded order. They are copies: changing one
+        changes nothing in the bank."""
+        return [(x.copy(), y.copy()) for x, y in self._chosen(steps)]
+
+    def _chosen(self, steps: int) -> list[tuple[np.ndarray, np.ndarray]]:
+        """``chosen`` as the bank's own arrays, which ``correct`` reads and leaves as they are."""
         if not self.rows or not self._bank:
             return []
         gap = np.array([abs(len(x) - steps) for x, _ in self._bank], dtype=np.float64)
@@ -112,52 +120,93 @@ class Rehearsal:
         bank at the rehearsal weight. Where the correction or a banked utterance holds targets,
         every stream is taught targets (a label as its one-hot row). The brain is reset before
         and left at rest after. Returns the streams heard, the steps, the lessons a learning phase
-        refused and the actions the brain took on the correction."""
+        refused and the actions the brain took on the correction.
+
+        Every step's rows, labels or targets and weights are checked as the brain's ``lesson``
+        and ``act`` take them before the brain is reset: a correction or a chosen utterance that
+        the brain would refuse at any step is refused whole (``ValueError``), and the brain, its
+        streams and the bank's draws are as they were. A settle the brain refuses while the
+        correction is heard ends it at that step: what the steps before it taught stays learned,
+        as a lesson stays when the act after it refuses, the brain is left at rest, and the
+        error carries a note of the step and of the steps taught."""
         from ..learning import LearningPhaseError
 
         x, y = _utterance(rows, labels, targets)
-        streams = [(x, y), *self.chosen(len(x))]
-        width = x.shape[1]
-        if any(r.shape[1] != width for r, _ in streams):
-            raise ValueError("earlier utterances must hold rows as wide as the correction")
-        soft = [t for _, t in streams if t.ndim == 2]
-        actions_count = soft[0].shape[1] if soft else 0
-        if any(t.shape[1] != actions_count for t in soft):
-            raise ValueError("targets of the correction and the bank must name as many actions")
-        longest = max(len(r) for r, _ in streams)
-        batch = np.zeros((longest, len(streams), width), dtype=np.float64)
-        taught: np.ndarray = (
-            np.zeros((longest, len(streams), actions_count), dtype=np.float64)
-            if soft
-            else np.zeros((longest, len(streams)), dtype=np.int64)
+        # the correction alone, as the brain takes its rows and its lesson
+        brain._lesson_arguments(
+            brain._observations(x), y if y.ndim == 1 else None, y if y.ndim == 2 else None, None
         )
-        weights = np.zeros((longest, len(streams)), dtype=np.float64)
-        for s, (r, labs) in enumerate(streams):
-            if soft and labs.ndim == 1:
-                if (labs >= actions_count).any():
-                    raise ValueError("a label names an action the targets do not hold")
-                labs = np.eye(actions_count)[labs]
-            batch[: len(r), s] = r
-            batch[len(r) :, s] = r[-1]
-            taught[: len(r), s] = labs
-            taught[len(r) :, s] = labs[-1]
-            weights[: len(r), s] = 1.0 if s == 0 else self.weight
+        drawn = self._rng.bit_generator.state
+        try:
+            streams = [(x, y), *self._chosen(len(x))]
+            width = x.shape[1]
+            if any(r.shape[1] != width for r, _ in streams):
+                raise ValueError("earlier utterances must hold rows as wide as the correction")
+            soft = [t for _, t in streams if t.ndim == 2]
+            actions_count = soft[0].shape[1] if soft else 0
+            if any(t.shape[1] != actions_count for t in soft):
+                raise ValueError(
+                    "targets of the correction and the bank must name as many actions"
+                )
+            longest = max(len(r) for r, _ in streams)
+            batch = np.zeros((longest, len(streams), width), dtype=np.float64)
+            taught: np.ndarray = (
+                np.zeros((longest, len(streams), actions_count), dtype=np.float64)
+                if soft
+                else np.zeros((longest, len(streams)), dtype=np.int64)
+            )
+            weights = np.zeros((longest, len(streams)), dtype=np.float64)
+            for s, (r, labs) in enumerate(streams):
+                if soft and labs.ndim == 1:
+                    if (labs >= actions_count).any():
+                        raise ValueError("a label names an action the targets do not hold")
+                    labs = np.eye(actions_count)[labs]
+                batch[: len(r), s] = r
+                batch[len(r) :, s] = r[-1]
+                taught[: len(r), s] = labs
+                taught[len(r) :, s] = labs[-1]
+                weights[: len(r), s] = 1.0 if s == 0 else self.weight
+            try:  # every step beside the chosen utterances, as the loop below gives it
+                for t in range(longest):
+                    moment = brain._observations(batch[t])
+                    if weights[t].any():
+                        brain._lesson_arguments(
+                            moment, None if soft else taught[t], taught[t] if soft else None,
+                            weights[t],
+                        )
+            except ValueError as error:
+                raise ValueError(
+                    f"the brain refuses the lessons beside the bank's utterances: {error}"
+                ) from None
+        except BaseException:
+            self._rng.bit_generator.state = drawn  # a refused correction draws no utterance
+            raise
         actions = np.zeros(len(x), dtype=np.int64)
         refused = 0
+        t = taken = 0
         brain.reset()
-        for t in range(longest):
-            if weights[t].any():
-                try:
-                    if soft:
-                        brain.lesson(batch[t], targets=taught[t], weights=weights[t])
-                    else:
-                        brain.lesson(batch[t], taught[t], weights=weights[t])
-                except LearningPhaseError:
-                    refused += 1
-            acted = np.asarray(brain.act(batch[t], greedy=True)).reshape(-1)
-            if t < len(x):
-                actions[t] = int(acted[0])
-        brain.reset()
+        try:
+            for t in range(longest):
+                if weights[t].any():
+                    try:
+                        if soft:
+                            brain.lesson(batch[t], targets=taught[t], weights=weights[t])
+                        else:
+                            brain.lesson(batch[t], taught[t], weights=weights[t])
+                    except LearningPhaseError:
+                        refused += 1
+                taken = t + 1  # this step's lesson is given
+                acted = np.asarray(brain.act(batch[t], greedy=True)).reshape(-1)
+                if t < len(x):
+                    actions[t] = int(acted[0])
+        except BaseException as error:
+            error.add_note(
+                f"the correction stopped at step {t} of {longest}: what its first {taken} "
+                "steps taught stays learned, and the brain is at rest"
+            )
+            raise
+        finally:
+            brain.reset()
         return {"streams": len(streams), "steps": longest, "refused": refused, "actions": actions}
 
 

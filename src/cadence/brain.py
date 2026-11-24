@@ -99,6 +99,81 @@ def _rows_finite(x: np.ndarray) -> bool:
     return bool(np.isfinite(x).all())
 
 
+# The resident drives the library made from arrays it read finite, by identity: each with a weak
+# reference to it and, of a torch tensor, the version it stood at (a write in place moves it).
+_TRUSTED: dict[int, tuple[Any, Any]] = {}
+
+
+def _trusted(drive: Any) -> Any:
+    """``drive``, marked as read finite where it rests on a device: a settle under it then
+    reads nothing of it for its check (``_drive_finite``). For whoever made a resident drive
+    from host arrays it read finite, or took rows of one that is marked; a torch tensor
+    written in place afterwards is read again. A host array is returned as it is."""
+    if _resident(drive):
+        key = id(drive)
+
+        def gone(_: Any, key: int = key) -> None:  # the mark goes with the drive
+            _TRUSTED.pop(key, None)
+
+        _TRUSTED[key] = (weakref.ref(drive, gone), getattr(drive, "_version", None))
+    return drive
+
+
+def _drive_finite(drive: Any) -> bool:
+    """Whether a settle's ``(batch, neurons)`` drive is finite, wherever it rests: the refusal
+    of a host array and of a resident one are the same. A host array is read here. A resident
+    drive the library marked (``_trusted``) is not read again; any other is read where it
+    rests: an MLX array, which has no version, and a torch tensor on the CPU, whose memory a
+    NumPy array can share and write unseen, at every call; a tensor on an accelerator once per
+    version of it, which every write in place through torch moves. A settle on MLX reads an
+    unmarked array with its first launch instead (``_unread``)."""
+    if not _resident(drive):
+        return _rows_finite(drive)
+    if _marked(drive):
+        return True
+    if type(drive).__module__ == "mlx.core":  # the host reads the device's own memory, made first
+        return bool(np.isfinite(np.array(drive, copy=False)).all())
+    finite = bool(drive.isfinite().all().item())
+    if finite and drive.device.type != "cpu":
+        _trusted(drive)
+    return finite
+
+
+def _marked(drive: Any) -> bool:
+    """Whether a resident drive is marked as read finite (``_trusted``) and stands as marked."""
+    held = _TRUSTED.get(id(drive))
+    return (
+        held is not None and held[0]() is drive
+        and held[1] == getattr(drive, "_version", None)
+    )
+
+
+def _unread(drive: Any) -> bool:
+    """Whether ``drive`` is an MLX array nobody marked: a launch under it reads it finite with
+    the launch's own results, in the one synchronization the launch makes."""
+    return type(drive).__module__ == "mlx.core" and not _marked(drive)
+
+
+def _index_key(index: Any) -> tuple[str, bytes] | None:
+    """The neurons a one-dimensional array of integers names, as a key: their type and bytes,
+    read from the array as it stands. What is kept under it holds for those neurons whichever
+    array names them, and an array written in place, or made where a freed one stood, has the
+    key of what it holds. None for any other selector (a mask, a slice)."""
+    chosen = np.asarray(index)
+    if chosen.ndim != 1 or chosen.dtype.kind not in "iu":
+        return None
+    return chosen.dtype.str, chosen.tobytes()
+
+
+def _same(given: np.ndarray, kept: np.ndarray) -> bool:
+    """Whether ``given``, a float64 array handed to a caller, still reads to the bit as
+    ``kept``, the array the library kept beside it: no one wrote it since."""
+    return (
+        isinstance(given, np.ndarray) and given.dtype == kept.dtype and given.shape == kept.shape
+        and bool((given.view(np.int64) == kept.view(np.int64)).all())
+    )
+
+
 def available_backends() -> dict[str, str]:
     """Backends importable here, with the device each would use."""
     out = {"cpu": "numpy float64"}
@@ -486,6 +561,7 @@ def _group_temperature(nudge: Nudge, members: np.ndarray) -> float:
     return float(temperature[members[0]]) if isinstance(temperature, np.ndarray) else temperature
 
 
+
 @dataclass(frozen=True)
 class BrainState:
     """State after settling: potentials, activations, adaptation, trajectory.
@@ -499,6 +575,11 @@ class BrainState:
     A state the compiled CPU kernels settled or checked keeps the block products of its
     activations, so a check of it or a settle from it computes only the products whose
     activations differ (the same bits); ``copy`` and ``pickle`` leave them out.
+
+    ``v``, ``activation`` and ``adaptation`` are the caller's to write on every backend: the
+    next settle, check or contrast of the state reads them as they stand. A state settled on
+    a device rests there (``device``) until an array it handed out is written; from then on
+    its host arrays are the state, as they are on the NumPy backend.
     """
 
     v: np.ndarray
@@ -523,7 +604,7 @@ class BrainState:
         handle = self.__dict__.get("device")
         if self.__dict__.get("v") is None and handle is not None and "s" in handle:
             return len(handle["s"].shape) == 2  # the shape alone; no fetch from the device
-        return self.v.ndim == 2
+        return bool(np.ndim(_on_host(self, "v")) == 2)
 
     def row(self, i: int = 0) -> np.ndarray:
         return self.activation[i] if self.batched else self.activation
@@ -543,24 +624,32 @@ class BrainState:
 
     def part(self, index: np.ndarray) -> np.ndarray:
         """The activation at the neurons ``index`` on the host, ``(batch, neurons)``. Of a state
-        resting on a torch device only they come to the host, once each."""
+        resting on a device only they come to the host, once per set of neurons: the index is
+        read at every call, so an array written since the last one names the neurons it holds
+        now. The array returned is the caller's: while nothing wrote it the next read returns
+        it again, and one that was written is replaced by what the device holds. A mask or a
+        slice reads the whole activation on the host."""
         handle = self.__dict__.get("device")
         if handle is None or self.__dict__.get("activation") is not None or "s" not in handle:
             return np.asarray(self.activation[:, index])
-        if isinstance(handle, _MlxState):
-            held = self.__dict__.setdefault("_parts", {})
-            part = held.get(id(index))
-            if part is None:
-                part = held[id(index)] = handle["plan"].part(handle, index)
-            return np.asarray(part if part is not False else self.activation[:, index])
-        s = handle["s"]
-        if not _resident(s):
+        key = _index_key(index)
+        if key is None or not (isinstance(handle, _MlxState) or _resident(handle["s"])):
             return np.asarray(self.activation[:, index])
         held = self.__dict__.setdefault("_parts", {})
-        part = held.get(id(index))
-        if part is None:
-            part = held[id(index)] = _host_copy(s[:, handle["holder"].index_of(index)])
-        return np.asarray(part)
+        kept = held.get(key)
+        if kept is None:
+            if isinstance(handle, _MlxState):
+                read = handle["plan"].part(handle, np.asarray(index))
+            else:
+                read = _host_copy(handle["s"][:, handle["holder"].index_of(index)])
+            kept = held[key] = (read, None)
+        read, given = kept
+        if read is False:  # one of them does not settle in the launch
+            return np.asarray(self.activation[:, index])
+        if given is None or not _same(given, read):
+            given = read.copy()
+            held[key] = (read, given)
+        return np.asarray(given)
 
     def __getstate__(self) -> dict[str, Any]:
         held = dict(self.__dict__)
@@ -644,22 +733,68 @@ class Equilibrium:
         return self.converged
 
 
+# A settled state's host arrays and the device arrays of its handle they are fetched from. A
+# state has one authority. While it rests on a device the device holds it, and the host keeps,
+# with the handle, what it fetched of it (``_image``): the library reads that array and hands a
+# caller a copy of its own. A copy that no longer reads as the kept array was written, and the
+# state is then its host arrays alone (``_resting``).
+_HOST = {"v": "v", "activation": "s", "adaptation": "a"}
+# what an MLX launch's handle reads each of them from: the image holds while that array is the same
+_MLX_SOURCE = {"v": "vm", "s": "sm", "a": "a_host"}
+
+
+def _image(handle: Any, key: str, fetch: bool = True) -> np.ndarray | None:
+    """The host's float64 array of a handle's device array ``key`` (``"v"``, ``"s"``, ``"a"``),
+    as the device holds it: fetched once, kept with the handle beside the device array it was
+    read from, and handed to no caller. A handle made over other arrays (rows of a state)
+    reads its own. Without ``fetch``, None where none is kept."""
+    kept = dict.get(handle, "host")
+    source = dict.get(handle, _MLX_SOURCE[key] if isinstance(handle, _MlxState) else key)
+    held = None if kept is None else kept.get(key)
+    if held is not None and held[0] is source:
+        return cast(np.ndarray, held[1])
+    if not fetch:
+        return None
+    image: np.ndarray = handle["fetch"](key)
+    handle["host"] = {**(kept or {}), key: (source, image)}
+    return image
+
+
+def _on_host(state: BrainState, name: str) -> np.ndarray:
+    """A state's host array ``name`` for the library's own reading. Of a state that rests on a
+    device it is the array kept with the handle, fetched once: no caller holds it, so reading
+    it leaves the state resting where it is (``BrainState.device``)."""
+    value: np.ndarray | None = state.__dict__.get(name)
+    if value is None:
+        handle = state.__dict__.get("device")
+        if handle is None or "fetch" not in handle:
+            raise AttributeError(name)
+        value = state.__dict__[name] = _image(handle, _HOST[name])
+    assert value is not None
+    return value
+
+
 def _lazy(name: str, key: str) -> property:
     """A host array of a settled state that is fetched from the device on first use.
 
     The accelerator kernels leave the state on the device and hand back a fetch; a
     continuation, a contrast on the device and the step count never need the host copy,
-    so it is made only when something reads it.
+    so it is made only when something reads it. The array a caller reads is the caller's to
+    write: of a state that rests on a device it is a copy of the one kept with the handle,
+    and a write to it makes the host arrays the state (``BrainState.device``).
     """
 
     def get(self: BrainState) -> np.ndarray:
         value = self.__dict__.get(name)
+        handle = self.__dict__.get("device")
+        if handle is not None:
+            kept = _image(handle, key, fetch=value is None and "fetch" in handle)
+            if value is None:
+                value = kept
+            if value is not None and value is kept:
+                value = self.__dict__[name] = kept.copy()
         if value is None:
-            handle = self.__dict__.get("device")
-            if handle is None or "fetch" not in handle:
-                raise AttributeError(name)
-            value = handle["fetch"](key)
-            self.__dict__[name] = value
+            raise AttributeError(name)
         return np.asarray(value)
 
     def put(self: BrainState, value: np.ndarray | None) -> None:
@@ -668,8 +803,55 @@ def _lazy(name: str, key: str) -> property:
     return property(get, put)
 
 
-for _name, _key in (("v", "v"), ("activation", "s"), ("adaptation", "a")):
+for _name, _key in _HOST.items():
     setattr(BrainState, _name, _lazy(_name, _key))
+
+
+def _resting(self: BrainState) -> Any:
+    """``BrainState.device``: the handle of the state on its device, while it rests there.
+
+    A host array the state handed to a caller is the caller's to write. Each read of the
+    handle compares those arrays with the ones kept beside it, on the host and with no read of
+    the device; a state none of them was written to keeps its handle, and a settle, a check or
+    a contrast continues on the device. Once one reads otherwise, or the state holds a host
+    array the handle keeps nothing of, the host arrays are the state: the ones not read yet
+    come from the device as it held them, the handle goes, and every reader takes the state
+    as a host state, as on the NumPy backend. None for a state on the host."""
+    held = self.__dict__
+    handle = held.get("device")
+    if handle is None:
+        return None
+    for name, key in _HOST.items():
+        value = held.get(name)
+        if value is not None:
+            kept = _image(handle, key, fetch=False)
+            if value is not kept and (kept is None or not _same(value, kept)):
+                _to_host(self, handle)
+                return None
+    return handle
+
+
+def _to_host(state: BrainState, handle: Any) -> None:
+    """Make the host arrays the state: each one not read yet, or read by the library alone,
+    becomes the state's own copy of what the device holds, the movement comes with them, and
+    the handle goes."""
+    held = state.__dict__
+    for name, key in _HOST.items():
+        value = held.get(name)
+        if value is None or value is _image(handle, key, fetch=False):
+            kept = _image(handle, key)
+            assert kept is not None
+            held[name] = kept.copy()
+    _lazy_change(state)
+    held["device"] = None
+    held.pop("_parts", None)
+
+
+def _put_device(self: BrainState, value: Any) -> None:
+    self.__dict__["device"] = value
+
+
+BrainState.device = property(_resting, _put_device)
 
 
 def _lazy_change(self: BrainState) -> np.ndarray | None:
@@ -1194,9 +1376,7 @@ class Brain:
                     )
                 if result.qualified.all() or used >= budget:
                     return result
-                if not all(np.isfinite(value).all() for value in (
-                    phase.state.v, phase.state.activation, phase.state.adaptation
-                )):
+                if not all(np.isfinite(_on_host(phase.state, name)).all() for name in _HOST):
                     return result
                 current_state = phase.state
             return result
@@ -1239,9 +1419,8 @@ class Brain:
                 np.all(np.abs(after - before) <= rounding * (
                     1 + np.maximum(np.abs(after), np.abs(before))
                 ))
-                for before, after in zip(
-                    (previous.v, previous.activation, previous.adaptation),
-                    (current.v, current.activation, current.adaptation), strict=True,
+                for before, after in (
+                    (_on_host(previous, name), _on_host(current, name)) for name in _HOST
                 )
             )
 
@@ -1259,7 +1438,17 @@ class Brain:
         fast: bool = False,
     ) -> Equilibrium:
         """Run a validated local attempt; only a subsequent damping attempt may skip a stall."""
-        current = self.settle_batch(drive, steps=0, state=state, mask=mask, nudge=nudge)
+        # An MLX array nobody marked is read finite with the solve's first launch, which
+        # synchronizes anyway: the settle of no sweeps before it, which launches nothing, takes
+        # the drive as marked, and a solve without a launch reads the drive itself.
+        unread = self._mlx is not None and _unread(drive)
+        if unread:
+            _trusted(drive)
+        try:
+            current = self.settle_batch(drive, steps=0, state=state, mask=mask, nudge=nudge)
+        finally:
+            if unread:
+                _TRUSTED.pop(id(drive), None)
         if mask is None and nudge is None and not stop_if_stalled and self._solves_whole():
             solved = self._solve_compiled(drive, current, budget, chunk, tolerance, fast)
             if solved is not None:
@@ -1267,9 +1456,11 @@ class Brain:
         if mask is None and not stop_if_stalled and self._mlx is not None and self._solves_alone():
             kernel: _MlxKernel = self._mlx
             held = drive if _resident(drive) else np.atleast_2d(drive)
-            solved = kernel.solve(held, current, nudge, budget, chunk, tolerance)
+            solved = kernel.solve(held, current, nudge, budget, chunk, tolerance, unread)
             if solved is not None:
                 return solved
+        if unread and not _drive_finite(drive):
+            raise ValueError("drive must be finite and the brain must contain neurons")
         # below the launch's floor the float64 reference decides, also of a launched state;
         # from it a float32 torch state is checked in float32
         reference: dict[str, bool] = (
@@ -1283,8 +1474,7 @@ class Brain:
         used, checks, stagnation_checks, repeats = 0, 1, 0, 0
         while used < budget and not (error <= tolerance).all():
             if not np.isfinite(error).all() and any(
-                not np.isfinite(value).all()
-                for value in (current.v, current.activation, current.adaptation)
+                not np.isfinite(_on_host(current, name)).all() for name in _HOST
             ):
                 # A divergent numerical state is not a valid warm start for
                 # another chunk. Return its failed diagnostic instead of raising.
@@ -1437,7 +1627,8 @@ class Brain:
         """Settle a batch of dense drives ``(batch, n)`` at once; see ``settle``.
 
         ``mask`` has shape ``(n,)`` or ``(1, n)`` for shared ablations, or
-        ``(batch, n)`` for a separate mask on each row.
+        ``(batch, n)`` for a separate mask on each row. A drive that rests on a device (a torch
+        tensor, an MLX array) is refused where a host array is, read on its device.
         """
         resident = _resident(drive)
         if not resident:
@@ -1457,7 +1648,11 @@ class Brain:
         batch, n = drive.shape
         if n != self.connectome.n:
             raise ValueError("drive must have one column per neuron")
-        if n == 0 or not (resident or _rows_finite(drive)):
+        # an MLX array nobody marked is read finite by the kernel, with its first launch
+        unread = resident and self._mlx is not None and _unread(drive)
+        if n == 0 or not (
+            unread or (_drive_finite(drive) if resident else _rows_finite(drive))
+        ):
             raise ValueError("drive must be finite and the brain must contain neurons")
         if mask is not None:
             keep = np.asarray(mask, float)
@@ -1478,11 +1673,12 @@ class Brain:
                 (batch, n),
             ):
                 raise ValueError("nudge anchor must match the drive's neurons and batch size")
+        # the state's handle while it rests on a device; None once its host arrays are the state
+        rests = None if state is None else state.device
         on_kernel = (
-            state is not None
-            and state.device is not None
+            rests is not None
             and self.backend in ("torch", "mlx")
-            and state.device.get("holder")
+            and rests.get("holder")
             is (self._torch if self.backend == "torch" else self._mlx).root
         )
         v: Any
@@ -1492,18 +1688,18 @@ class Brain:
             v = a = None if self.backend == "torch" else np.zeros((batch, n))
             if self.backend != "torch":
                 a = np.zeros((batch, n))
-        elif on_kernel:  # the state never left the device: no host array is read
-            assert state is not None and state.device is not None
+        elif on_kernel:  # the state rests on the device: no host array is read
+            assert rests is not None
             v = a = None
-            if tuple(state.device["s"].shape) != (batch, n):
+            if tuple(rests["s"].shape) != (batch, n):
                 raise ValueError("state batch does not match the drive batch")
         elif self.backend in ("torch", "mlx"):  # the kernels never write the host arrays
-            v, a = np.atleast_2d(state.v), np.atleast_2d(state.adaptation)
+            v, a = np.atleast_2d(_on_host(state, "v")), np.atleast_2d(_on_host(state, "adaptation"))
         else:
             # CPU kernels update in place; integer or float32 warm states must not
             # truncate potentials or silently lower the documented float64 precision.
-            v = np.array(state.v, dtype=np.float64, copy=True, ndmin=2)
-            a = np.array(state.adaptation, dtype=np.float64, copy=True, ndmin=2)
+            v = np.array(_on_host(state, "v"), dtype=np.float64, copy=True, ndmin=2)
+            a = np.array(_on_host(state, "adaptation"), dtype=np.float64, copy=True, ndmin=2)
         if v is not None and (v.shape != (batch, n) or a.shape != (batch, n)):
             raise ValueError("state batch does not match the drive batch")
         if v is not None and not (
@@ -1519,7 +1715,7 @@ class Brain:
             kernel = self._torch if self.backend == "torch" else self._mlx
             v, a, s, traj, taken, activity_change, handle = kernel.run(
                 v, a, drive, np.ones(n) if mask is None else keep, steps, trajectory, nudge,
-                tolerance, state, capture
+                tolerance, state, capture, *((True,) if unread else ()),
             )
         elif (
             not trajectory and capture is None and _FUSED
@@ -1569,24 +1765,31 @@ class Brain:
     ) -> tuple[np.ndarray, np.ndarray] | None:
         """``sum_b s+ s+ - s- s-`` per synapse and ``sum_b (s+ - s-)`` per neuron, on the device.
 
-        Returns ``None`` when the brain has no device kernel or either state does not carry
-        this brain's device handle; the learner then reads the activations on the host.
+        Returns ``None`` when the brain has no device kernel or either state does not rest on
+        it (one settled elsewhere, or one whose host arrays a caller wrote); the learner then
+        reads the activations on the host.
         """
         kernel = self._torch if self.backend == "torch" else self._mlx
-        if kernel is None or plus.device is None or minus.device is None:
+        if kernel is None:
+            return None
+        ours, theirs = plus.device, minus.device
+        if ours is None or theirs is None:
             return None
         holder = kernel.root
-        if plus.device.get("holder") is not holder or minus.device.get("holder") is not holder:
+        if ours.get("holder") is not holder or theirs.get("holder") is not holder:
             return None
-        out: tuple[np.ndarray, np.ndarray] = kernel.contrast(plus.device["s"], minus.device["s"])
+        out: tuple[np.ndarray, np.ndarray] = kernel.contrast(ours["s"], theirs["s"])
         return out
 
     def _small_contrast(self, plus: BrainState) -> bool:
         """Whether a contrast costs the host less than the synchronization its launch takes: on
         MLX, few rows of small blocks whose activations the host reads anyway."""
-        if self._mlx is None or self._mlx.plan is None or not isinstance(plus.device, _MlxState):
+        if self._mlx is None or self._mlx.plan is None:
             return False
-        rows = int(plus.device["vm"].shape[0])
+        handle = plus.device
+        if not isinstance(handle, _MlxState):
+            return False
+        rows = int(handle["vm"].shape[0])
         return rows * self.layout.size < _MLX_CONTRAST_ENTRIES
 
     def residual(
@@ -1625,6 +1828,11 @@ class Brain:
         own check, in float32, with no launch of its own. A single state returns a length-one array;
         nonfinite errors return infinity.
 
+        The state and the nudge are checked as they stand. A state whose host arrays a caller
+        wrote is those arrays (``BrainState.device``): whatever settled it, its check is the
+        float64 CPU reference of them. The launch's own check holds for a state nobody wrote,
+        while the drive and the nudge's arrays read as the launch read them.
+
         ``per_unit`` gives each neuron's own signed error of the potential equation instead,
         ``(rows, neurons)``, on the float64 CPU reference whatever the backend: what a settle
         from this state under this drive repairs, neuron by neuron (``cadence.surprise``). Its
@@ -1647,8 +1855,11 @@ class Brain:
             held = handle.get("drive")  # a copy of a host's drive, which a caller may write since
             if (
                 checked is not None and checked[1] is nudge
-                and (held is d if _resident(d) or _resident(held) else np.array_equal(held, d))
                 and self._mlx is not None and handle.get("version") == self._mlx.version
+                and (held is d if _resident(d) or _resident(held) else np.array_equal(held, d))
+                # a nudge's arrays may be written too: the launch's check holds while they
+                # read as the launch read them
+                and checked[3] == self._mlx.nudge_read(nudge, len(d))
             ):
                 return np.array(checked[2])
         if (
@@ -1670,8 +1881,8 @@ class Brain:
             ))
         if _resident(d):
             d = _host_copy(d)
-        v = np.atleast_2d(state.v)
-        a = np.atleast_2d(state.adaptation)
+        v = np.atleast_2d(_on_host(state, "v"))
+        a = np.atleast_2d(_on_host(state, "adaptation"))
         if v.shape != d.shape or a.shape != d.shape:
             raise ValueError("state batch does not match the drive batch")
         if not per_unit and _FUSED and (compiled := self._fused_blocks()) is not None:
@@ -1769,7 +1980,8 @@ class Brain:
     ) -> np.ndarray | None:
         """The apical compartment's gain ``(batch, pools)`` at ``state`` under ``drive``: what a
         nudged settle from it holds (``Nudge.apical_gain``); None without the compartment.
-        ``own_precision`` reads an unread float32 torch state's in float32, as ``residual`` does."""
+        ``own_precision`` reads an unread float32 torch state's in float32, as ``residual`` does.
+        A state whose host arrays a caller wrote is read on the host, as ``residual`` reads it."""
         apical = self.apical
         if apical is None:
             return None
@@ -1792,12 +2004,13 @@ class Brain:
             return gain
         if _resident(d):
             d = _host_copy(d)
-        s = np.atleast_2d(np.asarray(state.activation, dtype=float))
+        s = np.atleast_2d(np.asarray(_on_host(state, "activation"), dtype=float))
         basal, raw = self._split_input(s, *self._apical_transports())
         basal += d + self.bias
         adapt = self.neuron_model.adaptation
         if adapt is not None:
-            basal -= adapt.strength * np.atleast_2d(np.asarray(state.adaptation, dtype=float))
+            held = np.asarray(_on_host(state, "adaptation"), dtype=float)
+            basal -= adapt.strength * np.atleast_2d(held)
         return apical.gain(basal, raw)
 
     def _fused_blocks(self) -> tuple[np.ndarray, Any] | None:
@@ -3356,7 +3569,7 @@ class _TorchKernel:
         self.flat = self.plan.values  # the live effective weights, in the plan's order
         self._staging = _Staging(torch, self.device)
         self._observed: tuple[np.ndarray, Any] | None = None
-        self._indices: dict[int, tuple[np.ndarray, Any]] = {}
+        self._indices: dict[tuple[str, bytes], Any] = {}  # device indices by the neurons named
         self._workspaces = _Workspaces()
         self._nudge_specs: dict[Any, Any] = {}
         self._capture_stream: Any = None
@@ -3851,27 +4064,34 @@ class _TorchKernel:
 
     def observed(self, x: np.ndarray) -> Any:
         """Observations on the device in the brain's precision, uploaded once however many of a
-        moment's memories read the same array."""
+        moment's memories read the same array. The brain uploads what it read finite, so the
+        upload is marked (``_trusted``): a settle under it as a moment's drive reads it for
+        its sweeps alone."""
         held = self._observed
         if held is None or held[0] is not x:
-            held = self._observed = (x, self._staging.upload(x, self.dtype))
+            held = self._observed = (x, _trusted(self._staging.upload(x, self.dtype)))
         return held[1]
 
     def index_of(self, index: np.ndarray) -> Any:
         """Neurons as an index of the device's arrays: a slice where they are a contiguous
-        range, made once per array of them."""
-        held = self._indices.get(id(index))
-        if held is None or held[0] is not index:
+        range from a neuron counted from the first, made once per set of neurons (the array
+        is read at every call: ``_index_key``)."""
+        key = _index_key(index)
+        held = None if key is None else self._indices.get(key)
+        if held is None:
             if len(self._indices) > 64:
                 self._indices.clear()
             first = int(index[0]) if len(index) else 0
-            contiguous = np.array_equal(index, np.arange(first, first + len(index)))
-            on_device = (
+            contiguous = first >= 0 and np.array_equal(
+                index, np.arange(first, first + len(index))
+            )
+            held = (
                 slice(first, first + len(index)) if contiguous
                 else self.torch.from_numpy(np.array(index, dtype=np.int64)).to(self.device)
             )
-            held = self._indices[id(index)] = (index, on_device)
-        return held[1]
+            if key is not None:
+                self._indices[key] = held
+        return held
 
     def _nudge_spec(self, nudge: Nudge) -> tuple[Any, Any]:
         """The nudge's topology and arithmetic branches, independent of temperature values.
@@ -4494,7 +4714,8 @@ class _TorchKernel:
     ) -> tuple[Any, Any, Any, np.ndarray | None, int, np.ndarray | None, Any]:
         torch = self.torch
         batch = drive.shape[0]
-        handle = state.device if state is not None and state.device is not None else None
+        # ``settle_batch`` read the state's handle: it is taken here as it stands
+        handle = None if state is None else state.__dict__.get("device")
         if (
             steps == 0 and not want and capture is None and handle is not None
             and handle.get("holder") is self.root and handle.get("unmasked")
@@ -4514,6 +4735,10 @@ class _TorchKernel:
                 ws.v[0].zero_()
             else:
                 a_in = self._upload(a0)
+                if ws.a is None and self.device.type == "cpu":
+                    # the state keeps this array: an upload on the CPU can read the host
+                    # array's own memory, which is the caller's to write
+                    a_in = a_in.clone()
                 ws.v[0].copy_(self._upload(v0).T)
             if ws.a is not None:
                 ws.a[0].copy_(a_in.T)
@@ -5639,18 +5864,26 @@ class _MlxKernel:
         tolerance: float | None = None,
         state: BrainState | None = None,
         capture: _Capture | None = None,
+        reads: bool = False,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None, int, np.ndarray, Any]:
+        """``reads``: the drive is an MLX array nobody read finite yet (``_unread``), and this
+        settle reads it. The launches read it with their first synchronization and refuse it
+        there, before any state is made; one operation at a time reads it first."""
         mx = self.mx
         plan = self.plan
         if plan is not None and not want and capture is None and (keep == 1.0).all():
             tables = None if nudge is None else plan.nudge_tables(nudge)
             if nudge is None or tables is not None:
-                return self._launched(v0, a0, drive, steps, nudge, tables, tolerance, state)
+                return self._launched(
+                    v0, a0, drive, steps, nudge, tables, tolerance, state, reads
+                )
+        if reads and not _drive_finite(drive):
+            raise ValueError("drive must be finite and the brain must contain neurons")
 
         def to(x: np.ndarray) -> Any:
             return mx.array(np.asarray(x, dtype=np.float32))
 
-        handle = state.device if state is not None and state.device is not None else None
+        handle = None if state is None else state.__dict__.get("device")  # as ``settle_batch`` read
         if handle is not None and handle.get("holder") is self.root:
             v, a = handle["v"], handle["a"]
         else:
@@ -5712,14 +5945,18 @@ class _MlxKernel:
             taken = t + 1
             if bounded and tolerance is not None and float(out[4].item()) < tolerance:
                 break
+        # the state's host arrays are what the device holds, kept with the handle (``_image``)
+        resting = {"v": v, "a": a, "s": s}
+        hosted = {key: np.array(array, dtype=np.float64) for key, array in resting.items()}
         return (
-            np.array(v, dtype=np.float64),
-            np.array(a, dtype=np.float64),
-            np.array(s, dtype=np.float64),
+            hosted["v"],
+            hosted["a"],
+            hosted["s"],
             (np.stack(traj) if traj else np.empty((0, batch, self.n))) if want else None,
             taken,
             np.array(activity_change, dtype=np.float64),
-            {"kernel": "mlx", "holder": self.root, "v": v, "a": a, "s": s},
+            {"kernel": "mlx", "holder": self.root, **resting,
+             "host": {key: (resting[key], hosted[key]) for key in resting}},
         )
 
     # -- a lesson's update on the device: the same arithmetic per block entry, in float32
@@ -6216,10 +6453,11 @@ class _MlxKernel:
         self, v0: np.ndarray | None, a0: np.ndarray | None, state: BrainState | None, rows: int,
     ) -> _MlxState:
         """A settle's start on the device: the state's own handle where it rests here; else its
-        arrays cut by range, uploaded where they stand on the host."""
+        arrays cut by range, uploaded where they stand on the host. The caller read the
+        state's handle (``BrainState.device``), and it is taken here as it stands."""
         mx, plan = self.mx, self.plan
         assert plan is not None
-        handle = None if state is None else state.device
+        handle = None if state is None else state.__dict__.get("device")
         if isinstance(handle, _MlxState) and handle.get("holder") is self.root:
             return handle
         spans = plan.spans
@@ -6251,7 +6489,8 @@ class _MlxKernel:
             else:
                 sm = plan.activate(vm)
                 sources = {r: plan.activate(mx.array(p)) for r, p in potentials.items()}
-            a_host = a0
+            # the state keeps the adaptation: its own copy of a caller's array, which may be written
+            a_host = a0 if rest else np.array(a0, dtype=np.float64)
         return _MlxState(
             kernel="mlx", holder=self.root, plan=plan, vm=vm, sm=sm, sources=sources,
             potentials=potentials, a_host=a_host, moved=[], source_moves=[], rest=rest,
@@ -6405,11 +6644,42 @@ class _MlxKernel:
                 "made": [sources, path, peak], "sources": sources, "goals": goals, "gaps": gaps,
                 "outer": outer, "before": None, "path": path, "peaks": peak}
 
+    def _target(self, nudge: Nudge, rows: int) -> np.ndarray:
+        """The nudge's target at the settling neurons, in the launch's floats."""
+        plan = self.plan
+        assert plan is not None
+        target = np.broadcast_to(nudge.target, (rows, self.n))
+        columns = plan.columns
+        if len(columns) and int(columns[-1]) - int(columns[0]) + 1 == len(columns):
+            target = target[:, int(columns[0]) : int(columns[-1]) + 1]  # one range: no gather
+        else:
+            target = target[:, columns]
+        return np.asarray(target, dtype=np.float32)
+
+    def nudge_read(
+        self, nudge: Nudge | None, rows: int, target: np.ndarray | None = None
+    ) -> tuple[Any, ...] | None:
+        """What a launch reads of ``nudge``, as it stands: the target at the settling neurons
+        (``target``, where the caller made it), the mask, the weight, the groups, the held gains
+        and the numbers, an array by its bytes. A launch's check holds for the nudge while it
+        reads the same (``Brain.residual``): the nudge's arrays are the caller's to write."""
+        if nudge is None:
+            return None
+        if target is None:
+            target = self._target(nudge, rows)
+        return (target.tobytes(), *(
+            value.tobytes() if isinstance(value, np.ndarray) else value
+            for value in (
+                nudge.mask, nudge.beta, nudge.softmax_temperature, nudge.weight, nudge.groups,
+                nudge.apical_gain,
+            )
+        ))
+
     def _nudged_inputs(self, nudge: Nudge, tables: Any, rows: int) -> dict[str, Any]:
         mx, plan = self.mx, self.plan
         assert plan is not None
         mask, group_low, group_high, over = tables
-        target = np.broadcast_to(nudge.target, (rows, self.n))[:, plan.columns]
+        target = self._target(nudge, rows)
         weight = plan.none
         if nudge.weight is not None:
             values = np.asarray(nudge.weight, dtype=np.float32)
@@ -6419,11 +6689,12 @@ class _MlxKernel:
             gains = np.asarray(nudge.apical_gain, dtype=np.float32).ravel()
             given = mx.array(np.pad(gains, (0, max(0, 8 - len(gains)))))
         return {
-            "target": mx.array(np.asarray(target, dtype=np.float32)), "mask": mask,
+            "target": mx.array(target), "mask": mask,
             "weight": weight,
             "group_low": group_low, "group_high": group_high, "over": over,
             "beta": float(nudge.beta), "shares": nudge.softmax_temperature is not None,
             "weighted": nudge.weight is not None, "given": given,
+            "read": self.nudge_read(nudge, rows, target),
         }
 
     def _launch(
@@ -6473,9 +6744,11 @@ class _MlxKernel:
     def _settled_state(
         self, start: _MlxState, driven: dict[str, Any], drive: np.ndarray, out: Any, taken: int,
         moved: list[Any], moves: list[Any], nudge: Nudge | None, discarded: int = 0,
+        read: Any = None,
     ) -> _MlxState:
         """The state a launch of ``taken`` sweeps leaves: its settling neurons, its source ranges
-        along their way, and the check of its equations, theirs among them."""
+        along their way, and the check of its equations, theirs among them, kept beside the
+        drive, the nudge and what the launch ``read`` of the nudge (``nudge_read``)."""
         mx, plan = self.mx, self.plan
         assert plan is not None
         gaps, goals = driven["gaps"], driven["goals"]
@@ -6498,25 +6771,30 @@ class _MlxKernel:
             source_moves=moves, drive=drive if _resident(drive) else np.array(drive, copy=True),
             version=self.version,
             fixed=driven["fixed"], outer=outer, relaxed=taken >= driven["needed"],
-            checked=(drive, nudge, error), discarded_steps=discarded,
+            checked=(drive, nudge, error, read), discarded_steps=discarded,
             gains=out[5] if nudge is None and plan.pools else None,
         )
 
     def _launched(
         self, v0: np.ndarray | None, a0: np.ndarray | None, drive: np.ndarray, steps: int,
         nudge: Nudge | None, tables: Any, tolerance: float | None, state: BrainState | None,
+        reads: bool = False,
     ) -> tuple[Any, Any, Any, Any, int, Any, Any]:
         """``run`` in launches: the same sweeps with one synchronization per launch. Under a
         movement tolerance a launch reads which sweeps moved a neuron; a state that stops inside
         the launch is made again from the launch's start, the sweeps it stops at and no more, so
-        the steps and the state are those of the tolerance read at every sweep."""
+        the steps and the state are those of the tolerance read at every sweep. With ``reads``
+        the drive is read finite with the first launch; no sweeps launch nothing, and read it."""
         mx, plan = self.mx, self.plan
         assert plan is not None
         rows = len(drive)
         current = self._start(v0, a0, state, rows)
         if steps == 0:
+            if reads and not _drive_finite(drive):
+                raise ValueError("drive must be finite and the brain must contain neurons")
             return None, None, None, None, 0, None, _MlxState(current, moved=[], source_moves=[])
         nudged = None if nudge is None else self._nudged_inputs(nudge, tables, rows)
+        read = None if nudged is None else nudged["read"]
         limit = _MLX_GRAPH_STEPS if tolerance is None else _MLX_BOUNDED_STEPS
         taken, discarded = 0, 0
         moved: list[Any] = []
@@ -6525,7 +6803,13 @@ class _MlxKernel:
             sweeps = min(limit, steps - taken)
             driven = self._driven(current, drive, sweeps)
             out = self._launch(current["vm"], current["sm"], driven, sweeps, nudged, tolerance)
-            mx.eval(out, driven["made"])
+            if reads:  # the drive is made with the first launch, and the host reads it there
+                mx.eval(out, driven["made"], drive)
+                if not _drive_finite(drive):
+                    raise ValueError("drive must be finite and the brain must contain neurons")
+                reads = False
+            else:
+                mx.eval(out, driven["made"])
             stopped = False
             if tolerance is not None:
                 word = int(np.bitwise_or.reduce(np.array(out[4], copy=False), axis=None))
@@ -6544,7 +6828,7 @@ class _MlxKernel:
             moved.append(out[3])
             moves.append((driven["before"], driven["path"], sweeps))
             current = self._settled_state(
-                current, driven, drive, out, sweeps, moved, moves, nudge, discarded,
+                current, driven, drive, out, sweeps, moved, moves, nudge, discarded, read,
             )
             if stopped:
                 break
@@ -6569,14 +6853,15 @@ class _MlxKernel:
 
     def solve(
         self, drive: np.ndarray, current: BrainState, nudge: Nudge | None, budget: int, chunk: int,
-        tolerance: float,
+        tolerance: float, reads: bool = False,
     ) -> Equilibrium | None:
         """``_equilibrate_local``'s solve from the published state ``current``: a launch per chunk,
         each ending with the equations' residual on the device, in float32, within rounding of the
         float64 reference at tolerances from ``_MLX_CHECK_FLOOR``. The first launch checks the
         start too, so a solve that needs one chunk synchronizes once; a start within tolerance
-        keeps it, with the sources' equations read after all. None where the launch does not
-        apply."""
+        keeps it, with the sources' equations read after all. With ``reads`` the drive, an MLX
+        array nobody read finite, is read with the first launch and refused there. None where
+        the launch does not apply."""
         mx, plan = self.mx, self.plan
         start = current.device
         if plan is None or not isinstance(start, _MlxState) or not tolerance >= _MLX_CHECK_FLOOR:
@@ -6589,7 +6874,12 @@ class _MlxKernel:
         sweeps = min(chunk, budget)
         driven = self._driven(start, drive, sweeps)
         out = self._launch(start["vm"], start["sm"], driven, sweeps, nudged, None)
-        mx.eval(out, driven["made"])
+        if reads:  # the drive is made with the first launch, and the host reads it there
+            mx.eval(out, driven["made"], drive)
+            if not _drive_finite(drive):
+                raise ValueError("drive must be finite and the brain must contain neurons")
+        else:
+            mx.eval(out, driven["made"])
         first = _launch_error(out[2], 0)
         if sweeps == 0 or (first <= tolerance).all():
             first = np.maximum(first, self._source_gap(driven, 0))
@@ -6597,7 +6887,10 @@ class _MlxKernel:
                 return Equilibrium(current, first, 0, tolerance, residual_checks=1)
         used, checks = sweeps, 2
         moves = [(driven["before"], driven["path"], sweeps)]
-        handle = self._settled_state(start, driven, drive, out, sweeps, [out[3]], moves, nudge)
+        read = None if nudged is None else nudged["read"]
+        handle = self._settled_state(
+            start, driven, drive, out, sweeps, [out[3]], moves, nudge, read=read
+        )
         error = handle["checked"][2]
         while used < budget and not (error <= tolerance).all() and np.isfinite(error).all():
             sweeps = min(chunk, budget - used)
@@ -6606,7 +6899,9 @@ class _MlxKernel:
             mx.eval(out, driven["made"])
             used, checks = used + sweeps, checks + 1
             moves = [(driven["before"], driven["path"], sweeps)]
-            handle = self._settled_state(handle, driven, drive, out, sweeps, [out[3]], moves, nudge)
+            handle = self._settled_state(
+                handle, driven, drive, out, sweeps, [out[3]], moves, nudge, read=read
+            )
             error = handle["checked"][2]
         unread: Any = None
         return Equilibrium(
@@ -6633,8 +6928,8 @@ class _MlxKernel:
         ):
             return np.array(handle["gains"], dtype=np.float64)
         on_device = handle is not None and handle.get("holder") is self.root
-        v0 = None if on_device else np.atleast_2d(state.v)
-        a0 = None if on_device else np.atleast_2d(state.adaptation)
+        v0 = None if on_device else np.atleast_2d(_on_host(state, "v"))
+        a0 = None if on_device else np.atleast_2d(_on_host(state, "adaptation"))
         start = self._start(v0, a0, state, rows)
         if int(start["vm"].shape[0]) != rows:
             raise ValueError("state batch does not match the drive batch")

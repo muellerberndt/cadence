@@ -341,10 +341,13 @@ result together points to goal selection.
 
 `predict(observations)`, `accuracy(observations, labels)` and `fit(observations,
 labels, *, epochs=30, batch=32)` treat rows as independent samples: qualified cold
-solves that read no trace or associative memory. `fit` starts every stream afresh, keeps
+solves that read no trace, no associative memory and no record of bound moments (a sense an
+observation by name leaves silent stays silent, where `act` settles on what the records bring
+back). `fit` starts every stream afresh, keeps
 the arousal state as it is and returns training accuracy per epoch; a refused score keeps
-accepted lessons. Use them as controls on a separate instance; greedy `act` on a loaded copy
-measures the memory-aware response.
+accepted lessons. With a learned code a row's drive reads weights the lessons move, so `fit`
+makes each minibatch's drive as its lesson begins, as `predict` makes it. Use them as controls
+on a separate instance; greedy `act` on a loaded copy measures the memory-aware response.
 
 ```python
 import numpy as np

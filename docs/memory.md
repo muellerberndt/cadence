@@ -1793,7 +1793,9 @@ bit.
 - **What stays.** Each stream's records are a [`cd.LongTermMemory`](#a-long-term-memory-of-records):
   a read deepens the records it holds, idle records fade, a full memory replaces the most faded
   one. The records survive `reset()` and the end of every episode; `brain.longterm.clear()` empties
-  them.
+  them. `reset()` and an episode's end (`done` given to `step`, `learn` or `live`) begin the
+  stream's turn afresh, so the next episode's turn writes its own record; a stream that goes on
+  beside one that ended keeps its turn.
 
 ```python
 TURN = 14                                  # agents 0-5, verbs 6-9, patients 10-13, the turn 14
@@ -2124,12 +2126,16 @@ more than half of the fields it holds are held alike. `brain.bound.said_from` na
 Pass the sound back under `"voice"` at the moment it is said, so the moment's record binds it.
 
 **A reward.** A reward given to `live` or `step` pays the record of the moment the brain acted
-at (a moment `wait` sensed in between is written and is not the one paid): it deepens by 4
+at (a moment `wait` sensed in between is written and is not the one paid; `learn` called by
+hand pays and refuses no record): it deepens by 4
 tellings a unit of reward, counted as its pay (`brain.bound.paid`). A record of something said
 answers only once paid; a reward of zero or less refuses it (`brain.bound.refused`), and its
 sound is passed over at moments like it until a reward pays it. Telling a said moment again, or
 the brain's surprise at it, deepens its record and pays nothing. A life with no reward given
-pays and refuses nothing.
+pays and refuses nothing. The record a reward is awaited for is not replaced
+before the reward comes: in a full store a moment `wait` senses replaces another record, the
+streams of one moment take records of their own, and in a store whose every record awaits a
+reward the moment is not written.
 
 ```python
 for word in (said_cup, np.random.default_rng(1).normal(size=(20, 10))):

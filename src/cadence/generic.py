@@ -71,7 +71,7 @@ from .arousal import Arousal, ArousalConfig
 from .blocks import Layout
 from .blocks import layout as make_layout
 from .bound import BoundRecords
-from .brain import Apical, Backend, BrainState, Equilibrium, _host_copy, _resident
+from .brain import Apical, Backend, BrainState, Equilibrium, _host_copy, _resident, _trusted
 from .brain import Brain as NeuralGraph
 from .code import LearnedCode
 from .connectome import Connectome
@@ -4635,12 +4635,14 @@ class Brain:
 
     # -- stimulus
 
-    def _observations(self, observations: Any) -> np.ndarray:
+    def _observations(self, observations: Any, *, memory: bool = True) -> np.ndarray:
         """Observations as a nonempty finite batch of the brain's width, ``(rows, inputs)``.
         A brain with senses by name also takes them by name, and reads its map's part itself
-        (``_sensed_rows``)."""
+        (``_sensed_rows``). Without ``memory`` (an independent sample: ``predict``,
+        ``accuracy``, ``fit``, ``stimulus(memory=False)``) the bound records complete nothing:
+        the senses left silent stay silent."""
         if self._senses is not None:
-            observations = self._sensed_rows(observations)
+            observations = self._sensed_rows(observations, complete=memory)
         x = np.asarray(observations, dtype=float)
         if x.ndim < 2 or not x.shape[0] or not np.isfinite(x).all():
             raise ValueError(
@@ -5089,16 +5091,17 @@ class Brain:
     def stimulus(self, observations: Any, *, memory: bool = True) -> np.ndarray:
         """The drive of a batch of observations: the sensory neurons stimulated, plus the
         working memory, the efference copy, the heard history, the recall memory and the
-        hippocampal recall when ``memory`` is set. An episodic memory that votes in the
-        choice (``memory_choice``) is not read into the drive. The recall memory addresses
-        the moment here and keeps the address for the moment's write and lesson. Both
-        memories read the observation code; a learned code settles on the observations
-        alone, as the cortex reads it."""
+        hippocampal recall when ``memory`` is set; with it the bound records also complete the
+        senses an observation by name leaves silent, and without it they are not read. An
+        episodic memory that votes in the choice (``memory_choice``) is not read into the
+        drive. The recall memory addresses the moment here and keeps the address for the
+        moment's write and lesson. Both memories read the observation code; a learned code
+        settles on the observations alone, as the cortex reads it."""
         coded = self._coded_moment  # the moment's code, when this is its settle
         if coded is not None and coded[0] is observations:
             drive = self._stimulus(coded[0], coded[1], memory=memory)
         else:
-            x = self._observations(observations)
+            x = self._observations(observations, memory=memory)
             drive = self._stimulus(x, self._code(x), memory=memory)
         return drive if self._settling or not _resident(drive) else _host_copy(drive)
 
@@ -5314,7 +5317,9 @@ class Brain:
             # every memory in order; the recall memory's address, before the settle, reads the
             # stream's slots
             drive = self.memories.stimulus(drive, self._read_moment(x, code))
-        return cast(np.ndarray, drive)
+        # a drive made on the device from observations read finite and the memories' own reads:
+        # the settles of the moment take it as read (a host array is returned as it is)
+        return cast(np.ndarray, _trusted(drive))
 
     # -- where the brain runs
 
@@ -5371,7 +5376,7 @@ class Brain:
         """Take the backend the rule chooses at the rows of a brain's first moment. Invalid
         observations are the operation's to refuse, and the next moment decides."""
         try:
-            rows = len(self._observations(observations))
+            rows = len(self._observations(observations, memory=False))  # a count reads nothing
         except (TypeError, ValueError):
             return
         self._place_at(rows)
@@ -5446,10 +5451,17 @@ class Brain:
 
         ``fit`` begins with ``reset(keep=("arousal",))``: every stream starts afresh and the
         arousal state stays as it is, since a control on independent samples does not change
-        a life."""
-        drive = self.stimulus(observations, memory=False)
+        a life.
+
+        With a learned code a row's drive reads the weights the lessons move (the code's
+        projections onto its readers), so each minibatch's drive is made when its lesson
+        begins, under the parameters of that step, as ``predict`` makes it. Without one the
+        drive of a row is fixed and is made once for the whole fit."""
+        coded = self.learned_code is not None
+        x = self._observations(observations, memory=False)
+        drive = None if coded else self.stimulus(x, memory=False)
         labels = self.learner._labels(np.asarray(labels))
-        if len(labels) != len(drive):
+        if len(labels) != len(x):
             raise ValueError("observations and labels must have the same batch size")
         for name, value, minimum in (("epochs", epochs, 0), ("batch", batch, 1)):
             if (
@@ -5467,8 +5479,9 @@ class Brain:
             order = self.rng.permutation(len(labels))
             for start in range(0, len(labels), batch):
                 rows = order[start : start + batch]
-                self.learner.step(drive[rows], labels[rows])
-            history.append(self.accuracy(observations, labels))
+                taught = self.stimulus(x[rows], memory=False) if drive is None else drive[rows]
+                self.learner.step(taught, labels[rows])
+            history.append(self.accuracy(x, labels))
         return history
 
     def _equilibrate(
@@ -5937,7 +5950,7 @@ class Brain:
         return self._choices(state)
 
     def accuracy(self, observations: Any, labels: Any) -> float:
-        x = self._observations(observations)
+        x = self._observations(observations, memory=False)
         expected = self.learner._labels(np.asarray(labels))
         if len(expected) != len(x):
             raise ValueError("observations and labels must have the same batch size")
@@ -6352,6 +6365,8 @@ class Brain:
         # under the observation code; under the learner's surprise rule, for the rows the
         # lesson taught, those whose complete answer differed from the label.
         shown = np.ones(batch, bool) if lesson.taught is None else lesson.taught
+        if weights is not None:  # a row of weight zero shows nothing
+            shown = shown & (np.asarray(weights) > 0)
         episodic = self._episodic
         if (
             episodic is not None and episodic.demonstrations and shown.any() and not replayed
@@ -7634,8 +7649,9 @@ class Brain:
     ) -> dict[str, float]:
         """Dopamine from the reward of the last action; ``done`` rows start a new episode.
 
-        A ``done`` row's working trace, efference copy and heard history begin afresh, and its
-        recall memory's slots are emptied.
+        A ``done`` row's working trace, efference copy, heard history, held message and
+        long-term records' turn begin afresh, and its recall memory's slots are emptied; the
+        long-term records themselves stay.
         The hippocampus records the reward of the chosen action for the situation it was
         chosen in, and the next choice in that situation reads the record. A refused
         feedback update preserves that pending action and both memories; retry this
@@ -7644,6 +7660,8 @@ class Brain:
         still belongs to the state the action was chosen in. With a positive
         ``recall_address_reward`` the recall memory's address map steps on its own trace by
         the same dopamine, and the report names the step (``address_reward_step``).
+        With bound records ``learn`` pays and refuses no record: a reward reaches the record of
+        the acted moment through ``step`` and ``live``.
         """
         following = self._observations(next_observations)
         # Preflight without reading or resetting memories: invalid input must not write an episode.
@@ -7692,6 +7710,8 @@ class Brain:
             None if told is None or not done.any()
             else {name: value.copy() for name, value in told.streams().items()}
         )
+        kept = self.longterm
+        kept_streams = None if kept is None or not done.any() else kept.snapshot()
         recalled = self.recall
         recalled_state = None if recalled is None or not done.any() else recalled.snapshot()
         episodic = self._episodic  # its context records, temporal contexts and paths
@@ -7720,6 +7740,9 @@ class Brain:
                 heard.reset(len(done), rows=np.flatnonzero(done))
             if told is not None and done.any():
                 told.reset(len(done), rows=np.flatnonzero(done))
+            if kept is not None and done.any():
+                # the streams whose episode ended hold no turn; every record stays
+                kept.reset(len(done), rows=np.flatnonzero(done))
             if recalled is not None and done.any():
                 recalled.reset(len(done), rows=np.flatnonzero(done))
             next_drive = self._moment_drive(following)
@@ -7750,6 +7773,8 @@ class Brain:
             if told is not None and told_streams is not None:
                 for name, value in told_streams.items():
                     setattr(told, name, value)
+            if kept is not None and kept_streams is not None:
+                kept.resume(kept_streams)
             if recalled is not None and recalled_state is not None:
                 recalled.restore(recalled_state)
             if episodic is not None and episode_values is not None:

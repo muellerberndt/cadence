@@ -440,9 +440,13 @@ class BoundRecords:
         """The moment's records: each row that holds something written under its code (a moment
         told again deepens its record), with the moment's surprise in tellings; then the
         records fade by one moment. A moment the brain ``acted`` at becomes the one a reward
-        pays; a moment it only sensed (``wait``) is written and leaves that as it was."""
+        pays; a moment it only sensed (``wait``) is written and leaves that as it was. A
+        record a reward is awaited for is not replaced: a moment only sensed takes another
+        slot, the streams of one moment take slots of their own, and in a store whose every
+        record awaits a reward the moment is not written."""
         rows = np.asarray(rows, dtype=np.float64)
         written = np.full(len(rows), -1, dtype=np.int64)
+        awaited = [] if acted else [int(slot) for slot in self.written if slot >= 0]
         for i in range(len(rows)):
             if not self.holds(rows[i]) or not np.any(codes[i]):
                 continue
@@ -450,8 +454,12 @@ class BoundRecords:
             for first, last in self.fields.values():
                 value[first:last] = rows[i, first:last]
             told = None if surprise is None else float(max(surprise[i], 0.0))
-            written[i], revised = self.store.write(np.asarray(codes[i], dtype=np.float64), value,
-                                                   surprise=told)
+            written[i], revised = self.store.write(
+                np.asarray(codes[i], dtype=np.float64), value, surprise=told,
+                spare=awaited + ([int(slot) for slot in written[:i] if slot >= 0] if acted
+                                 else []))
+            if written[i] < 0:  # every record awaits a reward
+                continue
             if not revised:  # a record of its own: no pay, nothing refused
                 self.refused[written[i]] = False
                 self.paid[written[i]] = 0.0

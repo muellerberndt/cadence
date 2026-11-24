@@ -131,7 +131,7 @@ including distillation, rare classes, curricula and what to do when training goe
 | `live(observation, reward=...)` | one moment of one creature: takes the last outcome, answers | while young or aroused | a single agent in a world ([routine and repair](life.md#routine-and-repair-live)) |
 | `step(observations, reward=..., teacher=...)` | one moment of many streams: takes the last outcomes and labels, answers | from every outcome and label | batches, teaching inside a stream, learning from every outcome ([train](teach.md#explicit-learning-with-step)) |
 | `act(observations, greedy=...)` | answers, without learning | nothing | evaluation, or the first half of a moment you time yourself |
-| `learn(reward, done, next_observations)` | the outcome of the last sampled `act` | from that outcome | the second half of a moment you time yourself ([by hand](tune.md#one-experience-step-by-hand)) |
+| `learn(reward, done, next_observations)` | the outcome of the last sampled `act` | from that outcome | the second half of a moment you time yourself ([by hand](tune.md#one-experience-step-by-hand)); it pays no [record of a bound moment](memory.md#records-of-bound-moments-opt-in), which `step` and `live` do |
 | `lesson(observations, labels)` | teaches the right answers, without acting | from the labels | supervised training ([train](teach.md#supervised-lessons)) |
 | `predict(observations)` | each row's answer from rest, without memories | nothing | testing what the weights hold ([evaluate](teach.md#evaluate-without-fooling-yourself)) |
 

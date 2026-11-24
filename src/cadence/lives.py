@@ -33,14 +33,17 @@ and its heard history among them, with or without the store (``episodic=False``)
 and ``actor_hold``, at any teaching point. ``Lives`` refuses a learned or fixed code, an apical
 compartment, rehearsal, qualified teaching, the efference copy, a held message, long-term
 records, ``actor_entropy``, ``surprise`` and a recall memory with several heads, a window, the
-command, the read of when, tokens or a slot's strength, each by name. A moment any life refuses
-is refused for every life.
+command, the read of when, tokens or a slot's strength, each by name. On a torch device a moment
+any life refuses is refused for every life. On the CPU what a call is given is checked for every
+life before any life moves, and a life that refuses what it was given stops the lives in row order
+(``Lives._in_turn``).
 """
 
 from __future__ import annotations
 
 import warnings
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from copy import deepcopy
 from dataclasses import dataclass, replace
 from typing import Any, cast
 
@@ -63,7 +66,7 @@ from .brain import Brain as NeuralGraph
 from .learning import _MOMENTS, _RELATIVE_TINY, LearnedState, Learner, _taught_report
 from .memories import record_action
 from .memory import SynapticMemory
-from .plasticity import ActorCritic, Maturity, _held_drive
+from .plasticity import ActorCritic, Maturity, _batch_of, _held_drive
 from .resident import (
     _MAP_KINDS,
     TorchArrays,
@@ -1852,6 +1855,26 @@ def _refuse_without_action(takes: np.ndarray, reward: np.ndarray, done: np.ndarr
         )
 
 
+def _lone_copy(brain: Any, backend: str, device: str | None, precision: str | None) -> Any:
+    """A lone brain's copy on the place named, its stream as the brain's stands, sharing nothing
+    either of them can change. The copy is the brain's deep copy (``Brain.__deepcopy__``): its
+    arrays, stores, stream and random generators are its own, each generator at the brain's
+    state, and the immutable connectome is shared. For another place than the brain's the copy's
+    checkpoint is loaded there, as a brain takes a backend (``Brain._place_at``): that brain
+    holds what a checkpoint holds and shares nothing."""
+    import tempfile
+    from pathlib import Path
+
+    twin = deepcopy(brain)
+    rests = twin.placement
+    if (backend == rests["backend"] and device in (None, rests["device"])
+            and precision in (None, rests["precision"])):
+        return twin
+    with tempfile.TemporaryDirectory(prefix="cadence-life-") as folder:
+        path = twin.save(Path(folder) / "life.npz", compressed=False)
+        return type(twin).load(path, backend=backend, device=device, precision=precision)
+
+
 class _Learning:
     """While an outcome is learned, the lives ``rows`` marks learn and every other life holds."""
 
@@ -1881,8 +1904,17 @@ class Lives:
     the ``device`` named) they are the streams of one brain whose parameters carry a lives axis,
     and each moment of all of them is one settle and one update; each life agrees with its lone
     brain on that device within the solver's tolerance. The lives share their anatomy and nothing
-    they learn. A moment any life refuses (a settle that does not qualify, a step that is not
-    finite) is refused for every life.
+    they learn.
+
+    On a torch device a moment any life refuses (a settle that does not qualify, a step that is
+    not finite) is refused for every life. On the CPU what a call is given is checked for every
+    life before any life moves: each life's row of observations, its label, its reward and
+    ending, and whether it holds the action an outcome belongs to. A call refused there leaves
+    every life as it was. A life that refuses a call it was validly given, as its lone brain
+    refuses it, stops the lives in row order: the lives before it have completed their part, it
+    is as its lone brain's refusal leaves it, and the lives after it have not begun. Its
+    exception says so in a note and holds ``life``, the life that refused, and ``completed``,
+    what the lives before it returned.
     """
 
     def __init__(
@@ -2041,27 +2073,65 @@ class Lives:
         return self._last_arousal
 
     def _rows(self, observations: Any) -> np.ndarray:
+        """One row of observations per life. On the CPU each lone brain checks its own row in its
+        turn, so what every one of them checks is checked here for all of them, before any life
+        moves: every row finite, and each life's brain at its one stream."""
         x = np.asarray(observations, dtype=float)
         if x.shape != (self.lives, self.inputs):
             raise ValueError(f"one row of {self.inputs} observations per life ({self.lives})")
+        if self.brains is not None:
+            if not np.isfinite(x).all():
+                raise ValueError("observations must be finite, every life's row")
+            for i, brain in enumerate(self.brains):
+                state = brain.basal_ganglia.state
+                if state is not None and _batch_of(state) != 1:
+                    raise ValueError(
+                        f"each life holds one stream: life {i}'s brain holds "
+                        f"{_batch_of(state)}; reset it for a new stream"
+                    )
         return x
 
-    def _each(self, name: str, x: np.ndarray, *rest: Any, **named: Any) -> list[Any]:
+    def _labelled(self, labels: Any) -> np.ndarray:
+        """A label per life on the CPU, ``(lives,)`` or with several motor slots ``(lives,
+        slots)``, each checked as its own brain checks a lesson's label (``Learner._labels``, an
+        open slot among them) before any life is taught."""
         assert self.brains is not None
-        out = []
+        y = np.asarray(labels)
+        if not y.ndim or len(y) != self.lives:
+            raise ValueError(f"one label per life ({self.lives})")
         for i, brain in enumerate(self.brains):
-            args = [None if r is None else np.asarray(r)[i : i + 1] for r in rest]
-            kwargs = {k: None if v is None else np.asarray(v)[i : i + 1]
-                      for k, v in named.items()}
-            out.append(getattr(brain, name)(x[i : i + 1], *args, **kwargs))
+            brain._open_labels(brain.learner._labels(y[i : i + 1], open=True))
+        return y
+
+    def _in_turn(self, part: Callable[[int, Any], Any]) -> list[Any]:
+        """Each life's part of a call on the CPU, ``part(i, brain)``, in row order. What the call
+        was given is checked for every life before this, so a life refuses here only what its own
+        solve or step refuses (a settle that does not qualify, a step that is not finite). That
+        stops the lives: the lives before it have completed their part, it is as its lone
+        brain's refusal leaves it, and the lives after it have not begun. Its exception passes on
+        as it is, with a note that says so, ``life`` (the life that refused) and ``completed``
+        (what the lives before it returned, in row order). Holding the lives before it back
+        would take a copy of every brain at every call."""
+        assert self.brains is not None
+        out: list[Any] = []
+        for i, brain in enumerate(self.brains):
+            try:
+                out.append(part(i, brain))
+            except Exception as error:
+                error.add_note(
+                    f"life {i} refused this call. On the CPU the lives take a call in row order: "
+                    "every life before it has completed its part, it is as its lone brain's "
+                    "refusal leaves it, and no life after it has begun."
+                )
+                error.__dict__.update(life=i, completed=out)
+                raise
         return out
 
     def act(self, observations: Any, *, greedy: bool = False) -> np.ndarray:
         """Each life's action on its own row: ``Brain.act`` life by life."""
         x = self._rows(observations)
         if self.brains is not None:
-            return np.concatenate([b.act(x[i : i + 1], greedy=greedy)
-                                   for i, b in enumerate(self.brains)])
+            return np.concatenate(self._in_turn(lambda i, b: b.act(x[i : i + 1], greedy=greedy)))
         return np.asarray(self.brain.act(x, greedy=greedy))
 
     def step(
@@ -2072,17 +2142,23 @@ class Lives:
         (calm after ``live``) takes no outcome, as its lone brain: a zero reward and no end."""
         x = self._rows(observations)
         if self.brains is not None:
+            y = None if teacher is None else self._labelled(teacher)
+
+            def taught(i: int) -> np.ndarray | None:
+                return None if y is None else y[i : i + 1]
+
             if reward is None and done is None:
-                return np.concatenate(self._each("step", x, teacher=teacher))
+                return np.concatenate(
+                    self._in_turn(lambda i, b: b.step(x[i : i + 1], teacher=taught(i)))
+                )
             held = np.array([b.basal_ganglia._pending is not None for b in self.brains])
             r, ended = self._outcome(reward, done)
             _refuse_without_action(held, r, ended)
-            return np.concatenate([
-                b.step(x[i : i + 1], reward=r[i : i + 1] if held[i] else None,
-                       done=ended[i : i + 1] if held[i] else None,
-                       teacher=None if teacher is None else np.asarray(teacher)[i : i + 1])
-                for i, b in enumerate(self.brains)
-            ])
+            return np.concatenate(self._in_turn(
+                lambda i, b: b.step(x[i : i + 1], reward=r[i : i + 1] if held[i] else None,
+                                    done=ended[i : i + 1] if held[i] else None,
+                                    teacher=taught(i))
+            ))
         if self.brain.basal_ganglia._pending is None and (reward is not None or done is not None):
             # no life has an action pending: a zero outcome is none, as for each lone brain
             _refuse_without_action(np.zeros(self.lives, bool), *self._outcome(reward, done))
@@ -2143,13 +2219,17 @@ class Lives:
         end."""
         x = self._rows(next_observations)
         if self.brains is not None:
+            if reward is None or done is None:  # as a lone brain's learn takes both
+                raise ValueError("learn takes each life's reward and its ending")
             held = np.array([b.basal_ganglia._pending is not None for b in self.brains])
             r, ended = self._outcome(reward, done)
-            if held.any():
-                _refuse_without_action(held, r, ended)
-            for i, b in enumerate(self.brains):
-                if held[i] or not held.any():  # with none pending, each refuses as alone
-                    b.learn(r[i : i + 1], ended[i : i + 1], x[i : i + 1])
+            if not held.any():  # no life has an action out: refused as each lone brain refuses
+                raise RuntimeError("learn needs a non-greedy act first")
+            _refuse_without_action(held, r, ended)
+            self._in_turn(
+                lambda i, b: b.learn(r[i : i + 1], ended[i : i + 1], x[i : i + 1])
+                if held[i] else None
+            )
             return
         agent = self.brain.basal_ganglia
         eligible = agent._lives_eligible
@@ -2180,11 +2260,10 @@ class Lives:
         if self.brains is not None:
             takes = np.array([_takes_outcome(b) for b in self.brains])
             _refuse_without_action(takes, r, ended)
-            return np.concatenate([
-                b.live(x[i : i + 1], reward=r[i : i + 1] if takes[i] else None,
-                       done=ended[i : i + 1] if takes[i] else None)
-                for i, b in enumerate(self.brains)
-            ])
+            return np.concatenate(self._in_turn(
+                lambda i, b: b.live(x[i : i + 1], reward=r[i : i + 1] if takes[i] else None,
+                                    done=ended[i : i + 1] if takes[i] else None)
+            ))
         with self._moment_of_lives(x):
             return self._live_batched(x, r, ended)
 
@@ -2348,18 +2427,23 @@ class Lives:
         bootstraps from, read without changing anything, ``(lives,)``."""
         x = self._rows(observations)
         if self.brains is not None:
-            return np.concatenate([b.value(x[i : i + 1]) for i, b in enumerate(self.brains)])
+            return np.concatenate(self._in_turn(lambda i, b: b.value(x[i : i + 1])))
         return np.asarray(self.brain.value(x), dtype=float)
 
     def lesson(self, observations: Any, labels: Any) -> None:
-        """Each life's ``Brain.lesson`` of its own label on its own row."""
+        """Each life's ``Brain.lesson`` of its own label on its own row. While a life's sampled
+        action awaits its outcome the lesson is refused for every life."""
         x = self._rows(observations)
-        y = np.asarray(labels)
         if self.brains is not None:
-            for i, b in enumerate(self.brains):
-                b.lesson(x[i : i + 1], y[i : i + 1])
+            y = self._labelled(labels)
+            if any(b.basal_ganglia._pending is not None for b in self.brains):
+                raise RuntimeError(
+                    "a life's sampled action awaits its outcome; report it with step or learn "
+                    "first"
+                )
+            self._in_turn(lambda i, b: b.lesson(x[i : i + 1], y[i : i + 1]))
             return
-        self.brain.lesson(x, y)
+        self.brain.lesson(x, np.asarray(labels))
 
     def reset(self) -> None:
         """Every life's stream starts afresh, as ``Brain.reset``; what the lives learned stays,
@@ -2452,11 +2536,20 @@ class Lives:
         activity, its pending sampled action with its eligibility phases, its eligibility
         traces, its working trace, its recall memory's slots, its store's residual and the
         record of its last ``live``, so the lone brain continues the life where it stands, its
-        pending outcome included. Save it as any brain."""
+        pending outcome included. The brain is its own: what it lives through reaches no life,
+        and what the lives live through does not reach it. Save it as any brain.
+
+        On the CPU it is a copy of the life's lone brain (``_lone_copy``), without ``stream`` as
+        after ``Brain.reset()`` and with no residual in its store."""
         from .generic import Brain
 
         if self.brains is not None:
-            return self.brains[i]
+            lone = _lone_copy(self.brains[i], backend, device, precision)
+            if not stream:
+                lone.reset()
+                if lone.hippocampus is not None:  # the residual is the stream's
+                    lone.hippocampus.reset(0)
+            return lone
         held = self.parameters(i)
         place: dict[str, Any] = {"backend": backend}
         if device is not None:
@@ -2517,7 +2610,8 @@ class Lives:
         place, and its stream begins afresh there, as after ``brain.reset()``, its store's
         residual and its arousal kept. A life that left (``life(i)``) rejoins this way, and a
         finished episode makes room for another life without holding the batch. ``brain`` is a
-        composition of these lives' anatomy and options."""
+        composition of these lives' anatomy and options. It stays its caller's, stream and
+        all: the lives hold their own copy of what it learned, on the CPU its deep copy."""
         if not 0 <= i < self.lives:
             raise ValueError(f"life {i} is not one of these {self.lives} lives")
         _supported(brain, self.backend)  # a part the lives do not cover is refused as at birth
@@ -2528,7 +2622,9 @@ class Lives:
             if (getattr(brain, part) is not None) != present:
                 raise ValueError(f"a joining brain has the lives' composition: its {part}")
         if self.brains is not None:
-            self.brains[i] = brain
+            own = deepcopy(brain)
+            own.reset()
+            self.brains[i] = own
             return
         self._join_batched(i, brain)
 

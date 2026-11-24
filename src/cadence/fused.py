@@ -1873,40 +1873,71 @@ def _nudge_arrays(
 ]:
     """The nudge as the dense arrays the kernels read: target, mask, group id per neuron
     (0..ngroups-1, -1 for none), the group count, beta, the per-neuron softmax temperatures (0 for a
-    plain nudge) and the per-row weight. A softmax nudge drives only grouped neurons. A nudge
-    keeps its arrays for the calls that read it again (a phase's settle and its check)."""
+    plain nudge) and the per-row weight. A softmax nudge drives only grouped neurons.
+
+    A nudge's arrays are the caller's to write between calls, and every call reads them as they
+    stand. The kernels read the weight, the anchor's gain and a target or an anchor of whole
+    rows where they rest (``_in_place``). What is made from the nudge, the group ids, a
+    softmax's mask and temperatures, a target or an anchor given once for every row, is kept
+    with it for the calls that read it again (a phase's settle and its check) under the bytes
+    of the arrays it was made from, and made again once one of them reads otherwise."""
     if nudge is None:
         return _no_nudge(batch, n)
-    held = nudge.__dict__.get("_kernel_arrays")
-    if held is not None and held[0] == batch:
-        return cast(tuple[Any, ...], held[1])
-    target = np.ascontiguousarray(np.broadcast_to(nudge.target, (batch, n)).astype(float))
-    nmask = np.asarray(nudge.mask, float)
-    softmax_t = (
-        np.zeros(n) if nudge.softmax_temperature is None
-        else np.full(n, nudge.softmax_temperature)
+    target, mask, groups, anchor = nudge.target, nudge.mask, nudge.groups, nudge.anchor
+    heat = nudge.softmax_temperature
+    whole = _in_place(target, batch, n)
+    whole_anchor = anchor is not None and _in_place(anchor, batch, n)
+    key = (
+        batch, n, mask.tobytes(), None if groups is None else groups.tobytes(),
+        heat.tobytes() if isinstance(heat, np.ndarray) else heat,
+        whole or target.tobytes(),
+        whole_anchor or (anchor is not None and anchor.tobytes()),
     )
-    weight = np.ones(batch) if nudge.weight is None else np.asarray(nudge.weight, float)
-    beta = float(nudge.beta)
-    if nudge.groups is None:
-        gid = np.where(nmask > 0, 0, -1).astype(np.int64)
-        ngroups = 1
-    else:
-        raw = np.asarray(nudge.groups, dtype=np.int64)
-        ids = np.unique(raw[raw >= 0])
-        gid = np.full(n, -1, dtype=np.int64)
-        for k, g in enumerate(ids):
-            gid[raw == g] = k
-        ngroups = len(ids)
-    if softmax_t[0] > 0:
-        nmask = np.where(gid >= 0, nmask, 0.0)
-    anchor, anchor_gain = np.zeros((1, 1)), np.zeros(n)
-    if nudge.anchor is not None:
-        anchor = np.ascontiguousarray(np.broadcast_to(nudge.anchor, (batch, n)), dtype=float)
-        anchor_gain = np.ascontiguousarray(nudge.anchor_gain, dtype=float)
-    arrays = target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain
-    nudge.__dict__["_kernel_arrays"] = (batch, arrays)
-    return arrays
+    held: Any = nudge.__dict__.get("_kernel_arrays")
+    if held is None or held[0] != key:
+        nmask = np.asarray(mask, float)
+        softmax_t = np.zeros(n) if heat is None else np.full(n, heat)
+        if groups is None:
+            gid = np.where(nmask > 0, 0, -1).astype(np.int64)
+            ngroups = 1
+        else:
+            raw = np.asarray(groups, dtype=np.int64)
+            ids = np.unique(raw[raw >= 0])
+            gid = np.full(n, -1, dtype=np.int64)
+            for k, g in enumerate(ids):
+                gid[raw == g] = k
+            ngroups = len(ids)
+        if softmax_t[0] > 0:
+            nmask = np.where(gid >= 0, nmask, 0.0)
+        # a target or an anchor read where it rests has no array here
+        rows = None if whole else np.ascontiguousarray(
+            np.broadcast_to(target, (batch, n)).astype(float)
+        )
+        anchored = np.zeros((1, 1))
+        if anchor is not None and not whole_anchor:
+            anchored = np.ascontiguousarray(np.broadcast_to(anchor, (batch, n)), dtype=float)
+        held = (key, (rows, nmask, gid, ngroups, softmax_t, np.ones(batch), anchored, np.zeros(n)))
+        nudge.__dict__["_kernel_arrays"] = held
+    rows, nmask, gid, ngroups, softmax_t, ones, anchored, no_gain = held[1]
+    return (
+        target if whole else rows, nmask, gid, ngroups, float(nudge.beta), softmax_t,
+        ones if nudge.weight is None else np.asarray(nudge.weight, float),
+        cast(np.ndarray, anchor) if whole_anchor else anchored,
+        no_gain if anchor is None else np.ascontiguousarray(nudge.anchor_gain, dtype=float),
+    )
+
+
+_FLOAT64 = np.dtype(np.float64)
+
+
+def _in_place(array: np.ndarray, batch: int, n: int) -> bool:
+    """Whether the kernels read a nudge's rows where they rest: ``batch`` whole rows of ``n`` in
+    the kernels' own type and order, in memory that can be written. Nothing is made from such an
+    array, so nothing of it is kept."""
+    if array.shape != (batch, n) or array.dtype is not _FLOAT64:
+        return False
+    flags = array.flags
+    return bool(flags.c_contiguous and flags.writeable)
 
 
 # the mask argument of a settle or check without a mask: the kernels read a mask only where

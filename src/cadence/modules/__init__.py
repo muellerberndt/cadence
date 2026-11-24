@@ -139,10 +139,13 @@ def save(brain: Any, path: str | Path, *, name: str, inputs: Any, published: Any
     those its own senses drive and ``published`` those a host reads. ``interface`` is the
     module's own record and ``card`` says what it was trained on and reads. The brain is saved
     as ``Brain.save`` saves it, its streams at rest and without per-synapse steps of its own,
-    with floats in 32 bits and synapse indices in 32 bits."""
+    with floats in 32 bits and synapse indices in 32 bits. The file is written at ``path`` as
+    given, and takes the place of a file there once it is complete: a save that fails leaves
+    that file as it was."""
     import copy
 
     from .. import __version__
+    from ..checkpoint import _replace
 
     path = Path(path)
     if not isinstance(name, str) or not name or "/" in name:
@@ -184,8 +187,7 @@ def save(brain: Any, path: str | Path, *, name: str, inputs: Any, published: Any
         "checksums": {key: _checksum(value) for key, value in sorted(arrays.items())},
     }
     written: dict[str, Any] = {"module": np.array(json.dumps(record)), **arrays}
-    with path.open("wb") as handle:
-        np.savez_compressed(handle, **written)
+    _replace(written, path)
     return path
 
 

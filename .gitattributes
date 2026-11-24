@@ -1,2 +1,7 @@
-# The provenance ledger hashes these frozen fixtures byte for byte.
-tests/fixtures/partitioned_phrase/*.json text eol=lf
+# Receipts, ledgers and tests hash sources, protocols, logs and retained results byte for byte,
+# across the library, the tests and the benchmarks: every text file is checked out with LF
+# line endings, whatever core.autocrlf says.
+* text=auto eol=lf
+# The attention chambers' archived sources are named by the SHA-256 of their bytes: no line
+# ending of theirs is converted, at checkout or at commit.
+benchmarks/attention/results/sources/*.txt -text
