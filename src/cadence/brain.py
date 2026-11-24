@@ -5984,7 +5984,7 @@ class _MlxKernel:
             (np.stack(traj) if traj else np.empty((0, batch, self.n))) if want else None,
             taken,
             np.array(activity_change, dtype=np.float64),
-            {"kernel": "mlx", "holder": self.root, **resting,
+            {"kernel": "mlx", "holder": self.root, "unmasked": not masked, **resting,
              "host": {key: (resting[key], hosted[key]) for key in resting}},
         )
 
@@ -6492,6 +6492,8 @@ class _MlxKernel:
         spans = plan.spans
         if handle is not None and handle.get("holder") is self.root:  # the operations' whole arrays
             v, s = handle["v"], handle["s"]
+            if not handle.get("unmasked"):  # settled under a mask; a launch, under none, starts
+                s = plan.activate(v)  # from the activations of the potentials
             parts = [(v[:, slice(*spans[r])], s[:, slice(*spans[r])]) for r in plan.settling]
             vm = mx.concatenate([p[0] for p in parts], axis=1)
             sm = mx.concatenate([p[1] for p in parts], axis=1)
