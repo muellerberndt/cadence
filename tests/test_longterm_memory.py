@@ -212,6 +212,18 @@ def test_heads_read_in_turn_whole_at_temperature_zero_and_by_shares_above_it():
     assert not one.value(LongTermMemory(8, 8, 4).read(np.ones(8))).any()
 
 
+def test_soft_heads_exhaust_each_record_after_one_read():
+    memory = LongTermMemory(4, 2, 4, candidates=0, temperature=1.0)
+    keys = np.eye(4)
+    for key in keys[:2]:
+        memory.write(key, np.ones(2))
+    shared = memory.read(keys[2], heads=4, credit=False).weights
+    independent = memory._weights_each(np.zeros((4, 2)))  # noqa: SLF001
+    for weights in (shared, independent):
+        np.testing.assert_allclose(np.sum(weights, axis=0), [1, 1], atol=1e-14)
+        np.testing.assert_allclose(weights[2:], 0.0, atol=1e-14)
+
+
 def test_a_saved_memory_continues_as_the_one_it_was_saved_from():
     rng = np.random.default_rng(8)
     keys, values = codes(rng, 300, 32), codes(rng, 300, 6)

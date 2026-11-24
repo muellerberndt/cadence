@@ -162,9 +162,9 @@ def columns(index: np.ndarray) -> slice | np.ndarray:
     return np.asarray(index, dtype=np.int64)
 
 
-def _left(p: np.ndarray) -> np.ndarray:
-    """The share of each slot a head's attention ``p`` leaves to the heads after it."""
-    return np.clip(1.0 - p, 0.0, 1.0)
+def _left(p: np.ndarray, available: np.ndarray | float = 1.0) -> np.ndarray:
+    """The available share less the absolute share of each slot this head read."""
+    return np.clip(available - p, 0.0, 1.0)
 
 
 def _share(logits: np.ndarray, left: np.ndarray, mass: np.ndarray) -> np.ndarray:
@@ -2917,7 +2917,7 @@ class Recall:
                     held = None if self.held.all() else self.held
                     logits = self._attention(address, self.keys, held, position)
                     p = _share(logits, left, p.sum(axis=1))
-                left = _left(p) if left is None else left * _left(p)
+                left = _left(p) if left is None else _left(p, left)
             attended.append(p)
         return attended
 

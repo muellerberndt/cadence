@@ -198,7 +198,7 @@ def test_every_lesson_reports_the_position_keys_and_parameters_count_the_maps():
 
 @pytest.mark.filterwarnings("ignore:lesson on the observations")
 def test_the_term_and_the_weights_give_the_attention_the_read_used():
-    brain = composed(recall_heads=2)
+    brain = composed(recall_heads=4)
     xs = stream(30, seed=6)
     for k, x in enumerate(xs[:24]):
         brain.lesson(x, np.array([k % 3]))
@@ -216,10 +216,10 @@ def test_the_term_and_the_weights_give_the_attention_the_read_used():
             logits = recall._attention(address, recall.keys, None, term)
             p = _share(logits, left, p.sum(axis=1))
         np.testing.assert_allclose(p, attended[h])
-        left = 1.0 - p if left is None else left * (1.0 - p)
+        left = np.maximum((1.0 if left is None else left) - p, 0.0)
         assert recall.position_map(h) is recall.position_maps[h]
     with pytest.raises(ValueError):
-        recall.position_map(2)
+        recall.position_map(recall.heads)
     with pytest.raises(ValueError):
         composed(recall_position=0).recall.position_map(0)
 

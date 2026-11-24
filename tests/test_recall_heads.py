@@ -112,6 +112,19 @@ def test_a_head_whose_slots_the_heads_before_took_reads_nothing():
     assert not drive[:, r1].any() and not drive[:, n1].any()
 
 
+def test_four_heads_cannot_spend_a_partially_read_slot_again():
+    brain = witnessed(composed(heads=4, recall_boundary=False), STREAM[:2])
+    drive = brain.stimulus(STREAM[2])
+    recall = brain.recall
+    reads = np.concatenate(recall.attended_heads, axis=0)
+    assert np.all((reads[:2] > 0) & (reads[:2] < 1))
+    np.testing.assert_allclose(reads.sum(axis=0), [1, 1], atol=1e-14)
+    np.testing.assert_allclose(reads[2:], 0.0, atol=1e-14)
+    for ports in recall._head_columns[2:]:  # noqa: SLF001
+        for columns in ports:
+            np.testing.assert_allclose(drive[:, columns], 0.0, atol=1e-13)
+
+
 def test_a_head_left_nothing_to_read_is_not_taught():
     brain = witnessed(composed(heads=2, seed=9), STREAM[:1])
     recall = brain.recall
