@@ -22,6 +22,8 @@ and +.049 with the earlier speakers losing .021 and .030.
 
 ``Rehearsal`` keeps the earlier utterances in a bank under a byte budget. ``remember`` adds an
 utterance; when the bank would pass its budget, utterances chosen at random (seeded) leave it.
+The bank holds a copy of each utterance and ``chosen`` gives copies, so the bytes it counts are
+its own: an array filled again after ``remember``, or a selection changed, leaves it as it was.
 ``correct`` resets the brain, hears the correction and the chosen earlier utterances side by side
 from rest, each step a lesson before a greedy act, and leaves the brain at rest. Earlier
 utterances of the correction's own length are chosen first, then the nearest in length; each
@@ -84,18 +86,24 @@ class Rehearsal:
 
     def remember(self, rows: Any, labels: Any = None, *, targets: Any = None) -> None:
         """Keep one earlier utterance: its rows ``(steps, inputs)`` and a label per step, or
-        ``targets``, a distribution over the actions per step ``(steps, actions)``."""
+        ``targets``, a distribution over the actions per step ``(steps, actions)``. The bank
+        keeps copies of its own, so the arrays given may be filled again."""
         x, y = _utterance(rows, labels, targets)
         size = x.nbytes + y.nbytes
         if size > self.budget:
             raise ValueError("one utterance holds more bytes than the bank's budget")
         while self._bank and self.nbytes + size > self.budget:
             self._bank.pop(int(self._rng.integers(len(self._bank))))
-        self._bank.append((x, y))
+        self._bank.append((x.copy(), y.copy()))
 
     def chosen(self, steps: int) -> list[tuple[np.ndarray, np.ndarray]]:
         """The earlier utterances a correction of ``steps`` steps hears: those of its length
-        first, then the nearest, each group in a seeded order."""
+        first, then the nearest, each group in a seeded order. They are copies: changing one
+        changes nothing in the bank."""
+        return [(x.copy(), y.copy()) for x, y in self._chosen(steps)]
+
+    def _chosen(self, steps: int) -> list[tuple[np.ndarray, np.ndarray]]:
+        """``chosen`` as the bank's own arrays, which ``correct`` reads and leaves as they are."""
         if not self.rows or not self._bank:
             return []
         gap = np.array([abs(len(x) - steps) for x, _ in self._bank], dtype=np.float64)
@@ -116,7 +124,7 @@ class Rehearsal:
         from ..learning import LearningPhaseError
 
         x, y = _utterance(rows, labels, targets)
-        streams = [(x, y), *self.chosen(len(x))]
+        streams = [(x, y), *self._chosen(len(x))]
         width = x.shape[1]
         if any(r.shape[1] != width for r, _ in streams):
             raise ValueError("earlier utterances must hold rows as wide as the correction")
