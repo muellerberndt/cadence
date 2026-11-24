@@ -103,6 +103,22 @@ def test_heads_in_turn_read_no_slot_above_one_and_each_takes_what_is_due(heads):
         assert total.sum() == pytest.approx(min(float(heads), float(n)), abs=1e-9)
 
 
+def test_a_slot_read_whole_leaves_exactly_nothing_to_the_heads_after():
+    """Rounding leaves about 1e-16 of a slot the heads took whole; no later head reads it."""
+    rng = np.random.default_rng(0)
+    for _ in range(4000):
+        n, heads = int(rng.integers(1, 6)), int(rng.integers(3, 6))
+        tied = rng.random() < 0.5
+        logits = [np.zeros((1, n)) if tied else rng.normal(size=(1, n)) for _ in range(heads)]
+        p = np.exp(logits[0] - logits[0].max())
+        p /= p.sum()
+        left = _left(p)
+        for h in range(1, heads):
+            p = _share(logits[h], left, np.ones(1))
+            assert p.sum() == 0.0 or p.sum() > 1e-9
+            left = _left(p, left)
+
+
 # -- every read of a life
 
 
@@ -215,9 +231,11 @@ def test_a_saved_brain_of_several_heads_continues_as_the_brain_not_saved(name, h
     rng = np.random.default_rng(7)
     lived(brain, rng, 2)  # a sampled action awaits its outcome in the file
     loaded = cd.Brain.load(brain.save(tmp_path / "mid.npz"))
+    seen = watch(loaded)
     for x in moments(rng, 2, 6):
         reward = rng.random(2) - 0.3
         np.testing.assert_array_equal(brain.step(x, reward=reward), loaded.step(x, reward=reward))
+    assert seen.broken == [] and seen.reads >= 6 and seen.heads_reading == heads
     with np.load(brain.save(tmp_path / "a.npz")) as a, np.load(loaded.save(tmp_path / "b.npz")) as b:
         for member in a.files:
             if a[member].dtype.kind in "fiub":
