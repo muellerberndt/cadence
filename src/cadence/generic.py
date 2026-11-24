@@ -5142,6 +5142,16 @@ class Brain:
             drive = self._stimulus(x, self._code(x), memory=memory)
         return drive if self._settling or not _resident(drive) else _host_copy(drive)
 
+    def _branch_stimulus(self, x: np.ndarray) -> np.ndarray:
+        """The drive of an imagined moment without the memories, which its branch reads: the
+        moment ``_prepare`` just coded, so a learned code enters as the phase the branch
+        settled for it. An independent read (``stimulus(memory=False)``) settles the code from
+        rest instead, as ``predict`` does."""
+        coded = self._coded_moment
+        assert coded is not None and coded[0] is x
+        drive = self._stimulus(x, coded[1], memory=False)
+        return drive if self._settling or not _resident(drive) else _host_copy(drive)
+
     @_operation
     def value(self, observations: Any) -> np.ndarray:
         """The critic's value of each row of ``observations``, ``(batch,)``: the value a
@@ -7354,7 +7364,7 @@ class Brain:
         try:
             for value in sequence:
                 self._prepare(value, trace=trace)  # a learned code in the branch's own context
-                drive = self.stimulus(value, memory=False)
+                drive = self._branch_stimulus(value)
                 code = self._coded(value)
                 place = self._placed(value)
                 drive = branch.stimulus(drive, self._read_moment(value, code, place))
