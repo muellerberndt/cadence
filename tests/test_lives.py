@@ -704,3 +704,36 @@ def test_lives_on_a_device_refuse_place_records_kept_from_the_fade():
     kept = cd.Lives(INPUTS, ACTIONS, 2, seeds=[0, 1], recall=False, arousal=True,
                     memory_fade=0.2, memory_keep=1.0)
     assert kept.life(0).hippocampus.fade_keep == 1.0
+
+
+def test_a_calm_life_keeps_its_routine_outcome_through_learn():
+    """After ``live`` some lives are calm and some hold a sampled action; ``learn`` teaches the
+    sampled ones. A calm life's routine answer still owns its outcome, as its lone brain's does
+    (``learn`` does not call it): the next ``live`` takes its reward and its arousal counts it."""
+    composition = {**COMPOSITIONS["plain"], **AROUSED}
+    lives = some_lives(4, composition, **PLACE)
+    brains = [lone(s, composition, **PLACE) for s in range(4)]
+    rng = np.random.default_rng(5)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for t in range(40):  # until calm and sampled lives mix
+            assert live_alike(lives, brains, *moments(rng, 4)) == 0
+            pending = np.array([b.basal_ganglia._pending is not None for b in brains])
+            if t >= 8 and pending.any() and not pending.all():
+                break
+        assert pending.any() and not pending.all()
+        x, reward, done = moments(rng, 4)
+        lives.learn(np.where(pending, reward, 0.0), done & pending, x)
+        for i, brain in enumerate(brains):
+            if pending[i]:
+                brain.learn(reward[i : i + 1], done[i : i + 1], x[i : i + 1])
+        calm = np.array([cd.lives._takes_outcome(b) for b in brains])
+        assert (calm == ~pending).all()
+        x = moments(rng, 4)[0]
+        reward = np.where(calm, 0.7, 0.0)  # an outcome for each calm life's routine answer
+        got = lives.live(x, reward=reward, done=np.zeros(4, bool))
+        for i, brain in enumerate(brains):
+            one = {"reward": reward[i : i + 1], "done": np.zeros(1, bool)} if calm[i] else {}
+            assert int(brain.live(x[i : i + 1], **one)[0]) == got[i]
+    assert mood_gaps(lives, brains) < 1e-9
+    assert max(gaps(lives, brains).values()) < 1e-9

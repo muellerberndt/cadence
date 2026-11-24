@@ -2237,8 +2237,13 @@ class Lives:
         agent = self.brain.basal_ganglia
         eligible = agent._lives_eligible
         rows = None if agent._pending is None or eligible is None else np.asarray(eligible, bool)
+        lived = self._lived
+        carried = lived is not None and rows is not None and agent.state is lived[0]
         with self._moment_of_lives(x, rows), self._pending_lives(reward, done):
             self.brain.learn(reward, done, x)
+        if carried:  # a calm life's routine answer still owns its outcome, as its lone brain's does
+            assert lived is not None and rows is not None
+            self._lived = (agent.state, lived[1], lived[2] | rows, *lived[3:])
 
     def live(self, observations: Any, *, reward: Any = None, done: Any = None) -> np.ndarray:
         """Each life's ``Brain.live`` on its own row: one moment of every continuing life, each
