@@ -841,7 +841,8 @@ sensory activation is read at, one over the activation one input at amplitude 1 
 the model), the lateral `connectome`
 and `graph` of the units (the sub-network a moment's code phase settles), `device` (the torch
 device the phase runs on, `None` on the host) with `place(device)` (a torch device that has
-float64, or `None` for the host; MPS is refused). `lateral()`,
+float64, or `None` for the host; MPS is refused; a placement that fails leaves the region where
+it was, on the device and the graphs it had). `lateral()`,
 `lateral_efficacy()`, `gram()`; `stimulus(sensory, context)`, `prediction(context)`,
 `settle(stimulus, warm, *, budget, tolerance, damping=3) -> Equilibrium`,
 `code_of(activation)` (the rectified code at unit length, what the memories key on and the
@@ -1221,7 +1222,7 @@ before any change.
 | Member | Behaviour |
 | --- | --- |
 | `settle(stimulus=None, *, steps=60, state=None, mask=None, trajectory=False, nudge=None, tolerance=None) -> BrainState` | A list of neurons at full amplitude, a `{neuron: level}` map or a dense drive vector. A positive `tolerance` stops once no activation moves more. |
-| `settle_batch(drive, ...) -> BrainState` | The same for `(batch, n)` drives. `mask` is `(n,)`, `(1, n)` or `(batch, n)` in `[0, 1]`. |
+| `settle_batch(drive, ...) -> BrainState` | The same for `(batch, n)` drives. `mask` is `(n,)`, `(1, n)` or `(batch, n)` in `[0, 1]`. A drive that is not finite is refused as a host array, a torch tensor or an MLX array. |
 | `equilibrate(drive, *, budget=512, chunk=32, tolerance=1e-5, state=None, mask=None, nudge=None, damping=0, fast=False) -> Equilibrium` | Settles until the equation residual is below `tolerance`, checked per chunk; up to `damping` halvings of the step share the budget. |
 | `residual(drive, state, *, nudge=None, mask=None, on_device=True, own_precision=False, per_unit=False) -> ndarray` | Per-row fixed-point discrepancy; no state change. `own_precision` checks an unread float32 torch state in float32. `per_unit=True` gives each neuron's signed error of the potential equation instead, `(rows, neurons)`, on the float64 CPU reference: what a settle from `state` under `drive` repairs, neuron by neuron. |
 | `apical_gain(drive, state, *, own_precision=False) -> ndarray or None` | The apical compartment's gain per row and pool at `state`, what a nudged settle from it holds; `None` without the compartment. |
@@ -1236,7 +1237,7 @@ stability, uniqueness or task quality ([the certificate](settling.md#the-settlin
 
 | Type | Fields |
 | --- | --- |
-| `BrainState(v, activation, adaptation, steps, trajectory=None, activity_change=None, device=None, discarded_steps=0)` | `(n,)` or `(batch, n)` arrays; `row(i)`, `mean(members, i)`, `fraction_active(members, level, i)`, `active(level, i)`, `batched`. `attempted_steps = steps + discarded_steps` includes CUDA tolerance lookahead beyond the returned state. |
+| `BrainState(v, activation, adaptation, steps, trajectory=None, activity_change=None, device=None, discarded_steps=0)` | `(n,)` or `(batch, n)` arrays; `row(i)`, `mean(members, i)`, `fraction_active(members, level, i)`, `active(level, i)`, `batched`. `attempted_steps = steps + discarded_steps` includes CUDA tolerance lookahead beyond the returned state. `part(index)` reads the index at every call, so an index written in place names the neurons it holds now; a mask or a slice reads the whole activation on the host; the returned array is the caller's. The arrays of a state that rests on a device are copies: a write to one makes the host arrays the state (`device` is then `None`) ([state and production integration](contracts.md#state-and-production-integration)). |
 | `Equilibrium(state, residual, steps, tolerance, residual_checks=0, damping_halvings=0, stagnation_checks=0, row_sweeps=None)` | Per-row `converged` and `qualified` (the residual within `tolerance`); `steps` counts local sweeps; `damping_halvings` is the final halving index. |
 | `Apical(synapses, groups, fraction, floor=1.0)` | `synapses` a bool per synapse, `groups` an int64-representable pool per neuron (`-1` none); `drive(basal, raw)` the normalized apical drive, `members`, `check(synapses, neurons, post)`, `to_dict()`. Checkpoint loading applies the same strict types and rejects coerced or incomplete topology. |
 | `Nudge(target, mask, beta, softmax_temperature=None, weight=None, groups=None, anchor=None, anchor_gain=None, apical_gain=None)` | Extra drive `beta * mask * (target - s)`, or against `softmax(s / T)` per group; `weight` scales rows. `anchor` and `anchor_gain` (supplied together, finite, gain nonnegative per neuron) add `anchor_gain * (anchor - s)`, unscaled by `beta`, mask or weight. `apical_gain` (`(batch, pools)`, nonnegative) is the apical compartment's gain the settle holds. `drive(s)`. |

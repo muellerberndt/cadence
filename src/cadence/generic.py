@@ -71,7 +71,7 @@ from .arousal import Arousal, ArousalConfig
 from .blocks import Layout
 from .blocks import layout as make_layout
 from .bound import BoundRecords
-from .brain import Apical, Backend, BrainState, Equilibrium, _host_copy, _resident
+from .brain import Apical, Backend, BrainState, Equilibrium, _host_copy, _resident, _trusted
 from .brain import Brain as NeuralGraph
 from .code import LearnedCode
 from .connectome import Connectome
@@ -5317,7 +5317,9 @@ class Brain:
             # every memory in order; the recall memory's address, before the settle, reads the
             # stream's slots
             drive = self.memories.stimulus(drive, self._read_moment(x, code))
-        return cast(np.ndarray, drive)
+        # a drive made on the device from observations read finite and the memories' own reads:
+        # the settles of the moment take it as read (a host array is returned as it is)
+        return cast(np.ndarray, _trusted(drive))
 
     # -- where the brain runs
 

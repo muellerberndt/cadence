@@ -62,6 +62,18 @@ advance on a refused update; report them as attempted work, never as accepted le
 With a learned code, a refused action, wait, lesson or outcome also restores the code
 region's numerical step and previous phase. Invalid feedback is checked before that
 region settles. An outcome accepted before a later action refuses stays accepted.
+A drive is finite wherever it rests: `settle_batch` and `equilibrate` refuse a torch tensor or
+an MLX array as they refuse a host array, and `Learner.step` refuses its drive before it reads
+its labels.
+
+The arrays the library hands out or takes are the caller's to write between calls, on every
+backend: a `BrainState`'s `v`, `activation` and `adaptation`, a `Nudge`'s `target`, `mask`,
+`weight`, `anchor` and `anchor_gain`, and an index array given to `BrainState.part`. The next
+call reads them as they stand. A state settled on a torch device or on MLX rests there while
+its arrays are only read; a write makes the host arrays the state, `state.device` is then
+`None`, and the next settle uploads them. One exception stands: an MLX array given as a drive
+and written in place between two settles of one state is taken as it was, since an MLX array
+carries no mark of a write; give a new array for a new drive.
 
 `Connectome` arrays and its population mapping are read-only. `NeuralGraph.efficacy`,
 `bias`, `log_gain` and the effective `weights` return read-only views. Replace parameters

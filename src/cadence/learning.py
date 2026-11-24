@@ -58,6 +58,7 @@ from .brain import (
     _drive_finite,
     _MlxState,
     _resident,
+    _trusted,
 )
 from .connectome import Connectome
 from .neuron import NeuronModel
@@ -1853,10 +1854,12 @@ class Learner:
         target: np.ndarray,
         weight: np.ndarray | None,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
-        """The rows the phases run on: every row, or the disagreeing ones."""
+        """The rows the phases run on: every row, or the disagreeing ones. The step has read
+        the whole drive finite, so the rows taken of a drive that rests on a device are marked
+        as read (``brain._trusted``) and no phase reads them again for its check."""
         if taught is None or bool(taught.all()):
             return drive, target, weight
-        rows = _taken_rows(drive, taught)
+        rows = _trusted(_taken_rows(drive, taught))
         return rows, target[taught], None if weight is None else np.asarray(weight)[taught]
 
     def _untaught(self, taught: np.ndarray) -> tuple[LearnedState, dict[str, float]]:

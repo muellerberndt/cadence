@@ -121,6 +121,12 @@ brain the rule placed, and the CPU for any other; `Learner.load` defaults to the
 `Learner.load(path, backend="cpu")` brings a checkpoint learned on any device back to the
 float64 receipt backend.
 
+An array read from a state that rests on a device is a copy, and the host keeps the fetched
+array beside it: a state whose arrays a caller wrote becomes its host arrays, and one nobody
+wrote continues on its device with no upload. A torch tensor given as a drive is read finite
+once per version of it on an accelerator and at every settle on the CPU device, and an MLX
+array with the settle's first launch; a drive the brain made itself is not read again.
+
 On CUDA and on MLX a composed brain's memories rest on the device once a moment is large enough to pay
 for it (the [rule and its readings](#memories-on-the-device)); below that size, on MPS and a torch CPU
 device, they run on the host.
