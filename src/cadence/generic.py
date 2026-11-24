@@ -5093,8 +5093,8 @@ class Brain:
         working memory, the efference copy, the heard history, the recall memory and the
         hippocampal recall when ``memory`` is set; with it the bound records also complete the
         senses an observation by name leaves silent, and without it they are not read. An
-        episodic memory that votes in the
-        choice (``memory_choice``) is not read into the drive. The recall memory addresses
+        episodic memory that votes in the choice (``memory_choice``) is not read into the
+        drive. The recall memory addresses
         the moment here and keeps the address for the moment's write and lesson. Both
         memories read the observation code; a learned code settles on the observations
         alone, as the cortex reads it."""
@@ -5450,10 +5450,17 @@ class Brain:
 
         ``fit`` begins with ``reset(keep=("arousal",))``: every stream starts afresh and the
         arousal state stays as it is, since a control on independent samples does not change
-        a life."""
-        drive = self.stimulus(observations, memory=False)
+        a life.
+
+        With a learned code a row's drive reads the weights the lessons move (the code's
+        projections onto its readers), so each minibatch's drive is made when its lesson
+        begins, under the parameters of that step, as ``predict`` makes it. Without one the
+        drive of a row is fixed and is made once for the whole fit."""
+        coded = self.learned_code is not None
+        x = self._observations(observations, memory=False)
+        drive = None if coded else self.stimulus(x, memory=False)
         labels = self.learner._labels(np.asarray(labels))
-        if len(labels) != len(drive):
+        if len(labels) != len(x):
             raise ValueError("observations and labels must have the same batch size")
         for name, value, minimum in (("epochs", epochs, 0), ("batch", batch, 1)):
             if (
@@ -5471,8 +5478,9 @@ class Brain:
             order = self.rng.permutation(len(labels))
             for start in range(0, len(labels), batch):
                 rows = order[start : start + batch]
-                self.learner.step(drive[rows], labels[rows])
-            history.append(self.accuracy(observations, labels))
+                taught = self.stimulus(x[rows], memory=False) if drive is None else drive[rows]
+                self.learner.step(taught, labels[rows])
+            history.append(self.accuracy(x, labels))
         return history
 
     def _equilibrate(
