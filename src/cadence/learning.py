@@ -55,9 +55,9 @@ from .brain import (
     BrainState,
     Equilibrium,
     Nudge,
+    _drive_finite,
     _MlxState,
     _resident,
-    _rows_finite,
 )
 from .connectome import Connectome
 from .neuron import NeuronModel
@@ -1625,8 +1625,9 @@ class Learner:
         label does. A distribution has no single answer to agree with: ``surprise`` judges
         labels, and every row of targets is taught.
 
-        The drive is refused as the solver refuses it (one column per neuron, finite) before
-        any answer is compared, so a batch that agrees is refused as one that does not. A
+        The drive is refused as the solver refuses it (one column per neuron, finite, on the
+        host or on its device) before any answer is compared, so a batch that agrees is
+        refused as one that does not. A
         lesson whose taught rows all weigh zero pulls nothing and is the lesson of no row: no
         nudged phase runs, and the parameters, the optimizer's moments and its count of
         updates stay as they are.
@@ -1766,11 +1767,13 @@ class Learner:
 
     def _refuse_drive(self, drive: Any) -> None:
         """Refuse a drive as the solver refuses it, before a lesson reads its labels: one
-        column per neuron, and on the host every entry finite."""
+        column per neuron and every entry finite, on the host or on its device
+        (``brain._drive_finite``; a drive the library made from arrays it read is not read
+        again)."""
         n = self.brain.connectome.n
         if drive.shape[1] != n:
             raise ValueError("drive must have one column per neuron")
-        if n == 0 or not (_resident(drive) or _rows_finite(drive)):
+        if n == 0 or not _drive_finite(drive):
             raise ValueError("drive must be finite and the brain must contain neurons")
 
     @staticmethod

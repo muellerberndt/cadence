@@ -1,6 +1,7 @@
 """The learner refuses a malformed drive as the solver refuses it, whatever the labels: a batch
 whose caller-read answer agrees with every label (which runs no phase) is refused as a batch
-that differs, and nothing changes. A valid batch that agrees still runs no phase."""
+that differs, on the host and for a drive that rests on a device, and nothing changes. A valid
+batch that agrees still runs no phase."""
 
 from __future__ import annotations
 
@@ -19,8 +20,8 @@ ANSWERS = [
 
 
 def pupil(**settings) -> cd.Brain:
-    return cd.Brain.compose(8, 3, modules=(8,), backend="cpu", seed=2, learning_surprise=True,
-                            **settings)
+    return cd.Brain.compose(8, 3, modules=(8,), seed=2, learning_surprise=True,
+                            **{"backend": "cpu", **settings})
 
 
 def malformed(neurons: int) -> list[tuple[str, np.ndarray]]:
@@ -40,6 +41,26 @@ def test_a_malformed_drive_is_refused_as_the_solver_refuses_it(answer):
             graph.settle_batch(drive, steps=1)
         with pytest.raises(ValueError) as lesson:
             learner.step(drive, LABELS, answer=answer)
+        assert str(lesson.value) == str(solver.value), name
+    np.testing.assert_array_equal(graph.efficacy, before[0])
+    np.testing.assert_array_equal(graph.bias, before[1])
+    assert learner.updates == before[2]
+
+
+@pytest.mark.parametrize("answer", ANSWERS)
+@pytest.mark.parametrize("precision", ["float64", "float32"])
+def test_a_malformed_drive_on_a_device_is_refused_as_the_solver_refuses_it(answer, precision):
+    torch = pytest.importorskip("torch")
+    brain = pupil(backend="torch", device="cpu", precision=precision)
+    learner, graph = brain.learner, brain.brain
+    before = (graph.efficacy.copy(), graph.bias.copy(), learner.updates)
+    kind = torch.float64 if precision == "float64" else torch.float32
+    for name, drive in malformed(brain.connectome.n):
+        resident = torch.as_tensor(drive, dtype=kind)
+        with pytest.raises(ValueError) as solver:
+            graph.settle_batch(resident, steps=1)
+        with pytest.raises(ValueError) as lesson:
+            learner.step(resident, LABELS, answer=answer)
         assert str(lesson.value) == str(solver.value), name
     np.testing.assert_array_equal(graph.efficacy, before[0])
     np.testing.assert_array_equal(graph.bias, before[1])
