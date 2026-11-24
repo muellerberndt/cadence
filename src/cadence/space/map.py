@@ -62,6 +62,18 @@ def _length(offset: np.ndarray) -> float:
     return float(np.sqrt(_in_order(np.asarray(offset) ** 2)))
 
 
+def _whole(value: Any, many: int) -> int | None:
+    """``value`` as one of ``many`` numbers from zero, or None where it names none: an integer
+    in any NumPy form (a 0-d array, a device's scalar) or a float with no fraction names one; a
+    boolean, a fraction, NaN, an infinity, a string and a number out of range name none."""
+    held = np.asarray(value)
+    if held.shape != () or held.dtype.kind not in "iuf" or (
+            held.dtype.kind == "f" and not (np.isfinite(held) and held == np.floor(held))):
+        return None
+    number = int(held)
+    return number if 0 <= number < many else None
+
+
 def sparse_codes(kinds: int, units: int, weight: int = 3, seed: int = 0) -> np.ndarray:
     """``kinds`` codes of ``weight`` units among ``units``, any two sharing one unit at most:
     ``(kinds, units)`` of zeros and ones."""
@@ -89,10 +101,12 @@ class Map:
     """What is where, over ``cells`` of a plane, for kinds given as codes of ``units`` units.
 
     ``plane`` is ``(x low, x high, y low, y high)`` in metres. A kind is a number: a row of
-    ``codes``. Without ``kinds`` the codes are one unit a kind (``units`` kinds, one sheet a
-    kind); with ``kinds`` above ``units`` each kind takes ``weight`` units and any two kinds
-    share one unit at most; ``codes`` gives a table of the caller's own. ``level`` is the
-    length a report's potentials are written at on each of its units.
+    ``codes``, given as an integer in any NumPy form or as a float with no fraction (a boolean,
+    a fraction or a number past the rows is refused). Without ``kinds`` the codes are one unit
+    a kind (``units`` kinds, one sheet a kind); with ``kinds`` above ``units`` each kind takes
+    ``weight`` units and any two kinds share one unit at most; ``codes`` gives a table of the
+    caller's own. ``level`` is the length a report's potentials are written at on each of its
+    units.
 
     Settings of the rules, each stated with its reading in the guide: ``empty`` (above),
     ``reach`` (the width in metres of the peak a thing is driven by when its place is seen
@@ -588,13 +602,14 @@ class Map:
                                                       ("felt", felt)) for report in given]
         reports = []
         for sense, (kind, point, *_) in told:
-            if (isinstance(kind, (bool, np.bool_)) or not isinstance(kind, (int, np.integer))
-                    or not 0 <= kind < len(self.codes)):
-                raise ValueError("a spatial report needs an integer kind in the map")
+            number = _whole(kind, len(self.codes))
+            if number is None:
+                raise ValueError("a spatial report needs a kind of the map: a whole number from 0 "
+                                 f"to {len(self.codes) - 1}")
             place = np.asarray(point, dtype=np.float64).reshape(2)
             if not np.isfinite(place).all():
                 raise ValueError("a spatial report needs two finite coordinates")
-            reports.append((int(kind), place, sense))
+            reports.append((number, place, sense))
         said = [self._said(report) for _, report in told]  # the values each report names
         sight = np.zeros(self.count, dtype=bool)
         if callable(lit):

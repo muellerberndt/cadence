@@ -282,6 +282,29 @@ def test_a_thing_in_doubt_seen_elsewhere_is_one_thing():
     assert [(t["state"], len(t["pieces"])) for t in held.things()] == [("seen", 1)]
 
 
+@pytest.mark.parametrize("kind", [np.array(1), np.array(1, dtype=np.uint8), 1.0, np.float64(1.0),
+                                  np.float32(1.0), np.array(1.0), np.int8(1), np.uint64(1)])
+def test_a_kind_given_in_any_whole_form_is_that_kind(kind):
+    plain, given = Map(PLANE, (8, 7), units=3), Map(PLANE, (8, 7), units=3)
+    plain.moment(seen=[(1, [0.2, 0.5])])
+    given.moment(seen=[(kind, [0.2, 0.5])])
+    for name, value in plain.arrays().items():
+        np.testing.assert_array_equal(given.arrays()[name], value)
+    assert [t["kind"] for t in given.things()] == [1]
+
+
+@pytest.mark.parametrize("kind", [True, np.bool_(True), np.array(True), 0.5, 1.5, -1, -1.0, 3,
+                                  3.0, np.nan, np.inf, 2**70, "1", np.array([1]), 1 + 0j])
+def test_a_kind_that_names_none_of_the_map_s_kinds_is_refused_and_changes_nothing(kind):
+    held = Map(PLANE, (8, 7), units=3)
+    held.moment(seen=[(0, [0.2, 0.5])])
+    before = {name: value.copy() for name, value in held.arrays().items()}
+    with pytest.raises(ValueError, match="kind of the map"):
+        held.moment(seen=[(kind, [-0.4, 1.0])])
+    for name, value in held.arrays().items():
+        np.testing.assert_array_equal(value, before[name])
+
+
 def test_the_built_in_place_module_and_a_file_from_outside_load_alike_and_refusals(tmp_path):
     import pickle
 

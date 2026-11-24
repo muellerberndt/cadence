@@ -28,8 +28,9 @@ assert all(t["state"] == "held" and t["since"] >= 100 for t in things.things())
 ```
 
 `Map(plane, cells=(32, 26), units=16)` makes the sheet: 32 by 26 cells over the plane and 16
-units of a kind's code at each cell. A kind is a number. With 16 units the map holds 16 kinds,
-one unit a kind. `Map(plane, units=32, kinds=128)` holds 128 kinds on 32 units: each kind takes
+units of a kind's code at each cell. A kind is a number: an integer in any NumPy form, or a
+float with no fraction (`moment` refuses a boolean, a fraction and a number past the map's
+kinds). With 16 units the map holds 16 kinds, one unit a kind. `Map(plane, units=32, kinds=128)` holds 128 kinds on 32 units: each kind takes
 three units and two kinds share one unit at most. `codes=` takes a table of the caller's own.
 
 The module has two stages: **the map, then learned physics on the map.**
