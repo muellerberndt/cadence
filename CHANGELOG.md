@@ -14,15 +14,19 @@ several heads to its law. A brain of one or two heads reads, acts, learns and sa
   and later head so read slots the heads before it had taken whole, up to 1.44 slots' worth
   of one slot with four heads, and its port held a mixture its lesson then learned from. What a
   head leaves is now what was left less what it read, and the shares of a slot sum to at most
-  one over any number of heads. `LongTermMemory.read(heads=...)` at a temperature above zero
-  followed the same law and is corrected with it; the credit a read gives a record is then at
-  most one telling. The compiled moment, the device's path and the lives of many brains read
-  with one head and are as they were.
+  one over any number of heads. A slot read whole leaves exactly nothing: what rounding leaves
+  of it (about 1e-16) is no share a later head reads or takes a lesson from.
+  `LongTermMemory.read(heads=...)` and `read_each` at a temperature above zero followed the same
+  law and are corrected with it; the credit a read gives a record is then at most one telling.
+  The compiled moment, the device's path and the lives of many brains read with one head and
+  are as they were.
 - **What changes for a brain of three or more heads.** Its third and later heads read less, or
   nothing, where the heads before them took the slots, so its life differs from 0.103.0's from
-  the first such read on; its file loads as before. Readings taken with three or more heads on
-  0.103.0 or earlier include the mass read twice. The readings of two heads stand
-  ([held heads](benchmarks/attention/held_heads.py)).
+  the first such read on. Its file loads as before, and 0.103.0 loads a file this release saved
+  and continues it under its own rule. Readings taken with three or more heads on 0.103.0 or
+  earlier include the mass read twice; the soft-head columns of four and eight heads in the
+  [memory-scale table](benchmarks/memory_scale/README.md) are among them and were not read
+  again. The readings of two heads stand ([held heads](benchmarks/attention/held_heads.py)).
 - **Every read of several heads is held to its law in the tests.**
   `tests/test_recall_heads_invariants.py` checks at every read of lives of each kind of moment
   (lessons, steps with rewards and a teacher, `live` and `wait`, ends of episodes on some
@@ -30,9 +34,10 @@ several heads to its law. A brain of one or two heads reads, acts, learns and sa
   left, that a later head's shares are the water-filling of its own attention (against a
   reference found by bisection), that each port holds its head's attention over the slots, and
   that a head's lesson takes the attention the head read with: on NumPy, torch, MPS and MLX,
-  beside other streams, after a save, and after `grow` added heads. The bank is compared slot by
-  slot with a list per stream, and the long-term store's heads are held to the same totals. 30
-  of these tests fail on 0.103.0.
+  in a brain loaded from its file, and after `grow` added heads. A stream's read is compared
+  alone and beside other streams, the bank slot by slot with a list per stream, and the
+  long-term store's heads are held to the same totals. The tests of three or more heads fail
+  on 0.103.0.
 - The files 0.103.0 saved join the released files (`tests/fixtures/released/v0.103.0`): each
   loads and continues as 0.103.0 continued it. The `previous-release` job reads this release's
   files with 0.103.0.

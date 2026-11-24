@@ -1063,8 +1063,8 @@ nothing. Over any number of heads the shares of a slot sum to at most one, so k 
 most k slots' worth of a bank and no more than the bank holds: with fewer slots than heads the
 last heads read nothing. At birth, with every address map at zero, head 0 reads the
 best-matching moment and head 1 the best of what head 0 left. Heads taught toward the same
-slot do not share it: the head that reads first takes it, and the later head's next lesson
-names the best of what it was left.
+slot divide it in their order: the head that reads first takes its share and a later head at
+most the rest, and the later head's next lesson names the best of what it was left.
 
 The address lesson after a teaching step reads the association's movement back through each
 head's own synapses, so each head's map moves toward the records whose values would have
