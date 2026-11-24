@@ -6356,6 +6356,8 @@ class Brain:
         # under the observation code; under the learner's surprise rule, for the rows the
         # lesson taught, those whose complete answer differed from the label.
         shown = np.ones(batch, bool) if lesson.taught is None else lesson.taught
+        if weights is not None:  # a row of weight zero shows nothing
+            shown = shown & (np.asarray(weights) > 0)
         episodic = self._episodic
         if (
             episodic is not None and episodic.demonstrations and shown.any() and not replayed

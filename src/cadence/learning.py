@@ -1615,6 +1615,10 @@ class Learner:
         actions (``soft_targets``) through the same nudged phases; a one-hot row teaches as its
         label does. A distribution has no single answer to agree with: ``surprise`` judges
         labels, and every row of targets is taught.
+
+        A lesson whose taught rows all weigh zero pulls nothing and is the lesson of no row:
+        no nudged phase runs, and the parameters, the optimizer's moments and its count of
+        updates stay as they are.
         """
         target: np.ndarray | None = None
         if labels is None:
@@ -1633,12 +1637,16 @@ class Learner:
             drive = drive[None, :]
         if drive.ndim != 2 or drive.shape[0] != batch:
             raise ValueError("drive and labels must have the same batch size")
+        if weight is not None:
+            weight = self._row_weights(weight, batch)
         cfg = self.config
         judged = None
         if cfg.surprise and answer is not None and labels is not None:
             judged = self._differs(np.asarray(answer), labels)
             if not judged.any():
                 return self._untaught(judged)
+        if weight is not None and not np.any(weight if judged is None else weight[judged]):
+            return self._untaught(np.zeros(batch, dtype=bool))  # no row pulls: no phase runs
         # the slots the lesson leaves open (labels of ``OPEN``), at the rows the phases run on
         open_slots: np.ndarray | None = None
         if target is None:  # the labels' targets, made where a phase reads them
@@ -1660,6 +1668,8 @@ class Learner:
             taught = judged if judged is not None else self._taught(free, labels)
             if taught is not None and not taught.any():
                 return self._agreed(free, phases, taught)
+            if judged is None and self._silent(weight, taught):
+                return self._agreed(free, phases, np.zeros(batch, dtype=bool))
             if judged is None:
                 drive, target, weight = self._lesson(taught, drive, target, weight)
                 free = _restrict(free, taught, drive)
@@ -1706,6 +1716,8 @@ class Learner:
         # settled. The report counts it and a warning says so.
         exhausted = cfg.tolerance is not None and free.steps >= cfg.free_steps > 0
         taught = judged if judged is not None else self._taught(free, labels)
+        if judged is None and self._silent(weight, taught):
+            taught = np.zeros(batch, dtype=bool)  # the taught rows pull nothing
         if taught is not None and not taught.any():
             state, report = self._agreed(free, phases, taught)
             report["free_budget_exhausted"] = float(exhausted)
@@ -1739,6 +1751,23 @@ class Learner:
         report["free_budget_exhausted"] = float(exhausted)
         self._warn_exhausted(exhausted)
         return LearnedState(free, nudged, opposite, taught), report
+
+    @staticmethod
+    def _row_weights(weight: Any, batch: int) -> np.ndarray:
+        """A lesson's weights as one finite number per row, refused as a nudge refuses them."""
+        weights = np.asarray(weight, dtype=float)
+        if weights.shape != (batch,):
+            raise ValueError("nudge weight must have one entry per batch row")
+        if not np.isfinite(weights).all():
+            raise ValueError("nudge weight must be finite")
+        return weights
+
+    @staticmethod
+    def _silent(weight: np.ndarray | None, taught: np.ndarray | None) -> bool:
+        """Whether the rows a lesson teaches all weigh zero: it then pulls nothing."""
+        if weight is None:
+            return False
+        return not np.any(weight if taught is None else weight[taught])
 
     def _phases_compiled(
         self, drive: Any, warm: BrainState | None, target: np.ndarray
@@ -1833,8 +1862,9 @@ class Learner:
     def _agreed(
         self, free: BrainState, phases: Mapping[str, Equilibrium], taught: np.ndarray
     ) -> tuple[LearnedState, dict[str, float]]:
-        """The lesson of a batch whose free answer matches every label: the free phase alone,
-        no nudged phase, no update; the phases that did not run count zero work."""
+        """The lesson of a batch whose free answer matches every label, or whose taught rows
+        all weigh zero: the free phase alone, no nudged phase, no update; the phases that did
+        not run count zero work."""
         cfg = self.config
         report = _phase_report(phases, accepted=True, qualified=cfg.qualified)
         for name in ("nudged", "opposite"):
