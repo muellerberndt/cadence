@@ -11,9 +11,9 @@ around the settle (the map of things, the bound records' read) have compiled for
 arithmetic, with one stated exception: natively a map of things moves in its last bits
 ([what moves](#what-moves-in-its-last-bits)). Every brain acts and learns as on 0.102.0 in the
 lives read, and a brain without a map describes itself and saves as on 0.102.0 too, to the bit
-(the version string apart). The release also fixes the defects an audit of 0.102.0 reproduced
-([fixes](#fixes)): each changes what happens in the case it names, and the lives read against
-0.102.0 are the same with them.
+(the version string apart). The release also fixes the defects three reviews of 0.102.0 and of
+this release's changes found ([fixes](#fixes)): each changes what happens in the case it
+names.
 
 ```js
 // a page: the module of the library's version, named before cadence is imported
@@ -95,8 +95,45 @@ The guides are [in a browser](docs/backends.md#in-a-browser) and
 
 ### Fixes
 
-An audit of 0.102.0 reproduced nineteen defects of the library and three of its release tooling.
-Each is fixed with tests that fail on 0.102.0.
+Three reviews read 0.102.0 and this release's changes before it shipped. Each defect below is
+fixed, with tests that fail before the fix; a fix changes what happens in the case it names.
+What was found and is not fixed is listed at the end ([known open](#known-open)).
+
+Reward and the records of bound moments:
+
+- **A reward pays the record of the moment the brain acted at, and that record holds the sound
+  said.** In a store of bound records a moment `wait` sensed before a reward, or another
+  stream's moment, could take the awaited record's slot, revise it where its key lay near, or
+  outlast it until it was forgotten; and an acted moment could revise the record of an earlier,
+  different sound whose key lay near. The reward then paid a record whose sound was another: a
+  brain refused twice for saying 3 and paid once for saying 2 answered 3. A record is now one
+  event, a situation and the sound said in it. A moment that says another sound takes a record
+  of its own, and a record awaiting its reward is neither replaced, revised by another event
+  nor forgotten before the reward comes (`LongTermMemory.write(spare=, revisable=)`,
+  `LongTermMemory.moment(awaited=)`); a sensed moment that holds the awaited moment exactly
+  still deepens it.
+- **Streams that act at one event share its record, and a payment wins.** The rewards of
+  several streams for one record applied in stream order, so a refusal after a payment in the
+  same moment refused the record. A reward any of the streams is paid now pays it and lifts the
+  others' refusal; the record is refused only where none of them is paid.
+- **An episode's end begins the long-term records' turn afresh in a learned outcome too.**
+  `done` given with a sampled outcome (`step`, `learn`, aroused `live`) left the turn of the
+  brain's long-term records as it was, and the next episode's fact was not recorded. The turn
+  now begins afresh as after `reset()`; the records stay.
+
+Memories:
+
+- **An imagined branch writes no held message.** `imagine` on a brain whose held message has
+  roles (`message_roles`) or a boundary (`message_boundary`) advanced or emptied the stream's
+  own counts of what each role heard, so the next real moment joined another block and every
+  later drive of the episode differed. The branch holds copies of its own.
+- **A refused outcome leaves a fading store as it was.** With `memory_fade` a refused `learn`
+  restored the records and kept the depth its write had added, so each refusal counted as use
+  and the retry counted the write again.
+- **A refused outcome that ends an episode leaves the episodic context as it was.** Under
+  `memory_context_hold` the episode's end cleared the context of the last decision in place and
+  a refusal did not restore it; the next decision of a stream that went on was keyed in a
+  context of zeros.
 
 Learning and evaluation:
 
@@ -108,28 +145,43 @@ Learning and evaluation:
 - **A lesson whose rows all weigh zero is the lesson of no row.** On a brain that had learned,
   the optimizer's momentum moved the weights under a lesson of weight zero and its count of
   updates advanced. No teaching phase runs now, and the weights, the optimizer's history and
-  its counts stay. An episodic memory records no demonstration for a row of weight zero.
+  its counts stay. An episodic memory records no demonstration for a row of weight zero, and
+  learned sensory fields (`learned_fields`) take no frame of it: they learned from every frame
+  a lesson showed.
 - **An independent sample reads no bound record.** `predict`, `accuracy`, `fit` and
   `stimulus(memory=False)` completed an observation given by name from the records of bound
   moments, so a cold answer could come from a stored association. The senses such an
   observation leaves silent now stay silent, by name as for rows of the whole width.
+- **An independent read of a learned code owes nothing to the stream.** `predict`, `accuracy`,
+  `fit`, `stimulus(memory=False)` and `observation_code` settled the code region warm from the
+  stream's last state where the batch sizes matched, and at the step the stream had reached, so
+  a brain and its twin at rest could choose otherwise on a row near a boundary (1 of 64 rows in
+  one reading). The region now settles once from rest at the step every state of it is stable
+  under (`LearnedCode.rest`), a function of its tables: a prediction takes one solve of the code
+  where it took two, 57% less time on a code of 24 units on NumPy.
 - **`Learner.step` refuses a malformed drive before it compares answers.** A batch whose answer
   agreed with its labels returned before the drive's width and finiteness were checked. The
   whole drive is refused as the solver refuses it, on the host and on a device.
+- **A fit checks every argument before it reads an observation.** `fit` read the whole dataset
+  before it checked the labels, `epochs` and `batch`; on a brain with learned sensory fields a
+  refused fit advanced the fields' counts, which its file saves.
+- **A lesson refuses a warm state of another batch as the solver does.** Under `surprise` with
+  a caller-read answer, `Learner.step` raised `IndexError` for a host warm state of fewer rows,
+  and on a torch or MLX device a warm state of more rows was partly read and the lesson went
+  ahead. It raises the solver's `ValueError` before the answer is judged, and nothing changes.
+The actor's decisions:
 
-Reward and episodes:
+- **An actor's decision follows a replacement of the graph's parameters.** After
+  `brain.brain.bias = ...` (or `efficacy`, `log_gain`) a direct `brain.basal_ganglia.act` chose
+  under a free phase settled with the old parameters. The graph's parameter replacements advance
+  a generation the actor checks. The composed `act` and `step` settle afresh and were not
+  affected.
+- **An actor's decision follows a drive written in place.** A torch tensor written in place,
+  also through a NumPy view of a CPU tensor, or an MLX array written by indexed assignment read
+  as the drive the actor had settled. The actor keeps the values of the drive it settled under
+  and compares them.
 
-- **A reward pays the record of the moment the brain acted at.** A moment `wait` sensed before
-  the reward, or another stream's moment, could take the awaited record's slot in a full store
-  of bound records, and the reward paid the record that replaced it. The record a reward is
-  awaited for is not replaced (`LongTermMemory.write(spare=)`): a sensed moment replaces another
-  record, and in a store whose every record awaits a reward it is not written.
-- **An episode's end begins the long-term records' turn afresh in a learned outcome too.**
-  `done` given with a sampled outcome (`step`, `learn`, aroused `live`) left the turn of the
-  brain's long-term records as it was, and the next episode's fact was not recorded. The turn
-  now begins afresh as after `reset()`; the records stay.
-
-Many lives on the CPU:
+Many lives:
 
 - **`Lives` checks a call for every life before any life moves.** A row that was not finite or
   a label outside its choices was refused after the lives before it had acted or learned. Rows,
@@ -141,7 +193,10 @@ Many lives on the CPU:
   CPU returned the population's own brain, and `join` installed its argument, so two rows could
   be one brain. `life` returns a copy with its stream afresh (the life's with `stream=True`) on
   the place named, and `join` keeps a copy.
-
+- **A calm life keeps its routine outcome through `Lives.learn` on a device.** On torch, after
+  `live` left some lives calm and some holding a sampled action, `Lives.learn` dropped the calm
+  lives' record of their routine answer: the next `live` refused their reward and their arousal
+  never counted it, where the lone brains and the CPU lives took it.
 Backends:
 
 - **A drive that rests on a device is refused where a host array is.** `settle_batch` passed a
@@ -149,7 +204,8 @@ Backends:
   was not finite.
 - **A state's selected activity is read at the neurons its index names.** `BrainState.part` and
   the torch kernel kept what they fetched under the index array's identity, so an index written
-  in place read the neurons it named before.
+  in place read the neurons it named before; and on torch a contiguous range reaching past the
+  last neuron was cut short where NumPy and MLX raise `IndexError`, as torch now does.
 - **A learned code's placement that fails leaves the region where it was.**
   `LearnedCode.place` published the new device before the whole sub-network of that place
   stood.
@@ -166,7 +222,27 @@ Backends:
 - **The residual of a written state is the residual of its arrays.** On MLX `residual` answered
   with its launch's own check, 0 where the float64 reference of the arrays reads 1; the apical
   gain a launch had read was returned the same way.
-
+- **A drive written in place between two settles on MLX is read as it now is.** An MLX array
+  carries no mark of a write, and a launch's sources, its check and its gains took a drive
+  written by indexed assignment as the drive they were made under. They keep the values they
+  read and compare them.
+- **An MLX settle continues a state settled under a mask from its potentials.** A state settled
+  on MLX under a fractional mask and continued without one started its first sweep from the
+  masked activations, where NumPy and torch start from the activations of its potentials.
+- **An MLX settle after an update that moved a source neuron's bias moves that neuron.** After
+  `Learner.apply`, or a lesson or reward on the device, moved the bias of a neuron no synapse
+  reaches (an input neuron), a settle on MLX from a state settled under the same drive kept that
+  neuron at the old drive and bias, and its check read the state as settled where the residual
+  was 0.59.
+- **A graph's check refuses every nudge its settle refuses.** On the compiled CPU path
+  `NeuralGraph.residual` read past a nudge weight with too few rows, ignored the rest of one with
+  too many and took a nudge made for another graph, where `settle_batch` and the NumPy loop refuse
+  them; a check could then read a state as settled that the nudged equations leave 0.49 away.
+- **A float stimulus vector has one entry per neuron.** `NeuralGraph.settle` read a float vector
+  of another width as a list of neurons, so a one-hot pattern drove neurons 0 and 1.
+- **`apical_gain` refuses a drive whose rows or width are not the state's.** On the host it
+  spread a one-row drive over a state of several rows and returned gains read under the wrong
+  drive.
 Files and speech:
 
 - **A map or module save that fails leaves the file that was there.** `Map.save`, `save_module`
@@ -175,25 +251,77 @@ Files and speech:
 - **A forced path reads as its transcript, or the transcript is refused.** `forced_path`
   returned a path of blanks for a transcript its beliefs leave no path. `forced_path`,
   `soft_path` and `even_path` also refuse symbols that are no whole numbers among the beliefs'
-  symbols.
+  symbols, and symbols too large for a 64-bit integer, which wrapped to the last symbol.
+- **A refused batch of alignments keeps its hearings.** `Alignments.lesson` and `targets` took
+  hearings out before refusing a key they do not hold, a key given twice or a path longer than
+  the lesson, so the corrected retry no longer found them. Everything is checked first and the
+  hearings are taken together. `Alignments(blank=)` refuses a blank that is no nonnegative
+  integer.
 - **A correction the brain would refuse is refused whole.** `Rehearsal.correct` taught the
   steps before a bad label and left the brain in the middle of the utterance. Every step is
   checked before the brain is reset, and a settle refused in the middle of a correction leaves
   the brain at rest.
 - **The rehearsal bank holds copies of its own.** It kept the caller's arrays, and a capture
   buffer filled again replaced the utterances in the bank.
-
+- **A map's moment refuses a report of a kind it does not hold or at a place that is not
+  finite, before the map moves.** A report of kind -1 wrote a thing of kind 2, kind 0.9 one of
+  kind 0, and an infinite place a thing near the plane's edge; a second report that was refused
+  came after the first had been written. A kind given as a whole float or a NumPy integer of any
+  form is that kind, as before.
+- **A map refuses sight given as flags that are not booleans or zeros and ones.** `lit` flags of
+  NaN, fractions, numbers above one or strings counted as cells in sight, so a thing held there
+  was seen empty and lost its place. They are refused, given directly or by a function `lit`.
 Release tooling and tests:
 
 - `benchmarks/forager/summary.py` gives a gate's verdict on the declared panel alone; an
-  incomplete panel reads `incomplete`, and a second life of a founder's arm is refused.
+  incomplete panel reads `incomplete`, a receipt with no complete pair reads both gates as
+  `incomplete`, and a second life of a founder's arm is refused.
+- `benchmarks/symbols/summary.py` gives its gates' verdicts on one complete declared panel and
+  refuses a founder and arm given twice; one result given ten times read `10 of 10 -> holds`.
+- `benchmarks/several/several_summary.py --gates` gives a verdict only on the declared panel:
+  it lowered the bar of ten founders to the rows given and counted a repeated row as another
+  founder, so one founder alone read `passes`. Each gate reads `incomplete` and names what is
+  missing until its panel is given, once each.
+- `benchmarks/device/ledger.py` attributes a transfer to the library's frames when the checkout
+  is imported through a symbolic link; it attributed every transfer to `outside`.
+- Every relative link of a tracked Markdown page resolves: the attention results guide and
+  entries of this changelog pointed to retired files, and a test now reads every tracked page.
 - The source archive holds `.github/ISSUE_TEMPLATE.md`, which its `AGENTS.md` links, so its own
   documentation tests pass.
 - `.gitattributes` checks every text file out with LF line endings: under `core.autocrlf` the
   archived sources and receipts that tests hash keep their bytes (#368).
 - The option-combination test accepts last bits of numbers as the known difference of #346 and
   fails on any other difference between two continued lives.
+- Tests that read products only the compiled path makes now hold on the NumPy loop
+  (`CADENCE_FUSED=0`) too.
 
+#### Known open
+
+Found and confirmed before the release, and not fixed in it:
+
+- The optimizer's bias corrections count every update the learner made, so a moment switched on
+  after earlier updates (`normalize` or `momentum` changed by `retune(teaching=...)` or a new
+  `LearnerConfig`) steps up to about eight times the documented rate in its first lessons.
+- Under `normalize_relative` with nudged phases that stop at the tolerance (an expert
+  `LearnerConfig`; the composed teaching points fix their phases), biases of neurons no nudge
+  reaches move by about `eta_bias` a lesson.
+- A refused `act` or outcome keeps the credit its read gave the long-term records (`longterm=`).
+- A `live` whose arousal refuses an outcome after the sampled outcome was learned leaves that
+  outcome's bound record unpaid.
+- `predict`, `accuracy`, `stimulus(memory=False)` and `observation_code` advance the work counts
+  of a learned code and of learned fields, which a file saves (`imagine` those of the fields).
+- A map whose function `lit` fails partway through a moment, or whose physics refuses a lesson,
+  has moved; the map refuses such a moment only after the move.
+- Under a mask with entries strictly between 0 and 1, only the full-step attempt of
+  `equilibrate` can qualify: a halved step relaxes to a fixed point of its own.
+- `Connectome.digest` reads populations without separators, so two connectomes whose population
+  names join to one string share a digest.
+- `benchmarks/memory_scale/summarize.py`, `summarize_million.py`, `benchmarks/tracking/gates_map.py`
+  and `gates_physics.py` can print a passing verdict on an incomplete or repeated panel. Their
+  published verdicts were read on complete panels.
+- On torch, a `Lives.live` whose answering settle refuses leaves the outcomes the sampled lives
+  learned uncounted by their arousal, and where calm lives end an episode it has already reset
+  them, so the same call cannot be made again.
 ### What moves in its last bits
 
 - **A map of things, natively.** The map's products and lengths (a thing's middle, its kind's

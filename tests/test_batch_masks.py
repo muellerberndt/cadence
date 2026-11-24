@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from places import PLACES, place
 
 import cadence as cd
 from cadence.brain import _FUSED
@@ -201,3 +202,26 @@ def test_cpu_warm_state_keeps_potentials_and_activations_consistent(dtype, dense
     np.testing.assert_allclose(state.activation, brain.neuron_model.activation(state.v), atol=1e-14)
     assert brain.residual(drive, state)[0] < 1e-14
     np.testing.assert_array_equal(initial.v, [0, 0])
+
+
+@pytest.mark.parametrize("name", PLACES)
+@pytest.mark.parametrize("sweeps", [0, 1, 3])
+def test_a_state_settled_under_a_mask_continues_without_one_from_its_potentials(name, sweeps):
+    """A settle with no mask starts from the activations of the state's potentials, on every
+    backend: as from a state made new from copies of its host arrays, not from the activations
+    the masked settle published."""
+    brain = cd.Brain.compose(8, 3, modules=(12,), seed=3, **place(name))
+    graph = brain.brain
+    drive = np.array(brain.stimulus(np.eye(8)[[0, 1]], memory=False))
+    state = graph.settle_batch(drive, steps=5, mask=np.full(graph.connectome.n, 0.5))
+    twin = cd.BrainState(
+        state.v.copy(), state.activation.copy(), state.adaptation.copy(), state.steps
+    )
+    if name == "mlx":
+        assert graph._mlx.plan is not None  # the continuation is a launch
+    for key in ("v", "activation", "adaptation", "activity_change"):
+        np.testing.assert_array_equal(
+            getattr(graph.settle_batch(drive, steps=sweeps, state=state), key),
+            getattr(graph.settle_batch(drive, steps=sweeps, state=twin), key),
+            err_msg=key,
+        )

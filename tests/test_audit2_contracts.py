@@ -37,7 +37,7 @@ def test_delayed_credit_protects_the_acted_value_from_a_near_key(reward, tmp_pat
         assert b.bound.refused[slot]
 
 
-def test_two_streams_can_receive_opposite_rewards_for_the_same_event():
+def test_two_streams_at_the_same_event_share_its_record_and_a_payment_wins():
     b = cd.Brain.compose(
         senses={"eyes": 16, "ear": 16},
         actions=2,
@@ -50,9 +50,9 @@ def test_two_streams_can_receive_opposite_rewards_for_the_same_event():
     )
     b.step({"eyes": np.eye(16)[[14, 14]], "voice": np.eye(16)[[2, 2]]})
     a, c = b.bound.written
-    assert a >= 0 and c >= 0 and a != c
+    assert a == c >= 0 and b.bound.store.count == 1
     b.bound.pay([1.0, -1.0])
-    assert b.bound.paid[a] > 0 and b.bound.refused[c] and not b.bound.refused[a]
+    assert b.bound.paid[a] > 0 and not b.bound.refused[a]
 
 
 def test_independent_learned_code_is_cold_after_an_unrelated_stream(monkeypatch):
@@ -73,20 +73,18 @@ def test_independent_learned_code_is_cold_after_an_unrelated_stream(monkeypatch)
     solve = brain._settle_code
 
     def counted(*args, **options):
-        assert options["cold"]
+        assert options["cold"] and not options["report"]
         phase = solve(*args, **options)
         observed.append(brain.learned_code.halvings)
         return phase
 
     monkeypatch.setattr(brain, "_settle_code", counted)
+    live = brain.learned_code.graph
     brain.predict(query)
-    assert len(observed) == 1 + int(observed[0] != 0)
-    # A settled code on the original step is reused directly.
-    monkeypatch.setattr(brain.learned_code, "stability", lambda v: 0)
-    observed.clear()
-    brain.predict(query)
-    assert observed == [0]
-    assert brain.learned_code.halvings == 1  # independent reads leave the live policy alone
+    # one solve from rest, at the step the dictionary allows over every state
+    assert observed == [brain.learned_code.rest_stability()]
+    # independent reads leave the live policy alone
+    assert brain.learned_code.halvings == 1 and brain.learned_code.graph is live
 
 
 def test_actor_requalifies_after_public_parameter_replacement(tmp_path):

@@ -62,6 +62,28 @@ def _length(offset: np.ndarray) -> float:
     return float(np.sqrt(_in_order(np.asarray(offset) ** 2)))
 
 
+def _whole(value: Any, many: int) -> int | None:
+    """``value`` as one of ``many`` numbers from zero, or None where it names none: an integer
+    in any NumPy form (a 0-d array, a device's scalar) or a float with no fraction names one; a
+    boolean, a fraction, NaN, an infinity, a string and a number out of range name none."""
+    held = np.asarray(value)
+    if held.shape != () or held.dtype.kind not in "iuf" or (
+            held.dtype.kind == "f" and not (np.isfinite(held) and held == np.floor(held))):
+        return None
+    number = int(held)
+    return number if 0 <= number < many else None
+
+
+def _flags(given: Any, count: int) -> np.ndarray:
+    """What the camera says it sees, as ``count`` flags: booleans, or numbers that are each 0 or
+    1. Any other value (NaN, a fraction, a number past one, a string) is refused."""
+    held = np.asarray(given)
+    if held.dtype.kind != "b" and (held.dtype.kind not in "iuf" or not np.isin(held, (0, 1)).all()):
+        raise ValueError("the camera's sight (lit) is flags: booleans, or numbers that are each 0 "
+                         "or 1")
+    return held.astype(bool).reshape(count)
+
+
 def sparse_codes(kinds: int, units: int, weight: int = 3, seed: int = 0) -> np.ndarray:
     """``kinds`` codes of ``weight`` units among ``units``, any two sharing one unit at most:
     ``(kinds, units)`` of zeros and ones."""
@@ -89,10 +111,12 @@ class Map:
     """What is where, over ``cells`` of a plane, for kinds given as codes of ``units`` units.
 
     ``plane`` is ``(x low, x high, y low, y high)`` in metres. A kind is a number: a row of
-    ``codes``. Without ``kinds`` the codes are one unit a kind (``units`` kinds, one sheet a
-    kind); with ``kinds`` above ``units`` each kind takes ``weight`` units and any two kinds
-    share one unit at most; ``codes`` gives a table of the caller's own. ``level`` is the
-    length a report's potentials are written at on each of its units.
+    ``codes``, given as an integer in any NumPy form or as a float with no fraction (a boolean,
+    a fraction or a number past the rows is refused). Without ``kinds`` the codes are one unit
+    a kind (``units`` kinds, one sheet a kind); with ``kinds`` above ``units`` each kind takes
+    ``weight`` units and any two kinds share one unit at most; ``codes`` gives a table of the
+    caller's own. ``level`` is the length a report's potentials are written at on each of its
+    units.
 
     Settings of the rules, each stated with its reading in the guide: ``empty`` (above),
     ``reach`` (the width in metres of the peak a thing is driven by when its place is seen
@@ -565,16 +589,18 @@ class Map:
         """One moment. ``seen``, ``heard`` and ``felt`` hold this moment's reports by sense,
         each a kind and a place ``(kind, (x, y))``: what the camera sees, what a sound names
         and what the body's own readings name. ``lit`` says which cells the camera sees: flags
-        ``(cells,)`` or a function of ``(points, 2)`` places; None where nothing says. A thing
-        is seen empty where the camera sees its held place (the mean of its piece) and no
-        report claims it: a function judges the place itself, flags the cell that holds it. A
-        place a sense wrote the moment before is a report, as far off as the camera's error: it
-        is seen empty where the camera sees around it, within ``margin``, everything it saw
-        there the moment before, and something. A hand last seen at a shadow's edge may have
-        been reported just past it, and the camera that did not move sees it empty; a camera
-        turning away from a thing it reported sees less of what it saw around it, and the thing
-        stays. Any other held place is seen empty where the camera sees all of it
-        within ``margin``: the camera's error never decides it.
+        ``(cells,)`` or a function of ``(points, 2)`` places that gives a flag a place; None
+        where nothing says. A flag is a boolean or a number that is 0 or 1, and flags of any
+        other value (NaN, a fraction, a string) are refused. A thing is seen empty where the
+        camera sees its held place (the mean of its piece) and no report claims it: a function
+        judges the place itself, flags the cell that holds it. A place a sense wrote the moment
+        before is a report, as far off as the camera's error: it is seen empty where the camera
+        sees around it, within ``margin``, everything it saw there the moment before, and
+        something. A hand last seen at a shadow's edge may have been reported just past it, and
+        the camera that did not move sees it empty; a camera turning away from a thing it
+        reported sees less of what it saw around it, and the thing stays. Any other held place
+        is seen empty where the camera sees all of it within ``margin``: the camera's error
+        never decides it.
 
         A report writes its place on its kind's units, in place of what its cells carried, and
         the pieces of its kind's activity within ``step`` of it are that thing: they are
@@ -588,19 +614,20 @@ class Map:
                                                       ("felt", felt)) for report in given]
         reports = []
         for sense, (kind, point, *_) in told:
-            if (isinstance(kind, (bool, np.bool_)) or not isinstance(kind, (int, np.integer))
-                    or not 0 <= kind < len(self.codes)):
-                raise ValueError("a spatial report needs an integer kind in the map")
+            number = _whole(kind, len(self.codes))
+            if number is None:
+                raise ValueError("a spatial report needs a kind of the map: a whole number from 0 "
+                                 f"to {len(self.codes) - 1}")
             place = np.asarray(point, dtype=np.float64).reshape(2)
             if not np.isfinite(place).all():
                 raise ValueError("a spatial report needs two finite coordinates")
-            reports.append((int(kind), place, sense))
+            reports.append((number, place, sense))
         said = [self._said(report) for _, report in told]  # the values each report names
         sight = np.zeros(self.count, dtype=bool)
         if callable(lit):
-            sight = np.asarray(lit(self.centers), dtype=bool).reshape(self.count)
+            sight = _flags(lit(self.centers), self.count)
         elif lit is not None:
-            sight = np.asarray(lit, dtype=bool).reshape(self.count)
+            sight = _flags(lit, self.count)
         looks = self._looks(lit, sight)
         expected = self._expected() if self.surprise is not None else None
         before = self.potential.copy()  # the map as the moment before left it
@@ -789,7 +816,7 @@ class Map:
         places, by the flag of the cell that holds a place where it flags cells; nothing where
         nothing says."""
         if callable(lit):
-            return np.asarray(lit(points), dtype=bool).reshape(len(points))
+            return _flags(lit(points), len(points))
         if lit is None:
             return np.zeros(len(points), dtype=bool)
         nx, ny = self.cells

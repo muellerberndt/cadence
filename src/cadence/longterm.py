@@ -71,7 +71,7 @@ the one whose signature it shares.
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping
 from copy import copy
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
@@ -753,7 +753,7 @@ class LongTermMemory:
     def write(
         self, key: np.ndarray, value: np.ndarray, recognised: int | None = None,
         source: Any = None, surprise: float | None = None, spare: Any = None,
-        *, exclude_revisions: Sequence[int] = (),
+        *, revisable: Callable[[np.ndarray], np.ndarray] | None = None,
     ) -> tuple[int, bool]:
         """Write one record and return its slot and whether the write revised a held record.
         A key the memory recognises (``revise``) rewrites that record; any other takes an empty
@@ -766,7 +766,10 @@ class LongTermMemory:
         record lies from the key. ``spare`` names slots a write that revises nothing does not
         replace (records a caller still awaits something for): in a full memory it replaces
         another record, and where every slot is spared it writes nothing and returns
-        ``(-1, False)``. Slots in ``exclude_revisions`` are ineligible for recognition."""
+        ``(-1, False)``. ``revisable`` judges the records a write may revise: it takes candidate
+        slots and marks the ones that hold the same event; a record it leaves unmarked is
+        another event, neither recognised nor revised, and a write that revises none takes a
+        slot of its own."""
         key = self._key(key)
         value = np.asarray(value, dtype=np.float64)
         if value.shape != (self.value_width,) or not np.isfinite(value).all():
@@ -783,12 +786,15 @@ class LongTermMemory:
         units = self.address(key) if self.coarse else None
         slot, revised = -1, False
         if recognised is not None and self.revise:
-            if recognised >= 0 and recognised not in exclude_revisions:
+            if recognised >= 0 and (
+                revisable is None
+                or bool(np.asarray(revisable(np.array([int(recognised)])))[0])
+            ):
                 slot, revised = int(recognised), True
         elif self.revise and self.count:
             slots, keys = self._candidates(key, units)
-            if len(exclude_revisions):
-                eligible = ~np.isin(slots, exclude_revisions)
+            if revisable is not None and len(slots):
+                eligible = np.asarray(revisable(slots), dtype=bool)
                 slots, keys = slots[eligible], keys[eligible]
             scores = np.asarray(keys @ key.astype(self.dtype), dtype=np.float64)
             if sign is not None and len(slots):
@@ -987,10 +993,11 @@ class LongTermMemory:
             self._cursor = self.count % self.capacity
         return np.arange(first, self.count)
 
-    def moment(self) -> None:
+    def moment(self, awaited: Any = None) -> None:
         """One moment of the stream: every held slot fades by its depth's and its recent use's
         law, and the recent use and the depth decay. A record kept for good (``keep``) does not
-        fade; one below it that fades to ``forget`` is forgotten."""
+        fade; one below it that fades to ``forget`` is forgotten, unless it is one of the slots
+        ``awaited`` (records a caller still awaits something for)."""
         if not self.fade or not self.count:
             return
         n = self.count
@@ -1015,6 +1022,9 @@ class LongTermMemory:
             lost = self.faded[:n] >= self.forget
             if self.keep:
                 lost &= ~self.kept[:n]
+            held = self._spared(awaited)
+            if held is not None:
+                lost &= ~held[:n]
             self.gone[:n] |= lost
         recent *= 1.0 - 1.0 / self.idle
         if np.isfinite(self.hold):

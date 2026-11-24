@@ -290,26 +290,28 @@ class EpisodicRecords:
 
     def snapshot(self) -> tuple[Any, ...]:
         """What an outcome's write changes, for ``restore`` when the write is refused: the
-        context records' arrays (a write replaces them), the temporal contexts and the
-        paths."""
-        def kept(store: SynapticMemory | None) -> dict[str, Any] | None:
-            names = ("strength", "mass", "writes", "consolidated")
-            return None if store is None else {name: getattr(store, name) for name in names}
-
+        context records' and the payments' arrays (``held_values``: a write replaces them),
+        every stream's state (the temporal context, the decision, the hold's context and code,
+        which an episode's end clears in place) and the paths."""
+        state = {
+            name: None if getattr(self, name) is None else getattr(self, name).copy()
+            for name in self._STATE
+        }
         return (
-            kept(self.temporal),
-            None if self.context is None else self.context.copy(),
+            None if self.temporal is None else self.temporal.held_values(),
+            state,
             [list(path) for path in self.paths],
-            kept(self.paid),
+            None if self.paid is None else self.paid.held_values(),
         )
 
     def restore(self, saved: tuple[Any, ...]) -> None:
         """The state ``snapshot`` kept."""
-        records, self.context, self.paths, paid = saved
-        for store, state in ((self.temporal, records), (self.paid, paid)):
-            if state is not None:
-                for name, value in state.items():
-                    setattr(store, name, value)
+        records, state, self.paths, paid = saved
+        for name, value in state.items():
+            setattr(self, name, value)
+        for store, values in ((self.temporal, records), (self.paid, paid)):
+            if store is not None and values is not None:
+                store.take_values(values)
 
     def to_dict(self) -> dict[str, Any]:
         return {

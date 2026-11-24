@@ -155,12 +155,17 @@ class SynapticMemory(FastSynapses):
         self._device = _StoreOnDevice(self, kernel)
 
     def held_values(self) -> dict[str, Any]:
-        """``FastSynapses.held_values``, the shared matrix and the noise scales with them."""
+        """``FastSynapses.held_values``, the shared matrix and the noise scales with them, and
+        in a fading store the depth a write adds to the records it uses (each replaced, never
+        written in place)."""
         held: Any = self._device or self
-        return {
+        kept = {
             **super().held_values(), "consolidated": held.consolidated,
             "gate_noise": self.gate_noise,  # with maturity, replaced as well
         }
+        if self.fade:
+            kept.update(fade_depth=self.fade_depth, fade_recent=self.fade_recent)
+        return kept
 
     def reset(self, batch: int, rows: np.ndarray | None = None) -> None:
         """Forget transient residuals; persistent synapses survive episode/batch changes."""

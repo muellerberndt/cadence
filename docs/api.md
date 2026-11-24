@@ -731,12 +731,15 @@ LongTermRead(slots, weights)
 
 `LongTermMemory` (in `cadence.longterm`) holds records, a key with a value, for one stream under a
 budget of `capacity` slots; no `Brain.compose` setting builds it. `write(key, value,
-recognised=None, source=None, surprise=None, spare=None) -> (slot, revised)` rewrites the record
-whose key it recognises (cosine `revise`), else takes an empty slot, else the most faded one
-(`fade=False`: the slot written longest ago), never one of the slots `spare` names (records a
-caller still awaits something for; where every slot is spared it writes nothing and returns
-`(-1, False)`); `recognised` is a caller's recognition from its
-own read (the slot, or -1 for none), and the write then reads nothing itself. `surprise` (0 or
+recognised=None, source=None, surprise=None, spare=None, *, revisable=None) -> (slot, revised)`
+rewrites the record whose key it recognises (cosine `revise`), else takes an empty slot, else the
+most faded one (`fade=False`: the slot written longest ago), never one of the slots `spare` names
+(records a caller still awaits something for; where every slot is spared it writes nothing and
+returns `(-1, False)`); `revisable`, a function of candidate slots that marks the ones holding the
+same event, leaves every other record unrecognised (a write that revises none takes a slot of its
+own); `recognised` is a caller's recognition from its
+own read (the slot, or -1 for none), and the write then reads nothing itself. `moment(awaited=None)`
+fades the records by one moment; the slots `awaited` names are not forgotten. `surprise` (0 or
 more) adds that many tellings to the record's depth; without it a store with `novelty` reads
 it from its nearest record. A record's strength ([memory](memory.md#a-records-strength-opt-in),
 #336, each off by default): `blend` (needs `cosine`) moves a record told again toward the new

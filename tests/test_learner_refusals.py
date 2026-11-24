@@ -1,12 +1,13 @@
-"""The learner refuses a malformed drive as the solver refuses it, whatever the labels: a batch
-whose caller-read answer agrees with every label (which runs no phase) is refused as a batch
-that differs, on the host and for a drive that rests on a device, and nothing changes. A valid
-batch that agrees still runs no phase."""
+"""The learner refuses a malformed drive, and a warm state of another batch, as the solver
+refuses them, whatever the labels: a batch whose caller-read answer agrees with every label
+(which runs no phase) is refused as a batch that differs, on the host and for a drive or a state
+that rests on a device, and nothing changes. A valid batch that agrees still runs no phase."""
 
 from __future__ import annotations
 
 import numpy as np
 import pytest
+from places import PLACES, place
 
 import cadence as cd
 
@@ -65,6 +66,27 @@ def test_a_malformed_drive_on_a_device_is_refused_as_the_solver_refuses_it(answe
     np.testing.assert_array_equal(graph.efficacy, before[0])
     np.testing.assert_array_equal(graph.bias, before[1])
     assert learner.updates == before[2]
+
+
+@pytest.mark.parametrize("answer", ANSWERS)
+@pytest.mark.parametrize("where", PLACES)
+def test_a_warm_state_of_another_batch_is_refused_as_the_solver_refuses_it(answer, where):
+    # a lesson judged by its answer takes the warm state's rows: a state of fewer rows raised
+    # IndexError on the host, and one of more rows resting on a device was read in part
+    brain = pupil(**place(where))
+    learner, graph = brain.learner, brain.brain
+    before = (np.array(graph.efficacy), np.array(graph.bias), learner.updates)
+    drive = brain.stimulus(np.eye(8)[[0, 1]], memory=False)
+    for rows in (1, 3):
+        warm = graph.settle_batch(brain.stimulus(np.eye(8)[:rows], memory=False), steps=2)
+        with pytest.raises(ValueError) as solver:
+            graph.settle_batch(drive, steps=1, state=warm)
+        with pytest.raises(ValueError) as lesson:
+            learner.step(drive, LABELS, warm, answer=answer)
+        assert str(lesson.value) == str(solver.value), rows
+    np.testing.assert_array_equal(graph.efficacy, before[0])
+    np.testing.assert_array_equal(graph.bias, before[1])
+    assert learner.updates == before[2] and learner.contrast_updates == 0
 
 
 def test_a_batch_of_another_size_than_its_labels_is_refused_first():

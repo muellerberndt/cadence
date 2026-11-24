@@ -4853,24 +4853,29 @@ class Brain:
         x = self._observations(observations)
         if self.learned_code is None:
             return self._code(x)
-        key, _ = self._independent_code(x, for_drive=False)
+        key, _ = self._independent_code(x)
         return key
 
-    def _independent_code(self, x: np.ndarray, *, for_drive: bool) -> tuple[np.ndarray, BrainState]:
-        """The learned key from rest and its phase, with the stream's numerical policy preserved."""
+    def _independent_code(self, x: np.ndarray) -> tuple[np.ndarray, BrainState]:
+        """The learned key of observations and the code phase it is read from, for a read that
+        owes nothing to a stream: the region settled once, from rest, at the step every state
+        of it is stable under (``LearnedCode.rest``). Both are functions of the tables and the
+        observations alone, whatever the stream last settled and whatever step it reached. The
+        stream's step, sub-network and latest phase stay as they are; the report of the solve
+        is the read's (``last_settlement``)."""
         region = self.learned_code
         assert region is not None
-        saved_region = region.halvings, region.graph, region.last
+        held = region.halvings, region.graph, region.last
         try:
-            self._step_region(0)
-            phase = self._settle_code(x, context=False, cold=True)
-            key = self._moment_key(x, region.code_of(phase.state.activation))
-            if for_drive and region.halvings:
-                # Build the drive under the selected step if qualification changed it.
-                phase = self._settle_code(x, context=False, report=False, cold=True)
-            return key, phase.state
+            region.rest()
+            phase = self._settle_code(x, context=False, report=False, cold=True)
         finally:
-            region.halvings, region.graph, region.last = saved_region
+            region.halvings, region.graph, region.last = held
+        self._code_settlement = {
+            "code_steps": int(phase.steps),
+            "code_residual": float(np.max(phase.residual)),
+        }
+        return self._moment_key(x, region.code_of(phase.state.activation)), phase.state
 
     def _code(self, x: np.ndarray) -> np.ndarray:
         """The observation code of validated observations; the observations themselves,
@@ -5133,13 +5138,23 @@ class Brain:
         if not memory and region is not None:
             # Independent rows share neither live activity nor a step inherited from the stream.
             x = self._observations(observations, memory=False)
-            key, phase = self._independent_code(x, for_drive=True)
+            key, phase = self._independent_code(x)
             drive = self._stimulus(x, key, memory=False, code_phase=phase)
         elif coded is not None and coded[0] is observations:
             drive = self._stimulus(coded[0], coded[1], memory=memory)
         else:
             x = self._observations(observations, memory=memory)
             drive = self._stimulus(x, self._code(x), memory=memory)
+        return drive if self._settling or not _resident(drive) else _host_copy(drive)
+
+    def _branch_stimulus(self, x: np.ndarray) -> np.ndarray:
+        """The drive of an imagined moment without the memories, which its branch reads: the
+        moment ``_prepare`` just coded, so a learned code enters as the phase the branch
+        settled for it. An independent read (``stimulus(memory=False)``) settles the code from
+        rest instead, as ``predict`` does."""
+        coded = self._coded_moment
+        assert coded is not None and coded[0] is x
+        drive = self._stimulus(x, coded[1], memory=False)
         return drive if self._settling or not _resident(drive) else _host_copy(drive)
 
     @_operation
@@ -5497,7 +5512,6 @@ class Brain:
         drive of a row is fixed and is made once for the whole fit."""
         coded = self.learned_code is not None
         x = self._observations(observations, memory=False)
-        drive = None if coded else self.stimulus(x, memory=False)
         labels = self.learner._labels(np.asarray(labels))
         if len(labels) != len(x):
             raise ValueError("observations and labels must have the same batch size")
@@ -5508,6 +5522,8 @@ class Brain:
                 or value < minimum
             ):
                 raise ValueError(f"{name} must be an integer >= {minimum}")
+        # every argument is valid before anything is read: a refused fit leaves the brain
+        drive = None if coded else self.stimulus(x, memory=False)
         if self._unplaced:
             self._place_at(min(batch, len(labels)))
         # Supervision changes the parameters under any previously cached decision.
@@ -7354,7 +7370,7 @@ class Brain:
         try:
             for value in sequence:
                 self._prepare(value, trace=trace)  # a learned code in the branch's own context
-                drive = self.stimulus(value, memory=False)
+                drive = self._branch_stimulus(value)
                 code = self._coded(value)
                 place = self._placed(value)
                 drive = branch.stimulus(drive, self._read_moment(value, code, place))
@@ -7446,13 +7462,16 @@ class Brain:
         self, x: np.ndarray, drive: np.ndarray, free: BrainState
     ) -> np.ndarray | None:
         """``_choose(x, drive, free, greedy=True)`` of the compiled moment in the calls it makes
-        for a brain of one motor slot without an episodic vote, a learned code, an efference
-        copy, a heard history or rehearsal: the same action and state to the bit; None for any
-        other brain (the caller then chooses)."""
+        for a brain of one motor slot without an episodic vote, a learned code, learned fields,
+        an efference copy, a held message, long-term records, a heard history or rehearsal: the
+        same action and state to the bit; None for any other brain (the caller then chooses)."""
         agent = self.basal_ganglia
         if (
             self._episodic is not None or self.learned_code is not None
             or self.efference is not None
+            # a held message and long-term records hear the moment, learned fields learn from
+            # it: ``_choose`` takes them
+            or self.message is not None or self.longterm is not None or self.fields is not None
             or (self.history is not None and type(self.history) is not History)
             or self.learner.slot_count != 1 or self.learner.config.rehearsal
             or type(agent).act is not ActorCritic.act or _resident(drive)

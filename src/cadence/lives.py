@@ -57,6 +57,7 @@ from .brain import (
     _check_ladder,
     _held_drive,
     _plan_structure,
+    _same_drive,
     _SweepConfig,
     _take,
     _TorchKernel,
@@ -1320,8 +1321,9 @@ class _LivesActorCritic(ActorCritic):
         drive = self._validated_drive(drive)
         free = (
             self._free
-            if self._free is not None and self._drive is drive
+            if self._free is not None and self._drive is not None
             and self._free_brain is self.learner.brain
+            and _same_drive(self._drive, drive)  # the drive the phase was settled under
             else self.settle(drive)
         )
         self._pending = None
@@ -2235,8 +2237,13 @@ class Lives:
         agent = self.brain.basal_ganglia
         eligible = agent._lives_eligible
         rows = None if agent._pending is None or eligible is None else np.asarray(eligible, bool)
+        lived = self._lived
+        carried = lived is not None and rows is not None and agent.state is lived[0]
         with self._moment_of_lives(x, rows), self._pending_lives(reward, done):
             self.brain.learn(reward, done, x)
+        if carried:  # a calm life's routine answer still owns its outcome, as its lone brain's does
+            assert lived is not None and rows is not None
+            self._lived = (agent.state, lived[1], lived[2] | rows, *lived[3:])
 
     def live(self, observations: Any, *, reward: Any = None, done: Any = None) -> np.ndarray:
         """Each life's ``Brain.live`` on its own row: one moment of every continuing life, each

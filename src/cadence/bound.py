@@ -7,8 +7,9 @@ senses meet. With ``bound`` it keeps records of its moments in one ``LongTermMem
 - **A record** is written at every moment the brain lives (``act``, ``step``, ``live``,
   ``wait``) in which a sense holds something: its key is the brain's code of what the senses
   gave, each sense at unit length and its fields alike within it; its value what each sense
-  gave. A moment told again (a key the store holds at cosine ``REVISE``) moves its record toward
-  the new take (``blend``) and deepens it; the brain's surprise (``surprise=True``) counts as
+  gave. A moment told again (a key the store holds at cosine ``REVISE``, with a voice the same
+  sound said) moves its record toward the new take (``blend``) and deepens it; another sound is
+  another event and takes a record of its own; the brain's surprise (``surprise=True``) counts as
   tellings; a record told past ``KEEP`` tellings is kept for good, one told once fades and is
   forgotten in time (#336's strength law).
 - **A reward** given to ``live`` or ``step`` pays the record of the moment the brain acted at:
@@ -440,13 +441,22 @@ class BoundRecords:
         """The moment's records: each row that holds something written under its code (a moment
         told again deepens its record), with the moment's surprise in tellings; then the
         records fade by one moment. A moment the brain ``acted`` at becomes the one a reward
-        pays; a moment it only sensed (``wait``) is written and leaves that as it was. A
-        record a reward is awaited for is not replaced: a moment only sensed takes another
-        slot, the streams of one moment take slots of their own, and in a store whose every
-        record awaits a reward the moment is not written."""
+        pays; a moment it only sensed (``wait``) is written and leaves that as it was.
+
+        A moment told again is the same event: with a voice, a record that holds another
+        sound (or a sound where the moment holds none, or the reverse) is another event and
+        is not revised, so a reward pays the sound the moment said. A record a reward is
+        awaited for keeps its value and is neither replaced nor forgotten before the reward:
+        a moment only sensed revises it only where it holds that moment exactly and else takes
+        another slot, and in a store whose every record awaits a reward the moment is not
+        written. The streams of one moment that act at one event share its record; the slots
+        the earlier streams took are not replaced by the later ones."""
         rows = np.asarray(rows, dtype=np.float64)
         written = np.full(len(rows), -1, dtype=np.int64)
-        awaited = [] if acted else [int(slot) for slot in self.written if slot >= 0]
+        awaited = np.array([] if acted else [int(s) for s in self.written if s >= 0],
+                           dtype=np.int64)
+        voice = None if self.voice is None else self.fields[self._voice_field()]
+        store = self.store
         for i in range(len(rows)):
             if not self.holds(rows[i]) or not np.any(codes[i]):
                 continue
@@ -454,16 +464,13 @@ class BoundRecords:
             for first, last in self.fields.values():
                 value[first:last] = rows[i, first:last]
             told = None if surprise is None else float(max(surprise[i], 0.0))
-            # Sensed repeats may deepen the same event. A different event or another
-            # acting stream must keep its own value and reward.
-            reserved = [int(slot) for slot in written[:i] if slot >= 0] if acted else awaited
-            excluded = reserved if acted else [
-                slot for slot in reserved
-                if not np.array_equal(self.store.values[slot], value.astype(self.store.dtype))
-            ]
-            written[i], revised = self.store.write(
+            revisable = None
+            if voice is not None or len(awaited):
+                revisable = self._same_event(value, voice, awaited)
+            spare = awaited if not acted else written[:i][written[:i] >= 0]
+            written[i], revised = store.write(
                 np.asarray(codes[i], dtype=np.float64), value, surprise=told,
-                spare=reserved, exclude_revisions=excluded)
+                spare=spare, revisable=revisable)
             if written[i] < 0:  # every record awaits a reward
                 continue
             if not revised:  # a record of its own: no pay, nothing refused
@@ -471,19 +478,53 @@ class BoundRecords:
                 self.paid[written[i]] = 0.0
         if acted:
             self.written = written
-        self.store.moment()
+        store.moment(awaited=None if acted else awaited)
+
+    def _same_event(self, value: np.ndarray, voice: tuple[int, int] | None,
+                    awaited: np.ndarray) -> Any:
+        """The judge of which candidate records a moment of ``value`` may revise: with a
+        ``voice`` field those whose said sound is the moment's (both silent, or alike at cosine
+        ``AGREE``), and of the ``awaited`` records those that hold the moment exactly."""
+        store = self.store
+        own = value.astype(store.dtype)
+
+        def revisable(slots: np.ndarray) -> np.ndarray:
+            held = np.asarray(store.values[slots])
+            out = np.ones(len(slots), dtype=bool)
+            if voice is not None:
+                first, last = voice
+                sounds = np.asarray(held[:, first:last], dtype=np.float64)
+                sound = np.asarray(value[first:last], dtype=np.float64)
+                silent = ~np.any(sounds, axis=1)
+                if not np.any(sound):
+                    out &= silent
+                else:
+                    norms = np.linalg.norm(sounds, axis=1) * float(np.linalg.norm(sound))
+                    alike = sounds @ sound >= self.AGREE * norms
+                    out &= ~silent & alike
+            if len(awaited):
+                waiting = np.isin(slots, awaited)
+                if waiting.any():
+                    out[waiting] &= np.all(held[waiting] == own, axis=1)
+            return out
+
+        return revisable
 
     def pay(self, reward: Any) -> None:
         """A reward for the moment the brain acted at: each stream's record of it deepens by
-        ``PAY`` tellings a unit of reward, counted as its pay, and its refusal is lifted; a
-        reward of zero or less refuses a record of something said (it then answers nothing and
-        its sound is passed over at moments like it, until a reward pays it)."""
+        ``PAY`` tellings a unit of reward, counted as its pay, and its refusal is lifted (and a
+        record forgotten while it awaited the reward is held again); a reward of zero or less
+        refuses a record of something said (it then answers nothing and its sound is passed
+        over at moments like it, until a reward pays it). Where the streams of one moment share
+        a record, a reward any of them is paid pays it and lifts the refusal of the others."""
         r = np.asarray(reward, dtype=np.float64).reshape(-1)
         said = None
         if self.voice is not None:
             first, last = self.fields[self._voice_field()]
             said = (first, last)
         store = self.store
+        paid: set[int] = set()
+        refused: list[int] = []
         for i, slot in enumerate(self.written):
             if slot < 0 or i >= len(r) or not np.isfinite(r[i]):
                 continue
@@ -493,10 +534,16 @@ class BoundRecords:
                 if store.keep and store.deep[slot] >= store.keep:
                     store.kept[slot] = True
                 store.faded[slot] = 0.0
+                if store.forget:
+                    store.gone[slot] = False
                 self.paid[slot] += tellings
                 self.refused[slot] = False
+                paid.add(int(slot))
             elif said is not None and np.any(store.values[slot, said[0]:said[1]]):
-                self.refused[slot] = True
+                refused.append(int(slot))
+        for held in refused:
+            if held not in paid:
+                self.refused[held] = True
 
     # -- the focus a heard name draws
 

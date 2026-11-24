@@ -606,3 +606,47 @@ def test_a_held_message_records_and_fields_take_the_general_read(inputs, actions
         lives.append(drives)
     for ours, theirs in zip(*lives, strict=True):
         np.testing.assert_allclose(ours, theirs, rtol=0, atol=1e-8)
+
+
+@pytest.mark.parametrize(
+    ("inputs", "actions", "options"),
+    [(15, 4, {"message": 16}), (15, 4, {"message": 16, "message_read": True}),
+     (15, 4, {"message": 16, "message_boundary": 14, "message_boundary_holds": True,
+              "longterm": 8}),
+     ((12, 12), 3, {"learned_fields": 4, "ports": 2, "episodic": False})],
+    ids=["message", "message read", "long-term records", "learned fields"],
+)
+def test_a_greedy_act_hears_the_message_records_and_fields_as_the_general_path(
+    inputs, actions, options, tmp_path
+):
+    # a greedy act of the compiled moment hears the moment into the held message and the
+    # long-term records and steps the learned fields on it, as ``_choose`` does: the life and
+    # what it saves are the brain's without the option within rounding
+    width = int(np.prod(inputs)) + options.get("ports", 0)
+    lives = []
+    for compiled in (False, True):
+        brain = cd.Brain.compose(inputs, actions, seed=2, backend="cpu",
+                                 learning_compiled_moment=compiled, **options)
+        rng = np.random.default_rng(0)
+        moments = []
+        for t in range(12):
+            x = (rng.random((1, width)) < 0.3).astype(float)
+            if "longterm" in options:
+                x[0, 14] = float(t % 5 == 2)
+            moments.append((brain.act(x, greedy=True), np.array(brain.basal_ganglia._drive)))
+        with np.load(brain.save(tmp_path / f"{compiled}.npz")) as saved:
+            # every array, the descriptions (which name the option) aside
+            arrays = {name: saved[name].copy() for name in saved.files
+                      if saved[name].dtype.kind in "fiub"}
+        lives.append((brain, moments, arrays))
+    (plain, ours, kept), (compiled, theirs, held) = lives
+    for (action, drive), (other, again) in zip(ours, theirs, strict=True):
+        np.testing.assert_array_equal(other, action)
+        np.testing.assert_allclose(again, drive, rtol=0, atol=1e-8)
+    assert set(held) == set(kept)
+    for name, value in kept.items():
+        np.testing.assert_allclose(held[name], value, rtol=0, atol=1e-8, err_msg=name)
+    if plain.message is not None:
+        assert plain.message.told.tolist() == compiled.message.told.tolist() != [0]
+    if plain.fields is not None:
+        assert compiled.fields.work == plain.fields.work and plain.fields.work["updates"] == 12

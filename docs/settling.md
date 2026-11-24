@@ -56,7 +56,10 @@ weights. Backend, device, precision and `dense_limit`: see [backends](backends.m
 The drive is added to a neuron's input on every step. It does not clamp the potential:
 synaptic input, bias and adaptation move a stimulated neuron too.
 `NeuralGraph.settle(stimulus)` accepts a dense vector, a list of neurons (each driven at
-`stimulus_amplitude`) or a `{neuron: level}` map (`level * stimulus_amplitude`).
+`stimulus_amplitude`) or a `{neuron: level}` map (`level * stimulus_amplitude`). A float
+vector is a dense drive with one entry per neuron, and one of another length is refused. An
+integer vector names neurons, except one with an entry per neuron and none above 1, which is
+a dense drive of those values.
 
 A `Nudge` adds teaching drive `beta * mask * (target - s)`.
 
