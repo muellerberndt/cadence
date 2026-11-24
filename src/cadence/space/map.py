@@ -345,7 +345,10 @@ class Map:
     def save(self, path: str | Path, *, card: dict[str, Any] | None = None) -> Path:
         """Write the map as a file: its settings, codes and carried state as arrays and one JSON
         record, with a checksum of every array and a ``card`` (what it was raised on and its
-        readings). No pickled object is written."""
+        readings). No pickled object is written. The file is written at ``path`` as given, and
+        takes the place of a file there once it is complete: a save that fails leaves that file
+        as it was."""
+        from ..checkpoint import _replace
         from ..modules import _checksum
 
         path = Path(path)
@@ -357,8 +360,7 @@ class Map:
 
         record["library"] = __version__
         written: dict[str, Any] = {"record": np.array(json.dumps(record)), **stored}
-        with path.open("wb") as handle:
-            np.savez_compressed(handle, **written)
+        _replace(written, path)
         return path
 
     @classmethod
