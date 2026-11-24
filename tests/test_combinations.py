@@ -12,6 +12,7 @@ Where two options are known to refuse each other, the pair is left out of the ar
 from __future__ import annotations
 
 import itertools
+import json
 import random
 import warnings
 from typing import Any
@@ -137,9 +138,10 @@ F1 = (
     "message; 1e-15 to 4e-14, which cell depends on the machine), with the same actions; the "
     "NumPy loop continues to the bit"
 )
-# Read on the compiled kernel; last bits depend on the machine's compiled code, so the mark is not
-# strict
-F1_MARK = pytest.mark.xfail(kernel._FUSED, strict=False, reason=F1)
+# Read on the compiled kernel, where the last bits depend on the machine's compiled code. The
+# known difference is a matter of numbers alone and of last bits: the largest read is 6.6e-12,
+# and a gap beyond this bound, or any other kind of difference, fails
+F1_BOUND = 1e-9
 KNOWN: dict[str, Any] = {}
 
 
@@ -266,17 +268,67 @@ def arrays(path: Any) -> dict[str, np.ndarray]:
         return {name: held[name] for name in held.files}
 
 
-def same_arrays(a: dict[str, np.ndarray], b: dict[str, np.ndarray]) -> list[str]:
-    differ = sorted(set(a) ^ set(b))
+def _told_apart(a: Any, b: Any, where: str, broken: list[str]) -> float:
+    """The largest gap between the numbers two decoded texts hold; ``broken`` takes ``where``
+    for anything else that differs (a key, a length, a word, an integer, a flag)."""
+    if isinstance(a, dict) and isinstance(b, dict) and a.keys() == b.keys():
+        return max((_told_apart(a[key], b[key], where, broken) for key in a), default=0.0)
+    if isinstance(a, list) and isinstance(b, list) and len(a) == len(b):
+        return max((_told_apart(x, y, where, broken) for x, y in zip(a, b, strict=True)),
+                   default=0.0)
+    if isinstance(a, float) and isinstance(b, float):
+        if np.isnan(a) and np.isnan(b):
+            return 0.0
+        if np.isfinite(a) and np.isfinite(b):
+            return abs(a - b)
+    if a != b or type(a) is not type(b):
+        broken.append(where)
+    return 0.0
+
+
+def apart(a: dict[str, np.ndarray], b: dict[str, np.ndarray]) -> tuple[list[str], float]:
+    """How two archives differ. ``broken`` names what is missing from one, of another type or
+    shape, or holds other integers, flags or text; the second value is the largest gap between
+    the numbers they hold (their float arrays, and the numbers in their texts of JSON), zero
+    where the archives are the same."""
+    broken = sorted(set(a) ^ set(b))
+    gap = 0.0
     for name in sorted(set(a) & set(b)):
-        if a[name].dtype != b[name].dtype or a[name].shape != b[name].shape:
-            differ.append(name)
-        elif a[name].dtype.kind in "US":
-            if not np.array_equal(a[name], b[name]):
-                differ.append(name)
-        elif not np.array_equal(a[name], b[name], equal_nan=a[name].dtype.kind in "fc"):
-            differ.append(name)
-    return differ
+        x, y = a[name], b[name]
+        text = x.dtype.kind in "US" and y.dtype.kind == x.dtype.kind  # a text's type is its length
+        if x.shape != y.shape or (x.dtype != y.dtype and not text):
+            broken.append(name)
+        elif text:
+            if np.array_equal(x, y):
+                continue
+            try:
+                told = [(json.loads(str(u)), json.loads(str(v)))
+                        for u, v in zip(x.ravel(), y.ravel(), strict=True)]
+            except ValueError:
+                broken.append(name)
+                continue
+            gap = max([gap] + [_told_apart(u, v, name, broken) for u, v in told])
+        elif x.dtype.kind in "fc":
+            if not np.array_equal(np.isfinite(x), np.isfinite(y)) or not np.array_equal(
+                    x[~np.isfinite(x)], y[~np.isfinite(y)], equal_nan=True):
+                broken.append(name)
+            elif x.size:
+                gap = max(gap, float(np.max(np.abs(np.where(np.isfinite(x), x - y, 0.0)))))
+        elif not np.array_equal(x, y):
+            broken.append(name)
+    return broken, gap
+
+
+def continued_alike(a: dict[str, np.ndarray], b: dict[str, np.ndarray], known: bool) -> None:
+    """Two continued lives hold the same archives. Where ``known`` (#346), numbers within
+    ``F1_BOUND`` of each other are the known last bits and the test is an expected failure;
+    anything else that differs fails."""
+    broken, gap = apart(a, b)
+    assert not broken, f"the continued lives differ in {broken[:6]}"
+    if gap and known:
+        assert gap <= F1_BOUND, f"the continued lives lie {gap:.1e} apart: more than last bits"
+        pytest.xfail(f"{F1} (largest gap {gap:.1e})")
+    assert gap == 0.0, f"the continued lives lie {gap:.1e} apart"
 
 
 def compose(cell: dict[str, str]) -> Brain:
@@ -328,14 +380,12 @@ def test_a_combination_lives_saves_loads_and_continues(cell, tmp_path):
     assert np.array_equal(brain.act(x, greedy=True), loaded.act(x, greedy=True))
     if brain.bound is not None:
         assert np.array_equal(brain.say(x), loaded.say(x))
-    differ = same_arrays(
-        arrays(brain.save(tmp_path / "a.npz")), arrays(loaded.save(tmp_path / "b.npz"))
+    # the actions and the voice above are the same; with a held message the numbers differ in
+    # last bits on some machines' compiled kernel, and nothing differs on the NumPy loop
+    continued_alike(
+        arrays(brain.save(tmp_path / "a.npz")), arrays(loaded.save(tmp_path / "b.npz")),
+        known=bool(kernel._FUSED) and holds_a_message(cell),
     )
-    if differ and kernel._FUSED and holds_a_message(cell):
-        # the actions and the voice above are the same; the arrays differ in last bits on some
-        # machines' compiled kernel, and to the bit on the NumPy loop
-        pytest.xfail(f"{F1} (arrays {differ[:6]})")
-    assert not differ, f"the continued lives differ in {differ[:6]}"
 
 
 def _distinct(rows: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -516,7 +566,6 @@ def _turns(moment: int) -> np.ndarray:
     return row
 
 
-@F1_MARK
 def test_known_a_held_message_with_a_holding_turn_continues_as_it_lived(tmp_path):
     brain = Brain.compose(
         INPUTS,
@@ -536,10 +585,46 @@ def test_known_a_held_message_with_a_holding_turn_continues_as_it_lived(tmp_path
     loaded = Brain.load(brain.save(tmp_path / "brain.npz"))
     brain.step(_turns(4), reward=[0.5])
     loaded.step(_turns(4), reward=[0.5])
-    differ = same_arrays(
-        arrays(brain.save(tmp_path / "a.npz")), arrays(loaded.save(tmp_path / "b.npz"))
+    continued_alike(
+        arrays(brain.save(tmp_path / "a.npz")), arrays(loaded.save(tmp_path / "b.npz")),
+        known=bool(kernel._FUSED),
     )
-    assert not differ, differ
+
+
+def test_only_last_bits_of_numbers_are_the_known_difference():
+    """What the known difference of #346 covers: numbers within the bound, in arrays and in a
+    text of JSON. A missing array, another shape or type, another integer, flag or word, and a
+    number beyond the bound are failures with or without it."""
+    held = {"v": np.array([1.0, 2.0]), "count": np.array([3]), "on": np.array([True]),
+            "brain": np.array(json.dumps({"steps": 4, "residual": 1e-9, "mode": "aroused"}))}
+
+    def other(**changed: np.ndarray) -> dict[str, np.ndarray]:
+        return {**held, **changed}
+
+    assert apart(held, other()) == ([], 0.0)
+    broken, gap = apart(held, other(v=np.array([1.0, 2.0 + 4e-14])))
+    assert broken == [] and 0.0 < gap <= F1_BOUND
+    text = np.array(json.dumps({"steps": 4, "residual": 1.5e-9, "mode": "aroused"}))
+    broken, gap = apart(held, other(brain=text))
+    assert broken == [] and 0.0 < gap <= F1_BOUND
+    with pytest.raises(AssertionError, match="more than last bits"):
+        continued_alike(held, other(v=np.array([1.0, 2.001])), known=True)
+    for changed in (
+        {"v": np.array([1.0, 2.0, 3.0])},  # another shape
+        {"v": np.array([1.0, 2.0], dtype=np.float32)},  # another type
+        {"v": np.array([1.0, np.nan])},  # a number that is none
+        {"count": np.array([4])},  # another integer
+        {"on": np.array([False])},  # another flag
+        {"brain": np.array(json.dumps({"steps": 5, "residual": 1e-9, "mode": "aroused"}))},
+        {"brain": np.array(json.dumps({"steps": 4, "residual": 1e-9, "mode": "routine"}))},
+        {"brain": np.array(json.dumps({"steps": 4, "residual": 1e-9}))},  # a key left out
+        {"extra": np.array([0.0])},  # an array the other does not hold
+    ):
+        assert apart(held, other(**changed))[0], changed
+        with pytest.raises(AssertionError, match="differ in"):
+            continued_alike(held, other(**changed), known=True)
+    with pytest.raises(AssertionError, match="apart"):  # not known: last bits fail too
+        continued_alike(held, other(v=np.array([1.0, 2.0 + 4e-14])), known=False)
 
 
 def test_a_held_message_with_an_emptying_turn_lives_after_a_load(tmp_path):
