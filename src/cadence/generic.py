@@ -4635,12 +4635,14 @@ class Brain:
 
     # -- stimulus
 
-    def _observations(self, observations: Any) -> np.ndarray:
+    def _observations(self, observations: Any, *, memory: bool = True) -> np.ndarray:
         """Observations as a nonempty finite batch of the brain's width, ``(rows, inputs)``.
         A brain with senses by name also takes them by name, and reads its map's part itself
-        (``_sensed_rows``)."""
+        (``_sensed_rows``). Without ``memory`` (an independent sample: ``predict``,
+        ``accuracy``, ``fit``, ``stimulus(memory=False)``) the bound records complete nothing:
+        the senses left silent stay silent."""
         if self._senses is not None:
-            observations = self._sensed_rows(observations)
+            observations = self._sensed_rows(observations, complete=memory)
         x = np.asarray(observations, dtype=float)
         if x.ndim < 2 or not x.shape[0] or not np.isfinite(x).all():
             raise ValueError(
@@ -5089,7 +5091,9 @@ class Brain:
     def stimulus(self, observations: Any, *, memory: bool = True) -> np.ndarray:
         """The drive of a batch of observations: the sensory neurons stimulated, plus the
         working memory, the efference copy, the heard history, the recall memory and the
-        hippocampal recall when ``memory`` is set. An episodic memory that votes in the
+        hippocampal recall when ``memory`` is set; with it the bound records also complete the
+        senses an observation by name leaves silent, and without it they are not read. An
+        episodic memory that votes in the
         choice (``memory_choice``) is not read into the drive. The recall memory addresses
         the moment here and keeps the address for the moment's write and lesson. Both
         memories read the observation code; a learned code settles on the observations
@@ -5098,7 +5102,7 @@ class Brain:
         if coded is not None and coded[0] is observations:
             drive = self._stimulus(coded[0], coded[1], memory=memory)
         else:
-            x = self._observations(observations)
+            x = self._observations(observations, memory=memory)
             drive = self._stimulus(x, self._code(x), memory=memory)
         return drive if self._settling or not _resident(drive) else _host_copy(drive)
 
@@ -5371,7 +5375,7 @@ class Brain:
         """Take the backend the rule chooses at the rows of a brain's first moment. Invalid
         observations are the operation's to refuse, and the next moment decides."""
         try:
-            rows = len(self._observations(observations))
+            rows = len(self._observations(observations, memory=False))  # a count reads nothing
         except (TypeError, ValueError):
             return
         self._place_at(rows)
@@ -5937,7 +5941,7 @@ class Brain:
         return self._choices(state)
 
     def accuracy(self, observations: Any, labels: Any) -> float:
-        x = self._observations(observations)
+        x = self._observations(observations, memory=False)
         expected = self.learner._labels(np.asarray(labels))
         if len(expected) != len(x):
             raise ValueError("observations and labels must have the same batch size")
