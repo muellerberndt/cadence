@@ -44,7 +44,7 @@ overall, unequal-fact and each-query accuracy with complete training and no
 refusals. The every-row controls still fail and remain in the development
 receipts. This passes the declared exposed acquisition control; it does not
 establish recalled-content use, learned selection or semantic generalization.
-See the [repair protocol](../repair-protocol.json) and [results](../README.md#acquisition-repair-the-existing-wrong-answer-teaching-control).
+See the [repair protocol](sources/a6fc61f800552ea15883c087a4a022e6913478304d7e26ad9a632932160ef269.txt) and [results](../README.md#acquisition-repair-the-existing-wrong-answer-teaching-control).
 
 ## Supplied-content development control
 
@@ -58,7 +58,7 @@ The original runner bytes are retained by hash. Binary checkpoints remain local.
 
 This is supplied-content use on that task, not learned selection or acquisition
 of the harder four-value, two-answer task. Confirmation founders 300–319 remain
-unopened. See the [content protocol](../content-protocol.json).
+unopened. See the [content protocol](sources/bd0d62f80fc43ce66e388cf538d65b520f871457a6bd50d14db9c9ac51f882e4.txt).
 
 ## Two-binding capacity: all four admissions fail
 
@@ -75,9 +75,9 @@ training or passes the unchanged 95% acquisition gate:
 | [heads-capacity-longer.json](heads-capacity-longer.json) | Same corrected control; one declared 2,048-sweep retry | 83 / 42 |
 | [heads-capacity-fixed-read.json](heads-capacity-fixed-read.json) | Held-name oracle with the candidate's read-restoring law; no external read drive | 42 / 21 |
 
-The separate [longer](../heads-longer-protocol.json) and
-[fixed-read](../heads-fixed-read-protocol.json) declarations preserve the original
-[protocol](../heads-protocol.json), failed receipts, tolerance and local teaching
+The separate [longer](sources/87cf58819fbffa9ad991ca11d8ef2b29eea4e756b07b095018a7fb2713945922.txt) and
+[fixed-read](sources/e417d5e6c5a0a86d61ea82ca8d94c5ecaa5b53dfe5d02af53af7d0b295c58e45.txt) declarations preserve the original
+[protocol](sources/8502b996f200f4093c7c4c00f5fbd38b27fad7ffaeaaa49db63e40a334a66579.txt), failed receipts, tolerance and local teaching
 rule. Initial, corrected, numerical-diagnostic, longer and fixed-read work consume
 304.109854 host seconds of the shared 600-second budget. These failures do not
 localize a learned-selection deficit: no behavioral candidate round, head
@@ -94,7 +94,7 @@ source drive. Its 1,024-sweep residual exceeds `.003`; another 160 sweeps at the
 same `.1` step qualify it. Damping within the original 1,024 budget still fails.
 This explains one refusal, not later capacity or selector performance.
 
-The [diagnostic checker](../diagnostic_verification.py) preserves the original
+The [diagnostic checker](https://github.com/muellerberndt/cadence/blob/f4d2fbcb7d86fe70786b748c913bb4384e4e4ca6/benchmarks/attention/diagnostic_verification.py) preserves the original
 summary bytes, recomputes available row-residual qualification and work arithmetic,
 and checks cumulative budget charges. The short damping attempt retained only
 its maximum and observed row flags; its individual residuals cannot be recomputed.
@@ -123,7 +123,7 @@ with zero action or teaching refusals and 100%/87.5% trained pair accuracy.
 Every held-out pair reading is 0%. The full-round gate is unmet and no learned
 head test is admitted. Actual cost is 254.714154 host seconds; cumulative
 retained cost is 756.051724 seconds. The separately declared
-[extension](../heads-founder-extended-protocol.json) changes only host guards.
+[extension](sources/ab35372cef043ac059e8631d1ec58de436eeca439ff9db47e936b098c6d456b5.txt) changes only host guards.
 
 ## Extended capacity: passed acquisition, transfer still failed
 

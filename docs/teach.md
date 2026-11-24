@@ -292,7 +292,9 @@ row's share of the update: weight one is the lesson without weights, weight zero
 nothing. A lesson whose rows all weigh zero is the lesson of no row: no teaching phase runs, and
 the weights, the optimizer's history and its count of updates stay as they are, on a brain that
 has learned as on a new one; an episodic memory records no demonstration for a row of weight
-zero. Use weights to balance a curriculum, giving rare classes or critical positions more weight.
+zero. Learned sensory fields also skip zero-weight frames. Positive weights scale the cortical
+lesson, and each positive-weight frame supplies one ordinary observation to the fields.
+Use weights to balance a curriculum, giving rare classes or critical positions more weight.
 Under the [normalized point](#many-lessons-the-normalized-point-for-imitation) a weight common to
 every row divides out, so the weights act through their ratios. Under `learning_surprise` the
 weights of the taught rows apply. The rehearsal replays its rows at weight one, so a brain with

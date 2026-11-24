@@ -38,6 +38,7 @@ import warnings
 from collections import defaultdict
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -52,6 +53,14 @@ BRAINS: dict[str, tuple[int, int, dict[str, Any]]] = {
 SOURCE = str(Path(cd.__file__).resolve().parent)
 
 
+@lru_cache(maxsize=2048)
+def _source_module(filename: str) -> str | None:
+    if filename.startswith("<"):
+        return None
+    path = Path(filename).resolve()
+    return path.stem if path.is_relative_to(SOURCE) else None
+
+
 def _site() -> str:
     """The innermost frames of the library on the stack, ``module.function`` each, the innermost
     first: ``DEPTH`` of them."""
@@ -59,8 +68,8 @@ def _site() -> str:
     names: list[str] = []
     while frame is not None and len(names) < DEPTH:
         name = frame.f_code.co_filename
-        if name.startswith(SOURCE):
-            module = Path(name).stem
+        module = _source_module(name)
+        if module is not None:
             names.append(f"{module}.{getattr(frame.f_code, 'co_qualname', frame.f_code.co_name)}")
         frame = frame.f_back
     return " < ".join(names) or "outside"

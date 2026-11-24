@@ -126,6 +126,26 @@ def test_every_python_block_is_run_or_marked_illustrative():
     assert not unrun, f"python blocks never executed: {unrun}"
 
 
+def test_tracked_markdown_file_links_resolve():
+    if not (ROOT / ".git").exists():
+        pytest.skip("the full inventory belongs to the Git checkout")
+    import subprocess
+
+    names = subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT).decode().split("\0")
+    missing = []
+    for name in names:
+        if not name.lower().endswith(".md"):
+            continue
+        page = ROOT / name
+        prose = re.sub(r"^`{3,}[^\n]*\n.*?^`{3,}[^\n]*", "", page.read_text(encoding="utf-8"),
+                       flags=re.MULTILINE | re.DOTALL)
+        for link in re.findall(r"\[[^\]\n]*\]\(([^\s)]+)\)", prose):
+            target = unquote(link.partition("#")[0])
+            if target and ":" not in target and "$" not in target and not (page.parent / target).exists():
+                missing.append(f"{name}: {target}")
+    assert not missing, "\n".join(missing)
+
+
 def test_local_documentation_links_resolve():
     problems = []
     for page in [

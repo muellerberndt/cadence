@@ -71,7 +71,16 @@ from .arousal import Arousal, ArousalConfig
 from .blocks import Layout
 from .blocks import layout as make_layout
 from .bound import BoundRecords
-from .brain import Apical, Backend, BrainState, Equilibrium, _host_copy, _resident, _trusted
+from .brain import (
+    Apical,
+    Backend,
+    BrainState,
+    Equilibrium,
+    _held_drive,
+    _host_copy,
+    _resident,
+    _trusted,
+)
 from .brain import Brain as NeuralGraph
 from .code import LearnedCode
 from .connectome import Connectome
@@ -89,7 +98,7 @@ from .learning import (
 from .longterm import LongTermRecords
 from .memories import EpisodicRecords, Memories, Moment, command, record_action
 from .memory import SynapticMemory
-from .plasticity import ActorCritic, ActorCriticConfig, Maturity, _batch_of, _held_drive
+from .plasticity import ActorCritic, ActorCriticConfig, Maturity, _batch_of
 from .regions import Region, cortex, motor_cortex, prefrontal_cortex, visual_cortex
 from .resident import (
     _backend_of_the_run,
@@ -3597,7 +3606,8 @@ class Brain:
         ]
         return min(holding, key=len) if holding else reached
 
-    def _unit_read(self, x: np.ndarray, drive: np.ndarray, *, memory: bool) -> np.ndarray:
+    def _unit_read(self, x: np.ndarray, drive: np.ndarray, *, memory: bool,
+                   phase: BrainState | None = None) -> np.ndarray:
         """The drive with the code's terms from the moment's phase. The code units' drive is
         the phase's potential less their bias: nothing leads into them in the whole graph,
         so they sit at the phase's fixed
@@ -3608,10 +3618,11 @@ class Brain:
         code = self.learned_code
         assert code is not None
         coded = self._coded_moment
-        if coded is not None and coded[0] is x and coded[2] is not None:
-            phase = coded[2]
-        else:
-            phase = self._settle_code(x, context=False, report=False).state
+        if phase is None:
+            if coded is not None and coded[0] is x and coded[2] is not None:
+                phase = coded[2]
+            else:
+                phase = self._settle_code(x, context=False, report=False).state
         s = np.atleast_2d(np.asarray(phase.activation, dtype=float))
         if len(s) != len(drive):
             return drive
@@ -4839,7 +4850,27 @@ class Brain:
         unit in ten kept and the row scaled to unit length; with a learned code the
         rectified code the region settles to on the observations alone, without a context,
         at unit length, the key of every memory."""
-        return self._code(self._observations(observations))
+        x = self._observations(observations)
+        if self.learned_code is None:
+            return self._code(x)
+        key, _ = self._independent_code(x, for_drive=False)
+        return key
+
+    def _independent_code(self, x: np.ndarray, *, for_drive: bool) -> tuple[np.ndarray, BrainState]:
+        """The learned key from rest and its phase, with the stream's numerical policy preserved."""
+        region = self.learned_code
+        assert region is not None
+        saved_region = region.halvings, region.graph, region.last
+        try:
+            self._step_region(0)
+            phase = self._settle_code(x, context=False, cold=True)
+            key = self._moment_key(x, region.code_of(phase.state.activation))
+            if for_drive and region.halvings:
+                # Build the drive under the selected step if qualification changed it.
+                phase = self._settle_code(x, context=False, report=False, cold=True)
+            return key, phase.state
+        finally:
+            region.halvings, region.graph, region.last = saved_region
 
     def _code(self, x: np.ndarray) -> np.ndarray:
         """The observation code of validated observations; the observations themselves,
@@ -4928,7 +4959,7 @@ class Brain:
 
     def _settle_code(
         self, x: np.ndarray, *, context: bool = True, trace: Trace | None = None,
-        report: bool = True,
+        report: bool = True, cold: bool = False,
     ) -> Equilibrium:
         """The code phase of a moment's settle: the learned code's region settled under the
         dictionary's read of the sensory activation the observations give and, with
@@ -4956,7 +4987,7 @@ class Brain:
                 drive = held.amplitude * held.hearing * held.trace
             z = model.activation(drive + bias[self.prefrontal_index])
         warm = None
-        current = self._activity()
+        current = None if cold else self._activity()
         if current is not None and len(np.atleast_2d(current.v)) == len(x):
             warm = BrainState(
                 np.atleast_2d(current.v)[:, self.code_index].copy(),
@@ -5098,7 +5129,13 @@ class Brain:
         moment's write and lesson. Both memories read the observation code; a learned code
         settles on the observations alone, as the cortex reads it."""
         coded = self._coded_moment  # the moment's code, when this is its settle
-        if coded is not None and coded[0] is observations:
+        region = self.learned_code
+        if not memory and region is not None:
+            # Independent rows share neither live activity nor a step inherited from the stream.
+            x = self._observations(observations, memory=False)
+            key, phase = self._independent_code(x, for_drive=True)
+            drive = self._stimulus(x, key, memory=False, code_phase=phase)
+        elif coded is not None and coded[0] is observations:
             drive = self._stimulus(coded[0], coded[1], memory=memory)
         else:
             x = self._observations(observations, memory=memory)
@@ -5284,7 +5321,8 @@ class Brain:
             ),
         )
 
-    def _stimulus(self, x: np.ndarray, code: np.ndarray, *, memory: bool = True) -> np.ndarray:
+    def _stimulus(self, x: np.ndarray, code: np.ndarray, *, memory: bool = True,
+                  code_phase: BrainState | None = None) -> np.ndarray:
         """The drive of validated observations and their code."""
         kernel = self._memories_kernel(len(x)) if memory else None
         if memory and kernel is None and self._compiled_moment():
@@ -5301,7 +5339,7 @@ class Brain:
             )
         region = self.learned_code
         if region is not None:
-            drive = self._unit_read(x, drive, memory=memory)
+            drive = self._unit_read(x, drive, memory=memory, phase=code_phase)
         if memory:
             for held in (self.recall, self.working_memory, self.hippocampus):
                 if held is not None:
@@ -5485,7 +5523,8 @@ class Brain:
         return history
 
     def _equilibrate(
-        self, drive: np.ndarray, state: BrainState | None, *, budget: int, tolerance: float
+        self, drive: np.ndarray, state: BrainState | None, *, budget: int, tolerance: float,
+        live_code: bool = True,
     ) -> Equilibrium:
         """One bounded free solve, with underrelaxation if fast repair does not qualify.
 
@@ -5498,7 +5537,8 @@ class Brain:
 
         cfg = self.learner.config
         brain = self.brain
-        state = self._warm(drive, state)  # with a learned code: its phase in the warm start
+        if live_code:
+            state = self._warm(drive, state)  # the continuing moment owns this phase
         if cfg.qualified:
             return brain.equilibrate(
                 drive,
@@ -5864,7 +5904,11 @@ class Brain:
         read = self._read_judged(drive, state, operation)
         if read is not None:
             return read
-        phase = self._equilibrate(drive, state, budget=cfg.free_steps, tolerance=cfg.tolerance)
+        if operation == "predict" and self.learned_code is not None:
+            phase = self._equilibrate(drive, state, budget=cfg.free_steps, tolerance=cfg.tolerance,
+                                      live_code=False)
+        else:
+            phase = self._equilibrate(drive, state, budget=cfg.free_steps, tolerance=cfg.tolerance)
         rescue, rescued = 0, False
         # a budget of no sweeps has no rescue of as many
         if cfg.free_steps > 0 and not phase.qualified.all() and all(
@@ -6136,8 +6180,12 @@ class Brain:
         """A lesson of validated arguments at the moment ``x``, the fields learning from its
         frames: ``lesson``'s, and ``live``'s with ``lesson=``."""
         report = dict(self._lesson(x, labels, targets=targets, weights=weights))
-        if self.fields is not None:  # the fields learn from the frames a lesson shows
-            self.fields.learn(x[:, : self.fields.inputs])
+        if self.fields is not None:  # a row of weight zero supplies no training frame
+            frames = x[:, : self.fields.inputs]
+            if weights is not None:
+                frames = frames[weights > 0]
+            if len(frames):
+                self.fields.learn(frames)
         return report
 
     def _lesson_arguments(

@@ -257,7 +257,12 @@ def test_two_lives_of_one_history_keep_the_same_bits_and_a_read_changes_none(opt
     lived(plain, 9)
     assert not unequal(arrays(reading), arrays(plain))
     kept = reading.basal_ganglia._free.__dict__.get("_products")
-    assert kept is not None and np.isfinite(kept[3]).all()
+    from cadence import brain as kernel
+
+    if kernel._FUSED:
+        assert kept is not None and np.isfinite(kept[3]).all()
+    else:
+        assert kept is None
     reading.value(x)
     feed_a, feed_b = world(5), world(5)
     with warnings.catch_warnings():

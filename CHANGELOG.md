@@ -3952,7 +3952,7 @@ A brain without `memory_choice` acts, learns and saves as in 0.84.0.
   `accepted_presentations` and `agreed_presentations`, `LearnedState.taught` marks the rows,
   and an episodic memory that records demonstrations records the taught rows only. The
   composed founder keeps every-row lessons; the
-  [learning guide](docs/learning.md#lessons-only-where-the-answer-differs) says when to
+  [learning guide](https://github.com/muellerberndt/cadence/blob/v0.84.0/docs/learning.md#lessons-only-where-the-answer-differs) says when to
   select the rule.
 - The heard history, opt-in ([issue 199](https://github.com/muellerberndt/cadence/issues/199)):
   `Brain.compose(..., history_decays=(0.2, 0.8, 0.95))` adds a `history` region of one block
@@ -3993,14 +3993,14 @@ A brain without `memory_choice` acts, learns and saves as in 0.84.0.
   they treat the heard history; the address map is a learned parameter that resets keep and
   `parameters()` counts, and a brain with the memory saves as `cadence-generic/8` and
   continues exactly. The founder `recall=False` builds the brain without it, byte-identical;
-  the [memory guide](docs/recall.md) explains it, with its
+  the [memory guide](https://github.com/muellerberndt/cadence/blob/f35db3d3fb6d54b1b642e3310ef0867ec7dca5bb/docs/recall.md) explains it, with its
   storage at camera width (14.5 MB with a code of 1,024 neurons, cortex values and an
   association region of 512 neurons, against 105 MB for one dense separator). The option
   reproduces the binding instrument
   `benchmarks/binding/index_read.py` moment for moment (`tests/test_recall_memory.py`).
 - Options for the recall memory, each a gene beside `recall=True` that `retune` can change,
   described and saved only where it differs from its founder, so every founder brain and its
-  checkpoint are as before ([memory guide](docs/recall.md)).
+  checkpoint are as before ([memory guide](https://github.com/muellerberndt/cadence/blob/f35db3d3fb6d54b1b642e3310ef0867ec7dca5bb/docs/recall.md)).
   `recall_address_step="toward"` steps the address by the named keys less the mixture it
   attended to, in place of the founder `"lms"` step toward the named keys: to first order
   the named slots' logits rise against the attended ones, whatever the keys' norms.
@@ -4022,7 +4022,7 @@ A brain without `memory_choice` acts, learns and saves as in 0.84.0.
   contrast. The binding instrument's index memory takes the same genes (`address_step`,
   `recency=None`, `write` with `IndexBrain.aroused_rows`, and `null`).
 - Two more options for the recall memory, described and saved only where they differ from
-  their founders ([memory guide](docs/recall.md)).
+  their founders ([memory guide](https://github.com/muellerberndt/cadence/blob/f35db3d3fb6d54b1b642e3310ef0867ec7dca5bb/docs/recall.md)).
   `recall_episodes="keep"` keeps a stream's slots and the address map when its episode ends
   (`done` through `step`, `learn` or `live`, and a calm `live` moment that ends it), where
   the founder `"forget"` empties them; the working trace, efference copy and heard history
@@ -4069,14 +4069,14 @@ A brain without `memory_choice` acts, learns and saves as in 0.84.0.
   The composed brain, the actor-critic and checkpoints (which hold the graph, not the sharing)
   read the graph through it; a shallow `copy.copy` of a learner shares its holder, and
   `dataclasses.replace` builds a learner with a holder of its own. The
-  [learning guide](docs/learning.md#two-learners-on-one-graph) shows the use.
+  [learning guide](https://github.com/muellerberndt/cadence/blob/v0.84.0/docs/learning.md#two-learners-on-one-graph) shows the use.
 
 ## 0.83.0 — 2026-10-13
 
 - An episodic memory for the composed brain, opt-in: `Brain.compose(..., memory_choice=True)`
   remembers what happened in a situation at once and lets that vote in the next choice there,
   and learns chains of actions from rewards without the world marking the end of an attempt;
-  the [episodic memory guide](docs/episodic.md) explains it. Each record is kept twice, keyed
+  the [episodic memory guide](https://github.com/muellerberndt/cadence/blob/v0.83.0/docs/episodic.md) explains it. Each record is kept twice, keyed
   by the observation (place) and by the temporal context, the observation with a fading trace
   of what the stream saw and did before it (`memory_context` 0.5); the mean of the two reads
   is added to the motor readout before the softmax, greedy or sampled. A record is written

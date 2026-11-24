@@ -63,27 +63,26 @@ def main(paths: list[str]) -> int:
         print(f"{arm} ({len(means)}): "
               + ", ".join(f"{k} {np.mean([m[k] for m in means]):.3f}" for k in KEYS))
     paired = [f for f in by if {"both", "code"} <= set(by[f])]
-    if paired:
-        missing = [f for f in DECLARED if f not in paired]
-        outside = [f for f in paired if f not in DECLARED]
-        if not missing:  # the declared panel is given: its founders alone are counted
-            paired = [f for f in paired if f in DECLARED]
-        held = {name: sum(gates(by[f]["both"]["mean"], by[f]["code"]["mean"])[name]
-                          for f in paired) for name in ("F1", "F2")}
-        print()
-        for name, count in held.items():
-            verdict = "incomplete" if missing else "holds" if count >= OF else "fails"
-            print(f"{name}: {count} of {len(paired)} -> {verdict}")
-        if missing:
-            print(f"incomplete: the gates are declared on founders {DECLARED[0]} to "
-                  f"{DECLARED[-1]}, each with its code and both lives; not given: "
-                  + ", ".join(str(f) for f in missing))
-        elif outside:
-            print("not counted, outside the declared founders: "
-                  + ", ".join(str(f) for f in outside))
-        for key in UNBARRED:
-            above = sum(by[f]["both"]["mean"][key] > by[f]["code"]["mean"][key] for f in paired)
-            print(f"{key} (no bar): both above code on {above} of {len(paired)}")
+    missing = [f for f in DECLARED if f not in paired]
+    outside = [f for f in paired if f not in DECLARED]
+    if not missing:  # the declared panel is given: its founders alone are counted
+        paired = [f for f in paired if f in DECLARED]
+    held = {name: sum(gates(by[f]["both"]["mean"], by[f]["code"]["mean"])[name]
+                      for f in paired) for name in ("F1", "F2")}
+    print()
+    for name, count in held.items():
+        verdict = "incomplete" if missing else "holds" if count >= OF else "fails"
+        print(f"{name}: {count} of {len(paired)} -> {verdict}")
+    if missing:
+        print(f"incomplete: the gates are declared on founders {DECLARED[0]} to "
+              f"{DECLARED[-1]}, each with its code and both lives; not given: "
+              + ", ".join(str(f) for f in missing))
+    elif outside:
+        print("not counted, outside the declared founders: "
+              + ", ".join(str(f) for f in outside))
+    for key in UNBARRED:
+        above = sum(by[f]["both"]["mean"][key] > by[f]["code"]["mean"][key] for f in paired)
+        print(f"{key} (no bar): both above code on {above} of {len(paired)}")
     return 0
 
 

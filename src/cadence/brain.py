@@ -104,12 +104,35 @@ def _rows_finite(x: np.ndarray) -> bool:
 _TRUSTED: dict[int, tuple[Any, Any]] = {}
 
 
+def _held_drive(drive: Any) -> Any:
+    """Own the values that qualified a cached phase, including writes through host aliases."""
+    if hasattr(drive, "detach"):
+        return drive.detach().clone()
+    if type(drive).__module__ == "mlx.core":
+        return drive[:]  # an independent MLX array handle, including across indexed assignment
+    return drive.copy()
+
+
+def _same_drive(held: Any, drive: Any) -> bool:
+    if held is drive:
+        return True
+    if type(drive).__module__ == "mlx.core":
+        import mlx.core as mx
+
+        return type(held).__module__ == "mlx.core" and bool(mx.array_equal(held, drive).item())
+    if hasattr(drive, "detach"):
+        return hasattr(held, "detach") and held.device == drive.device and bool(drive.equal(held))
+    return not _resident(held) and np.array_equal(held, drive)
+
+
 def _trusted(drive: Any) -> Any:
     """``drive``, marked as read finite where it rests on a device: a settle under it then
     reads nothing of it for its check (``_drive_finite``). For whoever made a resident drive
     from host arrays it read finite, or took rows of one that is marked; a torch tensor
     written in place afterwards is read again. A host array is returned as it is."""
     if _resident(drive):
+        if hasattr(drive, "is_inference") and drive.is_inference():
+            return drive  # an inference tensor has no mutation counter; validate every use
         key = id(drive)
 
         def gone(_: Any, key: int = key) -> None:  # the mark goes with the drive
@@ -641,6 +664,9 @@ class BrainState:
             if isinstance(handle, _MlxState):
                 read = handle["plan"].part(handle, np.asarray(index))
             else:
+                neurons = handle["s"].shape[1]
+                if len(index) and (int(np.min(index)) < -neurons or int(np.max(index)) >= neurons):
+                    raise IndexError("neuron index out of range")
                 read = _host_copy(handle["s"][:, handle["holder"].index_of(index)])
             kept = held[key] = (read, None)
         read, given = kept
@@ -893,6 +919,7 @@ class Brain:
         apical: Apical | None = None,
     ) -> None:
         self.connectome = connectome
+        self._parameter_generation = 0
         self.neuron_model = neuron_model
         self.backend: Backend = backend
         # the synapses that land on an apical compartment, normalized per pool (``Apical``);
@@ -981,6 +1008,11 @@ class Brain:
 
     # -- parameters
 
+    def _replace_parameters(self, updated: Brain) -> None:
+        generation = self._parameter_generation + 1
+        self.__dict__.update(updated.__dict__)
+        self._parameter_generation = generation
+
     @property
     def efficacy(self) -> np.ndarray:
         """Read-only parameters; replace via the setter or ``with_parameters``."""
@@ -994,8 +1026,7 @@ class Brain:
 
     @efficacy.setter
     def efficacy(self, value: np.ndarray) -> None:
-        updated = self.with_parameters(efficacy=value)
-        self.__dict__.update(updated.__dict__)
+        self._replace_parameters(self.with_parameters(efficacy=value))
 
     @property
     def bias(self) -> np.ndarray:
@@ -1010,8 +1041,7 @@ class Brain:
 
     @bias.setter
     def bias(self, value: np.ndarray) -> None:
-        updated = self.with_parameters(bias=value)
-        self.__dict__.update(updated.__dict__)
+        self._replace_parameters(self.with_parameters(bias=value))
 
     @property
     def log_gain(self) -> np.ndarray:
@@ -1022,8 +1052,7 @@ class Brain:
 
     @log_gain.setter
     def log_gain(self, value: np.ndarray) -> None:
-        updated = self.with_parameters(log_gain=value)
-        self.__dict__.update(updated.__dict__)
+        self._replace_parameters(self.with_parameters(log_gain=value))
 
     @property
     def _weights(self) -> np.ndarray:
@@ -1856,7 +1885,7 @@ class Brain:
             if (
                 checked is not None and checked[1] is nudge
                 and self._mlx is not None and handle.get("version") == self._mlx.version
-                and (held is d if _resident(d) or _resident(held) else np.array_equal(held, d))
+                and _same_drive(held, d)
                 # a nudge's arrays may be written too: the launch's check holds while they
                 # read as the launch read them
                 and checked[3] == self._mlx.nudge_read(nudge, len(d))
@@ -5592,7 +5621,7 @@ class _MlxPlan:
         if drive is not None and handle.get("relaxed") and handle.get("fixed") is not None:
             goals = handle.get("goals")
             new.update(
-                drive=drive, relaxed=True, fixed=handle["fixed"][index],
+                drive=_held_drive(drive), relaxed=True, fixed=handle["fixed"][index],
                 goals=None if goals is None else {r: take(g) for r, g in goals.items()},
             )
             outer = handle.get("outer")
@@ -6527,10 +6556,7 @@ class _MlxKernel:
         assert plan is not None
         held = start.get("drive")
         rows = len(drive)
-        resident = _resident(drive)
-        same = bool(start.get("relaxed")) and (
-            held is drive if resident or _resident(held) else np.array_equal(held, drive)
-        )
+        same = bool(start.get("relaxed")) and _same_drive(held, drive)
         if same:
             fixed, outer = start.get("fixed"), start.get("outer")
             if start.get("version") != self.version:  # the sources stand, under new parameters
@@ -6768,7 +6794,7 @@ class _MlxKernel:
         return _MlxState(
             kernel="mlx", holder=self.root, plan=plan, vm=out[0], sm=out[1], sources=sources,
             potentials=potentials, goals=goals, a_host=start["a_host"], moved=moved,
-            source_moves=moves, drive=drive if _resident(drive) else np.array(drive, copy=True),
+            source_moves=moves, drive=_held_drive(drive),
             version=self.version,
             fixed=driven["fixed"], outer=outer, relaxed=taken >= driven["needed"],
             checked=(drive, nudge, error, read), discarded_steps=discarded,
@@ -6921,10 +6947,7 @@ class _MlxKernel:
         if (
             isinstance(handle, _MlxState) and handle.get("holder") is self.root
             and handle.get("gains") is not None and handle.get("version") == self.version
-            and (
-                handle.get("drive") is drive if _resident(drive)
-                else np.array_equal(handle.get("drive"), drive)
-            )
+            and _same_drive(handle.get("drive"), drive)
         ):
             return np.array(handle["gains"], dtype=np.float64)
         on_device = handle is not None and handle.get("holder") is self.root

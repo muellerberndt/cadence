@@ -584,11 +584,17 @@ class Map:
         cell in sight loses what it carried. A piece seen empty with no report of its kind is
         treated as ``empty`` says."""
         # with surprise: the sheet the map carries into the moment, to measure the moment by
-        expected = self._expected() if self.surprise is not None else None
         told = [(sense, report) for sense, given in (("seen", seen), ("heard", heard),
                                                       ("felt", felt)) for report in given]
-        reports = [(int(kind), np.asarray(place, dtype=np.float64).reshape(2), sense)
-                   for sense, (kind, place, *_) in told]
+        reports = []
+        for sense, (kind, point, *_) in told:
+            if (isinstance(kind, (bool, np.bool_)) or not isinstance(kind, (int, np.integer))
+                    or not 0 <= kind < len(self.codes)):
+                raise ValueError("a spatial report needs an integer kind in the map")
+            place = np.asarray(point, dtype=np.float64).reshape(2)
+            if not np.isfinite(place).all():
+                raise ValueError("a spatial report needs two finite coordinates")
+            reports.append((int(kind), place, sense))
         said = [self._said(report) for _, report in told]  # the values each report names
         sight = np.zeros(self.count, dtype=bool)
         if callable(lit):
@@ -596,6 +602,7 @@ class Map:
         elif lit is not None:
             sight = np.asarray(lit, dtype=bool).reshape(self.count)
         looks = self._looks(lit, sight)
+        expected = self._expected() if self.surprise is not None else None
         before = self.potential.copy()  # the map as the moment before left it
         sensed = self.clock < 0.5  # the cells a sense wrote the moment before
         activity = self._activity()

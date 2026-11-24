@@ -71,9 +71,8 @@ backend: a `BrainState`'s `v`, `activation` and `adaptation`, a `Nudge`'s `targe
 `weight`, `anchor` and `anchor_gain`, and an index array given to `BrainState.part`. The next
 call reads them as they stand. A state settled on a torch device or on MLX rests there while
 its arrays are only read; a write makes the host arrays the state, `state.device` is then
-`None`, and the next settle uploads them. One exception stands: an MLX array given as a drive
-and written in place between two settles of one state is taken as it was, since an MLX array
-carries no mark of a write; give a new array for a new drive.
+`None`, and the next settle uploads them. Cached actor decisions and MLX state checks retain the drive values they used. Editing a
+resident drive or replacing graph parameters makes the next call recheck the inputs.
 
 `Connectome` arrays and its population mapping are read-only. `NeuralGraph.efficacy`,
 `bias`, `log_gain` and the effective `weights` return read-only views. Replace parameters

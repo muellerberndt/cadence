@@ -71,7 +71,7 @@ the one whose signature it shares.
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from copy import copy
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
@@ -753,6 +753,7 @@ class LongTermMemory:
     def write(
         self, key: np.ndarray, value: np.ndarray, recognised: int | None = None,
         source: Any = None, surprise: float | None = None, spare: Any = None,
+        *, exclude_revisions: Sequence[int] = (),
     ) -> tuple[int, bool]:
         """Write one record and return its slot and whether the write revised a held record.
         A key the memory recognises (``revise``) rewrites that record; any other takes an empty
@@ -765,7 +766,7 @@ class LongTermMemory:
         record lies from the key. ``spare`` names slots a write that revises nothing does not
         replace (records a caller still awaits something for): in a full memory it replaces
         another record, and where every slot is spared it writes nothing and returns
-        ``(-1, False)``."""
+        ``(-1, False)``. Slots in ``exclude_revisions`` are ineligible for recognition."""
         key = self._key(key)
         value = np.asarray(value, dtype=np.float64)
         if value.shape != (self.value_width,) or not np.isfinite(value).all():
@@ -782,10 +783,13 @@ class LongTermMemory:
         units = self.address(key) if self.coarse else None
         slot, revised = -1, False
         if recognised is not None and self.revise:
-            if recognised >= 0:
+            if recognised >= 0 and recognised not in exclude_revisions:
                 slot, revised = int(recognised), True
         elif self.revise and self.count:
             slots, keys = self._candidates(key, units)
+            if len(exclude_revisions):
+                eligible = ~np.isin(slots, exclude_revisions)
+                slots, keys = slots[eligible], keys[eligible]
             scores = np.asarray(keys @ key.astype(self.dtype), dtype=np.float64)
             if sign is not None and len(slots):
                 # every record that holds the key; the one that holds the signature is the fact

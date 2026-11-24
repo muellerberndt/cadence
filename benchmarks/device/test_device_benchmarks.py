@@ -44,6 +44,18 @@ def test_the_ledger_names_the_site_of_a_crossing():
     assert site == "outside"  # no library frame made it
 
 
+def test_ledger_attributes_a_symlinked_source_checkout(tmp_path):
+    source = Path(ledger.SOURCE)
+    alias = tmp_path / "linked-package"
+    try:
+        alias.symlink_to(source, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"directory symlinks unavailable: {exc}")
+    assert ledger._source_module(str(source / "brain.py")) == "brain"
+    assert ledger._source_module(str(alias / "brain.py")) == "brain"
+    assert ledger._source_module(str(tmp_path / "brain.py")) is None
+
+
 def test_live_follows_one_stream():
     with pytest.raises(ValueError, match="one stream"):
         ledger.read("chamber", "cpu", "live", 2, 0, 1, 0, False)

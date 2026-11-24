@@ -454,10 +454,16 @@ class BoundRecords:
             for first, last in self.fields.values():
                 value[first:last] = rows[i, first:last]
             told = None if surprise is None else float(max(surprise[i], 0.0))
+            # Sensed repeats may deepen the same event. A different event or another
+            # acting stream must keep its own value and reward.
+            reserved = [int(slot) for slot in written[:i] if slot >= 0] if acted else awaited
+            excluded = reserved if acted else [
+                slot for slot in reserved
+                if not np.array_equal(self.store.values[slot], value.astype(self.store.dtype))
+            ]
             written[i], revised = self.store.write(
                 np.asarray(codes[i], dtype=np.float64), value, surprise=told,
-                spare=awaited + ([int(slot) for slot in written[:i] if slot >= 0] if acted
-                                 else []))
+                spare=reserved, exclude_revisions=excluded)
             if written[i] < 0:  # every record awaits a reward
                 continue
             if not revised:  # a record of its own: no pay, nothing refused

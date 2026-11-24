@@ -74,3 +74,10 @@ def test_founders_outside_the_declared_panel_are_summarised_and_counted_in_no_ve
     assert "not counted, outside the declared founders: 0, 1\n" in out
     assert "own (no bar): both above code on 12 of 12" in out
     assert "| 1 | both |" in out and "code (14):" in out  # they stay in the tables
+
+
+@pytest.mark.parametrize("rows", [[], lives()[:1]])
+def test_zero_complete_pairs_still_have_two_incomplete_verdicts(rows, tmp_path, capsys):
+    out = read(rows, tmp_path, capsys)
+    for name in ("F1", "F2"):
+        assert f"{name}: 0 of 0 -> incomplete" in out

@@ -34,7 +34,7 @@ from typing import Any
 import numpy as np
 
 from .brain import _FUSED as _FUSED_TRACE
-from .brain import Brain, BrainState, Nudge, _host_copy, _resident
+from .brain import Brain, BrainState, Nudge, _held_drive, _host_copy, _resident, _same_drive
 from .learning import Learner
 from .resident import _CriticOnDevice, _forgotten
 
@@ -49,12 +49,6 @@ def _kept(value: Any) -> Any:
     """An eligibility as a refused outcome restores it: the host's in-place steps need a copy; a
     resident memory's steps make new tensors."""
     return value.copy() if isinstance(value, np.ndarray) else value
-
-
-def _held_drive(drive: Any) -> Any:
-    """A drive as the actor keeps it for the next read: the host's a caller may write, a
-    resident one nothing writes once it settled."""
-    return drive if _resident(drive) else drive.copy()
 
 
 def _batch_of(state: BrainState) -> int:
@@ -255,12 +249,24 @@ class ActorCritic:
         self.salience: np.ndarray | None = None
         self._drive: np.ndarray | None = None
         self._free: BrainState | None = None
-        self._free_brain: Brain | None = None  # parameters that produced the cached phase
+        self._free_brain = None
         # ("phases", plus, minus, value) as activations, or ("states", plus, minus, value) as states
         self._pending: tuple[str, Any, Any, np.ndarray] | None = None
         self.updates = 0
         # the brain's maturity (``Maturity``), which scales the steps; None: the founder's steps
         self.maturity: Maturity | None = None
+
+    @property
+    def _free_brain(self) -> Brain | None:
+        graph = self._phase_graph
+        if graph is not None and graph._parameter_generation != self._phase_generation:
+            return None
+        return graph
+
+    @_free_brain.setter
+    def _free_brain(self, graph: Brain | None) -> None:
+        self._phase_graph = graph
+        self._phase_generation = None if graph is None else graph._parameter_generation
 
     # -- the critic on the device
 
@@ -470,10 +476,7 @@ class ActorCritic:
             if self._free is not None
             and self._drive is not None
             and self._free_brain is self.learner.brain
-            and (self._drive is drive or (
-                not _resident(drive) and not _resident(self._drive)
-                and np.array_equal(self._drive, drive)
-            ))
+            and _same_drive(self._drive, drive)
             else self.settle(drive)
         )
         self._pending = None  # eligibility always belongs to this decision, including greedy reads

@@ -38,6 +38,7 @@ def _symbols(transcript: Any) -> np.ndarray:
         or not np.isfinite(given).all()
         or (given != np.floor(given)).any()
         or (given < 0).any()
+        or int(given.max()) >= 2**63
     )):
         raise ValueError("a transcript is a sequence of symbols, each a whole number from zero")
     return given.astype(np.int64)
@@ -255,7 +256,10 @@ class Alignments:
     """
 
     def __init__(self, *, blank: int = BLANK) -> None:
-        self.blank = blank
+        if (isinstance(blank, (bool, np.bool_)) or not isinstance(blank, (int, np.integer))
+                or blank < 0):
+            raise ValueError("blank must be a nonnegative integer symbol")
+        self.blank = int(blank)
         self._paths: dict[Hashable, np.ndarray] = {}
 
     def __len__(self) -> int:
@@ -289,17 +293,23 @@ class Alignments:
         """The labels of hearings heard side by side: ``(steps, len(keys))``, each column its
         hearing's path, then blank on the steps after its end. Taking them forgets them. A
         hearing that holds a soft path is refused: its lesson is ``targets``."""
+        if len(set(keys)) != len(keys):
+            raise ValueError("a hearing can be taken only once per lesson")
         for key in keys:
-            if key in self._paths and self._paths[key].ndim != 1:
+            if key not in self._paths:
+                raise KeyError(f"no path is held for the hearing {key!r}")
+            if self._paths[key].ndim != 1:
                 raise ValueError(
                     f"the hearing {key!r} holds a soft path: teach it with targets()"
                 )
         out = np.full((steps, len(keys)), self.blank, dtype=np.int64)
         for k, key in enumerate(keys):
-            path = self.take(key)
+            path = self._paths[key]
             if len(path) > steps:
                 raise ValueError("a hearing's path is longer than the steps of its lesson")
             out[: len(path), k] = path
+        for key in keys:
+            del self._paths[key]
         return out
 
     def targets(self, keys: Sequence[Hashable], steps: int, symbols: int) -> np.ndarray:
@@ -307,6 +317,10 @@ class Alignments:
         row ``[t, k]`` what ``Brain.lesson(targets=...)`` teaches stream ``k`` at step ``t``. A
         hearing's soft path is given as held, a path of symbols as one-hot rows, and the steps
         after a hearing's end are blank. Taking them forgets them."""
+        if self.blank >= symbols:
+            raise ValueError(f"blank must be one of the {symbols} symbols")
+        if len(set(keys)) != len(keys):
+            raise ValueError("a hearing can be taken only once per lesson")
         for key in keys:
             if key not in self._paths:
                 raise KeyError(f"no path is held for the hearing {key!r}")
@@ -318,14 +332,17 @@ class Alignments:
                     f"the hearing {key!r} holds distributions over {held.shape[1]} symbols, "
                     f"not {symbols}"
                 )
-            if held.ndim == 1 and len(held) and int(held.max()) >= symbols:
+            if held.ndim == 1 and len(held) and (held.min() < 0 or int(held.max()) >= symbols):
                 raise ValueError(f"the hearing {key!r} holds a symbol outside the {symbols}")
         out = np.zeros((steps, len(keys), symbols))
         out[:, :, self.blank] = 1.0
         for k, key in enumerate(keys):
-            path = self.take(key)
+            path = self._paths[key]
             if path.ndim == 1:
-                out[: len(path), k] = np.eye(symbols)[path]
+                out[: len(path), k, self.blank] = 0.0
+                out[np.arange(len(path)), k, path] = 1.0
             else:
                 out[: len(path), k] = path
+        for key in keys:
+            del self._paths[key]
         return out

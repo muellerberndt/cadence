@@ -278,3 +278,5 @@ exchanges a reward takes are the same, and so are the named things at new places
 heard name draws. The controls of S3 move within their bar (.25): with the records barred
 the state reads .125 to .175 against .05 to .15, and with their values dealt .00 against .00 to
 .10. The brain holds 7,523,769 parameters against 7,180,417.
+
+The summary gives a gate verdict for each complete declared twelve-founder code panel. Supply one panel per invocation. Other panels print their measurements with incomplete verdicts. Each founder and arm may appear once.

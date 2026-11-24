@@ -136,7 +136,12 @@ def test_an_update_gives_the_new_brain_a_kernel_made_from_its_weights(tmp_path):
         np.testing.assert_array_equal(np.array(mine), np.array(made))
     for kept, block in zip(before, graph._mlx.blocks, strict=True):
         np.testing.assert_array_equal(kept, np.array(block))
-    assert updated._mlx.edge_index is graph._mlx.edge_index  # the layout's tables are shared
+    from cadence import brain as kernel
+
+    if kernel._FUSED:  # the compiled update shares the layout's tables
+        assert updated._mlx.edge_index is graph._mlx.edge_index
+    else:
+        np.testing.assert_array_equal(updated._mlx.edge_index, graph._mlx.edge_index)
     drive = mlx.stimulus(X)
     for name in ("v", "activation", "adaptation"):  # it settles as the brain built on them
         np.testing.assert_array_equal(getattr(updated.settle_batch(drive, steps=20), name),

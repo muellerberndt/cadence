@@ -12,11 +12,18 @@ from typing import Any
 
 BUDGET = 80
 OF = 10
+DECLARATIONS = tuple(frozenset(range(start, start + 12))
+                     for start in (1010100, 1010200, 1010300, 1010400))
 
 
 def gates(life: dict[str, Any]) -> dict[str, bool]:
     y2, y3, n = life["Y2"], life["Y3"], life["N"]
-    learned = lambda r: all(x is not None and x <= BUDGET for x in r["exchanges"])  # noqa: E731
+    def learned(paid: dict[str, Any]) -> bool:
+        exchanges = paid["exchanges"]
+        return len(exchanges) == 4 and all(
+            type(count) is int and 1 <= count <= BUDGET for count in exchanges
+        )
+
     return {
         "S1": y2["records"] >= 0.90,
         "S2": y2["state"] >= 0.90,
@@ -31,6 +38,9 @@ def gates(life: dict[str, Any]) -> dict[str, bool]:
 
 def main(paths: list[str]) -> int:
     lives = [life for path in paths for life in json.loads(Path(path).read_text())]
+    identities = [(life["founder"], life.get("cortex_reads", "code")) for life in lives]
+    if len(set(identities)) != len(identities):
+        raise SystemExit("duplicate founder and cortex arm: each life is counted once")
     lives.sort(key=lambda life: life["founder"])
     rows = []
     for life in lives:
@@ -46,10 +56,14 @@ def main(paths: list[str]) -> int:
     print("|" + " --- |" * 15)
     for row in rows:
         print("| " + " | ".join(str(v) for v in row) + " |")
-    held = {name: sum(gates(life)[name] for life in lives) for name in gates(lives[0])}
+    founders = {founder for founder, _ in identities}
+    complete = founders in DECLARATIONS and all(arm == "code" for _, arm in identities)
+    held = {name: sum(gates(life)[name] for life in lives) for name in
+            ("S1", "S2", "S3", "S4", "S5", "S6", "S7")}
     print()
     for name, count in held.items():
-        print(f"{name}: {count} of {len(lives)} -> {'holds' if count >= OF else 'fails'}")
+        verdict = "incomplete" if not complete else "holds" if count >= OF else "fails"
+        print(f"{name}: {count} of {len(lives)} -> {verdict}")
     return 0
 
 

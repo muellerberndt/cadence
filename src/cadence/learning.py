@@ -2093,7 +2093,7 @@ class Learner:
 
     def _answer(self, state: BrainState) -> np.ndarray:
         """Most active output neuron of a settled state; ``(batch, slots)`` when slotted."""
-        out = np.asarray(state.activation)[:, self.output_index]
+        out = state.part(self.output_index)
         if self.slot_count > 1 and self.slot_size == 0:  # unequal slots: one argmax each
             choice = [
                 np.argmax(out[:, o : o + k], axis=1)

@@ -44,3 +44,32 @@ def test_a_reward_teaches_a_name_and_the_controls_run():
     assert ch.table_control(items, rng)["exchanges"][0] is not None
     assert len(ch.delta_control(brain, things, words, items, rng)["exchanges"]) == 1
     assert set(KINDS) >= {"cup", "apple", "banana", "key"}
+
+
+def test_gate_status_requires_one_complete_declared_panel(tmp_path, capsys):
+    import importlib.util
+    import json
+
+    import pytest
+
+    folder = Path(__file__).resolve().parent
+    spec = importlib.util.spec_from_file_location("symbols_summary", folder / "summary.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    row = json.loads((folder / "results" / "cortex_reads.json").read_text())[0]
+    receipt = tmp_path / "panel.json"
+
+    def verdict(founders, arm="code"):
+        receipt.write_text(json.dumps([dict(row, founder=f, cortex_reads=arm) for f in founders]))
+        module.main([str(receipt)])
+        return capsys.readouterr().out
+
+    with pytest.raises(SystemExit, match="duplicate"):
+        verdict([1010400] * 10)
+    assert "S1: 0 of 0 -> incomplete" in verdict([])
+    assert "S1: 10 of 10 -> incomplete" in verdict(range(1010400, 1010410))
+    assert "S1: 12 of 12 -> incomplete" in verdict(range(1010400, 1010412), "both")
+    assert "S1: 12 of 12 -> holds" in verdict(range(1010400, 1010412))
+    for counts in ([], [0, 12, 14, 16], [12, 14, 16], [12, 14, 16, 81]):
+        row["Y3"]["names_paid"]["exchanges"] = counts
+        assert not module.gates(row)["S4"]

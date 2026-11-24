@@ -55,6 +55,7 @@ from .brain import (
     Equilibrium,
     Nudge,
     _check_ladder,
+    _held_drive,
     _plan_structure,
     _SweepConfig,
     _take,
@@ -66,7 +67,7 @@ from .brain import Brain as NeuralGraph
 from .learning import _MOMENTS, _RELATIVE_TINY, LearnedState, Learner, _taught_report
 from .memories import record_action
 from .memory import SynapticMemory
-from .plasticity import ActorCritic, Maturity, _batch_of, _held_drive
+from .plasticity import ActorCritic, Maturity, _batch_of
 from .resident import (
     _MAP_KINDS,
     TorchArrays,
