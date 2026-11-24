@@ -94,7 +94,7 @@ jobs:
           python -m playwright install --with-deps chromium
       - name: Read the kernels in the browser
         run: |
-          for script in shadow.py direct.py maps.py records.py pieces.py sparse.py; do
+          for script in shadow.py direct.py maps.py records.py pieces.py; do
             echo "::group::$script"
             python kernels/wasm/browser/run.py --timeout 900 "$script"
             echo "::endgroup::"

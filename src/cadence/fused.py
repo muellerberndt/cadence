@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import functools
 import os
+import sys
 import types
 import weakref
 from collections.abc import Callable, Sequence
@@ -502,8 +503,8 @@ if njit is not None:
         """Block ``k``'s product for the whole batch into its cache slot at ``c0``: one BLAS
         call on the whole batch, the same call whichever thread makes it. A block that
         ``offset`` holds by its synapses (``which``: 0 for ``flat``'s, 1 for the apical
-        blocks', ``sparse_offset``) sums each column's synapses in the order of their
-        presynaptic neurons, as the product sums its rows without BLAS."""
+        blocks', ``sparse_offset``) sums each column's synapses instead; such a column holds
+        one synapse at most, so its sum is the product's own, to the bit."""
         a, b = pair_pre[k], pair_post[k]
         a0, a1 = starts[a], starts[a + 1]
         na, nb = a1 - a0, starts[b + 1] - starts[b]
@@ -1927,26 +1928,31 @@ def _fed_ranges(layout: Layout) -> np.ndarray:
 # compartment; the ``flat`` beside it then holds the basal synapses alone
 ApicalBlocks = tuple["Apical", Sequence[int], np.ndarray, Sequence[int]]
 
-# a block whose synapses fill less than this share of it is read by its synapses
-SPARSE_SHARE = 0.6
+# Under Pyodide the kernels read every block whole: the WebAssembly product skips the rows of
+# silent sources, which reads faster there than the synapses' sums.
+_WHOLE_BLOCKS = sys.platform == "emscripten"
 
 
 def sparse_offset(layout: Layout, apical: ApicalBlocks | None = None) -> np.ndarray:
-    """``layout.offset`` followed by the blocks the kernels read by their synapses: where a
-    block's synapses fill less than ``SPARSE_SHARE`` of it (the map's one-to-one wiring, a
-    module wired at a half), its product sums only its synapses, each column's in the order of their
-    presynaptic neurons, the order the product of the whole block sums them without BLAS, so
-    the sums are the same to the bit there (an absent synapse adds a zero to a sum that is
-    never -0.0). After the ``blocks + 1`` offsets come two rows of ``blocks``: where each
-    block's form by synapses begins in this array, for ``flat`` and for the apical blocks, or
-    -1 for the whole block; each form is its synapse count, its column starts (``nb + 1``)
-    and its presynaptic rows. Made once per layout and compartment and kept on the layout."""
+    """``layout.offset`` followed by the blocks the Numba kernels read by their synapses: a
+    block in which no neuron receives more than one synapse (the map's one-to-one wiring, a
+    block that holds none). Its product sums each column's one synapse where BLAS would
+    multiply the whole block, and the sum is the same to the bit: every other term of the
+    whole product is a zero, and a sum begun at 0.0 is never -0.0. A block in which a neuron
+    receives several synapses keeps BLAS's product, whose order of summing is its own.
+    After the ``blocks + 1`` offsets come two rows of ``blocks``: where each block's form by
+    synapses begins in this array, for ``flat`` and for the apical blocks, or -1 for the
+    whole block; each form is its synapse count, its column starts (``nb + 1``) and its
+    presynaptic rows. Made once per layout and compartment and kept on the layout. Under
+    Pyodide the offsets alone (``_WHOLE_BLOCKS``)."""
+    offset = np.asarray(layout.offset, dtype=np.int64)
+    if _WHOLE_BLOCKS:
+        return offset
     mask = None if apical is None else np.asarray(apical[0].synapses, dtype=bool)
     held = layout.__dict__.get("_sparse_offset")
     if held is not None and held[0] is (None if apical is None else apical[0].synapses):
         return held[1]  # type: ignore[no-any-return]
     blocks = layout.pairs
-    offset = np.asarray(layout.offset, dtype=np.int64)
     head = np.full(2 * blocks, -1, dtype=np.int64)
     forms: list[np.ndarray] = []
     at = blocks + 1 + 2 * blocks
@@ -1958,12 +1964,12 @@ def sparse_offset(layout: Layout, apical: ApicalBlocks | None = None) -> np.ndar
         positions = np.unique(chosen)
         owner = np.searchsorted(offset, positions, side="right") - 1
         for k in range(blocks):
-            a0, a1, b0, b1 = layout.bounds(k)
-            na, nb = a1 - a0, b1 - b0
+            _, _, b0, b1 = layout.bounds(k)
+            nb = b1 - b0
             local = positions[owner == k] - offset[k]
-            if len(local) >= SPARSE_SHARE * na * nb:
-                continue
             row, col = np.divmod(local, nb)
+            if len(local) and np.bincount(col, minlength=nb).max() > 1:
+                continue
             order = np.lexsort((row, col))  # by column, then by presynaptic neuron
             form = np.concatenate([[len(local)], np.searchsorted(col[order], np.arange(nb + 1)),
                                    row[order]]).astype(np.int64)

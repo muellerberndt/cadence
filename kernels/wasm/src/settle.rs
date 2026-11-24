@@ -354,69 +354,13 @@ unsafe fn reusable(
     }
 }
 
-/// Whether the forms by synapses `offset` holds after its block offsets
-/// (`fused.sparse_offset`) lie inside it and inside their blocks: each form's column starts
-/// rising from 0 to its synapse count, each presynaptic row inside its block.
-pub(crate) unsafe fn forms_ok(net: &Net) -> bool {
-    let blocks = net.pair_pre.len;
-    let len = net.offset.len;
-    if len == blocks + 1 {
-        return true;
-    }
-    if len < 3 * blocks + 1 {
-        return false;
-    }
-    for which in 0..2 {
-        for k in 0..blocks {
-            let at = net.offset.get(blocks + 1 + which * blocks + k);
-            if at < 0 {
-                continue;
-            }
-            let (a, b) = (net.pair_pre.get(k), net.pair_post.get(k));
-            if a < 0 || b < 0 || a as usize >= net.ranges || b as usize >= net.ranges {
-                return false;
-            }
-            let (a, b) = (a as usize, b as usize);
-            let na = net.start(a + 1) - net.start(a);
-            let nb = net.start(b + 1) - net.start(b);
-            let at = at as usize;
-            if at + nb + 2 > len {
-                return false;
-            }
-            let count = net.offset.get(at);
-            if count < 0 || at + nb + 2 + count as usize > len || net.offset.get(at + 1) != 0 {
-                return false;
-            }
-            let mut last = 0i64;
-            for j in 0..=nb {
-                let c = net.offset.get(at + 1 + j);
-                if c < last || c > count {
-                    return false;
-                }
-                last = c;
-            }
-            if last != count {
-                return false;
-            }
-            for q in 0..count as usize {
-                let row = net.offset.get(at + nb + 2 + q);
-                if row < 0 || row as usize >= na {
-                    return false;
-                }
-            }
-        }
-    }
-    true
-}
-
-/// Block `k`'s product for the whole batch into `cache` at `c0`. A block `offset` holds by
-/// its synapses (`which`: 0 for `flat`'s blocks, 1 for the apical ones) sums each column's
-/// synapses in the order of their presynaptic neurons: the order `product` sums the whole
-/// block's rows, so the sums are the same to the bit.
+/// Block `k`'s product for the whole batch into `cache` at `c0`: the whole block's, whatever
+/// follows the block offsets in `offset` (natively `fused.sparse_offset` lists there the blocks
+/// Numba reads by their synapses; here `product` skips the rows of silent sources instead).
 #[inline(always)]
 unsafe fn block_product(
     net: &Net, columns: *const f64, flat: View<f64>, k: usize, cache: *mut f64, c0: usize,
-    keep: *mut u32, which: usize,
+    keep: *mut u32,
 ) {
     let a = net.pair_pre.get(k) as usize;
     let b = net.pair_post.get(k) as usize;
@@ -424,30 +368,6 @@ unsafe fn block_product(
     let na = net.start(a + 1) - a0;
     let nb = net.start(b + 1) - net.start(b);
     let batch = net.batch;
-    let blocks = net.pair_pre.len;
-    let at = if net.offset.len > blocks + 1 {
-        net.offset.get(blocks + 1 + which * blocks + k)
-    } else {
-        -1
-    };
-    if at >= 0 {
-        let at = at as usize;
-        let rows = at + nb + 2;
-        let base = net.offset.get(k) as usize;
-        for row in 0..batch {
-            let x = columns.add(batch * a0 + row * na);
-            let w = if net.per_life { flat.p.add(row * flat.n1 + base) } else { flat.p.add(base) };
-            for j in 0..nb {
-                let mut acc = 0.0f64;
-                for q in net.offset.get(at + 1 + j) as usize..net.offset.get(at + 2 + j) as usize {
-                    let i = net.offset.get(rows + q) as usize;
-                    acc += *x.add(i) * *w.add(i * nb + j);
-                }
-                *cache.add(c0 + row * nb + j) = acc;
-            }
-        }
-        return;
-    }
     if net.per_life {  // each row through its own life's block
         for row in 0..batch {
             product(
@@ -959,10 +879,10 @@ pub(crate) unsafe fn settle(
             let q = *todo.add(j);
             if q < np_ {
                 block_product(net, columns, net.flat, net.pairs.get(q) as usize, cache,
-                              *cache_offset.add(q), keep, 0);
+                              *cache_offset.add(q), keep);
             } else {
                 block_product(net, columns, net.flat_apical, net.apical_pairs.get(q - np_)
-                              as usize, cache_up, *cache_up_offset.add(q - np_), keep, 1);
+                              as usize, cache_up, *cache_up_offset.add(q - np_), keep);
             }
         }
         for r in 0..ranges {
@@ -1089,13 +1009,13 @@ pub(crate) unsafe fn residual(
         if q < np_ {
             let k = net.pairs.get(q) as usize;
             if *moved_range.add(net.pair_pre.get(k) as usize) != 0 {
-                block_product(net, columns, net.flat, k, cache, *cache_offset.add(q), keep, 0);
+                block_product(net, columns, net.flat, k, cache, *cache_offset.add(q), keep);
             }
         } else {
             let k = net.apical_pairs.get(q - np_) as usize;
             if *moved_range.add(net.pair_pre.get(k) as usize) != 0 {
                 block_product(net, columns, net.flat_apical, k, cache_up,
-                              *cache_up_offset.add(q - np_), keep, 1);
+                              *cache_up_offset.add(q - np_), keep);
             }
         }
     }
@@ -1307,7 +1227,6 @@ pub(crate) unsafe fn net_of(
         }
     }
     if ranges == 0 || net.start(ranges) != n || net.offset.len < net.pair_pre.len + 1
-        || !forms_ok(&net)
     {
         return Err(refused(8));
     }
