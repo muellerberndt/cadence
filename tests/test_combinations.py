@@ -28,6 +28,7 @@ from cadence.space.map import Map
 FACTORS: dict[str, tuple[str, ...]] = {
     "layout": ("inputs", "senses"),
     "code": ("none", "fixed", "learned"),
+    "cortex": ("code", "both", "observation"),  # what the cortex reads beside a fixed code
     "recall": ("default", "off", "heads2", "strength"),
     "surprise": ("off", "on"),
     "bound": ("off", "voice"),
@@ -56,6 +57,8 @@ NEEDS = [
     ("longterm", "records", "message", ("on",)),  # long-term records key on the message
     ("longterm", "strength", "message", ("on",)),
     ("code", "learned", "recall", ("default", "heads2", "strength")),  # attention reads recall
+    ("cortex", "both", "code", ("fixed",)),  # what the cortex reads beside a fixed code
+    ("cortex", "observation", "code", ("fixed",)),
 ]
 
 # Pairs the library refuses with a ValueError that names the part ("What does not go
@@ -66,6 +69,10 @@ REFUSED = [
     ({"code": "learned", "longterm": "strength"}, "message"),
     # attention=True reads a window of two events, which a slot's strength does not hold
     ({"code": "learned", "recall": "strength"}, "strength"),
+    # a held message hears the sensory region, which holds the observation itself
+    ({"cortex": "observation", "message": "on"}, "message"),
+    ({"cortex": "observation", "longterm": "records"}, "message"),
+    ({"cortex": "observation", "longterm": "strength"}, "message"),
 ]
 
 
@@ -176,6 +183,8 @@ def options(cell: dict[str, str]) -> dict[str, Any]:
         kw["slots"] = (3, 2)
     if cell["code"] == "fixed":
         kw["code"] = 64
+        if cell["cortex"] != "code":
+            kw["cortex_reads"] = cell["cortex"]
     elif cell["code"] == "learned":
         kw.update(learned_code=16, attention=True)
     kw.update(
@@ -376,6 +385,7 @@ LIVES_CELLS = _distinct(
             "layout": "inputs",
             "trained": "off",
             "code": "none",
+            "cortex": "code",
             "message": "off",
             "longterm": "off",
             "bound": "off",
@@ -440,6 +450,8 @@ def test_a_refused_pair_is_refused_by_name(pair, word):
     cell.update(pair)
     if cell["longterm"] != "off":
         cell["message"] = "on"
+    if cell["cortex"] != "code":
+        cell["code"] = "fixed"
     with pytest.raises(ValueError) as error:
         compose(cell)
     assert word in refusal(error.value)
@@ -451,6 +463,7 @@ DEVICE_CELLS = [
     {**{n: v[0] for n, v in FACTORS.items()}, "recall": "heads2", "arousal": "on"},
     {**{n: v[0] for n, v in FACTORS.items()}, "recall": "strength", "memory_choice": "on"},
     {**{n: v[0] for n, v in FACTORS.items()}, "surprise": "on"},
+    {**{n: v[0] for n, v in FACTORS.items()}, "code": "learned"},
 ]
 
 

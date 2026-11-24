@@ -1,6 +1,172 @@
 # Changelog
 
-## Unreleased
+## 0.102.0 - 2026-11-24
+
+A learned code on a GPU, and a cortex that reads the senses beside its fixed code. A brain with
+`learned_code=units` runs on the `"torch"` backend: the code region's own phase settles on the
+brain's device, and a float64 brain there reads as the brain on the CPU within rounding. With
+`code=units` the memories of a brain key on a fixed sparse code where its senses meet, and a
+vector brain's cortex reads that code alone: what is on together, which records of bound moments
+and a heard name need, and a bearing or a distance less directly. `cortex_reads="both"` gives the
+cortex the senses themselves beside the code, and every memory keys on the code as before. Both
+are opt-in. A brain composed without `cortex_reads` acts, learns, describes itself and saves as
+on 0.101.0, to the bit (the version string apart), and a learned code on torch is a composition
+0.101.0 refused.
+
+```python
+import numpy as np
+from cadence import Brain
+
+rng = np.random.default_rng(0)
+coded = Brain.compose(64, 8, learned_code=128, seed=0,
+                      backend="torch", device="cpu")        # device="cuda" on a GPU
+coded.lesson(rng.random((4, 64)), rng.integers(8, size=4))
+assert str(coded.learned_code.device) == "cpu"              # the code phase, on the brain's device
+
+senses = {"eyes": 32, "food": {"bearing": 8, "distance": 4}, "body": 8}
+body = Brain.compose(senses=senses, actions=5, code=128, cortex_reads="both", seed=0)
+food_left = {"food": {"bearing": np.eye(8)[[2]], "distance": np.eye(4)[[1]]}}
+body.lesson(food_left, np.array([2]))                       # a teacher shows: turn left
+assert len(body.connectome.populations["observation"]) == body.inputs == 52
+```
+
+The guides are [a learned code on torch](docs/backends.md#a-learned-code-on-torch) and
+[what the cortex reads](docs/senses.md#what-the-cortex-reads).
+
+### A learned code on torch
+
+- **`Brain.compose(..., learned_code=units, backend="torch")`** composes, where 0.101.0 refused it.
+  The region's own phase, the settle of its sub-network and the tests of its step, runs on the
+  brain's device in float64, whatever the brain's precision: the step's factorizations hold a
+  relative margin of 1e-9 from their bounds, which float32 does not resolve. MPS has no float64,
+  so a brain there keeps the phase on the host, as a brain on `"cpu"` or `"mlx"` does.
+  `brain.learned_code.device` names the device (`None` on the host) and
+  `LearnedCode.place(device)` moves the phase.
+- **Why.** On the CPU a moment of a wide code spends most of its time in the phase. On a brain of
+  1,000 inputs with `learned_code=1024` at 64 rows, a profile of six moments on one core has 85%
+  of a lesson and an act there: 70% in the step's factorizations and eigenvalues of a `rows` by
+  `units` by `units` coupling, and 14% in the sub-network's settle.
+- **What runs where.** The sub-network is a graph of its own on the device. Its kernel takes the
+  lateral weights and the thresholds in place after each learning step, and the brain's kernel
+  takes the thresholds as its code units' biases the same way, so no kernel is built again and a
+  state settled on either continues on it. The step's tests read the rows of a batch in groups
+  that work within 128 MiB (`LearnedCode.DEVICE_BYTES`; a group is at least one row, which
+  passes those bytes from about 1,650 units), factorized there and solved for their
+  eigenvalues there when the factorizations do not settle the step. Where the device fails in a
+  test, by a solver's error or by its memory, the host reads the same step and a
+  `RuntimeWarning` names the failure. The standing boundary goes to the device once: the torch
+  kernel fills a nudge's buffers again only where the nudge's arrays can be written. The tables,
+  their three learning rules, the memories' key and the memories themselves stay on the host.
+- **What agrees with the CPU.** In float64 with `learning_fast_settle=False` a life on torch
+  reads as the life on the CPU within rounding at each moment, with the same step of every code
+  phase (`tests/test_learned_code_torch.py`, to 1e-9 on a torch CPU device and on CUDA: lessons,
+  outcomes, `live` and `wait`, `value`, imagined branches, copies, a refused moment, `grow`,
+  `graft`, `retune`, files saved on either backend and continued on the other). A phase the
+  solver damps can end a stalled attempt a check (32 sweeps) apart on the two; where its last
+  attempt then runs to the end of its share of the budget, the two settled codes agree within
+  the solver's tolerance (4 of 5,760 damped settles read on a torch CPU device). On the brain of
+  the reading below at 32 rows on an A10G, twelve lessons with a greedy act each left the
+  dictionary within 5.5e-12 of the CPU's, the predictor within 3.9e-12, the thresholds equal and
+  the efficacies within 1.6e-10, with every action equal. In float32, the device's default, the
+  phase reads its context and warm start from the brain's float32 state, and the life is another
+  run, as any float32 life is: on the same brain one unit's count at the active floor fell on
+  the other side at the seventh moment (one step of a threshold, 6.25e-4), and 97% of the
+  actions' slots agreed over the twelve. Compare such runs by means over seeds.
+- **The reading.** 1,000 inputs, 400 actions in four slots, `modules=(256, 128),
+  learned_code=1024, attention=True, recall_heads=4, teaching="normalized"` (19,128 neurons,
+  4,721,664 synapses) at 64 rows, on an NVIDIA A10G against one core of its machine's EPYC 7R32,
+  one thread per process. Other jobs kept the machine and the card busy (48 threads at a load of
+  23 to 33, the card at 13 to 100%), so both were read in the same seventeen minutes, and the
+  reading's process was held under 3 GB of the card's memory. A lesson with a greedy act, the
+  mean over 16 consecutive moments: 20.5 seconds on one core and 2.8 to 4.1 seconds on the card
+  in six float32 readings, five to seven times less. By the least of four rounds, as the default
+  backend's table reads them, over six readings of the card: `act` 637 to 1,283 ms against 9,166
+  and `lesson` 909 to 1,716 ms against 9,305; at 16 rows `act` 357 to 493 ms against 2,284,
+  `lesson` 763 to 1,073 against 2,982 and `step` 1,169 to 1,640 against 5,427. Over a life of
+  300 moments the card's allocated memory read 412 to 414 MiB at each of twelve readings, with a
+  peak of 751 MiB reached within the first 25 moments. In a profile of six moments on the card,
+  42% is the recall heads' read and lesson on the host in NumPy at one thread, and 41% the
+  step's tests ([the table](docs/backends.md#a-learned-code-on-torch)).
+- **Files.** A file saved on either backend loads on the other, and `Brain.load(path,
+  backend="torch")` places the phase on the device again. A float32 brain holds its code units'
+  biases as float32 holds the negated thresholds; a load takes them exact or so rounded, where
+  it took them exact alone.
+- **What stays as it was.** `backend="auto"` takes no CUDA device for a brain with a learned
+  code, whose crossing has no reading: name the backend. `Lives` refuses a learned code on every
+  backend. The glue between the phase and the moment's settle (the unit-length read of the
+  code, the warm start, the region's learning step) runs on the host in float64, and with it
+  the moment's memories.
+- New public names: `LearnedCode.device`, `LearnedCode.place` and `LearnedCode.DEVICE_BYTES`.
+
+### What the cortex reads (`cortex_reads`), an opt-in
+
+- **`Brain.compose(..., code=units, cortex_reads="both")`**: a region `observation` of one
+  neuron per input holds the observation itself, as given, and projects into the first module
+  beside the code, at the sensory scale. It is drawn after every other part, so the brain is the
+  brain with the code plus that region and its projection: every other synapse and bias starts
+  as without it. `cortex_reads="observation"` holds the observation in the sensory region in
+  place of the code, the routing of an image brain and of `Brain(connectome, code=units)`. Every
+  memory keys on the code whichever the cortex reads (the recall memory, the associative store,
+  records of bound moments, and a held message with the long-term records keyed on it, which
+  `"observation"` refuses); the heard history hears what the sensory region holds. `"code"` is
+  the founder.
+- **Why.** With `code=units` a body's cortex read its senses only through the code: each field at
+  unit length among every other, the largest sums kept. A body whose action follows a bearing or
+  a distance found less of it there, and its memories need the code (records keyed on the code
+  stay readable as the brain learns, and a heard name brings its thing back through the code's
+  conjunctions), so the cortex reads both.
+- **What it reads** (the [forager chamber](benchmarks/forager/README.md), new: an animal's 104
+  senses, `code=128`, modules of 32, taught by a forager that turns to the nearest plant, walks
+  to it and bites it; twelve fresh founders of its declared run). A linear readout of the
+  teacher's turn from the association's settled state: .837 with `"both"` against .756 with the
+  code alone, higher on 12 of 12 (gate F1 holds); the senses themselves hold it at .875. On its
+  own path the brain agrees with the teacher at .601 against .500 and eats 8.0 plants a body in
+  150 moments against 6.2, higher on 12 of 12. On the teacher's path its agreement is .679
+  against .672, higher on 6 of 12: gate F2 (10 of 12) fails. The walks are three in five of
+  those moments, and the brain that reads the bearing turns at more of them; by action it agrees
+  more with the turns and the bites and less with the walks (two founders read after the run).
+  `"observation"` reads .824 and 7.5 plants, and a brain without a code .788 and 6.0.
+- **No change where the code matters** (the [symbols chamber](benchmarks/symbols/README.md)
+  with `--cortex-reads both`, a quick reading of its gates S1 to S7 on four fresh founders
+  against the same founders with the code alone): every gate holds on every founder in both
+  arms, at the same readings, a name heard alone bringing its thing back from the records and in
+  the settled state at 1.00; the controls of S3 move within their bar.
+- A brain with `cortex_reads` other than `"code"` saves as `cadence-brain/5` with the feature
+  `cortex_reads` (the setting under `cortex_reads` in the metadata and the composition), which
+  0.101.0 refuses by name. `describe()` reports it under the layout's `code` as `cortex` and
+  among the genes. `grow` keeps it and refuses to change it, `retune` refuses it, `graft` carries
+  the `observation` region between brains that hold it, and `Lives` refuses it as it refuses a
+  code. Refused with `ValueError`: another value; `"both"` or `"observation"` without
+  `code=units`, beside a learned code, on an image brain or beside a trained module; a custom
+  anatomy that reads both without a population `observation` of one neuron per input
+  (`Genome.composed(..., cortex_reads="both")` lays it out). New public names: `cortex_reads` in
+  `compose`, in the constructor and in `Genome.composed`, and `Brain.observation_index`.
+- `benchmarks/symbols/chamber.py` takes `--cortex-reads`.
+
+### Upgrading from 0.101.0
+
+Nothing to name: a brain composed without `cortex_reads` acts, learns, describes itself and saves
+as on 0.101.0, to the bit, the version string apart (eleven compositions checked against a
+0.101.0 tree: the default brain, a fixed code at one and two modules and with the episodic
+choice, senses by name with the code, a map and surprise, records of bound moments with a voice,
+an image brain with a code, a custom anatomy with a code, a learned code, a held message with
+long-term records; and twelve lives of the release's tree on both CPU solvers, a learned code,
+an apical compartment, recall heads, maps and bound records among them, with three lives of a
+learned code on MLX). A 0.101.0 file loads and continues. A file of a brain with `cortex_reads`
+needs 0.102.0. A file of a learned code saved on torch in float64 loads and continues on
+0.101.0's CPU with the same actions; one saved in float32 needs 0.102.0, since 0.101.0 reads
+the code units' biases exact.
+
+### Not in this release
+
+The sentence state ([#308](https://github.com/muellerberndt/cadence/issues/308)) and records at
+any size ([#310](https://github.com/muellerberndt/cadence/issues/310)), which the notes of
+0.101.0 moved to 0.102.0, are work in progress on
+[the roadmap](https://github.com/muellerberndt/cadence/issues/109), and so is the letter from
+the sound ([#304](https://github.com/muellerberndt/cadence/issues/304)). The known issue of
+0.101.0 ([#346](https://github.com/muellerberndt/cadence/issues/346)) is open.
+
+### Also in this release
 
 - **A lesson inside `live`**: `live(observations, ..., lesson=(targets, weights))` teaches the
   moment as `lesson` does, after the preceding action's outcome is taken and before the act, which
@@ -48,6 +214,13 @@
   as it ends.
 - The tuning guide shows how to change a teaching step under a named teaching point
   (`retune(learning=replace(config, eta=...))`).
+- **Tests** (#348): the option combinations, the saved files of earlier releases loaded and
+  continued, and a CI job in which the previous release reads this one's files. In this release
+  the released files gain 0.101.0's, a brain with bound records among them, and the job reads
+  with 0.101.0 and refuses a brain with `cortex_reads` by the feature's name.
+- **Documentation** (#350): the catalogue of parts complete, the settings table of the tuning
+  guide generated from `compose` (`tools/settings_table.py`), one home per concept, and a
+  runnable example in every guide.
 
 ## 0.101.0 - 2026-11-16
 

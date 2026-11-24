@@ -1,8 +1,24 @@
 # Evaluate a brain
 
-New to evaluation? [Evaluate without fooling yourself](teach.md#evaluate-without-fooling-yourself)
-covers the basics: held-out data, enough samples, seeds, per-class accuracy and a control. This
-page is the full method for a capability claim.
+This page is the method for designing a task and checking a capability claim. New to evaluation?
+[Evaluate without fooling yourself](teach.md#evaluate-without-fooling-yourself) covers the basics:
+held-out data, enough samples, seeds, per-class accuracy and a control.
+
+A first check on a task of four cues: the brain is read per behaviour, each cue apart, and against
+a uniform-random policy with the same observations and actions.
+
+```python
+import numpy as np
+from cadence import Brain
+
+cues, answers = np.eye(4), np.array([1, 0, 0, 1])              # which action each cue needs
+brain = Brain.compose(inputs=4, actions=2, seed=0)
+for _ in range(20):
+    brain.lesson(cues, answers)                                # taught
+learned = brain.act(cues, greedy=True) == answers              # each cue, read on the same brain
+policy = np.random.default_rng(0).integers(2, size=(1000, 4))  # a uniform-random policy
+assert learned.all() and abs(float(np.mean(policy == answers)) - 0.5) < 0.05
+```
 
 This method applies to any task, demo or capability claim. Test one acquired
 brain through bootstrap, routine use, disturbance, repair and saved
@@ -10,7 +26,10 @@ continuation ([the continuing life](world-model.md#bootstrap-use-repair-continue
 isolated classification is a mechanism control. A uniform-random policy with
 the same observations and actions is the baseline for every claim: a brain that
 does not beat it has learned nothing worth reporting. Declare a change's scope
-as [CONTRIBUTING.md](../CONTRIBUTING.md#scope-and-evidence-for-behavior-over-time) describes.
+as [CONTRIBUTING.md](../CONTRIBUTING.md#scope-and-evidence-for-behavior-over-time) describes:
+whether a test covers a bounded component, integrated continuing behaviour or infrastructure,
+with its equilibrium boundaries, simpler control and preservation gates
+([capability owners](../CONTRIBUTING.md#preserve-the-capable-foundation)).
 
 ## Start at the boundary
 
@@ -25,7 +44,10 @@ Supply correct actions to the environment first and check what happens, then
 compare the learner's actions through the same boundary: this separates a
 learning failure from an interface that cannot realize the behaviour. An
 action named after a sensor reading (brightness as pitch, onset count as
-retriggers) is a supplied instrument design that needs its own test.
+retriggers) is a supplied instrument design that needs its own test. For a sampler,
+sample identity, onset time, gain and duration are playable controls, and spectral
+brightness and onset density are observations of sound; in a robot, a game or a page alike,
+a forecast of an observation is no executable action until the body can carry it out.
 
 The [Doom body](../benchmarks/doom/README.md) is a worked boundary: the rendered screen, three
 declared own-body ports and a history port go to the player; the scorer reads the engine's other
@@ -44,7 +66,21 @@ A counterexample: one event per grid interval at times `j + 0.25`, against
 the second alternates long and short gaps. Both have the same event count,
 occupied intervals and unsigned distance to the nearest grid point, so an
 unsigned timing-spread summary cannot tell them apart. Expose signed offsets
-when the task depends on them.
+when the task depends on them. Quantized patterns can have groove, and keeping microtiming
+alone establishes neither rhythmic quality nor the right instruments or arrangement.
+
+## Match the update to the behavior
+
+`Brain.lesson` teaches the current observation with the declared motor labels; reward
+feedback instead belongs to the preceding executed action. Slot sizes, event boundaries,
+units and the information available before each action must match the task. Use the
+[teaching guide](teach.md) and [reward guide](reward.md) to select the actual update.
+
+Check directly cued acquisition before interpreting a failure as missing context. If a
+relation is individually learnable but competing experience changes it, measure the
+surviving memory, read, free answer and update direction separately. A local numerical
+residual and a task prediction error have different meanings. Keep the frozen task,
+capacity, exposure and gates unchanged while diagnosing a failure.
 
 ## Baselines and controls
 
@@ -100,8 +136,56 @@ keep the simpler control, earlier skills, refusals and work in the gates.
 Separate equation residual from meaningful surprise and from task success.
 `Brain.act` qualifies the present state with trace and memory as held input and
 settles no joint future trajectory. Supplied clocks, phase or goals belong in
-the declared information budget. The [world-model
+the declared information budget. Check existing state, information and experience before
+adding a mechanism; an added one uses local repair in the same coupled equilibrium, and an
+adapter conceals no answer, phase or arrangement. The [world-model
 guide](world-model.md#coherent-behavior-over-time) gives the brain's side.
+
+## Test learned memory relevance
+
+The criterion is that the same acquired brain uses the same memories differently
+when context changes, and experience improves that selection. Keep three
+questions separate: does information survive (retention), does the current query
+select what matters (read), and does an outcome update the appropriate earlier
+actions (credit)? A longer trace or a larger store alone does not establish
+learned selection. This capability is undemonstrated.
+
+First require acquisition on a directly cued control with the same answer
+relations. If that fails, diagnose encoding and learning before attributing the
+failure to context or proposing another memory mechanism. Start with existing
+System 1 state and memory. Then use a bounded component assay:
+
+1. Acquire several facts in one brain. Save it and branch copies with identical
+   memories and parameters; change only the query or legitimate task context.
+   Require the answer to change with which retained fact is relevant. The
+   adapter supplies observations and queries, never the relevant record index.
+2. Perturb relevant and irrelevant memories separately under matched exposure.
+   Relevant changes should affect the answer; irrelevant changes should not.
+   Compare before and after learning the query relationships to establish that
+   experience improved selection, rather than a supplied key deciding it.
+3. Test fresh bindings, presentation orders and held-out role combinations so
+   a fixed cue-to-answer table or recency rule cannot pass. Keep the learned
+   query semantics available; disclose which distinctions training supplies.
+4. Add competing memories and switch the question in the same acquired life.
+   Measure earlier skills, revision of obsolete facts, recovery and saved
+   continuation. Use uniform-random, frozen-copy and simple learners with the
+   same information, including a control for the strongest task shortcut.
+
+Declare live and held coordinates. Learned selection must participate through
+local repair in the same coupled equilibrium; a separate answer vote after
+settlement is not evidence of this property. Qualification checks the equations,
+while the comparisons above check behavior. Count storage and all acquisition,
+queries, memory reads/writes, settling, replay, interventions and refused work.
+Freeze the task, capacity, work limits and gates before testing fresh founders.
+Preserve existing capability gates and failed attempts. A passed component assay
+would support the next sequence test; it would not establish sentence formation
+or authorize a default change. These tests do not prescribe a new module.
+
+The [named-fact selection instrument](../benchmarks/relevance/README.md)
+implements the acquisition diagnostic on the composed graph: balanced facts,
+late queries from identical saved state, trace erasure and frozen/random
+controls. It covers finite acquisition with reset trials; the generalization,
+interference and continuing-life gates above are separate tests.
 
 ## Close the action and consequence loop
 
@@ -118,7 +202,9 @@ For an acting system, test the whole sequence:
 that detunes a prediction toward a goal can approach a goal no action can cause:
 replay the chosen action with the goal removed, execute it and measure the
 outcome. Demonstrations omit most mistakes: add the learner's own interactions
-and test transfer on whole held-out tasks.
+and test transfer on whole held-out tasks. `Brain.imagine` reads durable memory without
+writing it and predicts no next observation of the body: supply a tested transition model as
+an explicit control when studying planning, and count its information and work.
 
 ## Keep branches isolated and provenance explicit
 
@@ -169,6 +255,15 @@ Keep evaluation data separate, use several initializations, report each paired
 result, and show acquisition, retention and task quality at small scale before
 a long run. Equal update counts or widths alone do not match resources.
 
+## Scale after the joint test
+
+More width, data or compute helps only where the observations, actions and learning signal
+keep the distinctions the task needs. A useful small test checks acquisition, retention after
+competing experience, private prediction, successful action and the task's actual quality
+together; use independent tasks or withheld cases for generalization. Larger runs report
+quality against data, state, time and compute, with simple controls. Formal consistency and
+numerical convergence check the implementation and stand in for no behavioural evidence.
+
 ## Comparing with other model families
 
 For a transformer, an MLP or a recurrent network as the comparison:
@@ -193,7 +288,19 @@ For a transformer, an MLP or a recurrent network as the comparison:
    adjoint work, retries, memory and selection, inference apart from training;
    name device, precision and implementation for timings.
 
+<a id="test-coordination-with-the-same-patch-rule"></a>
+
 ## Coordination, self-readback and creativity
+
+A shared workspace is a hypothesis: a bounded patch that reads proposals and mismatches from
+other patches and feeds back a common intention or constraint, with the same overlap and
+detuning operations. Before treating one as necessary, compare the same task with and without
+useful summary feedback, against a matched recurrent model, disconnected feedback and shuffled
+feedback, and require an improvement in a named behaviour, such as keeping a motif while the
+accompaniment changes. Activity in the new patch alone shows no coordination. Optional observer
+regions return signals inside the same graph and private imagination keeps its branch apart;
+neither is a specialized workspace by itself ([anatomy](anatomy.md#write-a-cortex),
+[contracts](contracts.md)).
 
 A coordinating patch, a deeper observer or a self-readback port earns its place
 through a named behaviour it improves against the internal-readback controls
@@ -215,7 +322,7 @@ result together points to goal selection.
 
 | Misstep | Why it fails | Check |
 | --- | --- | --- |
-| Independent classification presented as a continuing world model | Fresh state omits the context being claimed | Test [one acquired brain](start.md#one-continuing-equilibrium-brain) across bootstrap, use, disruption and repair |
+| Independent classification presented as a continuing world model | Fresh state omits the context being claimed | Test [one acquired brain](world-model.md) across bootstrap, use, disruption and repair |
 | A small residual taken for a useful model | The equations can hold for a wrong interpretation | Measure task quality, retention, routine work and repair cost |
 | The answer produced by a trained external readout | The extra model carries the capability | Read the brain's declared output; report the readout as a baseline |
 | Free-state energy read as surprise | The causal recurrence has zero defect for a wrong prediction too | Compare the prediction with the actual reading |

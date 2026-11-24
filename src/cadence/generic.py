@@ -140,10 +140,13 @@ LONGTERM_FORMAT = "cadence-brain/4"
 # ``longterm_motor``, #325), ``recall_strength`` (the recall memory's slots keep a depth and
 # a full bank gives up its weakest: ``recall_strength``, #336), ``surprise`` (the brain's
 # surprise and the focus it draws, #337), ``map`` (a held map of things whose sheet carries
-# values or reads surprise, which a reader of 0.99.1 cannot build) and ``bound`` (records of
-# bound moments, ``compose(bound=records)``, 0.101).
+# values or reads surprise, which a reader of 0.99.1 cannot build), ``bound`` (records of
+# bound moments, ``compose(bound=records)``, 0.101) and ``cortex_reads`` (a cortex that reads the
+# observation itself beside or in place of its fixed code, ``compose(cortex_reads=...)``, 0.102.0).
 FEATURES_FORMAT = "cadence-brain/5"
-FEATURES = frozenset({"strength", "heads", "recall_strength", "surprise", "map", "bound"})
+FEATURES = frozenset(
+    {"strength", "heads", "recall_strength", "surprise", "map", "bound", "cortex_reads"}
+)
 # A memory's group in BRAIN_FORMAT and the prefix the reader validates its arrays under; the
 # episodic memory's arrays are the context store's and the stream's (``_flat_layout``).
 _MEMORY_PREFIXES = {
@@ -623,6 +626,49 @@ def _code_units(code: Any) -> int:
     return 0 if code is None else _count("code", code)
 
 
+# What the cortex of a vector brain with a fixed code reads (``cortex_reads``): the code (the
+# founder, the sensory region is the code); the observation itself (the sensory region holds it,
+# and the code keys the memories alone); or both (the sensory region is the code, and a region of
+# one neuron per input beside it, ``observation``, holds the observation itself). Every memory
+# keys on the code whichever the cortex reads: a held message hears the sensory region's code,
+# and the observation itself is refused beside one.
+_CORTEX_READS = ("code", "observation", "both")
+_OBSERVATION = "observation"  # the region that holds the observation itself beside the code
+
+
+def _cortex_reads(value: Any) -> str:
+    """``cortex_reads`` as given: ``"code"``, ``"observation"`` or ``"both"``; None, unset, is the
+    founder ``"code"``."""
+    if value is None:
+        return "code"
+    if not isinstance(value, str) or value not in _CORTEX_READS:
+        raise ValueError(
+            'cortex_reads is what the cortex of a brain with code=units reads: "code" (the '
+            'founder), "observation" or "both"'
+        )
+    return value
+
+
+def _cortex_reads_refusal(reads: str, *, image: bool = False, learned: bool = False) -> str:
+    """The refusal of ``cortex_reads`` other than ``"code"`` on a brain without a fixed code, with
+    a learned code or with an image."""
+    if image:
+        return (
+            f'cortex_reads="{reads}" is for a vector brain: an image brain\'s cortex reads the '
+            "image through its visual cortex or its learned fields; leave cortex_reads unset"
+        )
+    if learned:
+        return (
+            f'cortex_reads="{reads}" is for a fixed code (code=units): a learned code is what the '
+            "cortex reads, and its key joins the observation itself; leave cortex_reads unset"
+        )
+    return (
+        f'cortex_reads="{reads}" chooses what the cortex reads of its observation and of the '
+        "fixed code its memories key on: compose the brain with code=units, such as "
+        f'Brain.compose(inputs=64, actions=2, code=256, cortex_reads="{reads}")'
+    )
+
+
 def _code_winners(units: int) -> int:
     """The active units of a code of ``units``: one in ten, at least 24. Too sparse a code
     leaves the cortex and the memory too little overlap between a question and the moment it
@@ -931,7 +977,7 @@ _CONSTRUCTION = frozenset({
     "longterm", *(f"longterm_{name}" for name in _LONGTERM_FOUNDERS),
     "carried_gain",
     *_EPISODIC_SETTINGS, "recall", *(f"recall_{name}" for name in Recall.CONSTRUCTION),
-    *(f"recall_{name}" for name in Recall.CONSTRUCTION_OPTIONS), "code",
+    *(f"recall_{name}" for name in Recall.CONSTRUCTION_OPTIONS), "code", "cortex_reads",
     "learned_code", *(f"learned_code_{name}" for name in LearnedCode.GENES),
     "attention", "apical", "maturity", "tied", "trained", "surprise", "bound", "voice",
 })
@@ -1137,9 +1183,15 @@ def _load_composition(value: Any, learner: Learner) -> dict[str, Any] | None:
                 "sensory_scale", "working_memory_scale", "seed"}
     if not isinstance(value, dict) or set(value) - {
         "history_scale", "recall_scale", "image", "code", "learned_code", "attention", "apical",
-        "learned_fields", "ports", "tied", "fields_motor",
+        "learned_fields", "ports", "tied", "fields_motor", "cortex_reads",
     } != expected:
         raise ValueError("invalid saved composition provenance")
+    if "cortex_reads" in value and (
+        value["cortex_reads"] not in ("both", "observation")
+        or ("code" in value) != (value["cortex_reads"] == "both")
+        or "image" in value
+    ):
+        raise ValueError("invalid saved composition cortex_reads")
     if "tied" in value and not _saved_tied(value["tied"]):
         raise ValueError("invalid saved composition tied projections")
     compartment = learner.brain.apical
@@ -2063,6 +2115,8 @@ def _saved_features(saved: Mapping[str, Any]) -> list[str]:
         out.append("surprise")
     if "bound" in saved:
         out.append("bound")
+    if "cortex_reads" in saved:
+        out.append("cortex_reads")
     memories = saved.get("memories")
     if not isinstance(memories, dict):
         return sorted(out)
@@ -2345,12 +2399,14 @@ def _layout(
     ports: int = 0,
     tied: Any = None,
     fields_motor: float = 0.0,
+    cortex_reads: str | None = "code",
 ) -> tuple[Genome, dict[str, Any]]:
     """The layout ``Brain.compose`` develops (``Genome.composed``) and the settings it resolved.
     ``options`` are compose's other settings; the efference copy, the heard history, the recall
     memory and the learned code's ``cortex`` and ``identity`` add regions and projections, and
     the rest do not change the layout. ``tied`` marks projections of the layout as tied
-    (``Projection.tied``), each named by its two regions."""
+    (``Projection.tied``), each named by its two regions. ``cortex_reads`` (with ``code``) is
+    what the sensory regions hold: the code, the observation itself, or both."""
     for name in options:
         refusal = rescaled(name)
         if refusal is not None:
@@ -2391,7 +2447,12 @@ def _layout(
             "ports are read beside learned fields: inputs=(height, width[, channels]) with "
             "learned_fields=features"
         )
-    coded_cortex = bool(units) and image is None
+    reads = _cortex_reads(cortex_reads)
+    if reads != "code" and (not units or image is not None):
+        raise ValueError(
+            _cortex_reads_refusal(reads, image=image is not None, learned=bool(learned))
+        )
+    coded_cortex = bool(units) and image is None and reads != "observation"
     sensory_width = units if coded_cortex else inputs
     if fields:
         sensory_width = _learned_fields_width(fields) + beside
@@ -2571,6 +2632,14 @@ def _layout(
                 projections.append(
                     Projection(name, "motor", scale=longterm["motor"], reciprocal=False)
                 )
+    if reads == "both":
+        # Appended last, after every memory: the brain whose cortex reads both is the brain whose
+        # cortex reads the code plus one neuron per input, which holds the observation itself,
+        # and their one projection into the first module at the sensory scale
+        regions.append(Region(_OBSERVATION, inputs))
+        projections.append(
+            Projection(_OBSERVATION, names[0], scale=sensory_scale, reciprocal=False)
+        )
     shared = _tied_map(tied)
     for (pre, post), blocks in shared.items():
         # one set of synapses for every block of a projection of this layout
@@ -2616,6 +2685,7 @@ def _layout(
         "fields": fields,
         "ports": beside,
         "coded_cortex": coded_cortex,
+        "cortex_reads": reads,
         "image": image,
         "lateral": lateral,
         "widths": widths,
@@ -2677,7 +2747,14 @@ class Brain:
     cortex reads and every memory keys on. With
     ``inputs`` (the width of the observations) the sensory region is the code: every
     observation is coded before the drive, and ``inputs`` must then be named beside a
-    ``code`` of the region's width.
+    ``code`` of the region's width. ``cortex_reads`` (with ``code``) names what the cortex
+    reads: ``"code"`` (with ``inputs``), ``"observation"`` (without ``inputs``: the sensory
+    region holds the observation itself) or ``"both"`` (with ``inputs`` and a population named
+    ``observation`` of one neuron per input, which holds the observation itself beside the
+    code, ``observation_index``); unset, the code with ``inputs`` and the observation without.
+    Every memory keys on the code whichever the cortex reads; ``"observation"`` refuses a held
+    message, which hears what the sensory region holds. A population named ``observation`` is
+    driven only with ``"both"``.
     ``sparse_code`` holds the ``PatternSeparator``, ``code_width`` the key width
     (``Genome.observation_width`` gives it before the brain is built, to size the ``recall`` and
     ``next`` regions of a custom anatomy). A memory keyed on the code numbers its key
@@ -2741,6 +2818,7 @@ class Brain:
         precision: str | None = None,
         inputs: int | None = None,
         code: int | None = None,
+        cortex_reads: str | None = None,
         learned_code: int | None = None,
         apical: float = 0.0,
         dense_limit: int | None = None,
@@ -2800,6 +2878,41 @@ class Brain:
                 f"with inputs the sensory region is the code: {len(self.sensory_index)} "
                 f"neurons for a code of {units} units"
             )
+        # what the cortex reads of a fixed code (``cortex_reads``): unset, the code where
+        # ``inputs`` is named and the observation itself where it is not
+        if cortex_reads is None:
+            reads = "code" if self.coded_cortex else "observation"
+        else:
+            reads = _cortex_reads(cortex_reads)
+            if not units or self.fields is not None or sensory != "sensory":
+                raise ValueError(_cortex_reads_refusal(
+                    reads, image=self.fields is not None or sensory != "sensory",
+                    learned=bool(learned_code),
+                ))
+            if reads == "observation" and self.coded_cortex:
+                raise ValueError(
+                    'cortex_reads="observation" holds the observation itself in the sensory '
+                    "region: pass no inputs"
+                )
+            if reads != "observation" and not self.coded_cortex:
+                raise ValueError(
+                    f'cortex_reads="{reads}" makes the sensory region the code: pass inputs, the '
+                    "width of the observations"
+                )
+        self._cortex_reads = reads
+        observed = populations.get(_OBSERVATION) if reads == "both" else None
+        if reads == "both" and (observed is None or len(observed) != self.inputs):
+            raise ValueError(
+                f'cortex_reads="both" holds the observation itself in a population named '
+                f"{_OBSERVATION!r} of {self.inputs} neurons beside the code; Brain.compose adds it"
+            )
+        # the neurons the observation drives: the sensory region, then with cortex_reads="both"
+        # the observation region, which holds the observation itself beside the code
+        self.observation_index = np.asarray(() if observed is None else observed, dtype=np.int64)
+        self._sensed_index = (
+            self.sensory_index if observed is None
+            else np.concatenate([self.sensory_index, self.observation_index])
+        )
         self.sparse_code: PatternSeparator | None = (
             _sparse_code(self.inputs, units, _code_seed(seed)) if units else None
         )
@@ -2813,8 +2926,6 @@ class Brain:
             raise ValueError(_LEARNED_CODE_TOGETHER)
         if learned and sensory != "sensory":
             raise ValueError("a learned code needs a vector brain with a 'sensory' population")
-        if learned and backend == "torch":
-            raise ValueError("a learned code settles on the cpu or mlx backend in this version")
         for name in ("code", "prefrontal") if learned else ():
             if name not in populations:
                 raise ValueError(
@@ -2841,6 +2952,12 @@ class Brain:
         self._coded_keys = bool(units) or bool(learned) or self.fields is not None
         recalled = _recall_genes(recall, genes)  # the recall_* genes leave ``genes`` here
         messaged = _message_genes(message, genes)  # and the message_* genes here
+        if messaged and cortex_reads == "observation":
+            raise ValueError(
+                'cortex_reads="observation" holds the observation itself in the sensory region, '
+                "which a held message hears and long-term records key on: compose the brain with "
+                'cortex_reads="both", whose sensory region and message hold the code'
+            )
         for name in [name for name in genes if name.startswith("message_")]:
             del genes[name]
         kept_records = _longterm_genes(longterm, genes)  # and the longterm_* genes here
@@ -2951,6 +3068,8 @@ class Brain:
         # dopamine leave them alone.
         self.learned_code: LearnedCode | None = None
         self._code_synapses: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+        # on torch: the region's synapses as one array, which the kernel indexes once
+        self._code_region: np.ndarray | None = None
         # the neurons that read a learned code at unit length (``_learned_code_forward``)
         self._code_readers: np.ndarray = self.association_index
         plastic_synapses = plastic_neurons = None
@@ -2962,6 +3081,11 @@ class Brain:
                 seed=seed,
                 **{name: learned[name] for name in LearnedCode.GENES},
             )
+            kernel = brain._torch
+            if kernel is not None and kernel.device.type != "mps":
+                # on torch the region's own phase runs on the brain's device, in float64
+                # whatever the brain's precision; MPS has no float64, and keeps it on the host
+                self.learned_code.place(kernel.device)
             self._code_synapses = self._learned_code_synapses()
             self._code_forward = self._learned_code_forward()
             # the first module reads the code alone: the sensory neurons project to the code
@@ -3512,6 +3636,30 @@ class Brain:
         weights and predictor act in the region's own phase."""
         code = self.learned_code
         assert code is not None
+        kernel = graph._torch
+        if kernel is not None:
+            # on a torch device the parameters rest there and the kernel takes the new ones in
+            # place, as it takes a lesson's: its plan and workspaces stay, and a state settled
+            # on it continues on it
+            torch = kernel.torch
+            scale, placed = kernel.scale, kernel.bias_param.clone()
+            placed[kernel.index_of(self.code_index)] = kernel._placed(-code.thresholds)
+            region = self._code_region
+            if region is None:
+                region = self._code_region = np.concatenate(
+                    [synapses for synapses, _, _ in self._code_synapses.values()]
+                )
+            index = kernel.index_of(region)
+            # every one of the region's synapses +0.0: read as integers, a negative zero is not
+            whole = torch.int64 if scale.dtype == torch.float64 else torch.int32
+            moved = bool(scale[index].view(whole).any().item())
+            if moved:
+                scale = scale.clone()
+                scale[index] = 0.0
+            installed = graph._with_device_parameters(scale, placed)
+            if not moved:  # the same synapses: what the host has read of them holds
+                installed._efficacy, installed._weights_host = graph._efficacy, graph._weights_host
+            return installed
         efficacy, bias = graph.efficacy, graph.bias.copy()
         bias[self.code_index] = -code.thresholds
         regions = [synapses for synapses, _, _ in self._code_synapses.values()]
@@ -3522,6 +3670,23 @@ class Brain:
         for synapses in regions:
             efficacy[synapses] = 0.0
         return graph.with_parameters(efficacy=efficacy, bias=bias)
+
+    def _code_installed(self, graph: NeuralGraph) -> bool:
+        """Whether ``graph`` holds what ``_installed`` gives it, entry for entry: the region's
+        synapses at zero and the code units' biases the negated thresholds, as float64 holds them
+        or as a float32 device does (a file a float32 brain saved, or a file read onto one). A
+        read, on the host, of a graph on any backend; a loaded file's parameters are checked by
+        it."""
+        code = self.learned_code
+        assert code is not None
+        efficacy, bias = graph.efficacy, graph.bias
+        if any(efficacy[synapses].any() for synapses, _, _ in self._code_synapses.values()):
+            return False
+        held, wanted = bias[self.code_index], -code.thresholds
+        return bool(
+            np.array_equal(held, wanted)
+            or np.array_equal(held, wanted.astype(np.float32).astype(np.float64))
+        )
 
     def _learn_code(self, state: BrainState) -> None:
         """The learned code's step from an accepted moment's settled ``state``: the sensory,
@@ -3585,6 +3750,7 @@ class Brain:
         features: int = 8,
         field: int = 3,
         code: int | None = None,
+        cortex_reads: str | None = "code",
         learned_code: int | None = None,
         attention: bool = False,
         seed: int = 0,
@@ -3632,7 +3798,12 @@ class Brain:
         ``"sensory"`` and ``"trace"`` projections.
 
         ``code=units`` keys the memories on a fixed sparse code of the observation and, on a
-        vector brain, makes the sensory region that code. ``learned_code=units`` places a region
+        vector brain, makes the sensory region that code. ``cortex_reads`` (with ``code``, on a
+        vector brain) is what the cortex reads: ``"code"`` (the founder), ``"both"`` (the code,
+        and the observation itself in a region of one neuron per input, ``observation``, that
+        projects into the first module beside it) or ``"observation"`` (the observation itself,
+        the code keying the memories alone); every memory keys on the code whichever it reads.
+        ``learned_code=units`` places a region
         between the senses and the first module that settles to a learned sparse code, which the
         cortex reads and the memories key on; ``attention=True`` is the recall recipe for it.
         ``learned_fields=features`` (an image brain) reads the image through that many receptive
@@ -3690,7 +3861,8 @@ class Brain:
                 observers=observers, lateral=lateral, teaching=teaching, scales=scales,
                 features=features, field=field, code=code, learned_code=learned_code,
                 attention=attention, seed=seed, slots=slots, learned_fields=learned_fields,
-                ports=ports, tied=tied, fields_motor=fields_motor, options=options,
+                ports=ports, tied=tied, fields_motor=fields_motor, cortex_reads=cortex_reads,
+                options=options,
             )
         if inputs is None or actions is None:
             raise TypeError(
@@ -3711,7 +3883,8 @@ class Brain:
                 observers=observers, lateral=lateral, teaching=teaching, scales=scales,
                 features=features, field=field, code=code, learned_code=learned_code,
                 attention=attention, seed=seed, slots=slots, learned_fields=learned_fields,
-                ports=ports, tied=tied, fields_motor=fields_motor, options=options,
+                ports=ports, tied=tied, fields_motor=fields_motor, cortex_reads=cortex_reads,
+                options=options,
             )
         if not isinstance(attention, bool):
             raise ValueError("attention must be boolean")
@@ -3773,7 +3946,7 @@ class Brain:
             scales=scales, features=features, field=field, code=code,
             learned_code=learned_code, seed=seed, slots=slots, learned_fields=learned_fields,
             ports=ports, tied=None if connectome is not None else tied,
-            fields_motor=fields_motor,
+            fields_motor=fields_motor, cortex_reads=cortex_reads,
         )
         # the tied projections by the connectome's populations: the layout's own, or the ones
         # the caller names on a custom anatomy
@@ -3840,6 +4013,8 @@ class Brain:
                          "ports": layout["ports"]}
             if shared:
                 place = {**place, "tied": shared}
+            if layout["cortex_reads"] != "code":
+                place = {**place, "cortex_reads": layout["cortex_reads"]}
             return cls(
                 connectome, seed=seed, slots=slots, code=units,
                 inputs=layout["inputs"] if layout["coded_cortex"] else None,
@@ -3907,6 +4082,8 @@ class Brain:
             result._composition["image"] = list(layout["image"])
         if layout["coded_cortex"]:
             result._composition["code"] = units
+        if layout["cortex_reads"] != "code":
+            result._composition["cortex_reads"] = layout["cortex_reads"]
         if learned:
             result._composition["learned_code"] = learned
         if layout["fields"]:
@@ -4372,6 +4549,9 @@ class Brain:
             genes.update({f"learned_code_{name}": value for name, value in learned.genes().items()})
         if self.attention:
             genes["attention"] = True
+        if self._cortex_reads == "both" or (
+                self._composition is not None and "cortex_reads" in self._composition):
+            genes["cortex_reads"] = self._cortex_reads
         if self.surprise is not None and self.orienting is not None:
             genes["surprise"] = {**self.surprise.settings(), **self.orienting.settings()}
         if self.bound is not None:
@@ -4402,7 +4582,8 @@ class Brain:
                     else (0 if self.sparse_code is None else int(self.sparse_code.expansion)),
                     "fan_in": 0 if self.sparse_code is None else int(self.sparse_code.fan_in),
                     "winners": 0 if self.sparse_code is None else int(self.sparse_code.winners),
-                    "cortex": "code" if self.coded_cortex or learned is not None
+                    "cortex": "both" if self._cortex_reads == "both"
+                    else "code" if self.coded_cortex or learned is not None
                     else "observation",
                     "separator": None
                     if self.hippocampus is None or self.hippocampus.separator is None
@@ -4853,7 +5034,11 @@ class Brain:
             steps = state.steps
         bias = self.brain.bias
         for index in (self.sensory_index, self.prefrontal_index):
-            v[:, index] = drive[:, index] + bias[index]
+            if _resident(drive):  # a drive on its device: these columns alone come to the host
+                columns = _host_copy(drive[:, self.brain._torch.index_of(index)])
+            else:
+                columns = drive[:, index]
+            v[:, index] = columns + bias[index]
         v[:, self.code_index] = np.atleast_2d(coded[2].v)
         a[:, self.code_index] = np.atleast_2d(coded[2].adaptation)
         return BrainState(v, self.brain.neuron_model.activation(v), a, steps)
@@ -4864,8 +5049,11 @@ class Brain:
         return self._code(observations) if code is None else code
 
     def _sensed(self, x: np.ndarray, code: np.ndarray) -> np.ndarray:
-        """What the sensory neurons are given: the observations, or with a coded cortex their
-        code."""
+        """What the neurons the observation drives are given (``_sensed_index``): the
+        observations, or with a coded cortex their code, and with ``cortex_reads="both"`` the
+        code followed by the observations themselves."""
+        if len(self.observation_index):
+            return np.concatenate([code, x], axis=1)
         return code if self.coded_cortex else x
 
     def _heard(self, x: np.ndarray, code: np.ndarray) -> np.ndarray:
@@ -5054,12 +5242,13 @@ class Brain:
 
     @property
     def _sensory_columns(self) -> slice | np.ndarray:
-        """The sensory neurons as a slice where they are one range (``stream.columns``)."""
+        """The neurons the observation drives (``_sensed_index``) as a slice where they are one
+        range (``stream.columns``)."""
         held = self.__dict__.get("_sensory_held")
-        if held is None or held[0] is not self.sensory_index:
+        if held is None or held[0] is not self._sensed_index:
             from .stream import columns as contiguous
 
-            held = (self.sensory_index, contiguous(self.sensory_index))
+            held = (self._sensed_index, contiguous(self._sensed_index))
             self.__dict__["_sensory_held"] = held
         return held[1]
 
@@ -5103,7 +5292,7 @@ class Brain:
             drive = self._resident_drive(kernel, x, code)
         else:
             drive = np.zeros((len(x), self.connectome.n))
-            drive[:, self.sensory_index] = (
+            drive[:, self._sensed_index] = (
                 self._sensed(x, code) * self.brain.neuron_model.stimulus_amplitude
             )
         region = self.learned_code
@@ -5237,7 +5426,7 @@ class Brain:
         and the settle reads it: nothing of it comes to the host."""
         xp = arrays_of(kernel)
         drive = xp.zeros((len(x), self.connectome.n))
-        drive[:, xp.columns(kernel.index_of(self.sensory_index))] = kernel.observed(
+        drive[:, xp.columns(kernel.index_of(self._sensed_index))] = kernel.observed(
             self._sensed(x, code)
         ) * self.brain.neuron_model.stimulus_amplitude
         return drive
@@ -7743,6 +7932,13 @@ class Brain:
             features.append("surprise")
         if self.bound is not None:
             features.append("bound")
+        # what the cortex reads, where a file must name it: beside the code, and in place of it
+        # in a composed brain (a brain of an anatomy of its own that reads the observation is
+        # the brain of code=units without inputs, which the formats before read)
+        reads = self._cortex_reads if self._cortex_reads == "both" or (
+            self._composition is not None and "cortex_reads" in self._composition) else None
+        if reads is not None:
+            features.append("cortex_reads")
         if self.longterm is not None and (
                 self.longterm.attention is not None or self.longterm.motor):
             features.append("heads")
@@ -7770,6 +7966,8 @@ class Brain:
         }
         if features:
             metadata["features"] = features
+        if reads is not None:
+            metadata["cortex_reads"] = reads
         # what it ran on, where that is not the CPU by name: such a file keeps its bytes
         ran_on = self.placement
         if ran_on["backend"] != "cpu" or ran_on["chosen_by"] == "auto":
@@ -8021,6 +8219,15 @@ class Brain:
             code = _load_code(
                 meta, data, len(populations.get("sensory", populations.get("visual/input", ())))
             )
+            # what the cortex reads beside or in place of the code, where the file names it
+            reads = meta.get("cortex_reads")
+            if reads is not None and (
+                reads not in ("both", "observation") or code is None
+                or code[2] != (reads == "both")
+            ):
+                raise ValueError("invalid saved cortex_reads")
+            if composition is not None and composition.get("cortex_reads") not in (None, reads):
+                raise ValueError("saved cortex_reads disagrees with composition provenance")
             learned = _validate_learned_code(meta, data, learner)
             fields = _load_fields(
                 meta, data, len(populations.get("sensory", populations.get("visual/input", ())))
@@ -8066,6 +8273,7 @@ class Brain:
                 slots=[int(k) for k in learner.slot_sizes],
                 code=0 if code is None else code[1].expansion,
                 inputs=code[0] if code is not None and code[2] else None,
+                cortex_reads=reads,
                 learned_code=learned or None,
                 learned_fields=None if fields is None else fields[0].features,
                 image=None if fields is None else (
@@ -8146,14 +8354,14 @@ class Brain:
                 region.work.update(
                     {k: int(v) for k, v in meta["learned_code"]["work"].items() if k in region.work}
                 )
-                installed = result._installed(learner.brain)
-                if not np.array_equal(installed.efficacy, learner.brain.efficacy) or not (
-                    np.array_equal(installed.bias, learner.brain.bias)
-                ):
+                if not result._code_installed(learner.brain):
                     raise ValueError(
                         "the saved learned code tables disagree with the saved synapses and "
                         "biases of the code region"
                     )
+                kernel = learner.brain._torch
+                if kernel is not None and kernel.device.type != "mps":
+                    region.place(kernel.device)  # the region's phase where the loaded brain runs
                 # the region's phase at the step it was saved at, and its two switches
                 region.restep(int(meta["learned_code"]["stepping"]))
                 region.learning = bool(meta["learned_code"]["learning"])
@@ -8559,6 +8767,7 @@ _GROW_LOOP = frozenset(
         "features",
         "field",
         "code",
+        "cortex_reads",
         "learned_code",
         "attention",
         "apical",
@@ -8884,6 +9093,8 @@ def _composed_again(brain: Brain) -> tuple[Any, int, dict[str, Any]]:
         settings["code"] = composition["code"]
     elif brain.sparse_code is not None:  # an image brain's memories key on the code alone
         settings["code"] = int(brain.sparse_code.expansion)
+    if "cortex_reads" in composition:  # what the cortex reads beside or in place of the code
+        settings["cortex_reads"] = composition["cortex_reads"]
     for name in ("learned_code", "apical"):
         if name in composition:
             settings[name] = composition[name]

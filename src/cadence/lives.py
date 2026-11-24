@@ -1802,6 +1802,10 @@ def _supported(brain: Any, backend: str = "cpu") -> None:
         - (brain.history is not None) != 1
     ):
         raise refuse("a store of place records keyed on the observations, without a separator")
+    if len(getattr(brain, "observation_index", ())) or "cortex_reads" in (
+            getattr(brain, "_composition", None) or {}):
+        raise refuse("no code of the observation, and so no cortex_reads: compose lone brains "
+                     "with Brain.compose(..., code=units, cortex_reads=...)")
     if getattr(brain, "_coded_keys", False):
         raise refuse("no code of the observation (a code is drawn from a brain's seed)")
     recall = brain.recall

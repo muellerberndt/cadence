@@ -15,9 +15,8 @@ Cadence is designed the same way: its connections change locally while the brain
 
 There is no separate training phase and no inference mode: the brain you train is the brain that
 acts, and it keeps its memories from one moment to the next. The default brain, **System 1**,
-has a processing region, a working trace, a heard history of the moment before, a recall memory
-of recent moments and an associative memory of what paid. Optional **System 2** observer regions settle in the same brain and add
-recursive feedback.
+holds a processing region and four memories ([the default brain](modules.md#the-default-brain)).
+Optional **System 2** observer regions settle in the same brain and add recursive feedback.
 
 Cadence is research software. It is a good fit if you want to study or build agents that learn
 continuously from experience; [Cadence for machine-learning readers](../README.md#for-machine-learning-readers)
@@ -26,7 +25,7 @@ compares it with networks trained by backpropagation.
 ## Install
 
 ```sh
-python -m pip install cadence-net==0.101.0
+python -m pip install cadence-net==0.102.0
 ```
 
 Cadence needs Python 3.11 or later and NumPy. Optional extras add speed and hardware:
@@ -37,10 +36,10 @@ Cadence needs Python 3.11 or later and NumPy. Optional extras add speed and hard
 | `[accel]` | PyTorch | NVIDIA GPUs (CUDA) |
 | `[apple]` | MLX | Apple silicon GPUs |
 
-For example `python -m pip install "cadence-net[fast]==0.101.0"`. From a checkout of the
+For example `python -m pip install "cadence-net[fast]==0.102.0"`. From a checkout of the
 repository, run `python -m pip install -e .` at its root. A new brain picks the fastest backend
 the machine has for its size by itself ([backends](backends.md)). The
-[v0.101.0 documentation](https://github.com/muellerberndt/cadence/blob/v0.101.0/docs/README.md)
+[v0.102.0 documentation](https://github.com/muellerberndt/cadence/blob/v0.102.0/docs/README.md)
 is pinned to the release tag.
 
 ## Your first brain
@@ -97,6 +96,8 @@ Each idea builds on the one before. [Start here](start.md) shows each with a run
 
 Then, as your brain needs them:
 
+- [A continuing life](life.md): `live` and when it learns, refusals, outcomes that arrive
+  later, surprise and the focus, imagination, resets and saved continuation.
 - [Parts of a brain](modules.md): the catalogue of every part a brain can be built from, whole
   brains composed for a purpose, and the modules that arrive as files.
 - [Train a brain](teach.md): lessons, rewards, distillation, rare classes, curricula, rates,
@@ -132,11 +133,12 @@ Then, as your brain needs them:
 | To train on a dataset, a teacher, rewards or another brain | `lesson`, `step`, `targets=`, `weights=` | [Train a brain](teach.md) |
 | The world to pay for good actions | `step(reward=...)`, `live`, `actor_eta` | [Learning from reward](reward.md) |
 | A memory for a task | the comparison table | [Memory](memory.md) |
-| Wide inputs: images, codes | image `inputs`, `code=units`, `learned_code=units` | [Wide inputs](senses.md) |
+| Senses: images, continuous readings, codes | image `inputs`, `cd.PopulationCode`, `code=units`, `learned_code=units` | [Senses](senses.md) |
 | Several senses, each declared once and given by name; a brain that reads a map of things itself | `senses={name: width}`, `trained=["place"]` | [Senses by name](senses.md#senses-by-name), [a brain that knows where things are](modules.md#a-brain-that-knows-where-things-are) |
+| A body that acts on where things are from it (a bearing, a distance), its memories keyed on a fixed code | `code=units, cortex_reads="both"` (opt-in) | [What the cortex reads](senses.md#what-the-cortex-reads), [a body that acts on what it senses](assembly.md#a-body-that-acts-on-what-it-senses) |
 | A speech recogniser from recordings and transcripts, adapted to a speaker, on live audio | `cadence.speech` (opt-in) | [Speech](speech.md) |
 | To track where things are, in view and out of it, by kind and by place, and where a hidden thing that moves has gone | `cadence.space` (opt-in): `Map`, `Map(physics=True)`, `forecast` | [Space: tracking what is where](space.md) |
-| A signal for what a moment brought that the brain did not carry, and one focus drawn by it | `surprise=True` (opt-in): `brain.surprise`, `brain.focus`, `Map(surprise=True)` | [Surprise, and the focus it draws](start.md#surprise-and-the-focus-it-draws-opt-in) |
+| A signal for what a moment brought that the brain did not carry, and one focus drawn by it | `surprise=True` (opt-in): `brain.surprise`, `brain.focus`, `Map(surprise=True)` | [Surprise, and the focus it draws](life.md#surprise-and-the-focus-it-draws-opt-in) |
 | A sound that stands for a thing: a sound heard alone brings the thing back, a voice says what a thing was named, a reward makes a said sound the answer, a heard name draws the focus | `bound=records`, `voice="ear"`, `complete`, `say`, `cadence.senses.Things`, `Ear` (opt-in) | [Records of bound moments](memory.md#records-of-bound-moments-opt-in), [a sense for things and an ear](senses.md#a-sense-for-things-and-an-ear) |
 | To read or change a living brain | `describe`, `retune`, `last_settlement` | [Tune and read a living brain](tune.md) |
 | A deep or wide brain | `modules=(64, 32, 32)`, `apical=0.25`, `teaching="deep"` | [Larger brains](tune.md#larger-brains) |
@@ -145,7 +147,7 @@ Then, as your brain needs them:
 | To give a trained brain a memory, more outputs or another brain's regions | `grow`, `graft` | [Grow and combine brains](grow.md) |
 | A module that arrives as a file: the built-in map of things, or a trained brain's regions of your own | `trained=["place"]`, `cd.modules.load("place")`, `cd.load_module(path)`, `brain.space`, `save_module`, `trained=[module]`, `graft(module)` | [Modules](modules.md#modules-parts-that-arrive-as-files) |
 | To show a result | baselines, controls, receipts | [Evaluate a brain](evaluate.md) |
-| To design a continuing application or a behavioural claim | observation and action boundaries, acquisition and recovery | [Task design](task-design.md), [the design direction](world-model.md) |
+| To design a continuing application or a behavioural claim | observation and action boundaries, acquisition and recovery | [Evaluate a brain](evaluate.md), [the design direction](world-model.md) |
 | Your own regions, a connectome, evolution | `Genome`, `develop`, `compose(connectome=)`, `evolve` | [Your own anatomy](anatomy.md) |
 | How the graph settles and learns, in full | the neuron, the free/nudged rule, the certificate | [How the brain settles](settling.md) |
 | A symptom remedied | symptom to remedy | [Troubleshooting](troubleshooting.md) |

@@ -12,7 +12,7 @@ difference, one number broadcast to every synapse like dopamine, turns every tra
 change: actions that did better than expected become likelier, actions that did worse less
 likely. No error is sent backward through the network.
 
-`Brain.step` and an aroused [`Brain.live`](start.md#routine-and-repair-live) take the reward of the
+`Brain.step` and an aroused [`Brain.live`](life.md#routine-and-repair-live) take the reward of the
 preceding action and return the next one:
 
 ```python
@@ -32,7 +32,7 @@ for _ in range(300):
 | Use | When | Learns |
 | --- | --- | --- |
 | `step(observations, reward=...)` | many streams, explicit control, every outcome should teach | from every outcome |
-| `live(observation, reward=...)` with `arousal=True` | one creature living one life | while young, surprised or wanting ([routine and repair](start.md#routine-and-repair-live)) |
+| `live(observation, reward=...)` with `arousal=True` | one creature living one life | while young, surprised or wanting ([routine and repair](life.md#routine-and-repair-live)) |
 | `act` then `learn(reward, done, next_observations)` | your body times the two halves of a moment | from that outcome ([by hand](tune.md#one-experience-step-by-hand)) |
 
 Use reward when outcomes pay actions: bandits, reversing rules, rewards a few choices later
@@ -99,7 +99,7 @@ of lessons alone.
 - `learn(reward, done, next_drive, bootstrap=None, *, observed=None, warm=None)`: `observed`
   marks real rows (at least one); padding rows are left out of plasticity and statistics
   and their traces reset. `warm` is the state to settle the next state from when the
-  stream moved on ([`Brain.wait`](start.md#outcomes-that-arrive-later-wait)).
+  stream moved on ([`Brain.wait`](life.md#outcomes-that-arrive-later-wait)).
 - `value(state)`, `value_of(drive)` (settled cold, cache untouched), `probabilities(state,
   temperature=None, *, bias=None)` (`(batch, slots, max_size)`, zero-padded, for several
   slots), `state` (the latest free phase), `fade(done=None)`, `reset()`. `salience`, a
@@ -252,7 +252,7 @@ timed.step(last, reward=np.array([0.5, 0.0]), done=cut, bootstrap=bootstrap)
 the row with the working trace, the efference copy, the heard history, the recall memory's slots
 and the place records as they stand, settled from the stream's activity (from rest before the
 brain has acted), and the critic's value of that state. The memories enter because the episode
-was cut, not ended: had it gone on, its next state would have read them. The read writes nothing
+was cut before its end: had it gone on, its next state would have read them. The read writes nothing
 and leaves the streams, traces, pending action, records, parameters and random generators as they
 were. Without the store a truncated row bootstrapped this way takes the dopamine of a row that goes
 on, to the bit. With the store the two part by the outcome's own record: `learn` writes the
@@ -372,7 +372,7 @@ action that pays most often. The readings below come from the
    competing one.
 4. **Choose `live` or `step` after the caregiver leaves.** `live` learns only while aroused,
    by a surprising outcome or by pay below what life usually brings; `step` learns from every
-   outcome ([routine and repair](start.md#routine-and-repair-live)). Which path erodes a taught
+   outcome ([routine and repair](life.md#routine-and-repair-live)). Which path erodes a taught
    chain depends on the founder. Where most surprises are punishments, `live` alone does not
    hold the skill, an averaged record holds a little more and a frozen store holds it (item 3).
    Teach by demonstration and correction through the episodic memory
@@ -504,7 +504,7 @@ def walk_school(rate, steps=600):
     rng = np.random.default_rng(1)
     place = np.full(4, cells // 2)                  # four streams, each walking from the middle
     walker.step(np.eye(cells)[place])
-    for _ in range(steps):                          # the demonstrator's steps run, not the brain's
+    for _ in range(steps):                          # the demonstrator's steps run
         place = place + rng.choice([-1, 1], size=4)
         reward = np.select([place == cells - 1, place == 0], [1.0, -1.0], 0.0)
         done = (place == 0) | (place == cells - 1)
@@ -554,7 +554,7 @@ Teach the outcome slot 1 for a moment of a game that was won and 0 for one lost 
   shuffled outcomes too, so the cost is the second slot's. On varied outcomes the brain played
   slightly better against fixed opponents.
 
-The composed critic reads the association region, not the slot; `probabilities` reads the
+The composed critic reads the association region; `probabilities` reads the
 slot's choice among its two outcomes.
 
 ## A reward many moments after the decision

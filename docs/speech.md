@@ -32,6 +32,19 @@ rng = np.random.default_rng(0)
 second = rng.standard_normal(16000) * np.abs(np.sin(np.linspace(0, 20, 16000)))  # 1 s of "audio"
 ```
 
+The whole path in a few lines: a second of audio becomes one row a 40 ms step, a brain hears the
+rows one by one and says a symbol at each, and the symbols are read as text. This brain has
+learned nothing, so its text is noise; the sections below teach it from transcripts.
+
+```python
+frames = log_mel(second)                              # 10 ms frames of 40 bands
+steps = Hearing.fit([frames]).steps(frames)           # what a brain hears: one row a 40 ms step
+alphabet = Alphabet()                                 # blank, a-z, the apostrophe, space
+listener = Brain.compose((40, 24), alphabet.size, learned_fields=16, seed=0)
+said = [int(listener.act(step[None], greedy=True)[0]) for step in steps]   # a symbol a step
+text = alphabet.decode(collapse(said))                # repeats and blanks dropped: the text
+```
+
 ## Hearing: audio as an image
 
 Audio at 16,000 samples a second becomes log-mel energies: 40 frequency bands, one frame every
@@ -102,7 +115,7 @@ end and is taught blank there. The chamber trains 32 utterances side by side.
 
 ## Training from transcripts
 
-A transcript says which letters an utterance holds, not when. Each step's lesson needs a
+A transcript says which letters an utterance holds and leaves out when. Each step's lesson needs a
 letter, so a teacher chooses one: the best path of the transcript through the brain's own
 beliefs at each step, blank allowed on any step and required between a letter and the same
 letter after it (the forced alignment of CTC, `align.forced_path`). Before the brain believes

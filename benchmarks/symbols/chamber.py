@@ -39,6 +39,9 @@ and is read at each step. The world and the trainer are in ``world.py``.
    screen (the map holds it unseen). Control: the same after Listen alone.
 
     PYTHONPATH=src python benchmarks/symbols/chamber.py --founders 0 1 --out dev.json
+
+``--cortex-reads both`` composes every brain of the life with ``cortex_reads="both"``: the
+cortex reads the senses beside the code, and every memory keys on the code as before.
 """
 
 from __future__ import annotations
@@ -75,6 +78,7 @@ NAMED = ("cup", "apple", "banana", "key")
 ROOMS = 12
 SPOTS = np.array([[-0.6, 0.5], [0.0, 0.6], [0.6, 0.5]])  # where a room's three things stand
 MAP_VALUES = {"hue": 8, "shape": 24, "surface": 8}
+READS = "code"  # what the cortex reads beside the code (``--cortex-reads``; 0.102.0)
 
 
 def setting() -> tuple[cd.senses.Things, Ear, Words]:
@@ -86,6 +90,8 @@ def compose(founder: int, things: Any, ear: Ear, *, space: Any = None) -> cd.Bra
     options: dict[str, Any] = {}
     if space is not None:
         options.update(trained=[space], surprise=True)
+    if READS != "code":
+        options["cortex_reads"] = READS
     return cd.Brain.compose(senses={"eyes": things.widths, "ear": ear.width}, actions=2,
                             code=CODE, bound=RECORDS, voice="ear", arousal=True,
                             modules=MODULES, seed=founder, backend="cpu", **options)
@@ -325,7 +331,8 @@ def life(founder: int) -> dict:
     brain = compose(founder, things, ear)
     listen(brain, words, rng)
     naming(brain, things, words, rng)
-    out: dict[str, Any] = {"founder": founder, "records": int(brain.bound.store.count),
+    out: dict[str, Any] = {"founder": founder, "cortex_reads": READS,
+                           "records": int(brain.bound.store.count),
                            "parameters": int(brain.parameters())}
     out["Y1"] = read_naming(brain, things, words, rng)
     out["Y2"] = read_completion(brain, things, words, rng)
@@ -340,7 +347,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("--founders", nargs="+", type=int, required=True)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--cortex-reads", choices=("code", "both", "observation"), default="code",
+                        help="what the cortex reads beside the code (cadence 0.102.0)")
     args = parser.parse_args(argv)
+    global READS
+    READS = args.cortex_reads
     results = []
     for founder in args.founders:
         results.append(life(founder))
