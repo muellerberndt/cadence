@@ -109,8 +109,10 @@ for name in WRAPPERS:
 
 
 def report():
+    """What was checked and what differed, then the script's verdict (``engine.finish``): a
+    difference fails the page, and so ``run.py``'s exit status."""
     print("checked", {k: v for k, v in checked.items() if v})
     print("failures", len(failures))
     for f in failures[:20]:
         print("  ", f)
-    print("PASS" if not failures else "FAIL")
+    engine.finish(not failures)

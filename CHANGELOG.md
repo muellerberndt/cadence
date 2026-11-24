@@ -96,8 +96,9 @@ The guides are [in a browser](docs/backends.md#in-a-browser) and
 - **A map of things, natively.** The map's products and lengths (a thing's middle, its kind's
   score, a view's distance, sight's share of a bump, a speed) sum entry after entry from zero, as
   NumPy sums them without BLAS, where they ran in BLAS's order; and on the compiled path a
-  report's claims and writes run as kernels that sum in that order. Against 0.102.0 on an Apple
-  M4, over lives of 90 moments of eight maps (with and without values, physics and surprise):
+  report's claims and writes and the moves surprise reads run as kernels that sum in that
+  order. Against 0.102.0 on an Apple M4, over lives of 90 moments of eight maps (with and
+  without values, physics and surprise):
   the place `thing_at` answers moves within 7.2e-15 on a plane 24 wide, on both paths;
   surprise's usual residuals within 1.8e-15 on the compiled path and 8.9e-16 on the NumPy loop;
   and on the compiled path up to 20 of a map's potentials within 3.5e-18. Every kind answered is

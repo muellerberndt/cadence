@@ -260,7 +260,9 @@ class BoundRecords:
         (``cadence.compiled.bound_recall``, the same read)."""
         from . import compiled
 
-        if compiled.available("_bound_recall") and self.store.keys.dtype == np.float64:
+        # a cue of another width than the keys takes the Python, which refuses it
+        if (compiled.available("_bound_recall") and self.store.keys.dtype == np.float64
+                and np.shape(code) == self.store.keys.shape[1:]):
             return compiled.bound_recall(self, code)
         return self._agreed(self._taking(code), row)
 

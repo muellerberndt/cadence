@@ -975,22 +975,24 @@ Pyodide; the Python of each part is the reference, and `CADENCE_FUSED=0`, a trac
 `settle_batch` takes it. A map's moment takes 1.16 ms compiled against
 1.77 in Python on an Apple M4, and 1.52 against 2.72 under
 Pyodide. In Chromium each part equals its Python to the bit (`maps.py`, `records.py`, `pieces.py`).
-Natively the pieces are the same cells in the same order and the bound read the same fields; the
-map's settle, pieces and moves equal their Python to the bit on an Apple M4 and a report's writes
-within 4e-18, and the tests hold every part within 1e-9, since another machine's BLAS and `tanh`
-round the last bits their own way (`tests/test_compiled_map.py`, `tests/test_compiled_bound.py`).
+Natively the pieces are the same cells in the same order and the bound read the same fields. On
+an Apple M4 the map's settle, pieces and written values equal their Python to the bit, a report's
+writes lie within 2e-17 of it, and the moves within 1e-14: their Python sums a thing's middle and
+a distance in BLAS's order and the kernel in order, so surprise reads within 2e-14 on the two.
+The tests hold every part within 1e-9, since another machine's BLAS and `tanh` round the last
+bits their own way (`tests/test_compiled_map.py`, `tests/test_compiled_bound.py`).
 A free solve of a graph with an apical compartment runs in one compiled call, to the bit of its
 launches (`tests/test_fused_solve_apical.py`).
 
 Natively a block in which no neuron receives more than one synapse is read by its synapses
 (`fused.sparse_offset`): the map of things' one-to-one sheet (512 synapses in a block of 262,144
-entries on an 8 by 8 map with 8 units a cell) and a block that holds none, such as an apical brain's blocks
-where only basal synapses arrive. Its product sums each neuron's one synapse where BLAS would
+entries on an 8 by 8 map with 8 units a cell) and a block that holds none, such as an apical
+brain's blocks where only basal synapses arrive. Its product sums each neuron's one synapse where BLAS would
 multiply the whole block; every other term of that product is a zero, so the sum is the same to
 the bit (`tests/test_sparse_blocks.py` reads lives both ways). On an Apple M4 a map's moment takes
-6% less for it and a composed brain's 3%. A block in which a neuron receives several synapses keeps BLAS's
-product: read by its synapses it would sum in another order than BLAS, and from a fifth filled it
-reads slower. Under Pyodide every block is read whole: the module's product skips the rows of
+6% less for it and a composed brain's 3%. A block in which a neuron receives several synapses
+keeps BLAS's product: read by its synapses it would sum in another order than BLAS, and from a
+fifth filled it reads slower. Under Pyodide every block is read whole: the module's product skips the rows of
 silent sources, which reads faster there on a map and on a composed brain.
 
 On MLX a recall address map of at least 1,048,576 entries of a memory that keeps to the host (several

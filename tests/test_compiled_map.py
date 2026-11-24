@@ -91,3 +91,16 @@ def test_the_compiled_pieces_are_the_python_s_in_cells_and_order(cells) -> None:
         for a, b in zip(fast, slow, strict=True):
             assert a.dtype == b.dtype
             np.testing.assert_array_equal(a, b)
+
+
+def test_a_sheet_of_another_shape_takes_the_map_s_python(monkeypatch: pytest.MonkeyPatch) -> None:
+    held = plain_map()
+    held.moment(seen=[(0, np.array([3.0, 3.0]))], lit=lambda points: points[:, 0] < 9.0)
+    calls = []
+    kernel = compiled.map_moves
+    monkeypatch.setattr(compiled, "map_moves", lambda *a: calls.append(1) or kernel(*a))
+    held.moves(held.potential * 0.5)
+    assert calls == [1]  # the map's own sheet takes the compiled moves
+    with pytest.raises((IndexError, ValueError)):
+        held.moves(held.potential.ravel())  # a flat sheet: the Python's own refusal
+    assert calls == [1]

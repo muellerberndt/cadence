@@ -1359,7 +1359,8 @@ class Map:
         appears or is gone moves 1."""
         from .. import compiled
 
-        if compiled.available("_map_moves") and self.codes.shape[1] <= self.width:
+        if (compiled.available("_map_moves") and self.codes.shape[1] <= self.width
+                and np.shape(expected) == self.potential.shape):
             return compiled.map_moves(self, expected)  # the same moves, compiled
         out = np.zeros(self.count)
         after = self._activity()
