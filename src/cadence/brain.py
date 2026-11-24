@@ -584,6 +584,23 @@ def _group_temperature(nudge: Nudge, members: np.ndarray) -> float:
     return float(temperature[members[0]]) if isinstance(temperature, np.ndarray) else temperature
 
 
+def _check_nudge(nudge: Nudge, n: int, batch: int) -> None:
+    """Refuse a nudge that does not fit a drive of ``batch`` rows over ``n`` neurons: a settle
+    and its check read the same nudge, so both refuse the same ones."""
+    if np.asarray(nudge.mask).shape != (n,):
+        raise ValueError("nudge mask must have one entry per neuron")
+    if np.asarray(nudge.target).shape not in ((n,), (1, n), (batch, n)):
+        raise ValueError("nudge target must match the drive's neurons and batch size")
+    if nudge.weight is not None and np.asarray(nudge.weight).shape != (batch,):
+        raise ValueError("nudge weight must have one entry per batch row")
+    if nudge.anchor is not None and np.asarray(nudge.anchor).shape not in (
+        (n,),
+        (1, n),
+        (batch, n),
+    ):
+        raise ValueError("nudge anchor must match the drive's neurons and batch size")
+
+
 
 @dataclass(frozen=True)
 class BrainState:
@@ -1220,7 +1237,11 @@ class Brain:
     def stimulus_vector(
         self, stimulus: Mapping[int, float] | Sequence[int] | np.ndarray | None
     ) -> np.ndarray:
-        """A dense drive vector, a list of neurons at full amplitude, or a {neuron: level} map."""
+        """A dense drive vector, a list of neurons at full amplitude, or a {neuron: level} map.
+
+        A float vector is a dense drive and has one entry per neuron; one of another length is
+        refused. An integer vector names neurons, except one with an entry per neuron and none
+        above 1, which is a dense drive of those values."""
         out = np.zeros(self.connectome.n)
         if stimulus is None:
             return out
@@ -1244,6 +1265,8 @@ class Brain:
             return out
         if array.shape == (self.connectome.n,):
             return array.astype(float)
+        if array.dtype.kind == "f" and array.ndim == 1 and array.size:
+            raise ValueError("drive must have one column per neuron")
         out[_neuron_indices(array, self.connectome.n, "stimulus")] = (
             self.neuron_model.stimulus_amplitude
         )
@@ -1690,18 +1713,7 @@ class Brain:
             if not np.isfinite(keep).all() or ((keep < 0) | (keep > 1)).any():
                 raise ValueError("mask must contain finite fractions in [0, 1]")
         if nudge is not None:
-            if np.asarray(nudge.mask).shape != (n,):
-                raise ValueError("nudge mask must have one entry per neuron")
-            if np.asarray(nudge.target).shape not in ((n,), (1, n), (batch, n)):
-                raise ValueError("nudge target must match the drive's neurons and batch size")
-            if nudge.weight is not None and np.asarray(nudge.weight).shape != (batch,):
-                raise ValueError("nudge weight must have one entry per batch row")
-            if nudge.anchor is not None and np.asarray(nudge.anchor).shape not in (
-                (n,),
-                (1, n),
-                (batch, n),
-            ):
-                raise ValueError("nudge anchor must match the drive's neurons and batch size")
+            _check_nudge(nudge, n, batch)
         # the state's handle while it rests on a device; None once its host arrays are the state
         rests = None if state is None else state.device
         on_kernel = (
@@ -1877,6 +1889,8 @@ class Brain:
             (self.connectome.n,), (1, self.connectome.n), d.shape
         ):
             raise ValueError("mask must have one entry per neuron, optionally per batch row")
+        if nudge is not None:  # before any path reads it, as a settle refuses it
+            _check_nudge(nudge, self.connectome.n, int(d.shape[0]))
         handle, kernel = state.device, self._torch
         on_device = on_device and not per_unit
         if on_device and keep is None and isinstance(handle, _MlxState):
@@ -2015,6 +2029,8 @@ class Brain:
         if apical is None:
             return None
         d = drive if _resident(drive) else np.atleast_2d(np.asarray(drive, dtype=float))
+        if d.ndim not in (1, 2) or d.shape[-1] != self.connectome.n:
+            raise ValueError("drive must have one column per neuron")
         if self._mlx is not None and self._mlx.plan is not None:
             held: np.ndarray | None = self._mlx.gains_at(d, state)
             return held
@@ -2032,14 +2048,18 @@ class Brain:
             gain: np.ndarray = kernel.apical_gain(d, handle, own_precision)
             return gain
         if _resident(d):
-            d = _host_copy(d)
+            d = np.atleast_2d(_host_copy(d))
         s = np.atleast_2d(np.asarray(_on_host(state, "activation"), dtype=float))
+        if s.shape != d.shape:
+            raise ValueError("state batch does not match the drive batch")
         basal, raw = self._split_input(s, *self._apical_transports())
         basal += d + self.bias
         adapt = self.neuron_model.adaptation
         if adapt is not None:
-            held = np.asarray(_on_host(state, "adaptation"), dtype=float)
-            basal -= adapt.strength * np.atleast_2d(held)
+            held = np.atleast_2d(np.asarray(_on_host(state, "adaptation"), dtype=float))
+            if held.shape != d.shape:
+                raise ValueError("state batch does not match the drive batch")
+            basal -= adapt.strength * held
         return apical.gain(basal, raw)
 
     def _fused_blocks(self) -> tuple[np.ndarray, Any] | None:
