@@ -129,3 +129,46 @@ def test_a_mark_holds_for_the_drive_as_it_was_marked(name):
     assert brain_module._trusted(drive) is drive  # a host array is read at every call
     spoiled = np.full_like(drive, np.nan)
     assert not brain_module._drive_finite(brain_module._trusted(spoiled))
+
+
+def test_a_settle_on_mlx_reads_an_unmarked_array_with_its_first_launch(monkeypatch):
+    """A launch synchronizes once and brings the drive with it, and the host reads the drive
+    there: no synchronization for the drive alone. A settle of no sweeps launches nothing and
+    reads the drive itself; inside a solve it leaves the drive to the solve's first launch."""
+    graph, drive = graph_and_drive("mlx")
+    mx = graph._mlx.mx
+    seen = []
+    evaluate, check = mx.eval, brain_module._drive_finite
+
+    def evaluated(*arrays):
+        seen.append("launch")
+        return evaluate(*arrays)
+
+    def read(one):
+        if brain_module._resident(one) and not brain_module._marked(one):
+            seen.append("read")  # the host reads the array itself
+        return check(one)
+
+    monkeypatch.setattr(mx, "eval", evaluated)
+    monkeypatch.setattr(brain_module, "_drive_finite", read)
+    held = resident(graph, drive)
+    warm = graph.settle_batch(held, steps=3)
+    assert seen == ["launch", "read"]
+    del seen[:]
+    assert graph.settle_batch(held, steps=0, state=warm).steps == 0
+    assert seen == ["read"]
+    del seen[:]
+    solved = graph.equilibrate(resident(graph, drive), tolerance=1e-4)
+    assert solved.qualified.all() and seen[:2] == ["launch", "read"] and seen.count("read") == 1
+    del seen[:]
+    marked = brain_module._trusted(resident(graph, drive))
+    graph.settle_batch(marked, steps=3)
+    assert seen == ["launch"]  # a marked drive is not read at all
+    spoiled = drive.copy()
+    spoiled[0, 0] = np.inf  # a source neuron's drive: the launch's own check does not see it
+    for call in (
+        lambda one: graph.settle_batch(one, steps=3),
+        lambda one: graph.equilibrate(one, tolerance=1e-4),
+    ):
+        with pytest.raises(ValueError, match=REFUSAL):
+            call(resident(graph, spoiled))

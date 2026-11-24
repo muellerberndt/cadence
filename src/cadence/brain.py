@@ -122,23 +122,36 @@ def _trusted(drive: Any) -> Any:
 def _drive_finite(drive: Any) -> bool:
     """Whether a settle's ``(batch, neurons)`` drive is finite, wherever it rests: the refusal
     of a host array and of a resident one are the same. A host array is read here. A resident
-    drive the library marked (``_trusted``) is not read again; any other is read on its device,
-    one flag coming to the host: an MLX array, which has no version, and a torch tensor on the
-    CPU, whose memory a NumPy array can share and write unseen, at every call; a tensor on an
-    accelerator once per version of it, which every write in place through torch moves."""
+    drive the library marked (``_trusted``) is not read again; any other is read where it
+    rests: an MLX array, which has no version, and a torch tensor on the CPU, whose memory a
+    NumPy array can share and write unseen, at every call; a tensor on an accelerator once per
+    version of it, which every write in place through torch moves. A settle on MLX reads an
+    unmarked array with its first launch instead (``_unread``)."""
     if not _resident(drive):
         return _rows_finite(drive)
-    held = _TRUSTED.get(id(drive))
-    if held is not None and held[0]() is drive and held[1] == getattr(drive, "_version", None):
+    if _marked(drive):
         return True
-    if type(drive).__module__ == "mlx.core":
-        import mlx.core as mx
-
-        return bool(mx.all(mx.isfinite(drive)).item())
+    if type(drive).__module__ == "mlx.core":  # the host reads the device's own memory, made first
+        return bool(np.isfinite(np.array(drive, copy=False)).all())
     finite = bool(drive.isfinite().all().item())
     if finite and drive.device.type != "cpu":
         _trusted(drive)
     return finite
+
+
+def _marked(drive: Any) -> bool:
+    """Whether a resident drive is marked as read finite (``_trusted``) and stands as marked."""
+    held = _TRUSTED.get(id(drive))
+    return (
+        held is not None and held[0]() is drive
+        and held[1] == getattr(drive, "_version", None)
+    )
+
+
+def _unread(drive: Any) -> bool:
+    """Whether ``drive`` is an MLX array nobody marked: a launch under it reads it finite with
+    the launch's own results, in the one synchronization the launch makes."""
+    return type(drive).__module__ == "mlx.core" and not _marked(drive)
 
 
 def _index_key(index: Any) -> tuple[str, bytes] | None:
@@ -547,20 +560,6 @@ def _group_temperature(nudge: Nudge, members: np.ndarray) -> float:
     assert temperature is not None
     return float(temperature[members[0]]) if isinstance(temperature, np.ndarray) else temperature
 
-
-def _nudge_read(nudge: Nudge | None) -> tuple[Any, ...] | None:
-    """What a settle or a check reads of ``nudge``, as it stands: every field, an array by its
-    shape and bytes. A check kept beside this holds for the nudge while it reads the same; the
-    nudge's arrays are the caller's to write."""
-    if nudge is None:
-        return None
-    return tuple(
-        (value.shape, value.tobytes()) if isinstance(value, np.ndarray) else value
-        for value in (
-            nudge.target, nudge.mask, nudge.beta, nudge.softmax_temperature, nudge.weight,
-            nudge.groups, nudge.anchor, nudge.anchor_gain, nudge.apical_gain,
-        )
-    )
 
 
 @dataclass(frozen=True)
@@ -1439,7 +1438,17 @@ class Brain:
         fast: bool = False,
     ) -> Equilibrium:
         """Run a validated local attempt; only a subsequent damping attempt may skip a stall."""
-        current = self.settle_batch(drive, steps=0, state=state, mask=mask, nudge=nudge)
+        # An MLX array nobody marked is read finite with the solve's first launch, which
+        # synchronizes anyway: the settle of no sweeps before it, which launches nothing, takes
+        # the drive as marked, and a solve without a launch reads the drive itself.
+        unread = self._mlx is not None and _unread(drive)
+        if unread:
+            _trusted(drive)
+        try:
+            current = self.settle_batch(drive, steps=0, state=state, mask=mask, nudge=nudge)
+        finally:
+            if unread:
+                _TRUSTED.pop(id(drive), None)
         if mask is None and nudge is None and not stop_if_stalled and self._solves_whole():
             solved = self._solve_compiled(drive, current, budget, chunk, tolerance, fast)
             if solved is not None:
@@ -1447,9 +1456,11 @@ class Brain:
         if mask is None and not stop_if_stalled and self._mlx is not None and self._solves_alone():
             kernel: _MlxKernel = self._mlx
             held = drive if _resident(drive) else np.atleast_2d(drive)
-            solved = kernel.solve(held, current, nudge, budget, chunk, tolerance)
+            solved = kernel.solve(held, current, nudge, budget, chunk, tolerance, unread)
             if solved is not None:
                 return solved
+        if unread and not _drive_finite(drive):
+            raise ValueError("drive must be finite and the brain must contain neurons")
         # below the launch's floor the float64 reference decides, also of a launched state;
         # from it a float32 torch state is checked in float32
         reference: dict[str, bool] = (
@@ -1637,7 +1648,11 @@ class Brain:
         batch, n = drive.shape
         if n != self.connectome.n:
             raise ValueError("drive must have one column per neuron")
-        if n == 0 or not (_drive_finite(drive) if resident else _rows_finite(drive)):
+        # an MLX array nobody marked is read finite by the kernel, with its first launch
+        unread = resident and self._mlx is not None and _unread(drive)
+        if n == 0 or not (
+            unread or (_drive_finite(drive) if resident else _rows_finite(drive))
+        ):
             raise ValueError("drive must be finite and the brain must contain neurons")
         if mask is not None:
             keep = np.asarray(mask, float)
@@ -1700,7 +1715,7 @@ class Brain:
             kernel = self._torch if self.backend == "torch" else self._mlx
             v, a, s, traj, taken, activity_change, handle = kernel.run(
                 v, a, drive, np.ones(n) if mask is None else keep, steps, trajectory, nudge,
-                tolerance, state, capture
+                tolerance, state, capture, *((True,) if unread else ()),
             )
         elif (
             not trajectory and capture is None and _FUSED
@@ -1842,7 +1857,9 @@ class Brain:
                 checked is not None and checked[1] is nudge
                 and self._mlx is not None and handle.get("version") == self._mlx.version
                 and (held is d if _resident(d) or _resident(held) else np.array_equal(held, d))
-                and checked[3] == _nudge_read(nudge)  # a nudge's arrays may be written too
+                # a nudge's arrays may be written too: the launch's check holds while they
+                # read as the launch read them
+                and checked[3] == self._mlx.nudge_read(nudge, len(d))
             ):
                 return np.array(checked[2])
         if (
@@ -5847,13 +5864,21 @@ class _MlxKernel:
         tolerance: float | None = None,
         state: BrainState | None = None,
         capture: _Capture | None = None,
+        reads: bool = False,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None, int, np.ndarray, Any]:
+        """``reads``: the drive is an MLX array nobody read finite yet (``_unread``), and this
+        settle reads it. The launches read it with their first synchronization and refuse it
+        there, before any state is made; one operation at a time reads it first."""
         mx = self.mx
         plan = self.plan
         if plan is not None and not want and capture is None and (keep == 1.0).all():
             tables = None if nudge is None else plan.nudge_tables(nudge)
             if nudge is None or tables is not None:
-                return self._launched(v0, a0, drive, steps, nudge, tables, tolerance, state)
+                return self._launched(
+                    v0, a0, drive, steps, nudge, tables, tolerance, state, reads
+                )
+        if reads and not _drive_finite(drive):
+            raise ValueError("drive must be finite and the brain must contain neurons")
 
         def to(x: np.ndarray) -> Any:
             return mx.array(np.asarray(x, dtype=np.float32))
@@ -6619,11 +6644,42 @@ class _MlxKernel:
                 "made": [sources, path, peak], "sources": sources, "goals": goals, "gaps": gaps,
                 "outer": outer, "before": None, "path": path, "peaks": peak}
 
+    def _target(self, nudge: Nudge, rows: int) -> np.ndarray:
+        """The nudge's target at the settling neurons, in the launch's floats."""
+        plan = self.plan
+        assert plan is not None
+        target = np.broadcast_to(nudge.target, (rows, self.n))
+        columns = plan.columns
+        if len(columns) and int(columns[-1]) - int(columns[0]) + 1 == len(columns):
+            target = target[:, int(columns[0]) : int(columns[-1]) + 1]  # one range: no gather
+        else:
+            target = target[:, columns]
+        return np.asarray(target, dtype=np.float32)
+
+    def nudge_read(
+        self, nudge: Nudge | None, rows: int, target: np.ndarray | None = None
+    ) -> tuple[Any, ...] | None:
+        """What a launch reads of ``nudge``, as it stands: the target at the settling neurons
+        (``target``, where the caller made it), the mask, the weight, the groups, the held gains
+        and the numbers, an array by its bytes. A launch's check holds for the nudge while it
+        reads the same (``Brain.residual``): the nudge's arrays are the caller's to write."""
+        if nudge is None:
+            return None
+        if target is None:
+            target = self._target(nudge, rows)
+        return (target.tobytes(), *(
+            value.tobytes() if isinstance(value, np.ndarray) else value
+            for value in (
+                nudge.mask, nudge.beta, nudge.softmax_temperature, nudge.weight, nudge.groups,
+                nudge.apical_gain,
+            )
+        ))
+
     def _nudged_inputs(self, nudge: Nudge, tables: Any, rows: int) -> dict[str, Any]:
         mx, plan = self.mx, self.plan
         assert plan is not None
         mask, group_low, group_high, over = tables
-        target = np.broadcast_to(nudge.target, (rows, self.n))[:, plan.columns]
+        target = self._target(nudge, rows)
         weight = plan.none
         if nudge.weight is not None:
             values = np.asarray(nudge.weight, dtype=np.float32)
@@ -6633,11 +6689,12 @@ class _MlxKernel:
             gains = np.asarray(nudge.apical_gain, dtype=np.float32).ravel()
             given = mx.array(np.pad(gains, (0, max(0, 8 - len(gains)))))
         return {
-            "target": mx.array(np.asarray(target, dtype=np.float32)), "mask": mask,
+            "target": mx.array(target), "mask": mask,
             "weight": weight,
             "group_low": group_low, "group_high": group_high, "over": over,
             "beta": float(nudge.beta), "shares": nudge.softmax_temperature is not None,
             "weighted": nudge.weight is not None, "given": given,
+            "read": self.nudge_read(nudge, rows, target),
         }
 
     def _launch(
@@ -6691,7 +6748,7 @@ class _MlxKernel:
     ) -> _MlxState:
         """The state a launch of ``taken`` sweeps leaves: its settling neurons, its source ranges
         along their way, and the check of its equations, theirs among them, kept beside the
-        drive, the nudge and what the launch ``read`` of the nudge (``_nudge_read``)."""
+        drive, the nudge and what the launch ``read`` of the nudge (``nudge_read``)."""
         mx, plan = self.mx, self.plan
         assert plan is not None
         gaps, goals = driven["gaps"], driven["goals"]
@@ -6721,19 +6778,23 @@ class _MlxKernel:
     def _launched(
         self, v0: np.ndarray | None, a0: np.ndarray | None, drive: np.ndarray, steps: int,
         nudge: Nudge | None, tables: Any, tolerance: float | None, state: BrainState | None,
+        reads: bool = False,
     ) -> tuple[Any, Any, Any, Any, int, Any, Any]:
         """``run`` in launches: the same sweeps with one synchronization per launch. Under a
         movement tolerance a launch reads which sweeps moved a neuron; a state that stops inside
         the launch is made again from the launch's start, the sweeps it stops at and no more, so
-        the steps and the state are those of the tolerance read at every sweep."""
+        the steps and the state are those of the tolerance read at every sweep. With ``reads``
+        the drive is read finite with the first launch; no sweeps launch nothing, and read it."""
         mx, plan = self.mx, self.plan
         assert plan is not None
         rows = len(drive)
         current = self._start(v0, a0, state, rows)
         if steps == 0:
+            if reads and not _drive_finite(drive):
+                raise ValueError("drive must be finite and the brain must contain neurons")
             return None, None, None, None, 0, None, _MlxState(current, moved=[], source_moves=[])
         nudged = None if nudge is None else self._nudged_inputs(nudge, tables, rows)
-        read = _nudge_read(nudge)
+        read = None if nudged is None else nudged["read"]
         limit = _MLX_GRAPH_STEPS if tolerance is None else _MLX_BOUNDED_STEPS
         taken, discarded = 0, 0
         moved: list[Any] = []
@@ -6742,7 +6803,13 @@ class _MlxKernel:
             sweeps = min(limit, steps - taken)
             driven = self._driven(current, drive, sweeps)
             out = self._launch(current["vm"], current["sm"], driven, sweeps, nudged, tolerance)
-            mx.eval(out, driven["made"])
+            if reads:  # the drive is made with the first launch, and the host reads it there
+                mx.eval(out, driven["made"], drive)
+                if not _drive_finite(drive):
+                    raise ValueError("drive must be finite and the brain must contain neurons")
+                reads = False
+            else:
+                mx.eval(out, driven["made"])
             stopped = False
             if tolerance is not None:
                 word = int(np.bitwise_or.reduce(np.array(out[4], copy=False), axis=None))
@@ -6786,14 +6853,15 @@ class _MlxKernel:
 
     def solve(
         self, drive: np.ndarray, current: BrainState, nudge: Nudge | None, budget: int, chunk: int,
-        tolerance: float,
+        tolerance: float, reads: bool = False,
     ) -> Equilibrium | None:
         """``_equilibrate_local``'s solve from the published state ``current``: a launch per chunk,
         each ending with the equations' residual on the device, in float32, within rounding of the
         float64 reference at tolerances from ``_MLX_CHECK_FLOOR``. The first launch checks the
         start too, so a solve that needs one chunk synchronizes once; a start within tolerance
-        keeps it, with the sources' equations read after all. None where the launch does not
-        apply."""
+        keeps it, with the sources' equations read after all. With ``reads`` the drive, an MLX
+        array nobody read finite, is read with the first launch and refused there. None where
+        the launch does not apply."""
         mx, plan = self.mx, self.plan
         start = current.device
         if plan is None or not isinstance(start, _MlxState) or not tolerance >= _MLX_CHECK_FLOOR:
@@ -6806,7 +6874,12 @@ class _MlxKernel:
         sweeps = min(chunk, budget)
         driven = self._driven(start, drive, sweeps)
         out = self._launch(start["vm"], start["sm"], driven, sweeps, nudged, None)
-        mx.eval(out, driven["made"])
+        if reads:  # the drive is made with the first launch, and the host reads it there
+            mx.eval(out, driven["made"], drive)
+            if not _drive_finite(drive):
+                raise ValueError("drive must be finite and the brain must contain neurons")
+        else:
+            mx.eval(out, driven["made"])
         first = _launch_error(out[2], 0)
         if sweeps == 0 or (first <= tolerance).all():
             first = np.maximum(first, self._source_gap(driven, 0))
@@ -6814,7 +6887,7 @@ class _MlxKernel:
                 return Equilibrium(current, first, 0, tolerance, residual_checks=1)
         used, checks = sweeps, 2
         moves = [(driven["before"], driven["path"], sweeps)]
-        read = _nudge_read(nudge)
+        read = None if nudged is None else nudged["read"]
         handle = self._settled_state(
             start, driven, drive, out, sweeps, [out[3]], moves, nudge, read=read
         )
