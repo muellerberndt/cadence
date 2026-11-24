@@ -57,6 +57,7 @@ from .brain import (
     _check_ladder,
     _held_drive,
     _plan_structure,
+    _same_drive,
     _SweepConfig,
     _take,
     _TorchKernel,
@@ -1320,8 +1321,9 @@ class _LivesActorCritic(ActorCritic):
         drive = self._validated_drive(drive)
         free = (
             self._free
-            if self._free is not None and self._drive is drive
+            if self._free is not None and self._drive is not None
             and self._free_brain is self.learner.brain
+            and _same_drive(self._drive, drive)  # the drive the phase was settled under
             else self.settle(drive)
         )
         self._pending = None
