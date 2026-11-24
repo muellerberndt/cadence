@@ -375,6 +375,17 @@ def _rows(state: BrainState, rows: np.ndarray, drive: Any = None) -> BrainState:
     )
 
 
+def _state_rows(state: BrainState) -> int:
+    """The rows of a batched state where ``_rows`` takes them: the device's shape while the
+    state rests on a torch or MLX device (nothing comes to the host), else the host's."""
+    handle = state.device
+    if handle is not None and not isinstance(handle, _MlxState) and _resident(handle.get("s")):
+        return int(handle["s"].shape[0])
+    if isinstance(handle, _MlxState):
+        return int(handle["vm"].shape[0])
+    return int(np.atleast_2d(state.v).shape[0])
+
+
 def _torch_rows(handle: dict[str, Any], rows: np.ndarray) -> dict[str, Any]:
     """A torch-resident state's handle restricted to the rows of a boolean mask, taken on the
     device: of a lesson that teaches some rows only the mask goes to the device."""
@@ -1628,7 +1639,7 @@ class Learner:
 
         The drive is refused as the solver refuses it (one column per neuron, finite, on the
         host or on its device) before any answer is compared, so a batch that agrees is
-        refused as one that does not. A
+        refused as one that does not; so is a ``warm`` state of another batch. A
         lesson whose taught rows all weigh zero pulls nothing and is the lesson of no row: no
         nudged phase runs, and the parameters, the optimizer's moments and its count of
         updates stay as they are.
@@ -1653,6 +1664,9 @@ class Learner:
         self._refuse_drive(drive)
         if weight is not None:
             weight = self._row_weights(weight, batch)
+        if warm is not None and _state_rows(warm) != batch:
+            # the solver's refusal, made before a lesson judged by its answer takes the rows
+            raise ValueError("state batch does not match the drive batch")
         cfg = self.config
         judged = None
         if cfg.surprise and answer is not None and labels is not None:
