@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.103.1 - 2026-11-24
+
+A fix for a memory read by three or more heads, and the tests that now hold every read of
+several heads to its law. A brain of one or two heads reads, acts, learns and saves as on
+0.103.0, to the bit.
+
+- **Three or more heads read no slot above one.** The heads of one bank compete: a slot can be
+  read in full once per moment, and each head takes of a slot at most the share the heads before
+  it left. What a head left was taken as the share left before it times one less the head's own
+  share. That is right after the first head and too much after every later one: after two
+  heads that read `p1` and `p2` of a slot, `p1 * p2` of it was left to be read again. A third
+  and later head so read slots the heads before it had taken whole, up to 1.44 slots' worth
+  of one slot with four heads, and its port held a mixture its lesson then learned from. What a
+  head leaves is now what was left less what it read, and the shares of a slot sum to at most
+  one over any number of heads. `LongTermMemory.read(heads=...)` at a temperature above zero
+  followed the same law and is corrected with it; the credit a read gives a record is then at
+  most one telling. The compiled moment, the device's path and the lives of many brains read
+  with one head and are as they were.
+- **What changes for a brain of three or more heads.** Its third and later heads read less, or
+  nothing, where the heads before them took the slots, so its life differs from 0.103.0's from
+  the first such read on; its file loads as before. Readings taken with three or more heads on
+  0.103.0 or earlier include the mass read twice. The readings of two heads stand
+  ([held heads](benchmarks/attention/held_heads.py)).
+- **Every read of several heads is held to its law in the tests.**
+  `tests/test_recall_heads_invariants.py` checks at every read of lives of each kind of moment
+  (lessons, steps with rewards and a teacher, `live` and `wait`, ends of episodes on some
+  streams) that no slot is read above one, that each head takes its whole mass while enough is
+  left, that a later head's shares are the water-filling of its own attention (against a
+  reference found by bisection), that each port holds its head's attention over the slots, and
+  that a head's lesson takes the attention the head read with: on NumPy, torch, MPS and MLX,
+  beside other streams, after a save, and after `grow` added heads. The bank is compared slot by
+  slot with a list per stream, and the long-term store's heads are held to the same totals. 30
+  of these tests fail on 0.103.0.
+- The files 0.103.0 saved join the released files (`tests/fixtures/released/v0.103.0`): each
+  loads and continues as 0.103.0 continued it. The `previous-release` job reads this release's
+  files with 0.103.0.
+
 ## 0.103.0 - 2026-11-24
 
 Brains in a browser on the compiled path. Under Pyodide, where Numba is absent, a brain ran the

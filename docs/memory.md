@@ -1059,8 +1059,12 @@ can be read in full once per moment, so the heads read in turn and each takes of
 at most the share the heads before it left. A head keeps the shape of its own attention where
 the slots allow and gives what a taken slot cannot give to the slots it prefers next, with
 its whole mass while enough is left; a head whose slots the heads before took whole reads
-nothing. At birth, with every address map at zero, head 0 reads the best-matching moment and
-head 1 the best of what head 0 left.
+nothing. Over any number of heads the shares of a slot sum to at most one, so k heads read at
+most k slots' worth of a bank and no more than the bank holds: with fewer slots than heads the
+last heads read nothing. At birth, with every address map at zero, head 0 reads the
+best-matching moment and head 1 the best of what head 0 left. Heads taught toward the same
+slot do not share it: the head that reads first takes it, and the later head's next lesson
+names the best of what it was left.
 
 The address lesson after a teaching step reads the association's movement back through each
 head's own synapses, so each head's map moves toward the records whose values would have
