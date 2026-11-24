@@ -548,6 +548,21 @@ def _group_temperature(nudge: Nudge, members: np.ndarray) -> float:
     return float(temperature[members[0]]) if isinstance(temperature, np.ndarray) else temperature
 
 
+def _nudge_read(nudge: Nudge | None) -> tuple[Any, ...] | None:
+    """What a settle or a check reads of ``nudge``, as it stands: every field, an array by its
+    shape and bytes. A check kept beside this holds for the nudge while it reads the same; the
+    nudge's arrays are the caller's to write."""
+    if nudge is None:
+        return None
+    return tuple(
+        (value.shape, value.tobytes()) if isinstance(value, np.ndarray) else value
+        for value in (
+            nudge.target, nudge.mask, nudge.beta, nudge.softmax_temperature, nudge.weight,
+            nudge.groups, nudge.anchor, nudge.anchor_gain, nudge.apical_gain,
+        )
+    )
+
+
 @dataclass(frozen=True)
 class BrainState:
     """State after settling: potentials, activations, adaptation, trajectory.
@@ -1718,8 +1733,9 @@ class Brain:
             held = handle.get("drive")  # a copy of a host's drive, which a caller may write since
             if (
                 checked is not None and checked[1] is nudge
-                and (held is d if _resident(d) or _resident(held) else np.array_equal(held, d))
                 and self._mlx is not None and handle.get("version") == self._mlx.version
+                and (held is d if _resident(d) or _resident(held) else np.array_equal(held, d))
+                and checked[3] == _nudge_read(nudge)  # a nudge's arrays may be written too
             ):
                 return np.array(checked[2])
         if (
@@ -6551,9 +6567,11 @@ class _MlxKernel:
     def _settled_state(
         self, start: _MlxState, driven: dict[str, Any], drive: np.ndarray, out: Any, taken: int,
         moved: list[Any], moves: list[Any], nudge: Nudge | None, discarded: int = 0,
+        read: Any = None,
     ) -> _MlxState:
         """The state a launch of ``taken`` sweeps leaves: its settling neurons, its source ranges
-        along their way, and the check of its equations, theirs among them."""
+        along their way, and the check of its equations, theirs among them, kept beside the
+        drive, the nudge and what the launch ``read`` of the nudge (``_nudge_read``)."""
         mx, plan = self.mx, self.plan
         assert plan is not None
         gaps, goals = driven["gaps"], driven["goals"]
@@ -6576,7 +6594,7 @@ class _MlxKernel:
             source_moves=moves, drive=drive if _resident(drive) else np.array(drive, copy=True),
             version=self.version,
             fixed=driven["fixed"], outer=outer, relaxed=taken >= driven["needed"],
-            checked=(drive, nudge, error), discarded_steps=discarded,
+            checked=(drive, nudge, error, read), discarded_steps=discarded,
             gains=out[5] if nudge is None and plan.pools else None,
         )
 
@@ -6595,6 +6613,7 @@ class _MlxKernel:
         if steps == 0:
             return None, None, None, None, 0, None, _MlxState(current, moved=[], source_moves=[])
         nudged = None if nudge is None else self._nudged_inputs(nudge, tables, rows)
+        read = _nudge_read(nudge)
         limit = _MLX_GRAPH_STEPS if tolerance is None else _MLX_BOUNDED_STEPS
         taken, discarded = 0, 0
         moved: list[Any] = []
@@ -6622,7 +6641,7 @@ class _MlxKernel:
             moved.append(out[3])
             moves.append((driven["before"], driven["path"], sweeps))
             current = self._settled_state(
-                current, driven, drive, out, sweeps, moved, moves, nudge, discarded,
+                current, driven, drive, out, sweeps, moved, moves, nudge, discarded, read,
             )
             if stopped:
                 break
@@ -6675,7 +6694,10 @@ class _MlxKernel:
                 return Equilibrium(current, first, 0, tolerance, residual_checks=1)
         used, checks = sweeps, 2
         moves = [(driven["before"], driven["path"], sweeps)]
-        handle = self._settled_state(start, driven, drive, out, sweeps, [out[3]], moves, nudge)
+        read = _nudge_read(nudge)
+        handle = self._settled_state(
+            start, driven, drive, out, sweeps, [out[3]], moves, nudge, read=read
+        )
         error = handle["checked"][2]
         while used < budget and not (error <= tolerance).all() and np.isfinite(error).all():
             sweeps = min(chunk, budget - used)
@@ -6684,7 +6706,9 @@ class _MlxKernel:
             mx.eval(out, driven["made"])
             used, checks = used + sweeps, checks + 1
             moves = [(driven["before"], driven["path"], sweeps)]
-            handle = self._settled_state(handle, driven, drive, out, sweeps, [out[3]], moves, nudge)
+            handle = self._settled_state(
+                handle, driven, drive, out, sweeps, [out[3]], moves, nudge, read=read
+            )
             error = handle["checked"][2]
         unread: Any = None
         return Equilibrium(
