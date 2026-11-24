@@ -7658,6 +7658,8 @@ class Brain:
         still belongs to the state the action was chosen in. With a positive
         ``recall_address_reward`` the recall memory's address map steps on its own trace by
         the same dopamine, and the report names the step (``address_reward_step``).
+        With bound records ``learn`` pays and refuses no record: a reward reaches the record of
+        the acted moment through ``step`` and ``live``.
         """
         following = self._observations(next_observations)
         # Preflight without reading or resetting memories: invalid input must not write an episode.

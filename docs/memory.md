@@ -2126,7 +2126,8 @@ more than half of the fields it holds are held alike. `brain.bound.said_from` na
 Pass the sound back under `"voice"` at the moment it is said, so the moment's record binds it.
 
 **A reward.** A reward given to `live` or `step` pays the record of the moment the brain acted
-at (a moment `wait` sensed in between is written and is not the one paid): it deepens by 4
+at (a moment `wait` sensed in between is written and is not the one paid; `learn` called by
+hand pays and refuses no record): it deepens by 4
 tellings a unit of reward, counted as its pay (`brain.bound.paid`). A record of something said
 answers only once paid; a reward of zero or less refuses it (`brain.bound.refused`), and its
 sound is passed over at moments like it until a reward pays it. Telling a said moment again, or
