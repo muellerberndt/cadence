@@ -1883,18 +1883,17 @@ def _nudge_arrays(
     of the arrays it was made from, and made again once one of them reads otherwise."""
     if nudge is None:
         return _no_nudge(batch, n)
-    target, mask, groups = nudge.target, np.asarray(nudge.mask), nudge.groups
-    anchor, heat = nudge.anchor, nudge.softmax_temperature
-    whole = _in_place(target, batch, n) and target.flags.writeable
+    target, mask, groups, anchor = nudge.target, nudge.mask, nudge.groups, nudge.anchor
+    heat = nudge.softmax_temperature
+    whole = _in_place(target, batch, n)
     whole_anchor = anchor is not None and _in_place(anchor, batch, n)
     key = (
-        batch, n, mask.tobytes(), None if groups is None else np.asarray(groups).tobytes(),
+        batch, n, mask.tobytes(), None if groups is None else groups.tobytes(),
         heat.tobytes() if isinstance(heat, np.ndarray) else heat,
-        whole or np.asarray(target).tobytes(),
-        anchor is None or whole_anchor or np.asarray(anchor).tobytes(),
-        whole_anchor,
+        whole or target.tobytes(),
+        whole_anchor or (anchor is not None and anchor.tobytes()),
     )
-    held = nudge.__dict__.get("_kernel_arrays")
+    held: Any = nudge.__dict__.get("_kernel_arrays")
     if held is None or held[0] != key:
         nmask = np.asarray(mask, float)
         softmax_t = np.zeros(n) if heat is None else np.full(n, heat)
@@ -1910,37 +1909,35 @@ def _nudge_arrays(
             ngroups = len(ids)
         if softmax_t[0] > 0:
             nmask = np.where(gid >= 0, nmask, 0.0)
-        made = (
-            None if whole
-            else np.ascontiguousarray(np.broadcast_to(target, (batch, n)).astype(float)),
-            nmask, gid, ngroups, softmax_t, np.ones(batch),
-            np.zeros((1, 1)) if anchor is None
-            else None if whole_anchor
-            else np.ascontiguousarray(np.broadcast_to(anchor, (batch, n)), dtype=float),
-            np.zeros(n),
+        # a target or an anchor read where it rests has no array here
+        rows = None if whole else np.ascontiguousarray(
+            np.broadcast_to(target, (batch, n)).astype(float)
         )
-        nudge.__dict__["_kernel_arrays"] = held = (key, made)
+        anchored = np.zeros((1, 1))
+        if anchor is not None and not whole_anchor:
+            anchored = np.ascontiguousarray(np.broadcast_to(anchor, (batch, n)), dtype=float)
+        held = (key, (rows, nmask, gid, ngroups, softmax_t, np.ones(batch), anchored, np.zeros(n)))
+        nudge.__dict__["_kernel_arrays"] = held
     rows, nmask, gid, ngroups, softmax_t, ones, anchored, no_gain = held[1]
-    if rows is None:
-        rows = target if target.ndim == 2 else target.reshape(batch, n)
-    if anchored is None:
-        assert anchor is not None
-        anchored = np.ascontiguousarray(np.broadcast_to(anchor, (batch, n)), dtype=float)
     return (
-        rows, nmask, gid, ngroups, float(nudge.beta), softmax_t,
+        target if whole else rows, nmask, gid, ngroups, float(nudge.beta), softmax_t,
         ones if nudge.weight is None else np.asarray(nudge.weight, float),
-        anchored,
+        cast(np.ndarray, anchor) if whole_anchor else anchored,
         no_gain if anchor is None else np.ascontiguousarray(nudge.anchor_gain, dtype=float),
     )
 
 
+_FLOAT64 = np.dtype(np.float64)
+
+
 def _in_place(array: np.ndarray, batch: int, n: int) -> bool:
-    """Whether the kernels read a nudge's rows where they rest: float64 in C order and whole,
-    ``batch`` rows of ``n``. Nothing is made from such an array, so nothing of it is kept."""
-    return bool(
-        isinstance(array, np.ndarray) and array.dtype == np.float64 and array.ndim <= 2
-        and array.flags.c_contiguous and array.size == batch * n
-    )
+    """Whether the kernels read a nudge's rows where they rest: ``batch`` whole rows of ``n`` in
+    the kernels' own type and order, in memory that can be written. Nothing is made from such an
+    array, so nothing of it is kept."""
+    if array.shape != (batch, n) or array.dtype is not _FLOAT64:
+        return False
+    flags = array.flags
+    return bool(flags.c_contiguous and flags.writeable)
 
 
 # the mask argument of a settle or check without a mask: the kernels read a mask only where
