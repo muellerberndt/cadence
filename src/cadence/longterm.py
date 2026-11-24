@@ -752,7 +752,7 @@ class LongTermMemory:
 
     def write(
         self, key: np.ndarray, value: np.ndarray, recognised: int | None = None,
-        source: Any = None, surprise: float | None = None,
+        source: Any = None, surprise: float | None = None, spare: Any = None,
     ) -> tuple[int, bool]:
         """Write one record and return its slot and whether the write revised a held record.
         A key the memory recognises (``revise``) rewrites that record; any other takes an empty
@@ -762,7 +762,10 @@ class LongTermMemory:
         signature, and a record that holds the key is this fact told again only where it holds
         the signature too. ``surprise`` (0 or more) counts as that many more tellings in the
         record's depth; without it a store with ``novelty`` reads it from how far its nearest
-        record lies from the key."""
+        record lies from the key. ``spare`` names slots a write that revises nothing does not
+        replace (records a caller still awaits something for): in a full memory it replaces
+        another record, and where every slot is spared it writes nothing and returns
+        ``(-1, False)``."""
         key = self._key(key)
         value = np.asarray(value, dtype=np.float64)
         if value.shape != (self.value_width,) or not np.isfinite(value).all():
@@ -801,9 +804,14 @@ class LongTermMemory:
                     slot, revised = int(slots[best]), True
         taken = slot < 0 and self.count < self.capacity  # an empty slot: nothing filed in it
         if slot < 0:
+            spared = None if taken else self._spared(spare)
             if self.count < self.capacity:
                 slot = self.count
                 self.count += 1
+            elif spared is not None:
+                slot = self._replaced_sparing(spared)
+                if slot < 0:
+                    return -1, False  # every record is spared: nothing is written
             elif self.keep:
                 slot = self._replaced()
             elif self.fade:
@@ -890,6 +898,35 @@ class LongTermMemory:
         if free.any():
             return int(np.argmax(np.where(free, self.faded, -np.inf)))
         return int(np.argmin(self.deep))
+
+    def _spared(self, spare: Any) -> np.ndarray | None:
+        """``spare`` as a mark per slot; None where it names no held slot."""
+        if spare is None:
+            return None
+        slots = np.asarray(spare, dtype=np.int64).reshape(-1)
+        slots = slots[(slots >= 0) & (slots < self.capacity)]
+        if not len(slots):
+            return None
+        spared = np.zeros(self.capacity, dtype=bool)
+        spared[slots] = True
+        return spared
+
+    def _replaced_sparing(self, spared: np.ndarray) -> int:
+        """The slot a write into a full memory takes where some records are ``spared``: the
+        slot the memory's own rule takes among the others (``_replaced`` with ``keep``, the
+        most faded with ``fade``, else the next from the cursor), or -1 where none is left."""
+        open_ = ~spared
+        if not open_.any():
+            return -1
+        if self.keep:
+            free = open_ & ~self.kept
+            if free.any():
+                return int(np.argmax(np.where(free, self.faded, -np.inf)))
+            return int(np.argmin(np.where(open_, self.deep, np.inf)))
+        if self.fade:
+            return int(np.argmax(np.where(open_, self.faded, -np.inf)))
+        ahead = (self._cursor + np.arange(self.capacity)) % self.capacity
+        return int(ahead[open_[ahead]][0])
 
     def fill(self, keys: Any, values: Any, sources: Any = None, chunk: int = 1024) -> np.ndarray:
         """Write many records told once, in one pass, and return their slots. Each takes an
