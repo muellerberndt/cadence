@@ -1813,6 +1813,11 @@ class Brain:
         own check, in float32, with no launch of its own. A single state returns a length-one array;
         nonfinite errors return infinity.
 
+        The state and the nudge are checked as they stand. A state whose host arrays a caller
+        wrote is those arrays (``BrainState.device``): whatever settled it, its check is the
+        float64 CPU reference of them. The launch's own check holds for a state nobody wrote,
+        while the drive and the nudge's arrays read as the launch read them.
+
         ``per_unit`` gives each neuron's own signed error of the potential equation instead,
         ``(rows, neurons)``, on the float64 CPU reference whatever the backend: what a settle
         from this state under this drive repairs, neuron by neuron (``cadence.surprise``). Its
@@ -1958,7 +1963,8 @@ class Brain:
     ) -> np.ndarray | None:
         """The apical compartment's gain ``(batch, pools)`` at ``state`` under ``drive``: what a
         nudged settle from it holds (``Nudge.apical_gain``); None without the compartment.
-        ``own_precision`` reads an unread float32 torch state's in float32, as ``residual`` does."""
+        ``own_precision`` reads an unread float32 torch state's in float32, as ``residual`` does.
+        A state whose host arrays a caller wrote is read on the host, as ``residual`` reads it."""
         apical = self.apical
         if apical is None:
             return None
