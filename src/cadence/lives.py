@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Callable, Sequence
+from copy import deepcopy
 from dataclasses import dataclass, replace
 from typing import Any, cast
 
@@ -1854,6 +1855,26 @@ def _refuse_without_action(takes: np.ndarray, reward: np.ndarray, done: np.ndarr
         )
 
 
+def _lone_copy(brain: Any, backend: str, device: str | None, precision: str | None) -> Any:
+    """A lone brain's copy on the place named, its stream as the brain's stands, sharing nothing
+    either of them can change. The copy is the brain's deep copy (``Brain.__deepcopy__``): its
+    arrays, stores, stream and random generators are its own, each generator at the brain's
+    state, and the immutable connectome is shared. For another place than the brain's the copy's
+    checkpoint is loaded there, as a brain takes a backend (``Brain._place_at``): that brain
+    holds what a checkpoint holds and shares nothing."""
+    import tempfile
+    from pathlib import Path
+
+    twin = deepcopy(brain)
+    rests = twin.placement
+    if (backend == rests["backend"] and device in (None, rests["device"])
+            and precision in (None, rests["precision"])):
+        return twin
+    with tempfile.TemporaryDirectory(prefix="cadence-life-") as folder:
+        path = twin.save(Path(folder) / "life.npz", compressed=False)
+        return type(twin).load(path, backend=backend, device=device, precision=precision)
+
+
 class _Learning:
     """While an outcome is learned, the lives ``rows`` marks learn and every other life holds."""
 
@@ -2515,11 +2536,20 @@ class Lives:
         activity, its pending sampled action with its eligibility phases, its eligibility
         traces, its working trace, its recall memory's slots, its store's residual and the
         record of its last ``live``, so the lone brain continues the life where it stands, its
-        pending outcome included. Save it as any brain."""
+        pending outcome included. The brain is its own: what it lives through reaches no life,
+        and what the lives live through does not reach it. Save it as any brain.
+
+        On the CPU it is a copy of the life's lone brain (``_lone_copy``), without ``stream`` as
+        after ``Brain.reset()`` and with no residual in its store."""
         from .generic import Brain
 
         if self.brains is not None:
-            return self.brains[i]
+            lone = _lone_copy(self.brains[i], backend, device, precision)
+            if not stream:
+                lone.reset()
+                if lone.hippocampus is not None:  # the residual is the stream's
+                    lone.hippocampus.reset(0)
+            return lone
         held = self.parameters(i)
         place: dict[str, Any] = {"backend": backend}
         if device is not None:
@@ -2580,7 +2610,8 @@ class Lives:
         place, and its stream begins afresh there, as after ``brain.reset()``, its store's
         residual and its arousal kept. A life that left (``life(i)``) rejoins this way, and a
         finished episode makes room for another life without holding the batch. ``brain`` is a
-        composition of these lives' anatomy and options."""
+        composition of these lives' anatomy and options. It stays its caller's, stream and
+        all: the lives hold their own copy of what it learned, on the CPU its deep copy."""
         if not 0 <= i < self.lives:
             raise ValueError(f"life {i} is not one of these {self.lives} lives")
         _supported(brain, self.backend)  # a part the lives do not cover is refused as at birth
@@ -2591,7 +2622,9 @@ class Lives:
             if (getattr(brain, part) is not None) != present:
                 raise ValueError(f"a joining brain has the lives' composition: its {part}")
         if self.brains is not None:
-            self.brains[i] = brain
+            own = deepcopy(brain)
+            own.reset()
+            self.brains[i] = own
             return
         self._join_batched(i, brain)
 
