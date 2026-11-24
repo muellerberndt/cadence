@@ -3,6 +3,13 @@ and ``several_controls.py``: each reading as the range over the founders, the fo
 bar, and every learner's parameters and work.
 
     python benchmarks/several/several_summary.py --rows rows.jsonl [--controls controls.jsonl]
+
+With ``--gates`` the declared gates are read on the declared panel (``PROTOCOL.md``): each
+founder of ``DECLARED`` with its row of the arm and of ``birth``, and A5's founders with a row
+of each online control, at the size read. Until each of them is given, the verdicts read
+``incomplete`` and name the rows not given, and the counts are those of the rows given, as for
+a development run. Founders outside the declared panel are counted in no verdict. A founder's
+arm is read once at a size: a second row of it is refused.
 """
 
 from __future__ import annotations
@@ -15,6 +22,9 @@ from pathlib import Path
 from typing import Any
 
 GROUPS = ("parts 1", "parts 2", "parts 4", "parts 8", "chain 2", "chain 3")
+DECLARED = tuple(range(3250, 3262))  # the founders of the gates' arms (declared/brain.json)
+CONTROLLED = DECLARED[:6]  # A5's founders, those of the controls (declared/controls.json)
+ONLINE = ("transformer", "lstm")  # the online controls A5 reads the better of
 
 
 def load(path: Path) -> list[dict[str, Any]]:
@@ -103,19 +113,52 @@ def mean(values: list[float]) -> float:
 
 
 def gates(rows: list[dict[str, Any]], arm: str = "heads", size: int = 100_000,
-          birth: str = "birth", need: int = 10) -> list[str]:
-    """The declared gates A1 to A6 read on ``arm`` at ``size`` records (``PROTOCOL.md``)."""
-    cell = sorted((r for r in rows if r["arm"] == arm and int(r.get("size", 0)) == size),
-                  key=lambda r: r["founder"])
+          birth: str = "birth", need: int = 10, founders: tuple[int, ...] = DECLARED,
+          controlled: tuple[int, ...] = CONTROLLED) -> list[str]:
+    """The declared gates A1 to A6 read on ``arm`` at ``size`` records (``PROTOCOL.md``). A gate
+    has a verdict on its declared panel: ``founders`` with their rows of ``arm`` (and of
+    ``birth`` for A4c), and for A5 ``controlled`` with their rows of ``arm`` and of each online
+    control (``ONLINE``). Until its panel is given a gate reads ``incomplete``."""
+    at = [r for r in rows if int(r.get("size", 0)) == size]
+
+    def once(name: str, chosen: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        seen: set[int] = set()
+        for r in chosen:
+            if r["founder"] in seen:
+                raise SystemExit(f"founder {r['founder']} already has a row of the arm {name!r} "
+                                 f"at {size:,} records; a founder's arm is read once at a size")
+            seen.add(r["founder"])
+        return sorted(chosen, key=lambda r: r["founder"])
+
+    def lacking(chosen: list[dict[str, Any]], panel: tuple[int, ...]) -> list[int]:
+        given = {r["founder"] for r in chosen}
+        return [f for f in panel if f not in given]
+
+    cell = once(arm, [r for r in at if r["arm"] == arm])
+    born = once(birth, [r for r in at if r["arm"] == birth])
+    controls = [r for r in at if r.get("schedule") == "online"]
+    for name in sorted({r["arm"] for r in controls}):
+        once(name, [r for r in controls if r["arm"] == name])
+    gaps = {arm: lacking(cell, founders), birth: lacking(born, founders)}
+    gaps.update({f"{kind}, online": lacking([r for r in controls if r["kind"] == kind],
+                                            controlled) for kind in ONLINE})
+    outside = sorted({r["founder"] for r in cell + born if r["founder"] not in founders}
+                     | {r["founder"] for r in controls if r["founder"] not in controlled})
+    if not gaps[arm]:  # the declared panel is given: its founders alone are counted
+        cell = [r for r in cell if r["founder"] in founders]
+    if not gaps[birth]:
+        born = [r for r in born if r["founder"] in founders]
+    paired = not lacking(cell, controlled) and not any(gaps[f"{k}, online"] for k in ONLINE)
+    if paired:
+        controls = [r for r in controls if r["founder"] in controlled and r["kind"] in ONLINE]
     out = ["| Gate | Reading | Bar | Founders at the bar | Range | Verdict |",
            "| --- | --- | --- | --- | --- | --- |"]
 
-    def line(gate: str, name: str, values: list[float], bar: float) -> bool:
+    def line(gate: str, name: str, values: list[float], bar: float) -> None:
         at = sum(v >= bar - 1e-9 for v in values)
-        passed = at >= min(need, len(values)) and bool(values)
+        verdict = "incomplete" if gaps[arm] else "passes" if at >= need else "fails"
         out.append(f"| {gate} | {name} | {bar:.2f} | {at} of {len(values)} | {spread(values)} | "
-                   f"{'passes' if passed else 'fails'} |")
-        return passed
+                   f"{verdict} |")
 
     for k in (2, 4, 8):
         line("A1", f"delivered, parts {k}", reading(cell, f"delivered parts {k}"), 0.95)
@@ -129,27 +172,38 @@ def gates(rows: list[dict[str, Any]], arm: str = "heads", size: int = 100_000,
                           "refused chain 3 absent"]) for r in cell]
     line("A4b", "refused, questions no record answers",
          [v for v in refused if v is not None], 0.90)
-    born = [r for r in rows if r["arm"] == birth and int(r.get("size", 0)) == size]
     share = mean(reading(cell, "said chain 3")) - mean(reading(born, "said chain 3"))
+    verdict = ("incomplete" if gaps[arm] or gaps[birth] else
+               "passes" if share >= 0.30 else "fails")
     out.append(f"| A4c | said, chain 3: `{arm}` less `{birth}`, means | 0.30 | | {share:+.3f} | "
-               f"{'passes' if share >= 0.30 else 'fails'} |")
-    controls = [r for r in rows if r.get("schedule") == "online"
-                and int(r.get("size", 0)) == size]
+               f"{verdict} |")
     shared = {r["founder"] for r in controls}
     mine = [r for r in cell if r["founder"] in shared]
     for group in ("parts 2", "parts 4", "parts 8", "chain 2", "chain 3"):
         best = max((mean(reading([r for r in controls if r["kind"] == kind], f"said {group}"))
                     for kind in sorted({r["kind"] for r in controls})), default=float("nan"))
         own = mean(reading(mine, f"said {group}"))
-        verdict = "passes" if controls and own >= best - 0.03 else "fails"
+        verdict = ("incomplete" if not paired else
+                   "passes" if own >= best - 0.03 else "fails")
         out.append(f"| A5 | said, {group}: `{arm}` {own:.3f}, the better online control "
                    f"{best:.3f} | within .03 | {len(mine)} founders | | {verdict} |")
     one = mean([r["costs"]["parts 1"]["read_ms"] for r in cell if "parts 1" in r.get("costs", {})])
     for k in (2, 4, 8):
         got = mean([r["costs"][f"parts {k}"]["read_ms"] for r in cell
                     if f"parts {k}" in r.get("costs", {})])
+        verdict = "incomplete" if gaps[arm] else "passes" if got < k * one else "fails"
         out.append(f"| A6 | the read's ms, parts {k} over parts 1: {got:.3f} over {one:.3f} | "
-                   f"under {k} | | {got / one:.2f} | {'passes' if got < k * one else 'fails'} |")
+                   f"under {k} | | {got / one:.2f} | {verdict} |")
+    missing = ["`" + name + "` " + ", ".join(str(f) for f in lack)
+               for name, lack in gaps.items() if lack]
+    if missing:
+        out += ["", f"incomplete: the gates are declared on founders {founders[0]} to "
+                f"{founders[-1]} with rows of `{arm}` and `{birth}`, and A5 on founders "
+                f"{controlled[0]} to {controlled[-1]} with a row of each online control, at "
+                f"{size:,} records; not given: " + "; ".join(missing)]
+    elif outside:
+        out += ["", "not counted, outside the declared founders: "
+                + ", ".join(str(f) for f in outside)]
     return out
 
 

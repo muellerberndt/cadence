@@ -127,3 +127,75 @@ def test_the_summary_reads_ranges_and_bars():
     lines = sm.table(rows, ("said",))
     assert "| `a` | 10 | 2 | 5 | said | .500 to .750 |" in lines[2]
     assert any("read_ms" in line for line in sm.costs(rows))
+
+
+DECLARED, ONLINE = tuple(range(3250, 3262)), ("transformer", "lstm")  # PROTOCOL.md
+
+
+def _row(founder: int, arm: str = "heads", right: float = 1.0) -> dict:
+    """A row at 100,000 records holding every reading the gates name, each at ``right``."""
+    scores = {f"{kind} {g}": {"right": right, "questions": 200}
+              for kind in ("delivered", "said") for g in sm.GROUPS}
+    scores |= {f"silent parts {k} absent": {"right": right, "questions": 100} for k in (2, 4, 8)}
+    scores |= {f"refused {g} absent": {"right": right, "questions": 100}
+               for g in ("parts 1", "chain 2", "chain 3")}
+    if arm == "birth":
+        scores["said chain 3"]["right"] = 0.0
+    row = {"arm": arm, "size": 100_000, "founder": founder, "parameters": 1, "scores": scores,
+           "costs": {f"parts {k}": {"read_ms": 1.0, "answer_ms": 1.0, "answer_macs": 1,
+                                    "read_macs": 1} for k in (1, 2, 4, 8)}}
+    if arm in ONLINE:
+        row |= {"arm": f"{arm}, online", "kind": arm, "schedule": "online"}
+        row["scores"] = {name: dict(score, right=0.0) for name, score in scores.items()}
+    return row
+
+
+def _panel(founders=DECLARED, controlled=DECLARED[:6], kinds=ONLINE) -> list[dict]:
+    return ([_row(f, arm) for f in founders for arm in ("heads", "birth")]
+            + [_row(f, kind) for f in controlled for kind in kinds])
+
+
+def _verdicts(rows: list[dict]) -> list[str]:
+    return [line.rsplit("|", 2)[1].strip() for line in sm.gates(rows) if line.startswith("| A")]
+
+
+def test_the_gates_read_incomplete_until_the_declared_panel_is_given_and_name_it():
+    assert set(_verdicts(_panel())) == {"passes"}
+    for rows in (_panel(founders=[3250], controlled=[3250]),  # one founder of twelve
+                 _panel(founders=range(10), controlled=range(6))):  # outside the panel
+        assert set(_verdicts(rows)) == {"incomplete"}
+        assert sm.gates(rows)[-1].startswith(
+            "incomplete: the gates are declared on founders 3250 to 3261")
+    nine = _panel(founders=range(3250, 3259))  # nine founders, the bar is ten
+    verdicts = _verdicts(nine)
+    assert verdicts[:11] + verdicts[16:] == ["incomplete"] * 14
+    assert verdicts[11:16] == ["passes"] * 5  # A5's own panel, founders 3250 to 3255, is given
+    assert sm.gates(nine)[-1].endswith(
+        "not given: `heads` 3259, 3260, 3261; `birth` 3259, 3260, 3261")
+    rows = [*_panel(), *_panel(founders=[0], controlled=[0])]
+    lines = sm.gates(rows)
+    assert set(_verdicts(rows)) == {"passes"}
+    assert lines[-1] == "not counted, outside the declared founders: 0"
+    assert "| A1 | delivered, parts 2 | 0.95 | 12 of 12 | 1.000 | passes |" in lines
+
+
+def test_the_bar_of_ten_founders_is_not_lowered_to_the_founders_that_hold_a_reading():
+    rows = _panel()
+    for row in rows[:6:2]:  # three founders' heads rows without the reading of parts of 2
+        del row["scores"]["delivered parts 2"]
+    assert "| A1 | delivered, parts 2 | 0.95 | 9 of 9 | 1.000 | fails |" in sm.gates(rows)
+
+
+def test_a5_waits_for_every_online_control_on_its_six_founders():
+    verdicts = _verdicts(_panel(kinds=("transformer",)))
+    assert verdicts[10] == "passes" and verdicts[11:16] == ["incomplete"] * 5
+    assert sm.gates(_panel(kinds=("transformer",)))[-1].endswith(
+        "not given: `lstm, online` 3250, 3251, 3252, 3253, 3254, 3255")
+
+
+def test_a_second_row_of_a_founders_arm_at_a_size_is_refused():
+    for twice in (_row(3250), _row(3250, "birth"), _row(3253, "lstm")):
+        with pytest.raises(SystemExit, match="founder 325[03] already has a row of the arm"):
+            sm.gates([*_panel(), twice])
+    with pytest.raises(SystemExit, match="founder 3250 already has a row of the arm 'heads'"):
+        sm.gates([_row(3250)] * 12)
