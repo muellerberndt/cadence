@@ -103,6 +103,10 @@ def test_the_blank_is_one_of_the_beliefs_symbols(blank):
             path(flat, [1, 2], blank=blank)
     last = forced_path(flat, [1, 0], blank=7)  # another blank: symbol 0 is then a letter
     assert collapse(last, blank=7) == [1, 0]
+    if blank != 8:  # a blank that is no symbol of any beliefs is refused where it is given
+        with pytest.raises(ValueError, match="blank must be a nonnegative integer symbol"):
+            Alignments(blank=blank)
+        return
     held = Alignments(blank=blank)
     with pytest.raises(ValueError, match="blank must be one of the beliefs' 8 symbols"):
         held.realign("a", flat, [1, 2])
