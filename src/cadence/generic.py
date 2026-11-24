@@ -5094,10 +5094,9 @@ class Brain:
         hippocampal recall when ``memory`` is set; with it the bound records also complete the
         senses an observation by name leaves silent, and without it they are not read. An
         episodic memory that votes in the choice (``memory_choice``) is not read into the
-        drive. The recall memory addresses
-        the moment here and keeps the address for the moment's write and lesson. Both
-        memories read the observation code; a learned code settles on the observations
-        alone, as the cortex reads it."""
+        drive. The recall memory addresses the moment here and keeps the address for the
+        moment's write and lesson. Both memories read the observation code; a learned code
+        settles on the observations alone, as the cortex reads it."""
         coded = self._coded_moment  # the moment's code, when this is its settle
         if coded is not None and coded[0] is observations:
             drive = self._stimulus(coded[0], coded[1], memory=memory)
