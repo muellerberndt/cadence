@@ -1017,9 +1017,9 @@ class HeldMessage(Message):
     # -- the memory contract
 
     def branch(self) -> HeldMessage:
-        """A private copy for an imagined branch: its streams its own, its maps shared."""
-        branch = copy(self)
-        branch.trace, branch.told = self.trace.copy(), self.told.copy()
+        """A private copy for an imagined branch: its streams its own (the trace, the tellings,
+        what each role heard and where a boundary held), its maps shared."""
+        branch = cast(HeldMessage, Message.branch(self))
         branch.previous = self.previous.copy()
         branch.last = None
         return branch
