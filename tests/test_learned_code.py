@@ -1189,8 +1189,8 @@ def test_the_module_reads_the_code_at_unit_length():
     terms = []  # the term the moment's settle carries on the association neurons
     unit_read = brain._unit_read
 
-    def recorded(x_, drive, *, memory, index=brain.association_index):
-        out = unit_read(x_, drive, memory=memory)
+    def recorded(x_, drive, *, memory, phase=None, index=brain.association_index):
+        out = unit_read(x_, drive, memory=memory, phase=phase)
         terms.append((out - drive)[:, index])
         return out
 

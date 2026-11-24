@@ -30,7 +30,8 @@ def test_refused_prediction_restores_its_provisional_code_phase(monkeypatch):
     policy = region.halvings, region.graph, region.last
 
     def refused(*args, **kwargs):
-        assert region.last is not policy[2]
+        # an independent read settles the code from rest and publishes none of it
+        assert (region.halvings, region.graph, region.last) == policy
         raise RuntimeError("cortex refused after code preparation")
 
     monkeypatch.setattr(brain, "_qualified", refused)
