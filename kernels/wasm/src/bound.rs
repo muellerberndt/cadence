@@ -94,8 +94,7 @@ pub unsafe extern "C" fn bound_recall(
            out, present)
 }
 
-/// `bound_recall` on views of the arrays: the read itself, for a caller that holds the arrays
-/// (the native core) as for one that hands NumPy's objects over.
+/// `bound_recall` on views of the arrays: the read itself.
 #[allow(clippy::too_many_arguments)]
 #[inline(always)]
 pub(crate) unsafe fn recall(

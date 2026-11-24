@@ -19,5 +19,3 @@ htmlcov/
 kernels/wasm/target/
 kernels/wasm/cadence_kernel.wasm
 kernels/wasm/Cargo.lock
-kernels/core/target/
-kernels/core/Cargo.lock

@@ -48,7 +48,7 @@ FORMAT = "cadence-space-map/1"
 
 def _in_order(products: np.ndarray) -> Any:
     """A sum over the first axis, entry after entry from zero: a product's sum as NumPy sums it
-    without BLAS (under Pyodide) and as the compiled kernels and the native core sum it. NumPy's
+    without BLAS (under Pyodide) and as the compiled kernels sum it. NumPy's
     BLAS (Accelerate, OpenBLAS) sums in orders of its own, which part in the last bits, and a
     thing seen empty with a cell exactly two reaches from its middle is decided by them."""
     return np.cumsum(products, axis=0)[-1] + 0.0

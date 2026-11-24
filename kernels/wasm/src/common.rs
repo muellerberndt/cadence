@@ -1,8 +1,6 @@
-//! What the kernels share whichever library holds them: NumPy's array object read at its
-//! address, views of one or two dimensions, room for a kernel's scratch, and the arithmetic
-//! helpers. `kernels/wasm` (the module for Pyodide) and `kernels/core` (the native core) both
-//! include this file; each defines `host_malloc`, `host_free`, `trap`, `exp`, `tanh` and
-//! `sqrt` at its root.
+//! What the kernels share: NumPy's array object read at its address, views of one or two
+//! dimensions, room for a kernel's scratch, and the arithmetic helpers. The crate's root
+//! defines `host_malloc`, `host_free`, `trap`, `exp`, `tanh` and `sqrt`.
 
 #[inline(always)]
 pub(crate) fn fabs(x: f64) -> f64 {
