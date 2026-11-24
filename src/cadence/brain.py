@@ -99,6 +99,26 @@ def _rows_finite(x: np.ndarray) -> bool:
     return bool(np.isfinite(x).all())
 
 
+def _index_key(index: Any) -> tuple[str, bytes] | None:
+    """The neurons a one-dimensional array of integers names, as a key: their type and bytes,
+    read from the array as it stands. What is kept under it holds for those neurons whichever
+    array names them, and an array written in place, or made where a freed one stood, has the
+    key of what it holds. None for any other selector (a mask, a slice)."""
+    chosen = np.asarray(index)
+    if chosen.ndim != 1 or chosen.dtype.kind not in "iu":
+        return None
+    return chosen.dtype.str, chosen.tobytes()
+
+
+def _same(given: np.ndarray, kept: np.ndarray) -> bool:
+    """Whether ``given``, a float64 array handed to a caller, still reads to the bit as
+    ``kept``, the array the library kept beside it: no one wrote it since."""
+    return (
+        given.dtype == kept.dtype and given.shape == kept.shape
+        and bool((given.view(np.int64) == kept.view(np.int64)).all())
+    )
+
+
 def available_backends() -> dict[str, str]:
     """Backends importable here, with the device each would use."""
     out = {"cpu": "numpy float64"}
@@ -543,24 +563,32 @@ class BrainState:
 
     def part(self, index: np.ndarray) -> np.ndarray:
         """The activation at the neurons ``index`` on the host, ``(batch, neurons)``. Of a state
-        resting on a torch device only they come to the host, once each."""
+        resting on a device only they come to the host, once per set of neurons: the index is
+        read at every call, so an array written since the last one names the neurons it holds
+        now. The array returned is the caller's: while nothing wrote it the next read returns
+        it again, and one that was written is replaced by what the device holds. A mask or a
+        slice reads the whole activation on the host."""
         handle = self.__dict__.get("device")
         if handle is None or self.__dict__.get("activation") is not None or "s" not in handle:
             return np.asarray(self.activation[:, index])
-        if isinstance(handle, _MlxState):
-            held = self.__dict__.setdefault("_parts", {})
-            part = held.get(id(index))
-            if part is None:
-                part = held[id(index)] = handle["plan"].part(handle, index)
-            return np.asarray(part if part is not False else self.activation[:, index])
-        s = handle["s"]
-        if not _resident(s):
+        key = _index_key(index)
+        if key is None or not (isinstance(handle, _MlxState) or _resident(handle["s"])):
             return np.asarray(self.activation[:, index])
         held = self.__dict__.setdefault("_parts", {})
-        part = held.get(id(index))
-        if part is None:
-            part = held[id(index)] = _host_copy(s[:, handle["holder"].index_of(index)])
-        return np.asarray(part)
+        kept = held.get(key)
+        if kept is None:
+            if isinstance(handle, _MlxState):
+                read = handle["plan"].part(handle, np.asarray(index))
+            else:
+                read = _host_copy(handle["s"][:, handle["holder"].index_of(index)])
+            kept = held[key] = (read, None)
+        read, given = kept
+        if read is False:  # one of them does not settle in the launch
+            return np.asarray(self.activation[:, index])
+        if given is None or not _same(given, read):
+            given = read.copy()
+            held[key] = (read, given)
+        return np.asarray(given)
 
     def __getstate__(self) -> dict[str, Any]:
         held = dict(self.__dict__)
@@ -3356,7 +3384,7 @@ class _TorchKernel:
         self.flat = self.plan.values  # the live effective weights, in the plan's order
         self._staging = _Staging(torch, self.device)
         self._observed: tuple[np.ndarray, Any] | None = None
-        self._indices: dict[int, tuple[np.ndarray, Any]] = {}
+        self._indices: dict[tuple[str, bytes], Any] = {}  # device indices by the neurons named
         self._workspaces = _Workspaces()
         self._nudge_specs: dict[Any, Any] = {}
         self._capture_stream: Any = None
@@ -3859,19 +3887,24 @@ class _TorchKernel:
 
     def index_of(self, index: np.ndarray) -> Any:
         """Neurons as an index of the device's arrays: a slice where they are a contiguous
-        range, made once per array of them."""
-        held = self._indices.get(id(index))
-        if held is None or held[0] is not index:
+        range from a neuron counted from the first, made once per set of neurons (the array
+        is read at every call: ``_index_key``)."""
+        key = _index_key(index)
+        held = None if key is None else self._indices.get(key)
+        if held is None:
             if len(self._indices) > 64:
                 self._indices.clear()
             first = int(index[0]) if len(index) else 0
-            contiguous = np.array_equal(index, np.arange(first, first + len(index)))
-            on_device = (
+            contiguous = first >= 0 and np.array_equal(
+                index, np.arange(first, first + len(index))
+            )
+            held = (
                 slice(first, first + len(index)) if contiguous
                 else self.torch.from_numpy(np.array(index, dtype=np.int64)).to(self.device)
             )
-            held = self._indices[id(index)] = (index, on_device)
-        return held[1]
+            if key is not None:
+                self._indices[key] = held
+        return held
 
     def _nudge_spec(self, nudge: Nudge) -> tuple[Any, Any]:
         """The nudge's topology and arithmetic branches, independent of temperature values.
