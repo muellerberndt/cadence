@@ -13,7 +13,9 @@ when it reads the code and the senses.
 rocks, its senses in the layout of a larger simulation's animals (eyes in eight sectors, the
 ears and a heard call, the thing it attends, the nearest food as what, bearing and distance, and
 its body; 104 inputs). `chamber.py` holds the life and the readings; its docstring gives each
-step, `summary.py` the gates.
+step, `summary.py` the gates. `summary.py` gives a gate's verdict on the declared panel alone
+(founders 1011100 to 1011111, each with its `code` and `both` lives); any other set reads
+`incomplete`, and a second life of a founder's arm is refused.
 
 ```sh
 PYTHONPATH=src python benchmarks/forager/chamber.py --founders 0 1 --out dev.json

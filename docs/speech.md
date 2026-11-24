@@ -331,11 +331,16 @@ to .32 and keep the others at .34. On issue 304's set the full rate lowers both 
 | --- | --- | --- |
 | `log_mel` | `rate` 16,000, `mels` 40, `frame` 400, `hop` 160, `fft` 512 | audio not finite and one-dimensional |
 | `Hearing` | `window` 24 frames, `stack` 4 frames, `clip` 3, `scale` .3 | statistics not finite or not positive |
-| `Alignments`, `forced_path` | `blank` 0 | a transcript longer than its steps allow |
+| `Alignments`, `forced_path`, `soft_path` | `blank` 0 | a transcript longer than its steps allow; a transcript the beliefs leave no path (`forced_path`); symbols that are not whole numbers among the beliefs' symbols, or the blank; a blank that is not one of the symbols; beliefs with NaN or positive infinity (`forced_path`). A belief of zero on steps the path does not take is legal |
 | `WordBeam` | `beam` 16, `top` 8, `counts`, `prior_weight`, `word_bonus` | a list word outside the alphabet |
 | `Rehearsal` | `rows` 3, `weight` .25, `budget` 64 MiB, `seed` | negative rows or weight, a budget of no bytes, one utterance larger than the budget |
 | `StreamReader` | `alphabet`, `words`, `temperature` | a brain whose motor neurons do not match the alphabet |
 
-A correction resets the brain and leaves it at rest. At weight zero the banked utterances teach
-nothing at the normalized teaching points a composed brain takes. Under the founder teaching
+A correction resets the brain and leaves it at rest. Before the reset `correct` checks every
+step as the brain's `lesson` and `act` take it: what the brain would refuse at any step is refused
+whole, and the brain, its streams and the bank's draws stay as they were. A settle the brain
+refuses while the correction is heard ends it there, the lessons before it learned and the brain
+at rest. The bank keeps copies of the utterances it is given, and `chosen` returns copies. At
+weight zero the banked utterances teach nothing at the normalized teaching points a composed
+brain takes. Under the founder teaching
 (`recall=False` without a teaching point) a weight-zero row shrinks the step as well.

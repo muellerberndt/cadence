@@ -174,6 +174,10 @@ mypy
 pytest -q
 ```
 
+`.gitattributes` checks every text file out with LF line endings, whatever `core.autocrlf` says:
+receipts and tests hash sources and results byte for byte. A tree checked out with CRLF earlier
+needs a fresh clone, or `git rm --cached -r -q . && git reset --hard`.
+
 The test suite includes `tests/test_documentation.py`, which executes every Python block
 of the listed guides in order and checks that every local link and anchor in `README.md`,
 `MANIFESTO.md`, `CONTRIBUTING.md`, `AGENTS.md` and `docs/` resolves. Default pytest
@@ -298,7 +302,8 @@ A release is planned as a GitHub milestone of the issues it delivers
 ([how the project is planned](AGENTS.md#how-the-project-is-planned)). Its code arrives
 through pull requests with every CI job green, and the release pull request gets an
 independent review before it merges. The tag goes on the merge commit. The wheel and
-sdist are built from that tree, checked with `twine check`, uploaded to PyPI and
+sdist are built from that tree, checked with `twine check` (the sdist also by
+`pytest -q tests/test_documentation.py` inside its extracted tree), uploaded to PyPI and
 attached to the GitHub release with their SHA256 sums and the CI record. The
 milestone then closes, the roadmap's release line is updated, and each delivered issue
 closes with the evidence that settles it.

@@ -926,6 +926,9 @@ nothing from it: a map file (`cadence-space-map/1`, written by `Map.save`) as a
 [`Map`](#the-map-of-things-cadencespacemap), a trained module (`cadence.modules.FORMAT`,
 `cadence-module/1`, written by `save`) as a `Module`. It checks the record field by field and
 every array against its checksum, and refuses a file by what is wrong with it (`ValueError`).
+`Map.save`, `save_module` and `Space.save` write the whole file beside `path` and move it into
+place, as `Brain.save` does: a save that fails leaves the file that was there. The path is used as
+given.
 `names` lists the modules the library ships and `load` returns one, a new object at every call,
 refusing a name the library ships none by; the built-in `place` is a map. `host` names the
 population of `brain` that holds each region of `module` and refuses a brain that lacks one or
@@ -1035,7 +1038,7 @@ settings and refusals in [one table](speech.md#settings-refusals-and-cost). The 
 | `frontend.mel_bank` | The triangular filters, evenly spaced on the mel scale from 0 Hz to half the rate, that `log_mel` sums a frame's power spectrum through. `log_mel(audio, bank=bank)` takes a bank built once. Refuses fewer than one band, a rate that is not positive and a spectrum of fewer than two points. |
 | `frontend.windows` | The `window` latest frames at the end of each step of `stack` frames, the first frame repeated before the audio began, each window less its own mean; a trailing part of a step is dropped. `Hearing.rows(windows)` standardizes them, and `Hearing.steps(frames)` does both. Refuses frames that are not `(frames, mels)` with at least one frame, and a window or stack that is not positive. |
 | `frontend.LogMel` | `log_mel` at named settings joined to a `Hearing`: samples in, a brain's rows out. `steps(samples)` gives the rows of `hearing.steps(log_mel(samples))`, with `log_mel(samples)`, `rows(held)` and `shape` beside it; `window` and `hop` hold a frame's length and stride in samples, `stack` and `frames` the frames of a step and of its window. |
-| `align.even_path` | Each step's symbol on an even split of the steps among the transcript's symbols, with no blank: the path `Alignments.even` keeps before the brain believes anything. Refuses fewer than one step and an empty transcript. |
+| `align.even_path` | Each step's symbol on an even split of the steps among the transcript's symbols, with no blank: the path `Alignments.even` keeps before the brain believes anything. Refuses fewer than one step, an empty transcript and symbols that are not whole numbers from zero. |
 | `decode.greedy` | The text of the most believed symbol at each step, repeats and blanks collapsed: `alphabet.decode(collapse(...))` of the beliefs' argmax, with `Alphabet()` where none is given. |
 
 ## Corrections and streaming (`cadence.speech.correct`, `cadence.speech.stream`)
@@ -1057,6 +1060,13 @@ at `weight`, every stream past its own last row at zero. It leaves the brain at 
 the streams, the steps, the lessons a learning phase refused and the actions taken on the
 correction. Refused with `ValueError`: negative `rows` or `weight`, a budget of no bytes, an
 utterance larger than the budget, labels not one a step, banked rows of another width.
+The bank keeps its own copy of each utterance and `chosen` returns copies: an array filled again
+after `remember`, or a selection changed, leaves the bank and its `nbytes` as they were.
+`correct` checks every step as the brain's `lesson` and `act` take it before it resets the brain:
+what the brain would refuse at any step is refused whole, and the brain, its streams and the
+bank's draws are as they were. A settle the brain refuses while the correction is heard ends it
+there: the lessons before it stay learned, the brain is left at rest, and the error's note names
+the step and the steps taught.
 
 `StreamReader` runs one stream of `brain` on audio heard through a `frontend.Hearing`.
 `push(samples)` takes the next 16 kHz samples in blocks of any size and returns the text its
