@@ -99,6 +99,48 @@ def _rows_finite(x: np.ndarray) -> bool:
     return bool(np.isfinite(x).all())
 
 
+# The resident drives the library made from arrays it read finite, by identity: each with a weak
+# reference to it and, of a torch tensor, the version it stood at (a write in place moves it).
+_TRUSTED: dict[int, tuple[Any, Any]] = {}
+
+
+def _trusted(drive: Any) -> Any:
+    """``drive``, marked as read finite where it rests on a device: a settle under it then
+    reads nothing of it for its check (``_drive_finite``). For whoever made a resident drive
+    from host arrays it read finite, or took rows of one that is marked; a torch tensor
+    written in place afterwards is read again. A host array is returned as it is."""
+    if _resident(drive):
+        key = id(drive)
+
+        def gone(_: Any, key: int = key) -> None:  # the mark goes with the drive
+            _TRUSTED.pop(key, None)
+
+        _TRUSTED[key] = (weakref.ref(drive, gone), getattr(drive, "_version", None))
+    return drive
+
+
+def _drive_finite(drive: Any) -> bool:
+    """Whether a settle's ``(batch, neurons)`` drive is finite, wherever it rests: the refusal
+    of a host array and of a resident one are the same. A host array is read here. A resident
+    drive the library marked (``_trusted``) is not read again; any other is read on its device,
+    one flag coming to the host: an MLX array, which has no version, and a torch tensor on the
+    CPU, whose memory a NumPy array can share and write unseen, at every call; a tensor on an
+    accelerator once per version of it, which every write in place through torch moves."""
+    if not _resident(drive):
+        return _rows_finite(drive)
+    held = _TRUSTED.get(id(drive))
+    if held is not None and held[0]() is drive and held[1] == getattr(drive, "_version", None):
+        return True
+    if type(drive).__module__ == "mlx.core":
+        import mlx.core as mx
+
+        return bool(mx.all(mx.isfinite(drive)).item())
+    finite = bool(drive.isfinite().all().item())
+    if finite and drive.device.type != "cpu":
+        _trusted(drive)
+    return finite
+
+
 def _index_key(index: Any) -> tuple[str, bytes] | None:
     """The neurons a one-dimensional array of integers names, as a key: their type and bytes,
     read from the array as it stands. What is kept under it holds for those neurons whichever
@@ -1465,7 +1507,8 @@ class Brain:
         """Settle a batch of dense drives ``(batch, n)`` at once; see ``settle``.
 
         ``mask`` has shape ``(n,)`` or ``(1, n)`` for shared ablations, or
-        ``(batch, n)`` for a separate mask on each row.
+        ``(batch, n)`` for a separate mask on each row. A drive that rests on a device (a torch
+        tensor, an MLX array) is refused where a host array is, read on its device.
         """
         resident = _resident(drive)
         if not resident:
@@ -1485,7 +1528,7 @@ class Brain:
         batch, n = drive.shape
         if n != self.connectome.n:
             raise ValueError("drive must have one column per neuron")
-        if n == 0 or not (resident or _rows_finite(drive)):
+        if n == 0 or not _drive_finite(drive):
             raise ValueError("drive must be finite and the brain must contain neurons")
         if mask is not None:
             keep = np.asarray(mask, float)
@@ -3879,10 +3922,12 @@ class _TorchKernel:
 
     def observed(self, x: np.ndarray) -> Any:
         """Observations on the device in the brain's precision, uploaded once however many of a
-        moment's memories read the same array."""
+        moment's memories read the same array. The brain uploads what it read finite, so the
+        upload is marked (``_trusted``): a settle under it as a moment's drive reads it for
+        its sweeps alone."""
         held = self._observed
         if held is None or held[0] is not x:
-            held = self._observed = (x, self._staging.upload(x, self.dtype))
+            held = self._observed = (x, _trusted(self._staging.upload(x, self.dtype)))
         return held[1]
 
     def index_of(self, index: np.ndarray) -> Any:

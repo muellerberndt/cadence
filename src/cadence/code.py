@@ -115,7 +115,7 @@ from typing import Any
 import numpy as np
 
 from .brain import Brain as NeuralGraph
-from .brain import BrainState, Equilibrium, Nudge
+from .brain import BrainState, Equilibrium, Nudge, _trusted
 from .connectome import Connectome
 from .neuron import NeuronModel
 
@@ -749,11 +749,12 @@ class LearnedCode:
         kernel = self.graph._torch
         if kernel is not None:
             # the stimulus goes to the device once, where every sweep and check of the phase
-            # reads it; a drive that rests there is not read for finiteness, so it is read here
+            # reads it; it is read for finiteness here, on the host, and marked, so no settle
+            # of the phase reads it again there
             host = np.atleast_2d(np.asarray(stimulus, dtype=float))
             if not np.isfinite(host).all():
                 raise ValueError("drive must be finite and the brain must contain neurons")
-            drive = kernel._upload(host)
+            drive = _trusted(kernel._upload(host))
         phase = self.graph.equilibrate(
             drive, state=warm, budget=budget, tolerance=tolerance, damping=damping,
             nudge=self.standing(),
