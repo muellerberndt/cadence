@@ -704,7 +704,7 @@ class LongTermMemory:
         for _ in range(1, heads):
             p = _share(logits, left, np.ones(1))
             shares.append(p[0])
-            left = left * _left(p)
+            left = _left(p, left)
         return shares
 
     def _weights_each(self, scores: np.ndarray) -> list[np.ndarray]:
@@ -727,7 +727,7 @@ class LongTermMemory:
         for head in range(1, heads):
             p = _share(logits[head : head + 1], left, np.ones(1))
             shares.append(p[0])
-            left = left * _left(p)
+            left = _left(p, left)
         return shares
 
     def value(self, read: LongTermRead, head: int = 0) -> np.ndarray:

@@ -162,9 +162,19 @@ def columns(index: np.ndarray) -> slice | np.ndarray:
     return np.asarray(index, dtype=np.int64)
 
 
-def _left(p: np.ndarray) -> np.ndarray:
-    """The share of each slot a head's attention ``p`` leaves to the heads after it."""
-    return np.clip(1.0 - p, 0.0, 1.0)
+# what rounding leaves of a slot the heads read whole, in shares of the slot: nothing
+_TAKEN = 1e-12
+
+
+def _left(p: np.ndarray, available: np.ndarray | float = 1.0) -> np.ndarray:
+    """The share of each slot left to the heads after this one: what was ``available`` (the
+    whole slot before the first head) less the absolute share ``p`` this head read. After a
+    later head, a share below ``_TAKEN`` is what rounding left of a slot read whole, and counts
+    as nothing: the next head reads none of it and takes no lesson from it."""
+    left = np.clip(available - p, 0.0, 1.0)
+    if isinstance(available, np.ndarray):
+        left[left < _TAKEN] = 0.0
+    return np.asarray(left)
 
 
 def _share(logits: np.ndarray, left: np.ndarray, mass: np.ndarray) -> np.ndarray:
@@ -2917,7 +2927,7 @@ class Recall:
                     held = None if self.held.all() else self.held
                     logits = self._attention(address, self.keys, held, position)
                     p = _share(logits, left, p.sum(axis=1))
-                left = _left(p) if left is None else left * _left(p)
+                left = _left(p) if left is None else _left(p, left)
             attended.append(p)
         return attended
 
