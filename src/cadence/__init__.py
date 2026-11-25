@@ -122,4 +122,4 @@ __all__ = [
     "load_module",
 ]
 
-__version__ = "0.103.1"
+__version__ = "0.103.2"

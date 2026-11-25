@@ -70,6 +70,9 @@ PANEL: dict[str, tuple[str, dict[str, Any]]] = {
          "voice": "ear"},
     ),
     "cortex_reads": ("0.102.0", {"inputs": 40, "code": 64, "cortex_reads": "both"}),
+    # the learned value path of one motor slot, on the panel from the files of 0.103.1 on: the
+    # three cues are the three actions' tokens, and the life's lessons and rewards step its gains
+    "path": ("0.103.1", {"inputs": 8, "recall_gain": 1.0, "recall_tokens": [0, 1, 2]}),
 }
 
 

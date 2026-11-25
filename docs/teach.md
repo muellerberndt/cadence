@@ -797,7 +797,9 @@ the path in place, and each is refused with a `ValueError` where it fails:
   it is not left [open](#a-slot-the-lesson-leaves-open).
 
 Answer either refusal by widening the code or labelling the slot. A brain composed without
-`recall_tokens` is not refused, and the curve above is what it learns.
+`recall_tokens` is not refused, and the curve above is what it learns. The path's gains start at
+zero, and lessons raise them about as fast in a brain of many motor slots as in a brain of few
+([its lesson](memory.md#the-learned-value-path-opt-in)).
 
 **Sense first, then ask.** The memory a moment reads holds the moments before it. A brain that
 answers at the moment it first senses a state reads the state before that one, so on a slot that
@@ -869,7 +871,7 @@ assert carried < late / 2 and late < wide / 2 and wide < narrow < commonest
 
 The example prints the commonest answer wrong on 0.75 of the slots and persistence on 0.01. One
 region of 16 between the senses and the motor region stays at 0.48 and one of 64 at 0.28. The
-value path reads 0.05 asked as the state is first sensed, and 0.02 on a state sensed first.
+value path reads 0.05 asked as the state is first sensed, and 0.01 on a state sensed first.
 
 ### A trained brain gets worse with more training
 

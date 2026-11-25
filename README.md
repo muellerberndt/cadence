@@ -18,10 +18,10 @@ way: its connections change locally while the brain keeps running.
 ## Install
 
 ```sh
-python -m pip install cadence-net==0.103.1
+python -m pip install cadence-net==0.103.2
 ```
 
-Python 3.11 or later and NumPy. `"cadence-net[fast]==0.103.1"` adds Numba and SciPy for speed
+Python 3.11 or later and NumPy. `"cadence-net[fast]==0.103.2"` adds Numba and SciPy for speed
 (recommended); `[apple]` adds MLX for Apple silicon GPUs and `[accel]` PyTorch for NVIDIA GPUs.
 
 ## A first brain
@@ -56,7 +56,7 @@ is no backward pass and no switch between training and use.
 More guides: [a continuing life](https://github.com/muellerberndt/cadence/blob/main/docs/life.md), [train a brain](https://github.com/muellerberndt/cadence/blob/main/docs/teach.md), [learning from reward](https://github.com/muellerberndt/cadence/blob/main/docs/reward.md),
 [memory](https://github.com/muellerberndt/cadence/blob/main/docs/memory.md), [tune and read a living brain](https://github.com/muellerberndt/cadence/blob/main/docs/tune.md),
 [backends](https://github.com/muellerberndt/cadence/blob/main/docs/backends.md); the [documentation index](https://github.com/muellerberndt/cadence/blob/main/docs/README.md) lists them all. The
-[released documentation](https://github.com/muellerberndt/cadence/blob/v0.103.1/docs/README.md)
+[released documentation](https://github.com/muellerberndt/cadence/blob/v0.103.2/docs/README.md)
 describes the installed package. Integrated learned world prediction, repair localized to what
 failed and cheap stable operation are work in progress; Cadence is alpha research software.
 

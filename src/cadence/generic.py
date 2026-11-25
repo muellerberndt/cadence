@@ -3236,6 +3236,8 @@ class Brain:
                 connectome, **recalled, source=sensory,
                 inputs=self.code_width if coded_memory else 0,
                 actions=len(self.motor_index),
+                # the slots a lesson's nudge shares beta among: the gains' bound counts them
+                motor_slots=self.learner.slot_count,
             )
             # with ``recall_address_reward`` the actor keeps the address map's eligibility
             self.basal_ganglia.memory = self.recall
