@@ -1442,6 +1442,9 @@ class Recall:
     grid: tuple[int, ...] = ()
     # the motor neurons a slot's command covers with ``action``: a brain passes its motor width
     actions: int = 0
+    # the motor slots a lesson's nudge shares ``beta`` among (``Learner.nudge_for``), which the
+    # bound of the gains' step counts (``_gain_rates``): a brain passes its learner's
+    motor_slots: int = 1
     # the read's drive is one more carried route (``Hearing``): ``hearing`` multiplies the amplitude
     # on every port and ``trace`` keeps what the ports held at the latest read, at amplitude one
     drive_gain: bool = False
@@ -1514,7 +1517,8 @@ class Recall:
     SLOPE = 8.0  # the age at which the slope's lean reaches one unit of the slope
     # the gains' step (``gain``): a row's rate is bounded by this over the energy of its reads, so
     # a row taught alone moves its own drive on a motor neuron by at most this many times the
-    # neuron's movement between the nudged phases
+    # neuron's movement between the nudged phases at the whole ``beta``. A lesson's nudge carries
+    # ``beta / motor_slots`` on each motor slot, so a lesson's bound is ``motor_slots`` times this
     GAIN_BOUND = 5.0
     # the strength law's constants: the capacities of moments a depth below ``kept`` is kept
     # over (``LongTermMemory.hold`` is eight of its own), and the newest share of the capacity
@@ -1826,6 +1830,13 @@ class Recall:
         self.actions = int(self.actions)
         if self.action and not self.actions:
             raise ValueError("action needs the motor width a slot's command covers (actions)")
+        if (
+            isinstance(self.motor_slots, (bool, np.bool_))
+            or not isinstance(self.motor_slots, (int, np.integer))
+            or self.motor_slots < 1
+        ):
+            raise ValueError("motor_slots must be a positive integer: the learner's motor slots")
+        self.motor_slots = int(self.motor_slots)
         # the command coordinates of a slot, of its key and of the maps' inputs
         self.command_width = self.actions if self.action else 0
         self.observed: np.ndarray = np.asarray(populations[self.source], dtype=np.int64)
@@ -2819,17 +2830,26 @@ class Recall:
         s_minus = np.atleast_2d(np.asarray(minus.activation, dtype=float))
         return np.asarray((s_plus - s_minus)[:, self.motor], dtype=float)
 
-    def _gain_rates(self, reads: Sequence[np.ndarray | None]) -> np.ndarray:
-        """Each row's rate of the gains' step, ``min(gain, GAIN_BOUND / E)``, ``E`` the energy of
-        the row's reads over every port: the drive on a motor neuron reads them all together, so a
-        row taught alone moves its own drive by at most ``GAIN_BOUND`` times the neuron's
-        movement. A row that read nothing keeps the rate; its step is zero."""
+    def _gain_rates(
+        self, reads: Sequence[np.ndarray | None], motor_slots: int | None = None
+    ) -> np.ndarray:
+        """Each row's rate of the gains' step, ``min(gain, S * GAIN_BOUND / E)``, ``E`` the
+        energy of the row's reads over every port: the drive on a motor neuron reads them all
+        together, so a row taught alone moves its own drive by at most ``GAIN_BOUND`` times the
+        neuron's movement at the whole ``beta``. ``S`` is the number of slots the movement's
+        nudge shared ``beta`` among. A lesson's nudge carries ``beta / motor_slots`` on each
+        motor slot (``Learner.nudge_for``) while ``E`` sums the reads of all of them, so a
+        lesson's rate takes the memory's ``motor_slots``, the default, and a brain of any number
+        of motor slots steps its gains as a brain of one does. A sampled act's nudge carries the
+        whole ``beta`` on every slot, and its rate takes one. A row that read nothing keeps the
+        rate; its step is zero."""
+        shared = self.motor_slots if motor_slots is None else motor_slots
         energy = np.zeros(self.streams)
         for r in reads:
             if r is not None:
                 energy = energy + np.einsum("bi,bi->b", r, r)
         with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-            return np.minimum(self.gain, self.GAIN_BOUND / energy)
+            return np.minimum(self.gain, shared * self.GAIN_BOUND / energy)
 
     def _gain_step(self, read: np.ndarray, movement: np.ndarray) -> np.ndarray:
         """Per row, the sum over the tokens of a port's read of the token times its motor
@@ -2850,10 +2870,12 @@ class Recall:
         """The gains' lesson after a teacher lesson whose phases are ``learned``, at its taught
         rows: each port's gain takes the mean over the rows of the row's rate (``_gain_rates``)
         times ``_gain_step`` on the port's read (``_port_reads``, what the port held at the moment
-        the lesson's drive addressed) and the motor region's movement between the nudged phases. A
-        step that is not finite is refused whole. Returns ``gain_rows``, the rows that moved, and
-        ``gain_refused``, the rows a refused step left as they were; nothing without the option,
-        and both zero for a lesson without a nudged phase or a moment."""
+        the lesson's drive addressed) and the motor region's movement between the nudged phases,
+        which the lesson's nudge made at ``beta / motor_slots`` on each motor slot: the rate's
+        bound counts the movement at the whole ``beta``. A step that is not finite is refused
+        whole. Returns ``gain_rows``, the rows that moved, and ``gain_refused``, the rows a
+        refused step left as they were; nothing without the option, and both zero for a lesson
+        without a nudged phase or a moment."""
         if not self.gain:
             return {}
         quiet = {"gain_rows": 0.0, "gain_refused": 0.0}
@@ -2899,12 +2921,13 @@ class Recall:
     ) -> None:
         """The gains' eligibility of a sampled act, written into the last columns of ``out``
         (``contrast_rows``' array) on the array's first row: per row and port, the row's rate
-        (``_gain_rates``) times ``_gain_step`` on the act's two nudged phases, the step the lesson
-        would take were the act's action the label; a row whose step is not finite keeps none."""
+        (``_gain_rates`` of one motor slot: the act's nudge carries the whole ``beta`` on every
+        slot) times ``_gain_step`` on the act's two nudged phases, the step the lesson would take
+        were the act's action the label; a row whose step is not finite keeps none."""
         start = out.shape[2] - len(self.gains)
         movement = self._motor_movement(plus, minus)
         reads = self._port_reads(self._held_attention(moment))
-        rate = self._gain_rates(reads)
+        rate = self._gain_rates(reads, 1)
         for k, r in enumerate(reads):
             if r is None:
                 continue

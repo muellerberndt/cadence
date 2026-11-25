@@ -1,7 +1,8 @@
 """One learned gain per read port on the declared tokens' identity (``recall_gain``, cadence#262):
 at zero a newborn acts as one without it, a lesson steps each gain by the sum over the tokens of the
 port's read times the token's motor movement, and what a gain learns holds for a token no lesson
-used. The option is described and saved where it is on.
+used. The option is described and saved where it is on. A brain of several motor slots steps its
+gains as a brain of one does (cadence#373).
 """
 from __future__ import annotations
 
@@ -147,6 +148,201 @@ def test_a_rows_rate_is_bounded_by_the_energy_of_its_reads():
     for b in (twice, once):
         b.lesson(event(HEAR, ASK), [4])
     np.testing.assert_array_equal(twice.recall.gains, once.recall.gains)
+
+
+VALUES = 4  # the values of each motor slot of a brain of several
+
+
+def slotted(slots, rate=RATE, heads=1, streams=1, seed=3):
+    """A brain of ``slots`` motor slots of ``VALUES`` values each: observation ``i`` and action
+    ``i`` are one token."""
+    tokens = slots * VALUES
+    return cd.Brain.compose(tokens, tokens, slots=(VALUES,) * slots, modules=(16,), seed=seed,
+                            episodic=False, recall=True, recall_heads=heads, recall_gain=rate,
+                            recall_tokens=range(tokens))
+
+
+def one_hot(state):
+    """A state of one value per slot, ``(batch, slots)``, as the observation that holds it."""
+    state = np.atleast_2d(state)
+    x = np.zeros((len(state), state.shape[1] * VALUES))
+    x[np.arange(len(state))[:, None], np.arange(state.shape[1]) * VALUES + state] = 1.0
+    return x
+
+
+def watched(recall):
+    """The motor movement of every lesson and sampled act of ``recall`` from here on, kept."""
+    kept = []
+    original = recall._motor_movement  # noqa: SLF001
+
+    def keep(plus, minus):
+        kept.append(original(plus, minus))
+        return kept[-1]
+
+    recall._motor_movement = keep  # noqa: SLF001
+    return kept
+
+
+def test_one_motor_slot_keeps_its_rate_to_the_bit():
+    """The bound of a lesson is the motor slots times ``GAIN_BOUND``: with one slot the rate is
+    ``min(gain, GAIN_BOUND / E)`` as it was, the same bits."""
+    brain = composed(recall_gain=1e6, recall_tokens=range(TOKENS))
+    assert brain.learner.slot_count == 1
+    brain.act(event(HEAR, 2), greedy=True)
+    brain.stimulus(event(HEAR, ASK))
+    recall = brain.recall
+    reads = recall._port_reads(recall._held_attention(recall.last))  # noqa: SLF001
+    energy = np.zeros(1)
+    for r in reads:
+        energy = energy + np.einsum("bi,bi->b", r, r)
+    before = np.minimum(recall.gain, cd.Recall.GAIN_BOUND / energy)
+    assert recall.motor_slots == 1
+    np.testing.assert_array_equal(recall._gain_rates(reads), before)  # noqa: SLF001
+    np.testing.assert_array_equal(recall._gain_rates(reads, 1), before)  # noqa: SLF001
+
+
+@pytest.mark.parametrize("slots", [2, 8, 32])
+def test_a_lessons_rate_is_bounded_at_the_whole_beta_with_several_motor_slots(slots):
+    """A lesson's nudge carries ``beta / slots`` on each motor slot and the energy sums the reads
+    of all of them, so the lesson's bound is ``slots * GAIN_BOUND / E``: the step of the gains is
+    that rate times each port's contrast, and the drive it adds over the tokens is at most
+    ``GAIN_BOUND`` times the movement at the whole beta, ``slots`` times the movement."""
+    brain = slotted(slots, rate=1e6)
+    recall = brain.recall
+    assert brain.learner.slot_count == recall.motor_slots == slots
+    state = np.arange(slots) % VALUES
+    brain.act(one_hot(state), greedy=True)
+    brain.stimulus(one_hot(state))
+    reads = recall._port_reads(recall._held_attention(recall.last))  # noqa: SLF001
+    energy = sum(float(np.sum(r * r)) for r in reads)
+    rate = slots * cd.Recall.GAIN_BOUND / energy
+    assert recall._gain_rates(reads)[0] == pytest.approx(rate)  # noqa: SLF001
+    assert recall._gain_rates(reads, 1)[0] == pytest.approx(rate / slots)  # noqa: SLF001
+    moved = watched(recall)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # the lesson follows an act on the same observation
+        report = brain.lesson(one_hot(state), [(state + 1) % VALUES])
+    assert report["gain_rows"] == 1.0 and report["gain_refused"] == 0.0
+    movement = moved[-1]
+    assert movement.any()
+    for k, r in enumerate(reads):
+        assert recall.gains[k] == pytest.approx(rate * float(r[0] @ movement[0]))
+    added = sum(g * r[0] for g, r in zip(recall.gains, reads, strict=True))  # the drive's change
+    whole = slots * float(np.linalg.norm(movement[0]))  # the movement at the whole beta
+    assert float(np.linalg.norm(added)) <= cd.Recall.GAIN_BOUND * whole * (1 + 1e-9)
+
+
+def test_the_lessons_nudge_carries_beta_over_the_motor_slots():
+    """What the lesson's bound counts on: ``Learner.nudge_for`` gives every motor slot's nudge
+    ``beta / slots``, and a sampled act's nudge (``ActorCritic._nudged_groups``) the whole
+    beta. The motor slots in the bound follow the first and not the second."""
+    for slots in (1, 2, 8):
+        brain = slotted(slots)
+        learner, actor = brain.learner, brain.basal_ganglia
+        assert learner.slot_count == slots
+        resting = np.zeros((1, learner.brain.connectome.n))
+        assert learner.nudge_for(resting, learner.config.beta).beta == learner.config.beta / slots
+        kept = {}
+        original = learner.brain.settle_batch
+
+        def settle(*args, _kept=kept, _original=original, **options):
+            if options.get("nudge") is not None:
+                _kept["beta"] = options["nudge"].beta
+            return _original(*args, **options)
+
+        learner.brain.settle_batch = settle
+        try:
+            state = np.arange(slots) % VALUES
+            brain.act(one_hot(state))  # sampled: its eligibility settles two nudged phases
+        finally:
+            learner.brain.settle_batch = original
+        assert actor is not None and abs(kept["beta"]) == learner.config.beta
+
+
+def held_gain(slots, lessons=40, streams=4, seed=0):
+    """The recall port's gain after ``lessons`` on a state that mostly holds, sensed as a moment
+    of its own and then taught (the hold example of the teaching guide)."""
+    brain = slotted(slots, rate=1.0, seed=seed)
+    draw = np.random.default_rng(seed + 1)
+    state = draw.integers(0, VALUES, (streams, slots))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # the state is sensed first: the read finds the present
+        for _ in range(lessons):
+            following = state.copy()
+            changed = np.flatnonzero(draw.random(streams) < 0.15)
+            following[changed, draw.integers(0, slots, len(changed))] = draw.integers(
+                0, VALUES, len(changed)
+            )
+            brain.act(one_hot(state), greedy=True)
+            brain.lesson(one_hot(state), following)
+            state = following
+    return float(brain.recall.gains[0])
+
+
+def test_the_path_switches_on_as_fast_with_many_motor_slots_as_with_few():
+    """cadence#373: the gains of a brain of 64 motor slots rise as those of a brain of 4 do. With
+    the bound of one slot the rate fell with the slots and the larger brain's gain was a
+    thirteenth of the smaller's after the same lessons."""
+    few, many = held_gain(4), held_gain(64)
+    assert few > 0.1
+    assert many > few / 2
+
+
+def test_a_loaded_grown_or_copied_brain_keeps_its_motor_slots_in_the_bound(tmp_path):
+    """The memory takes the motor slots from its brain's learner wherever a brain is made: a
+    loaded, a grown and a copied brain step their gains as the brain they came from."""
+    brain = slotted(8, rate=1.0)
+    state = np.arange(8) % VALUES
+    brain.act(one_hot(state), greedy=True)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        brain.lesson(one_hot(state), [state])
+    loaded = cd.Brain.load(brain.save(tmp_path / "slots.npz"))
+    grown = brain.grow(history_decays=(*brain.history.decays, 0.5))
+    copied = copy.deepcopy(brain)
+    for other in (loaded, grown, copied):
+        assert other.recall.motor_slots == other.learner.slot_count == 8
+    assert "motor_slots" not in json.dumps(brain.describe())  # no setting: it is the learner's
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for b in (brain, loaded, copied):
+            b.act(one_hot(state), greedy=True)
+            b.lesson(one_hot(state), [(state + 1) % VALUES])
+    np.testing.assert_array_equal(loaded.recall.gains, brain.recall.gains)
+    np.testing.assert_array_equal(copied.recall.gains, brain.recall.gains)
+    with pytest.raises(ValueError, match="motor_slots"):
+        cd.Recall(brain.connectome, motor_slots=0)
+
+
+def test_reward_keeps_the_bound_of_one_slot_with_several_motor_slots():
+    """A sampled act's nudge carries the whole beta on every motor slot, so its eligibility keeps
+    ``GAIN_BOUND / E``: the motor slots count in a lesson's bound alone."""
+    slots = 8
+    brain = slotted(slots, rate=1e6)
+    recall = brain.recall
+    state = np.arange(slots) % VALUES
+    brain.act(one_hot(state), greedy=True)
+    moved = watched(recall)
+    asked = []
+    original = recall._gain_rates  # noqa: SLF001
+
+    def rates(reads, motor_slots=None):
+        asked.append((reads, motor_slots))
+        return original(reads, motor_slots)
+
+    recall._gain_rates = rates  # noqa: SLF001
+    brain.act(one_hot(state))  # sampled: the act keeps its eligibility
+    (reads, motor_slots), = asked
+    assert motor_slots == 1
+    energy = sum(float(np.sum(r * r)) for r in reads if r is not None)
+    pending = recall.full_eligibility(brain.basal_ganglia._pending_memory)  # noqa: SLF001
+    ports = len(recall.gains)
+    movement = moved[-1]
+    assert movement.any() and reads[0] is not None
+    for k, r in enumerate(reads):
+        expected = 0.0 if r is None else cd.Recall.GAIN_BOUND / energy * float(r[0] @ movement[0])
+        assert pending[0, 0, pending.shape[-1] - ports + k] == pytest.approx(expected)
+    assert pending[0, 0, pending.shape[-1] - ports] != 0.0
 
 
 def test_a_lesson_without_a_nudged_phase_moves_nothing_and_a_brain_without_it_reports_none():
