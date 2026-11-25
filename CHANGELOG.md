@@ -14,10 +14,11 @@ path, reads, acts, learns and saves as on 0.103.1, to the bit.
   brain of many motor slots the gains stayed near zero for hundreds of lessons and the brain did
   not hold what it sensed. A lesson's bound is now `5 S / E`: each slot moves `1 / S` as far under
   its share of the nudge, and the bound allows `S` times the step. Where several slots read one
-  coordinate as their token, `E` counts it once for each motor neuron that reads it, and such a
-  brain steps its gains as on 0.103.1. A sampled act's nudge carries the whole `beta` on every
-  slot, so the step a reward takes keeps `5 / E`. The memory takes `S` from its brain's learner
-  (`Recall.motor_slots`); there is no new setting and a file holds nothing new.
+  coordinate as their token, `E` counts it once for each motor neuron that reads it, and a brain
+  whose slots all read the same coordinates steps its gains as on 0.103.1, to rounding. A sampled
+  act's nudge carries the whole `beta` on every slot, so the step a reward takes keeps `5 / E`.
+  The memory takes `S` from its brain's learner (`Recall.motor_slots`); there is no new setting
+  and a file holds nothing new.
 
   The hold example of the [teaching guide](docs/teach.md#the-error-falls-fast-and-then-stays-flat)
   at several sizes, 276 lessons, eight streams, one founder, `modules=(16,)`, `recall_gain=1.0`
@@ -31,7 +32,10 @@ path, reads, acts, learns and saves as on 0.103.1, to the bit.
   | 128 | 4 | 0.00072 | 0.093 | 0.027 | 0.262 | 0.064 | 0.002 | 0.750 | 0.001 |
   | 256 | 4 | 0.00036 | 0.092 | 0.015 | 0.268 | 0.402 | 0.001 | 0.755 | 0.000 |
 
-  The gain is the first head's recall port's. The rate still falls with the heads: the drive on a
+  The gain is the first head's recall port's. On the NumPy loop this release reads the same
+  errors, and 0.103.1 reads 0.071 and 0.538 at 128 and 256 slots: with the gains barely on, the
+  error under the old bound depends on the path's last bits, and the issue's table has 0.198 and
+  0.522 there beside the same rates and gains. The rate still falls with the heads: the drive on a
   motor neuron sums every port's read, the bound counts them all, and the gains of four heads
   that read the same content share one step. At four heads the rate falls from 0.140 to 0.092
   between 8 and 256 slots, as the reads' energy per slot rises.
