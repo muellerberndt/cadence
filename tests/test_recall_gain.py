@@ -202,14 +202,12 @@ def test_one_motor_slot_keeps_its_rate_to_the_bit():
 
 
 @pytest.mark.parametrize("slots", [2, 8, 32])
-def test_a_lessons_rate_is_bounded_at_the_whole_beta_with_several_motor_slots(slots):
+def test_a_lessons_rate_is_bounded_with_the_motor_slots(slots):
     """A lesson's nudge carries ``beta / slots`` on each motor slot and the energy sums the reads
     of all of them, so the lesson's bound is ``slots * GAIN_BOUND / E``: the step of the gains is
-    that rate times each port's contrast, and the drive it adds over the tokens is at most
-    ``GAIN_BOUND`` times the movement at the whole beta, ``slots`` times the movement."""
+    that rate times each port's contrast."""
     brain = slotted(slots, rate=1e6)
     recall = brain.recall
-    assert brain.learner.slot_count == recall.motor_slots == slots
     state = np.arange(slots) % VALUES
     brain.act(one_hot(state), greedy=True)
     brain.stimulus(one_hot(state))
@@ -218,6 +216,7 @@ def test_a_lessons_rate_is_bounded_at_the_whole_beta_with_several_motor_slots(sl
     rate = slots * cd.Recall.GAIN_BOUND / energy
     assert recall._gain_rates(reads)[0] == pytest.approx(rate)  # noqa: SLF001
     assert recall._gain_rates(reads, 1)[0] == pytest.approx(rate / slots)  # noqa: SLF001
+    assert brain.learner.slot_count == recall.motor_slots == slots
     moved = watched(recall)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")  # the lesson follows an act on the same observation
@@ -227,9 +226,45 @@ def test_a_lessons_rate_is_bounded_at_the_whole_beta_with_several_motor_slots(sl
     assert movement.any()
     for k, r in enumerate(reads):
         assert recall.gains[k] == pytest.approx(rate * float(r[0] @ movement[0]))
-    added = sum(g * r[0] for g, r in zip(recall.gains, reads, strict=True))  # the drive's change
-    whole = slots * float(np.linalg.norm(movement[0]))  # the movement at the whole beta
-    assert float(np.linalg.norm(added)) <= cd.Recall.GAIN_BOUND * whole * (1 + 1e-9)
+
+
+def shared(slots, rate=1e6):
+    """A brain whose ``slots`` motor slots all read the same ``VALUES`` observation coordinates
+    as their tokens: one sensed value, said on every slot."""
+    return cd.Brain.compose(VALUES, slots * VALUES, slots=(VALUES,) * slots, modules=(16,), seed=3,
+                            episodic=False, recall=True, recall_gain=rate,
+                            recall_tokens=list(range(VALUES)) * slots)
+
+
+@pytest.mark.parametrize("slots", [2, 8, 32])
+def test_slots_that_read_the_same_coordinates_count_them_once_for_each(slots):
+    """Where every motor slot reads the same coordinates the reads' energy does not grow with the
+    slots. The lesson's bound counts a coordinate once for each motor neuron that reads it, so
+    its rate is the rate of one slot, ``GAIN_BOUND / E``, and the drive a row adds on the motor
+    neurons stays within ``slots * GAIN_BOUND`` times their movement. A sampled act's rate takes
+    the energy as it is."""
+    brain = shared(slots)
+    recall = brain.recall
+    x = np.eye(VALUES)[[2]]
+    brain.act(x, greedy=True)
+    brain.stimulus(x)
+    reads = recall._port_reads(recall._held_attention(recall.last))  # noqa: SLF001
+    energy = sum(float(np.sum(r * r)) for r in reads)
+    one = cd.Recall.GAIN_BOUND / energy
+    assert recall._gain_rates(reads)[0] == pytest.approx(one)  # noqa: SLF001
+    assert recall._gain_rates(reads, 1)[0] == one  # noqa: SLF001
+    moved = watched(recall)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        brain.lesson(x, [np.full(slots, 1)])
+    movement = moved[-1][0, recall._token_motors]  # noqa: SLF001
+    added = sum(
+        g * r[0, recall._token_values]  # noqa: SLF001
+        for g, r in zip(recall.gains, reads, strict=True)
+    )  # the drive the step adds on each motor neuron
+    assert movement.any() and added.any()
+    bound = slots * cd.Recall.GAIN_BOUND * float(np.linalg.norm(movement))
+    assert float(np.linalg.norm(added)) <= bound * (1 + 1e-9)
 
 
 def test_the_lessons_nudge_carries_beta_over_the_motor_slots():
@@ -288,9 +323,10 @@ def test_the_path_switches_on_as_fast_with_many_motor_slots_as_with_few():
     assert many > few / 2
 
 
-def test_a_loaded_grown_or_copied_brain_keeps_its_motor_slots_in_the_bound(tmp_path):
+def test_a_loaded_grown_grafted_or_copied_brain_keeps_its_motor_slots_in_the_bound(tmp_path):
     """The memory takes the motor slots from its brain's learner wherever a brain is made: a
-    loaded, a grown and a copied brain step their gains as the brain they came from."""
+    loaded, a grown, a grafted and a copied brain step their gains under the bound of the brain
+    they came from."""
     brain = slotted(8, rate=1.0)
     state = np.arange(8) % VALUES
     brain.act(one_hot(state), greedy=True)
@@ -299,15 +335,22 @@ def test_a_loaded_grown_or_copied_brain_keeps_its_motor_slots_in_the_bound(tmp_p
         brain.lesson(one_hot(state), [state])
     loaded = cd.Brain.load(brain.save(tmp_path / "slots.npz"))
     grown = brain.grow(history_decays=(*brain.history.decays, 0.5))
+    donor = cd.Brain.compose(8 * VALUES, 8 * VALUES, slots=(VALUES,) * 8, modules=(16,), seed=7,
+                             episodic=False, recall=True)
+    grafted = brain.graft(donor, ["association", "motor"])
     copied = copy.deepcopy(brain)
-    for other in (loaded, grown, copied):
+    for other in (loaded, grown, grafted, copied):
         assert other.recall.motor_slots == other.learner.slot_count == 8
     assert "motor_slots" not in json.dumps(brain.describe())  # no setting: it is the learner's
+    with np.load(tmp_path / "slots.npz", allow_pickle=False) as data:
+        assert "motor_slots" not in str(data["brain"])  # and no file holds it
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        for b in (brain, loaded, copied):
+        for b in (brain, loaded, copied, grown, grafted):
+            before = b.recall.gains.copy()
             b.act(one_hot(state), greedy=True)
             b.lesson(one_hot(state), [(state + 1) % VALUES])
+            assert (b.recall.gains != before).any()
     np.testing.assert_array_equal(loaded.recall.gains, brain.recall.gains)
     np.testing.assert_array_equal(copied.recall.gains, brain.recall.gains)
     with pytest.raises(ValueError, match="motor_slots"):

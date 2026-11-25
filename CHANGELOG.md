@@ -12,11 +12,12 @@ path, reads, acts, learns and saves as on 0.103.1, to the bit.
   step was bounded by `5 / E`, `E` the energy of the row's reads over every port, and `E` sums the
   reads of all `S` slots. The slots were so divided out twice, and the step fell as `1 / S`: in a
   brain of many motor slots the gains stayed near zero for hundreds of lessons and the brain did
-  not hold what it sensed. A lesson's bound is now `5 S / E`. A row taught alone moves its own
-  drive by at most five times the neuron's movement at the whole `beta`, which is what the bound
-  of one slot says. A sampled act's nudge carries the whole `beta` on every slot, so the step a
-  reward takes keeps `5 / E`. The memory takes `S` from its brain's learner (`Recall.motor_slots`);
-  there is no new setting and a file holds nothing new.
+  not hold what it sensed. A lesson's bound is now `5 S / E`: each slot moves `1 / S` as far under
+  its share of the nudge, and the bound allows `S` times the step. Where several slots read one
+  coordinate as their token, `E` counts it once for each motor neuron that reads it, and such a
+  brain steps its gains as on 0.103.1. A sampled act's nudge carries the whole `beta` on every
+  slot, so the step a reward takes keeps `5 / E`. The memory takes `S` from its brain's learner
+  (`Recall.motor_slots`); there is no new setting and a file holds nothing new.
 
   The hold example of the [teaching guide](docs/teach.md#the-error-falls-fast-and-then-stays-flat)
   at several sizes, 276 lessons, eight streams, one founder, `modules=(16,)`, `recall_gain=1.0`
@@ -32,12 +33,14 @@ path, reads, acts, learns and saves as on 0.103.1, to the bit.
 
   The gain is the first head's recall port's. The rate still falls with the heads: the drive on a
   motor neuron sums every port's read, the bound counts them all, and the gains of four heads
-  that read the same content share one step.
-- **What changes for a brain of several motor slots with the value path.** Its gains step `S`
-  times as far wherever the bound holds the rate, so its life differs from 0.103.1's from the
-  first such lesson on. Its file loads as before, and 0.103.1 loads a file this release saved and
-  continues it under its own bound. `Recall.GAIN_BOUND` keeps its value and its meaning for one
-  slot; a caller that raised it for a brain of many slots now gets `S` times what it set.
+  that read the same content share one step. At four heads the rate falls from 0.140 to 0.092
+  between 8 and 256 slots, as the reads' energy per slot rises.
+- **What changes for a brain of several motor slots with the value path.** Wherever the old
+  bound held the rate its gains step further, `S` times as far where `recall_gain` is above the
+  new bound too, so its life differs from 0.103.1's from the first such lesson on. Its file
+  loads as before, and 0.103.1 loads a file this release saved and continues it under its own
+  bound. `Recall.GAIN_BOUND` keeps its value and its meaning for one slot; a caller that raised
+  it for a brain of many slots now gets `S` times what it set.
 - **Read for stability.** Sixty lives of 276 lessons under the bound of 0.103.1 and the same
   sixty under the new one: the hold task, a rule on top of it (every value one further) and
   answers that hold nothing of what was sensed, at 8 to 64 motor slots, one to four heads, three
@@ -45,7 +48,9 @@ path, reads, acts, learns and saves as on 0.103.1, to the bit.
   step of the first head's recall gain in any lesson was 0.07, and the gain ended between 0.27 and
   0.79 on the hold task and between -0.37 and -0.13 under the rule, where the path would echo
   the wrong value. The hold task's error fell or stayed in each of its 20 pairs. Where the answer
-  holds nothing of what was sensed the gain stayed within 0.12 of zero.
+  holds nothing of what was sensed the gain stayed within 0.12 of zero. A brain whose 8 or 32
+  motor slots read the same four coordinates reads the same gains, steps and errors on both
+  releases (200 lessons, `recall_gain` 1 and 1e6).
 - **A training curve that falls fast and then stays flat.** The teaching guide names the pattern, the
   two controls to read it against (the commonest answer of each motor slot, and persistence), its
   cause and its fix, with a tested example: what an answer repeats from the observation does not
@@ -56,8 +61,10 @@ path, reads, acts, learns and saves as on 0.103.1, to the bit.
   before it. The troubleshooting, evaluation and memory guides point to it. With the fix above the
   example reads 0.01 on a state sensed first, the level of persistence.
 - The files 0.103.1 saved join the released files (`tests/fixtures/released/v0.103.1`): each
-  loads and continues as 0.103.1 continued it. The `previous-release` job reads this release's
-  files with 0.103.1.
+  loads and continues as 0.103.1 continued it. The panel of released files gains a brain of one
+  motor slot with the value path, so 0.103.1 and this release continue each other's files of it
+  to the bit. The `previous-release` job reads this release's files with 0.103.1.
+- The built-in place module's card names this release; the module is otherwise as it was.
 
 ## 0.103.1 - 2026-11-24
 

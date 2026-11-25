@@ -2238,6 +2238,36 @@
      "numpy": "839611e4c1bead9c52c2ba36e09c3d93b19e181b9d27f8014faab02e8621ae14"
     }
    },
+   "path": {
+    "acts": {
+     "fused": [
+      1,
+      1,
+      2,
+      2,
+      1,
+      2,
+      2,
+      2
+     ],
+     "numpy": [
+      1,
+      1,
+      2,
+      2,
+      1,
+      2,
+      2,
+      2
+     ]
+    },
+    "features": [],
+    "format": "cadence-brain/1",
+    "learned": {
+     "fused": "f93d12d960379e3aaf574d539e0a2251ebde9be8eb713b82140d026acc5037df",
+     "numpy": "01b8252f8a607e28d3d83889afc82387892ad843accdc7c85ceb80eb3fa1e5c3"
+    }
+   },
    "recall_strength": {
     "acts": {
      "fused": [

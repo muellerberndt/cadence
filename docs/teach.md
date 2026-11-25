@@ -798,7 +798,7 @@ the path in place, and each is refused with a `ValueError` where it fails:
 
 Answer either refusal by widening the code or labelling the slot. A brain composed without
 `recall_tokens` is not refused, and the curve above is what it learns. The path's gains start at
-zero and lessons raise them at a rate that does not depend on the number of motor slots
+zero, and lessons raise them about as fast in a brain of many motor slots as in a brain of few
 ([its lesson](memory.md#the-learned-value-path-opt-in)).
 
 **Sense first, then ask.** The memory a moment reads holds the moments before it. A brain that

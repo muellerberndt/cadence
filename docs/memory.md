@@ -1184,12 +1184,13 @@ for token in range(TOKENS):                          # no lesson used any of the
   every synapse learns by, with the source held. A row's rate is `min(recall_gain, 5 S / E)`, `E` the
   energy of the row's reads over every port and `S` the number of motor slots (`Recall.GAIN_BOUND`,
   a constant of the memory, is the 5). A lesson nudges each of `S` motor slots at `beta / S`, so
-  that `eta` means the same at any number of slots, and `E` sums the reads of all of them. With
-  `S` in the bound a row taught alone moves its own drive by at most five times the neuron's
-  movement at the whole `beta`, and the gains of a brain of many motor slots rise as those of a
-  brain of one. Above the bound the rate moves nothing, and without the bound a large rate
-  collapses the read. A step that is not finite is refused whole; the report gives `gain_rows`
-  and `gain_refused`.
+  that `eta` means the same at any number of slots. Each slot then moves that much less, while `E`
+  sums the reads of all of them. With `S` in the bound the gains of a brain of many motor slots
+  rise about as fast as those of a brain of one, and the drive a row taught alone adds on the
+  motor neurons is at most `5 S` times their movement. Where several slots read one coordinate
+  as their token, `E` counts it once for each motor neuron that reads it. Above the bound the
+  rate moves nothing, and without the bound a large rate collapses the read. A step that is not
+  finite is refused whole; the report gives `gain_rows` and `gain_refused`.
 - **The gains learn which port holds the answer.** Nothing assigns a port. On six fresh founders the
   next port's gain ends at 1.5 to 1.9 on a period of 8 and the recall port's near zero; on two hops
   the recall port's falls to -1.6 to -1.8 while the next port's rises to 3.3 to 3.5, which removes
@@ -1200,7 +1201,8 @@ for token in range(TOKENS):                          # no lesson used any of the
   lesson's label, in one column per port of the read's eligibility (`reward_blocks`); the actor
   traces it and a unit of dopamine moves each gain by one such step. A sampled act's nudge carries
   the whole `beta` on every motor slot, so this step's rate is `min(recall_gain, 5 / E)` at any
-  number of slots. `learn` reports the whole read's step as `address_reward_step`.
+  number of slots, each coordinate counted once. `learn` reports the whole read's step as
+  `address_reward_step`.
 - **A newborn is the founder.** The gains start at zero, so a newborn settles, acts and saves as one
   without the path: the motor drive gains exactly nothing. They are saved as the array `gains`,
   counted by `parameters()`, kept by `graft` and `grow`; `retune` refuses the setting. `grow` adds no
