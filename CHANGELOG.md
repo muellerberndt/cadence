@@ -1,9 +1,51 @@
 # Changelog
 
-## Unreleased
+## 0.103.2 - 2026-11-25
 
-Documentation only.
+A fix for the learned value path (`recall_gain`) in a brain of several motor slots, and a new
+section of the teaching guide. A brain of one motor slot, and every brain without the value
+path, reads, acts, learns and saves as on 0.103.1, to the bit.
 
+- **The value path's gains rise as fast with many motor slots as with one**
+  ([#373](https://github.com/muellerberndt/cadence/issues/373)). A lesson nudges each of a brain's
+  `S` motor slots at `beta / S`, so that `eta` means the same at any number of slots. The gains'
+  step was bounded by `5 / E`, `E` the energy of the row's reads over every port, and `E` sums the
+  reads of all `S` slots. The slots were so divided out twice, and the step fell as `1 / S`: in a
+  brain of many motor slots the gains stayed near zero for hundreds of lessons and the brain did
+  not hold what it sensed. A lesson's bound is now `5 S / E`. A row taught alone moves its own
+  drive by at most five times the neuron's movement at the whole `beta`, which is what the bound
+  of one slot says. A sampled act's nudge carries the whole `beta` on every slot, so the step a
+  reward takes keeps `5 / E`. The memory takes `S` from its brain's learner (`Recall.motor_slots`);
+  there is no new setting and a file holds nothing new.
+
+  The hold example of the [teaching guide](docs/teach.md#the-error-falls-fast-and-then-stays-flat)
+  at several sizes, 276 lessons, eight streams, one founder, `modules=(16,)`, `recall_gain=1.0`
+  (the issue's script, on macOS arm64 on the compiled path):
+
+  | Motor slots | Heads | Rate, 0.103.1 | Rate | Recall gain, 0.103.1 | Recall gain | Error, 0.103.1 | Error | Commonest answer | Persistence |
+  | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+  | 8 | 1 | 0.107 | 0.485 | 0.507 | 0.456 | 0.015 | 0.014 | 0.754 | 0.013 |
+  | 8 | 4 | 0.023 | 0.140 | 0.182 | 0.320 | 0.024 | 0.016 | 0.754 | 0.013 |
+  | 32 | 4 | 0.0037 | 0.110 | 0.074 | 0.303 | 0.014 | 0.006 | 0.764 | 0.003 |
+  | 128 | 4 | 0.00072 | 0.093 | 0.027 | 0.262 | 0.064 | 0.002 | 0.750 | 0.001 |
+  | 256 | 4 | 0.00036 | 0.092 | 0.015 | 0.268 | 0.402 | 0.001 | 0.755 | 0.000 |
+
+  The gain is the first head's recall port's. The rate still falls with the heads: the drive on a
+  motor neuron sums every port's read, the bound counts them all, and the gains of four heads
+  that read the same content share one step.
+- **What changes for a brain of several motor slots with the value path.** Its gains step `S`
+  times as far wherever the bound holds the rate, so its life differs from 0.103.1's from the
+  first such lesson on. Its file loads as before, and 0.103.1 loads a file this release saved and
+  continues it under its own bound. `Recall.GAIN_BOUND` keeps its value and its meaning for one
+  slot; a caller that raised it for a brain of many slots now gets `S` times what it set.
+- **Read for stability.** Sixty lives of 276 lessons under the bound of 0.103.1 and the same
+  sixty under the new one: the hold task, a rule on top of it (every value one further) and
+  answers that hold nothing of what was sensed, at 8 to 64 motor slots, one to four heads, three
+  founders, `recall_gain` 1 and 30. Under the new bound no gain grew without limit: the largest
+  step of the first head's recall gain in any lesson was 0.07, and the gain ended between 0.27 and
+  0.79 on the hold task and between -0.37 and -0.13 under the rule, where the path would echo
+  the wrong value. The hold task's error fell or stayed in each of its 20 pairs. Where the answer
+  holds nothing of what was sensed the gain stayed within 0.12 of zero.
 - **A training curve that falls fast and then stays flat.** The teaching guide names the pattern, the
   two controls to read it against (the commonest answer of each motor slot, and persistence), its
   cause and its fix, with a tested example: what an answer repeats from the observation does not
@@ -11,7 +53,11 @@ Documentation only.
   value path carries it; a narrow learned code or an open slot is refused with the path and is
   answered by widening the code or labelling the slot; and a state the answer repeats is sensed as a
   moment of its own before the answer is asked, because the memory a moment reads holds the moments
-  before it. The troubleshooting, evaluation and memory guides point to it.
+  before it. The troubleshooting, evaluation and memory guides point to it. With the fix above the
+  example reads 0.01 on a state sensed first, the level of persistence.
+- The files 0.103.1 saved join the released files (`tests/fixtures/released/v0.103.1`): each
+  loads and continues as 0.103.1 continued it. The `previous-release` job reads this release's
+  files with 0.103.1.
 
 ## 0.103.1 - 2026-11-24
 
