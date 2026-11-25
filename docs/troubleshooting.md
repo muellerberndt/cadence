@@ -45,6 +45,11 @@ outcome. Call `live(observation)` once, then pass each reward with the next obse
 **Every answer is the commoner class.** Class imbalance; weigh the rows and read per-class
 accuracy ([the fix](teach.md#every-answer-is-the-majority-class)).
 
+**The error falls in the first lessons and then stays flat.** Compare it with the commonest answer
+of each slot and with persistence. What the answer repeats needs the recall value path, on a state
+sensed as a moment of its own
+([the fix](teach.md#the-error-falls-fast-and-then-stays-flat)).
+
 **A trained brain gets worse as training continues.** Its steps are too large for what it holds
 ([the fix](teach.md#a-trained-brain-gets-worse-with-more-training)).
 

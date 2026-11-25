@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+Documentation only.
+
+- **A training curve that falls fast and then stays flat.** The teaching guide names the pattern, the
+  two controls to read it against (the commonest answer of each motor slot, and persistence), its
+  cause and its fix, with a tested example: what an answer repeats from the observation does not
+  pass the regions between the senses and the motor region, whose width bounds it, and the learned
+  value path carries it; a narrow learned code or an open slot is refused with the path and is
+  answered by widening the code or labelling the slot; and a state the answer repeats is sensed as a
+  moment of its own before the answer is asked, because the memory a moment reads holds the moments
+  before it. The troubleshooting, evaluation and memory guides point to it.
+
 ## 0.103.1 - 2026-11-24
 
 A fix for a memory read by three or more heads, and the tests that now hold every read of

@@ -742,6 +742,7 @@ print(f"held out {accuracy:.2f} ± {2 * error:.2f}, per class {per_class}, contr
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
 | Every answer is the commoner class | class imbalance | [weights; compare every-row and surprise lessons](#every-answer-is-the-majority-class) |
+| The error falls in the first lessons, then stays flat far above repeating what was sensed | what the answer repeats has no path to the motor region, or is asked one moment early | [the value path on a state sensed first](#the-error-falls-fast-and-then-stays-flat) |
 | A brain that answered well gets worse as training continues | steps too large for a trained brain | [smaller steps, surprise lessons](#a-trained-brain-gets-worse-with-more-training) |
 | After long reward training the greedy answer is the same for every observation | the motor neurons saturated at a high `actor_eta` | [a tenth of the actor rate](#reward-training-pins-the-answer) |
 | `predict` answers right, `act` answers wrong, and lessons do not change the act | a deep brain with two stable states for one observation | [teach inside the stream](#a-deep-brain-whose-lessons-do-not-reach-its-act) |
@@ -768,6 +769,107 @@ the rare class is never answered. Read per-class accuracy, then:
   ([lessons only where the answer differs](#lessons-only-where-the-answer-differs)), so read
   both on the task;
 - or sample the lessons so every class appears about equally often.
+
+### The error falls fast and then stays flat
+
+A brain with many motor slots is taught what comes next in a stream that mostly continues: the next
+bar of a pattern, the next frame of a scene, the next row of a log. Its error falls steeply in the
+first lessons and then stays where it is, however long the training runs. Read the curve against
+two controls that need no brain:
+
+- **the commonest answer of each slot**, whatever was sensed. A brain at this level has learned how
+  often each answer occurs and nothing of what it senses;
+- **persistence**: the answer is what was just sensed. Where the stream mostly continues, this is
+  the level to reach first.
+
+A brain that stays between the two carries part of what it senses to its answer and loses the rest.
+
+**What the answer repeats needs a path.** The regions between the senses and the motor region learn
+which answer a moment deserves. They are a narrow place for content to pass through: the error
+follows the width of the narrowest region, and more lessons do not lower it. The recall memory
+carries content. [The learned value path](memory.md#the-learned-value-path-opt-in) reads a held
+token straight to its motor neuron, so the regions are left with what changes. Two conditions keep
+the path in place, and each is refused with a `ValueError` where it fails:
+
+- the tokens are in the recall values: no learned code, or a learned code at least as wide as the
+  observation. A narrower code is a narrow place of its own;
+- every slot of a lesson has a label. A slot with no answer at a moment is taught what it last held;
+  it is not left [open](#a-slot-the-lesson-leaves-open).
+
+Answer either refusal by widening the code or labelling the slot. A brain composed without
+`recall_tokens` is not refused, and the curve above is what it learns.
+
+**Sense first, then ask.** The memory a moment reads holds the moments before it. A brain that
+answers at the moment it first senses a state reads the state before that one, so on a slot that
+just changed the path gives the value from before the change, one moment late. Give the state a
+moment of its own, then teach and ask on the same observation: the memory then holds the state the
+answer repeats. `lesson` warns about this order, because a read that should find an earlier moment
+finds the present one. Here the present one is what is asked for.
+
+```python
+import warnings
+
+SLOTS, VALUES = 8, 4                                   # a state of eight slots, four values each
+TOKENS = SLOTS * VALUES
+
+
+def streams(count, length, seed):                      # each stream keeps its state; now and then one slot changes
+    draw = np.random.default_rng(seed)
+    out = np.empty((count, length, SLOTS), dtype=int)
+    out[:, 0] = draw.integers(0, VALUES, (count, SLOTS))
+    for t in range(1, length):
+        out[:, t] = out[:, t - 1]
+        moved = np.flatnonzero(draw.random(count) < 0.15)
+        out[moved, t, draw.integers(0, SLOTS, len(moved))] = draw.integers(0, VALUES, len(moved))
+    return out
+
+
+def sensed(state):                                     # one-hot per slot: observation i and action i are one token
+    one_hot = np.zeros((len(state), TOKENS))
+    one_hot[np.arange(len(state))[:, None], np.arange(SLOTS) * VALUES + state] = 1.0
+    return one_hot
+
+
+lessons_on, read_on = streams(32, 24, 1), streams(16, 24, 2)
+usual = np.array([np.bincount(lessons_on[..., s].ravel(), minlength=VALUES).argmax() for s in range(SLOTS)])
+commonest = float(np.mean(read_on[:, 1:] != usual))             # the commonest answer of each slot
+persistence = float(np.mean(read_on[:, 1:] != read_on[:, :-1]))  # the state just sensed
+
+
+def next_state_error(modules=(16,), sense_first=False, **memory):
+    learner = Brain.compose(TOKENS, TOKENS, slots=(VALUES,) * SLOTS, modules=modules, seed=0, recall=True, **memory)
+
+    def moment(state, answer=None):
+        observation = sensed(state)
+        if sense_first:
+            learner.act(observation, greedy=True)      # the state is sensed: a moment of its own
+        if answer is not None:
+            learner.lesson(observation, answer)
+        return learner.act(observation, greedy=True).reshape(len(state), SLOTS)
+
+    order = np.random.default_rng(0)
+    for _ in range(12):                                # 276 lessons
+        rows = lessons_on[order.choice(len(lessons_on), 8, replace=False)]
+        learner.reset()
+        for t in range(rows.shape[1] - 1):
+            moment(rows[:, t], rows[:, t + 1])
+    learner.reset()
+    return float(np.mean([moment(read_on[:, t]) != read_on[:, t + 1] for t in range(read_on.shape[1] - 1)]))
+
+
+tokens = dict(recall_tokens=range(TOKENS), recall_gain=1.0)
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", RuntimeWarning)    # the lesson after an act on the same observation is meant here
+    narrow, wide = next_state_error(), next_state_error(modules=(64,))
+    late, carried = next_state_error(**tokens), next_state_error(sense_first=True, **tokens)
+print(f"commonest {commonest:.2f}, persistence {persistence:.2f}; a region of 16: {narrow:.2f}, of 64: {wide:.2f}; "
+      f"the value path: {late:.2f}, on a state sensed first: {carried:.2f}")
+assert carried < late / 2 and late < wide / 2 and wide < narrow < commonest
+```
+
+The example prints the commonest answer wrong on 0.75 of the slots and persistence on 0.01. One
+region of 16 between the senses and the motor region stays at 0.48 and one of 64 at 0.28. The
+value path reads 0.05 asked as the state is first sensed, and 0.02 on a state sensed first.
 
 ### A trained brain gets worse with more training
 

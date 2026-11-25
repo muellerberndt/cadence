@@ -87,7 +87,7 @@ capacity, exposure and gates unchanged while diagnosing a failure.
 | Control | What it rules out |
 | --- | --- |
 | Uniform-random policy | Any claim of learned behaviour; required for every claim |
-| Majority answer or training-set mean | Gains from the output distribution alone |
+| Majority answer (of each motor slot) or training-set mean | Gains from the output distribution alone |
 | Last-observation persistence | Gains from slow change in the world |
 | Fitted linear predictor | Gains a linear map over the same inputs reaches |
 | Tabular learner | Gains from memorising discrete states |
@@ -99,6 +99,12 @@ Give every arm the same information, replay policy, update count and compute
 budget (the [key-door benchmark](../benchmarks/keydoor/README.md) runs random,
 tabular and recurrent arms beside the brain). A copied target, a new decoder,
 an added intention input or a larger action vocabulary makes a different task.
+
+On a stream task, draw the majority answer and persistence as levels on every training curve. A
+curve that falls to the majority level and stays there is a brain that learned the output
+distribution and nothing of its input; one that stays between the two levels loses part of what it
+senses on the way to its answer
+([the pattern and its fix](teach.md#the-error-falls-fast-and-then-stays-flat)).
 
 For memory claims, the [coupled-memory experiment](../benchmarks/attention/README.md)
 separates joint-equation and local-credit checks from learned relevance, and the

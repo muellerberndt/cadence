@@ -1244,6 +1244,11 @@ Use it for a brain that has to say tokens no lesson used where the answer is wha
 continuing, copying and inducing from what was heard. Leave it out of a brain that relies on repeated
 tokens at lengths no lesson reached, on Dyck sentences or on chained facts.
 
+Use it also where the answer repeats much of what was sensed over many motor slots, which the
+regions are too narrow to carry. The read holds the moments before the present one, so a state
+the answer repeats is sensed as a moment of its own before the answer is asked
+([the error falls fast and then stays flat](teach.md#the-error-falls-fast-and-then-stays-flat)).
+
 ### The value path released once the read has formed (opt-in)
 
 The learned gains answer for the read from the first lesson. A gain that answers early takes the
