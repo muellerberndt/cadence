@@ -152,12 +152,13 @@ LONGTERM_FORMAT = "cadence-brain/4"
 # values or reads surprise, which a reader of 0.99.1 cannot build), ``bound`` (records of
 # bound moments, ``compose(bound=records)``, 0.101) and ``cortex_reads`` (a cortex that reads the
 # observation itself beside or in place of its fixed code, ``compose(cortex_reads=...)``, 0.102.0),
-# ``recall_key_norm`` (unit-normalized recall keys) and ``learning_credit`` (optional lesson
-# controls and reports, 0.104.0).
+# ``recall_key_norm`` (unit-normalized recall keys), ``learning_credit`` (optional lesson
+# controls and reports, 0.104.0) and ``learning_surprise_slots`` (surprise lessons that leave
+# the slots already answered as shown open).
 FEATURES_FORMAT = "cadence-brain/5"
 FEATURES = frozenset(
     {"strength", "heads", "recall_strength", "surprise", "map", "bound", "cortex_reads",
-     "recall_key_norm", "learning_credit"}
+     "recall_key_norm", "learning_credit", "learning_surprise_slots"}
 )
 # A memory's group in BRAIN_FORMAT and the prefix the reader validates its arrays under; the
 # episodic memory's arrays are the context store's and the stream's (``_flat_layout``).
@@ -2131,6 +2132,8 @@ def _saved_features(saved: Mapping[str, Any]) -> list[str]:
         out.append("cortex_reads")
     if saved.get("learning_credit") is True:
         out.append("learning_credit")
+    if saved.get("learning_surprise_slots") is True:
+        out.append("learning_surprise_slots")
     memories = saved.get("memories")
     if not isinstance(memories, dict):
         return sorted(out)
@@ -6332,10 +6335,13 @@ class Brain:
             _moment.SHORTCUTS and self.learned_code is None and self.sparse_code is None
             and self.fields is None and self._compiled_moment()
         ):  # the compiled moment's read without the general path's layers (``_settled``)
+            # a lesson by slot (``learning_surprise_slots``) leaves agreeing slots open, which
+            # the general path's phases do: no lesson of several slots in one call then
+            by_slot = self.learner.config.surprise_slots and self.learner.slot_count > 1
             if _moment.ONE_CALL and labels is not None and not (labels.size and labels.min() < 0):
                 # with the judging solve, in one call (the general path judges open slots)
                 judged = self._judge_compiled(
-                    x, labels, _moment.ONE_LESSON and weights is None
+                    x, labels, _moment.ONE_LESSON and weights is None and not by_slot
                 )
             if judged is not None:
                 drive = judged[0]
@@ -6379,7 +6385,8 @@ class Brain:
             # lesson of no row (``Learner.step`` returns it for these validated labels)
             if not differs.any():
                 agreed = self.learner._untaught(differs)
-            elif _moment.ONE_LESSON and weights is None and labels is not None:
+            elif (_moment.ONE_LESSON and weights is None and labels is not None
+                  and not (self.learner.config.surprise_slots and self.learner.slot_count > 1)):
                 # the rows that differ are taught in one call, from the phases to the written
                 # efficacies, the read's maps and the carried gains
                 report = _moment.taught_lesson(self, drive, self._activity(), labels, differs)
@@ -8030,6 +8037,9 @@ class Brain:
         credit = _has_learning_credit(self.learner.config)
         if credit:
             features.append("learning_credit")
+        by_slot = bool(self.learner.config.surprise_slots)
+        if by_slot:
+            features.append("learning_surprise_slots")
         held_map = self.space
         if held_map is not None and (
                 getattr(held_map, "values", None) or getattr(held_map, "surprise", None)
@@ -8077,6 +8087,8 @@ class Brain:
             metadata["features"] = features
         if credit:
             metadata["learning_credit"] = True
+        if by_slot:
+            metadata["learning_surprise_slots"] = True
         if reads is not None:
             metadata["cortex_reads"] = reads
         # what it ran on, where that is not the CPU by name: such a file keeps its bytes
@@ -8324,6 +8336,11 @@ class Brain:
 
                 if not _has_learning_credit(learner.config):
                     raise ValueError("the checkpoint named learning_credit without its settings")
+            if ("learning_surprise_slots" in named) != bool(learner.config.surprise_slots):
+                raise ValueError(
+                    "the checkpoint's learning_surprise_slots feature and its learner's "
+                    "setting disagree"
+                )
             if learner.config.nudge != "cross_entropy":
                 raise ValueError(
                     removed_on_load("learner", "nudge", learner.config.nudge, "learning_nudge")

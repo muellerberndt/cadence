@@ -6,8 +6,8 @@
 ``save`` writes every brain of the released-files panel (``tests/fixtures/released/panel.py``)
 after its life, with each brain's continuation after a load in this version. ``load`` reads
 them under the previous release: each brain of the panel loads and continues with the same
-actions and weights to the bit. Brains that use unit recall keys or optional learning credit
-controls are refused by feature name. CI runs both on one machine on the NumPy loop
+actions and weights to the bit. Brains that use unit recall keys, optional learning credit
+controls or surprise by slot are refused by feature name. CI runs both on one machine on the NumPy loop
 (``CADENCE_FUSED=0``).
 """
 
@@ -47,6 +47,10 @@ def save(directory: Path) -> None:
     credit = cd.Brain.compose(8, 3, modules=(8,), learning_drive_budget=4, backend="cpu", seed=1)
     credit.save(directory / "learning_credit.npz")
     credit.learner.save(directory / "credit_learner.npz")
+    by_slot = cd.Brain.compose(8, 6, modules=(8,), slots=(3, 3), learning_surprise=True,
+                               learning_surprise_slots=True, backend="cpu", seed=1)
+    by_slot.save(directory / "learning_surprise_slots.npz")
+    by_slot.learner.save(directory / "slots_learner.npz")
     (directory / "saved.json").write_text(json.dumps(table, indent=1))
     print(f"cadence {cd.__version__} saved {len(table['brains'])} brains")
 
@@ -69,7 +73,7 @@ def load(directory: Path) -> None:
             failures.append(f"{name}: acts {acts} against {expected['acts']}")
         elif learned != expected["learned"]:
             failures.append(f"{name}: the weights after the continuation differ")
-    for feature in ("recall_key_norm", "learning_credit"):
+    for feature in ("recall_key_norm", "learning_credit", "learning_surprise_slots"):
         try:
             cd.Brain.load(directory / f"{feature}.npz")
         except ValueError as error:
@@ -84,6 +88,13 @@ def load(directory: Path) -> None:
             failures.append(f"credit learner: not refused by format: {error}")
     else:
         failures.append("credit learner: previous release silently dropped learning settings")
+    try:
+        cd.Learner.load(directory / "slots_learner.npz")
+    except ValueError as error:
+        if "cadence-checkpoint/7" not in str(error):
+            failures.append(f"slots learner: not refused by format: {error}")
+    else:
+        failures.append("slots learner: previous release silently dropped surprise_slots")
     if failures:
         raise SystemExit("\n".join(failures))
     print(

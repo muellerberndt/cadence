@@ -1824,6 +1824,8 @@ def _supported(brain: Any, backend: str = "cpu") -> None:
     cfg = learner.config
     if cfg.rehearsal or cfg.qualified:
         raise refuse("no rehearsal (learning_rehearsal=0) and no qualified teaching")
+    if cfg.surprise_slots:
+        raise refuse("no surprise by slot (learning_surprise_slots=False)")
     if graph.apical is not None:
         raise refuse("no apical compartment")
     agent = brain.basal_ganglia
