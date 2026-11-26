@@ -151,10 +151,13 @@ LONGTERM_FORMAT = "cadence-brain/4"
 # surprise and the focus it draws, #337), ``map`` (a held map of things whose sheet carries
 # values or reads surprise, which a reader of 0.99.1 cannot build), ``bound`` (records of
 # bound moments, ``compose(bound=records)``, 0.101) and ``cortex_reads`` (a cortex that reads the
-# observation itself beside or in place of its fixed code, ``compose(cortex_reads=...)``, 0.102.0).
+# observation itself beside or in place of its fixed code, ``compose(cortex_reads=...)``, 0.102.0),
+# ``recall_key_norm`` (unit-normalized recall keys) and ``learning_credit`` (optional lesson
+# controls and reports, 0.104.0).
 FEATURES_FORMAT = "cadence-brain/5"
 FEATURES = frozenset(
-    {"strength", "heads", "recall_strength", "surprise", "map", "bound", "cortex_reads"}
+    {"strength", "heads", "recall_strength", "surprise", "map", "bound", "cortex_reads",
+     "recall_key_norm", "learning_credit"}
 )
 # A memory's group in BRAIN_FORMAT and the prefix the reader validates its arrays under; the
 # episodic memory's arrays are the context store's and the stream's (``_flat_layout``).
@@ -2126,6 +2129,8 @@ def _saved_features(saved: Mapping[str, Any]) -> list[str]:
         out.append("bound")
     if "cortex_reads" in saved:
         out.append("cortex_reads")
+    if saved.get("learning_credit") is True:
+        out.append("learning_credit")
     memories = saved.get("memories")
     if not isinstance(memories, dict):
         return sorted(out)
@@ -2136,6 +2141,8 @@ def _saved_features(saved: Mapping[str, Any]) -> list[str]:
         out.append("heads")
     if isinstance(recalled, dict) and bool(recalled.get("strength")):
         out.append("recall_strength")
+    if isinstance(recalled, dict) and bool(recalled.get("key_norm")):
+        out.append("recall_key_norm")
     if (isinstance(records, dict) and bool(records.get("strength"))) or (
             isinstance(store, dict) and bool(store.get("fade_keep"))):
         out.append("strength")
@@ -6414,6 +6421,8 @@ class Brain:
         if self.longterm is not None and self.longterm.attended is not None:
             # the heads' lesson: each head's choice of record scored against the movement
             teaching.update(self.longterm.attended.learn(self.learner.brain, lesson))
+        if lesson.opposite is not None:
+            teaching.update(self.learner._scheduled_credit(drive))
         # a row of several motor slots agrees only where every slot does, so beside the rows
         # the report counts the slots: zero where the lesson does not judge its rows
         teaching["agreed_slots"] = matched
@@ -8005,7 +8014,7 @@ class Brain:
         ``compressed=False`` writes a plain archive, as ``cadence.checkpoint.save`` does: larger
         on disk, and a large brain's is written in a small part of the time deflating takes.
         """
-        from .checkpoint import _learner_data, _write
+        from .checkpoint import _has_learning_credit, _learner_data, _write
         from .receipts import canonical_json
 
         if self._senses is not None and int(self._senses["space"]):
@@ -8018,6 +8027,9 @@ class Brain:
         store = self.hippocampus
         fading = isinstance(store, SynapticMemory) and bool(store.fade)
         features = []  # what a reader must hold beyond 0.99.1's (``FEATURES_FORMAT``)
+        credit = _has_learning_credit(self.learner.config)
+        if credit:
+            features.append("learning_credit")
         held_map = self.space
         if held_map is not None and (
                 getattr(held_map, "values", None) or getattr(held_map, "surprise", None)
@@ -8039,6 +8051,8 @@ class Brain:
             features.append("heads")
         if self.recall is not None and self.recall.strength:
             features.append("recall_strength")
+        if self.recall is not None and self.recall.key_norm:
+            features.append("recall_key_norm")
         if (self.longterm is not None and self.longterm.strength) or (
                 isinstance(store, SynapticMemory) and bool(store.fade_keep)):
             features.append("strength")
@@ -8061,6 +8075,8 @@ class Brain:
         }
         if features:
             metadata["features"] = features
+        if credit:
+            metadata["learning_credit"] = True
         if reads is not None:
             metadata["cortex_reads"] = reads
         # what it ran on, where that is not the CPU by name: such a file keeps its bytes
@@ -8270,8 +8286,8 @@ class Brain:
             strong = saved["format"] == FEATURES_FORMAT
             if named != _saved_features(saved) or strong != bool(named):
                 raise ValueError(
-                    "memories that grow strong and the learned heads belong to checkpoint "
-                    f"format {FEATURES_FORMAT}, which names them as its features"
+                    f"the features of checkpoint format {FEATURES_FORMAT} must be named "
+                    "and match the saved settings"
                 )
             if not strong and (saved["format"] == LONGTERM_FORMAT) != with_records:
                 raise ValueError(
@@ -8303,6 +8319,11 @@ class Brain:
             learner = Learner.load(
                 path, backend=cast(Backend, asked), device=device, precision=precision
             )
+            if "learning_credit" in named:
+                from .checkpoint import _has_learning_credit
+
+                if not _has_learning_credit(learner.config):
+                    raise ValueError("the checkpoint named learning_credit without its settings")
             if learner.config.nudge != "cross_entropy":
                 raise ValueError(
                     removed_on_load("learner", "nudge", learner.config.nudge, "learning_nudge")
@@ -9291,6 +9312,16 @@ def _grown_checkpoint(
         if name in meta_old:
             meta[name] = meta_old[name]
     # a limit no smaller than the graph's own follows the blocks that grew, as compose takes it
+    apical = meta.get("apical")
+    if apical is not None and "pool_fractions" in apical:
+        old_groups = np.asarray(old["apical_groups"])
+        new_groups = np.asarray(data["apical_groups"])
+        fractions = dict(zip(np.unique(old_groups[old_groups >= 0]), apical["pool_fractions"],
+                             strict=True))
+        seen_groups = np.unique(new_groups[new_groups >= 0])
+        meta["apical"] = {**apical, "pool_fractions": [
+            fractions.get(group, apical["fraction"]) for group in seen_groups
+        ]}
     if meta_old.get("dense_limit", 0) >= 2048:
         meta["dense_limit"] = max(meta_old["dense_limit"], meta_new.get("dense_limit", 0))
     data["meta"] = np.array(canonical_json(meta))

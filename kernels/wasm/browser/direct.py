@@ -4,6 +4,8 @@ gains, warm starts, tolerances and the solves, on a layered graph and on a deep 
 
     python kernels/wasm/browser/run.py direct.py
 """
+from dataclasses import replace  # noqa: E402
+
 import numpy as np  # noqa: E402
 from reference import report  # noqa: E402
 
@@ -23,7 +25,11 @@ def graphs():
     yield "layered, dt 1", cd.NeuralGraph(connectome, model.replace(dt=1.0))
     deep = cd.Brain.compose(10, 9, modules=(32, 16), apical=0.25, teaching="deep",
                             backend="cpu", seed=3)
-    yield "deep apical", deep.learner.brain
+    graph = deep.learner.brain
+    yield "deep apical", graph
+    fractions = tuple(np.linspace(0.12, 0.33, len(graph.apical.members)))
+    assert len(fractions) > 1
+    yield "distinct apical pools", graph._with_apical(replace(graph.apical, pool_fractions=fractions))
 
 
 def nudges(graph, batch):

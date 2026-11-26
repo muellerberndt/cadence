@@ -158,5 +158,5 @@ pub unsafe extern "C" fn array_shape(id: usize) -> u32 {
 /// The version of the kernels' argument lists, which `cadence/_wasm.py` checks.
 #[no_mangle]
 pub extern "C" fn kernel_version() -> i32 {
-    1
+    2
 }

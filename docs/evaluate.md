@@ -177,6 +177,18 @@ System 1 state and memory. Then use a bounded component assay:
    continuation. Use uniform-random, frozen-copy and simple learners with the
    same information, including a control for the strongest task shortcut.
 
+In a deep controller, make matched pairs with the same recent observations and
+different earlier cues that require different motor decisions. First locate the
+distinction before teaching. Does the memory still hold it, does it reach a read
+port, and does the hidden region respond? A diagnostic read of a retained record
+can distinguish failed retrieval from failed storage, but does not count as
+learned retrieval. Then compare the [signed teaching response](settling.md#measuring-credit-and-limiting-taught-drive)
+and the learned behavior separately. Teach at the motors only. Freeze hidden
+plasticity in a matched training control, then isolate the coordinator's outgoing
+connections at evaluation while keeping its own output and the motor policy's
+other inputs wired. Neither nonzero contrast nor a changed hidden weight proves
+that the downstream branches depend on what the coordinator learned.
+
 Declare live and held coordinates. Learned selection must participate through
 local repair in the same coupled equilibrium; a separate answer vote after
 settlement is not evidence of this property. Qualification checks the equations,

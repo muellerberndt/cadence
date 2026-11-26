@@ -259,7 +259,7 @@ pub(crate) struct Net {
     pub pool_index: View<i64>,
     pub pool_starts: View<i64>,
     pub pool_run: View<i64>,
-    pub fraction: f64,
+    pub fraction: View<f64>,
     pub floor2: f64,
     pub tiny: f64,
     pub held: View<f64>,
@@ -493,7 +493,7 @@ unsafe fn pool_gains(
             }
             raw2 = square_sum(values, 0, m) / m as f64;
         }
-        *gain.add(k) = net.fraction * sqrt(basal2) / sqrt(raw2 + net.floor2 * basal2 + net.tiny);
+        *gain.add(k) = net.fraction.get(k) * sqrt(basal2) / sqrt(raw2 + net.floor2 * basal2 + net.tiny);
     }
 }
 
@@ -1157,7 +1157,7 @@ pub(crate) unsafe fn publish(
 /// a refusal count from `v`.
 pub(crate) unsafe fn net_of(
     ids: &[usize; 30], masked: i32, rule: [f64; 5], has_adapt: i32, strength: f64, tau: f64,
-    has_nudge: i32, ngroups: i32, beta: f64, has_apical: i32, apical: [f64; 3], has_held: i32,
+    has_nudge: i32, ngroups: i32, beta: f64, has_apical: i32, apical: [f64; 2], has_held: i32,
 ) -> Result<Net, i32> {
     macro_rules! get {
         ($k:expr, $t:ty, $num:expr) => {
@@ -1209,9 +1209,9 @@ pub(crate) unsafe fn net_of(
         pool_index: get!(21, i64, INT64),
         pool_starts: get!(22, i64, INT64),
         pool_run: get!(23, i64, INT64),
-        fraction: apical[0],
-        floor2: apical[1],
-        tiny: apical[2],
+        fraction: get!(25, f64, FLOAT64),
+        floor2: apical[0],
+        tiny: apical[1],
         held: get!(24, f64, FLOAT64),
         has_held: has_held != 0,
         per_life: false,
@@ -1259,6 +1259,9 @@ pub(crate) unsafe fn net_of(
     if net.has_apical && (net.pool_of.len != n || (net.has_held && net.held.len < batch)) {
         return Err(refused(20));
     }
+    if net.has_apical && net.fraction.len != net.pools() {
+        return Err(refused(25));
+    }
     Ok(net)
 }
 
@@ -1276,18 +1279,18 @@ pub unsafe extern "C" fn settle_rows(
     leak: f64, has_adapt: i32, adapt_strength: f64, adapt_tau: f64, has_nudge: i32,
     target: usize, nmask: usize, gid: usize, ngroups: i32, beta: f64, softmax_t: usize, weight: usize,
     anchor: usize, anchor_gain: usize, has_apical: i32, pool_of: usize, pool_index: usize,
-    pool_starts: usize, pool_run: usize, fraction: f64, floor2: f64, tiny: f64, held: usize,
+    pool_starts: usize, pool_run: usize, fraction: usize, floor2: f64, tiny: f64, held: usize,
     has_held: i32, steps: i32, tolerance: f64, use_tolerance: i32, given: usize, has_given: i32,
     activity_change: usize, kept: usize,
 ) -> i32 {
     let ids = ids30([
         v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, pair_pre, pair_post,
         offset, keep, target, nmask, gid, softmax_t, weight, anchor, anchor_gain, pool_of,
-        pool_index, pool_starts, pool_run, held, 0, 0, 0, 0, 0,
+        pool_index, pool_starts, pool_run, held, fraction, 0, 0, 0, 0,
     ]);
     let net = match net_of(&ids, masked, [dt, slope, threshold, rest, leak], has_adapt,
                            adapt_strength, adapt_tau, has_nudge, ngroups, beta, has_apical,
-                           [fraction, floor2, tiny], has_held) {
+                           [floor2, tiny], has_held) {
         Ok(x) => x,
         Err(code) => return code,
     };
@@ -1316,18 +1319,18 @@ pub unsafe extern "C" fn settle_lives(
     leak: f64, has_adapt: i32, adapt_strength: f64, adapt_tau: f64, has_nudge: i32,
     target: usize, nmask: usize, gid: usize, ngroups: i32, beta: f64, softmax_t: usize, weight: usize,
     anchor: usize, anchor_gain: usize, has_apical: i32, pool_of: usize, pool_index: usize,
-    pool_starts: usize, pool_run: usize, fraction: f64, floor2: f64, tiny: f64, held: usize,
+    pool_starts: usize, pool_run: usize, fraction: usize, floor2: f64, tiny: f64, held: usize,
     has_held: i32, steps: i32, tolerance: f64, use_tolerance: i32, given: usize, has_given: i32,
     activity_change: usize, kept: usize,
 ) -> i32 {
     let ids = ids30([
         v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, pair_pre, pair_post,
         offset, keep, target, nmask, gid, softmax_t, weight, anchor, anchor_gain, pool_of,
-        pool_index, pool_starts, pool_run, held, 0, 0, 0, 0, 0,
+        pool_index, pool_starts, pool_run, held, fraction, 0, 0, 0, 0,
     ]);
     let net = match net_of(&ids, masked, [dt, slope, threshold, rest, leak], has_adapt,
                            adapt_strength, adapt_tau, has_nudge, ngroups, beta, has_apical,
-                           [fraction, floor2, tiny], has_held) {
+                           [floor2, tiny], has_held) {
         Ok(x) => Net { per_life: true, ..x },
         Err(code) => return code,
     };
@@ -1359,18 +1362,18 @@ pub unsafe extern "C" fn residual_rows(
     masked: i32, dt: f64, slope: f64, threshold: f64, rest: f64, leak: f64, has_adapt: i32,
     adapt_strength: f64, has_nudge: i32, target: usize, nmask: usize, gid: usize, ngroups: i32,
     beta: f64, softmax_t: usize, weight: usize, anchor: usize, anchor_gain: usize, has_apical: i32,
-    pool_of: usize, pool_index: usize, pool_starts: usize, pool_run: usize, fraction: f64, floor2: f64,
+    pool_of: usize, pool_index: usize, pool_starts: usize, pool_run: usize, fraction: usize, floor2: f64,
     tiny: f64, held: usize, has_held: i32, out: usize, given: usize, has_given: i32, in_place: i32,
     kept: usize,
 ) -> i32 {
     let ids = ids30([
         v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, pair_pre, pair_post,
         offset, keep, target, nmask, gid, softmax_t, weight, anchor, anchor_gain, pool_of,
-        pool_index, pool_starts, pool_run, held, 0, 0, 0, 0, 0,
+        pool_index, pool_starts, pool_run, held, fraction, 0, 0, 0, 0,
     ]);
     let net = match net_of(&ids, masked, [dt, slope, threshold, rest, leak], has_adapt,
                            adapt_strength, 1.0, has_nudge, ngroups, beta, has_apical,
-                           [fraction, floor2, tiny], has_held) {
+                           [floor2, tiny], has_held) {
         Ok(x) => x,
         Err(code) => return code,
     };
@@ -1409,17 +1412,17 @@ pub unsafe extern "C" fn solve_rows(
     strength: f64, tau: f64, target: usize, nmask: usize, gid: usize, ngroups: i32, beta: f64,
     softmax_t: usize, weight: usize, anchor: usize, anchor_gain: usize, pool_of: usize, pool_index: usize,
     pool_starts: usize, pool_run: usize, held: usize, budget: i32, chunk: i32, tolerance: f64,
-    out: usize, given: usize, has_given: i32, in_place: i32, has_apical: i32, fraction: f64,
+    out: usize, given: usize, has_given: i32, in_place: i32, has_apical: i32, fraction: usize,
     floor2: f64, tiny: f64, change: usize, kept_a: usize, kept_b: usize, report: usize,
 ) -> i32 {
     let ids = ids30([
         v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, pair_pre, pair_post,
         offset, keep, target, nmask, gid, softmax_t, weight, anchor, anchor_gain, pool_of,
-        pool_index, pool_starts, pool_run, held, 0, 0, 0, 0, 0,
+        pool_index, pool_starts, pool_run, held, fraction, 0, 0, 0, 0,
     ]);
     // the off flags of a free solve: no mask, adaptation or nudge, no gain held
     let net = match net_of(&ids, 0, [dt, slope, threshold, rest, leak], 0, strength, tau, 0,
-                           ngroups, beta, has_apical, [fraction, floor2, tiny], 0) {
+                           ngroups, beta, has_apical, [floor2, tiny], 0) {
         Ok(x) => x,
         Err(code) => return code,
     };

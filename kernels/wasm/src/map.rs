@@ -25,7 +25,7 @@ pub unsafe extern "C" fn map_settle(
     flat: usize, pairs: usize, flat_apical: usize, apical_pairs: usize, starts: usize, pair_pre: usize,
     pair_post: usize, offset: usize, freezable: usize, bias: usize, dt: f64, slope: f64,
     threshold: f64, rest: f64, leak: f64, has_apical: i32, pool_of: usize, pool_index: usize,
-    pool_starts: usize, pool_run: usize, fraction: f64, floor2: f64, tiny: f64, potential: usize,
+    pool_starts: usize, pool_run: usize, fraction: usize, floor2: f64, tiny: f64, potential: usize,
     carried: usize, has_carried: i32, write: usize, has_write: i32, clock: usize, lost: usize,
     doubt: usize, fresh: usize, has_fresh: i32, kept: usize, has_kept: i32, sure: usize,
     has_sure: i32, cue: usize, has_cue: i32, runs: usize, sweeps: i32, out: usize,
@@ -46,7 +46,7 @@ pub unsafe extern "C" fn map_settle(
         pool_index: take!(pool_index, i64, INT64, 17),
         pool_starts: take!(pool_starts, i64, INT64, 18),
         pool_run: take!(pool_run, i64, INT64, 19),
-        fraction, floor2, tiny,
+        fraction: take!(fraction, f64, FLOAT64, 20), floor2, tiny,
     };
     let potential = take!(potential, f64, FLOAT64, 23);
     let carried = take!(carried, u8, BOOL, 24);
@@ -87,7 +87,7 @@ pub(crate) struct MapGraph {
     pub pool_index: View<i64>,
     pub pool_starts: View<i64>,
     pub pool_run: View<i64>,
-    pub fraction: f64,
+    pub fraction: View<f64>,
     pub floor2: f64,
     pub tiny: f64,
 }
@@ -108,6 +108,9 @@ pub(crate) unsafe fn settle_map(
     let ranges = if starts.len > 0 { starts.len - 1 } else { 0 };
     if ranges == 0 || runs.len != 16 {
         return refused(39);
+    }
+    if has_apical != 0 && fraction.len != pool_starts.len.saturating_sub(1) {
+        return refused(20);
     }
     let n = starts.get(ranges) as usize;
     let run = |k: usize| (runs.get(2 * k) as usize, runs.get(2 * k + 1) as usize);

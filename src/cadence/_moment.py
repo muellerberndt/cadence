@@ -1488,6 +1488,7 @@ if njit is not None:
         the state keeps and reads its products; a check reads and renews them."""
         dt, slope, threshold, rest, leak = rule[0], rule[1], rule[2], rule[3], rule[4]
         strength, tau = rule[5], rule[6]
+        fractions = no_held[0]  # the unused pool argument of a plain lesson
         rows = drive.shape[0]
         v0 = warm_v.copy()
         a0 = warm_a.copy()
@@ -1497,7 +1498,7 @@ if njit is not None:
             v0, a0, s0, _standing(drive, bias), flat, pairs, flat, apical_pairs, starts,
             pair_pre, pair_post, offset, freezable, keep, False, dt, slope, threshold, rest,
             leak, False, strength, tau, False, target0, nmask0, gid0, 0, 0.0, softmax0, weight0,
-            anchor0, gain0, False, pool_of, pool_index, pool_starts, pool_run, 1.0, 1.0, 0.0,
+            anchor0, gain0, False, pool_of, pool_index, pool_starts, pool_run, fractions, 1.0, 0.0,
             no_held, False, free_steps, tolerance, stops, kept_in, has_given,
         )
         read = np.empty_like(v0)
@@ -1507,7 +1508,7 @@ if njit is not None:
             v0, a0, read, _standing(drive, bias), flat, pairs, flat, apical_pairs, starts,
             pair_pre, pair_post, offset, keep, False, dt, slope, threshold, rest, leak, False,
             strength, False, target0, nmask0, gid0, 0, 0.0, softmax0, weight0, anchor0, gain0,
-            False, pool_of, pool_index, pool_starts, pool_run, 1.0, 1.0, 0.0, no_held, False,
+            False, pool_of, pool_index, pool_starts, pool_run, fractions, 1.0, 0.0, no_held, False,
             out0, kept0, True, published,
         )
         v1 = v0.copy()
@@ -1519,7 +1520,7 @@ if njit is not None:
             pair_pre, pair_post, offset, freezable_nudged, keep, False, dt, slope, threshold,
             rest, leak, False, strength, tau, True, target, nmask, gid, ngroups, beta,
             softmax_t, weight, anchor, anchor_gain, False, pool_of, pool_index, pool_starts,
-            pool_run, 1.0, 1.0, 0.0, no_held, False, nudged_steps, nudged_tolerance,
+            pool_run, fractions, 1.0, 0.0, no_held, False, nudged_steps, nudged_tolerance,
             nudged_stops, kept0, True,
         )
         v2 = v0.copy()
@@ -1531,7 +1532,7 @@ if njit is not None:
             pair_pre, pair_post, offset, freezable_nudged, keep, False, dt, slope, threshold,
             rest, leak, False, strength, tau, True, target, nmask, gid, ngroups, -beta,
             softmax_t, weight, anchor, anchor_gain, False, pool_of, pool_index, pool_starts,
-            pool_run, 1.0, 1.0, 0.0, no_held, False, nudged_steps, nudged_tolerance,
+            pool_run, fractions, 1.0, 0.0, no_held, False, nudged_steps, nudged_tolerance,
             nudged_stops, kept0, True,
         )
         read = np.empty_like(v1)
@@ -1541,7 +1542,7 @@ if njit is not None:
             v1, a1, read, _standing(drive, bias), flat, pairs, flat, apical_pairs, starts,
             pair_pre, pair_post, offset, keep, False, dt, slope, threshold, rest, leak, False,
             strength, True, target, nmask, gid, ngroups, beta, softmax_t, weight, anchor,
-            anchor_gain, False, pool_of, pool_index, pool_starts, pool_run, 1.0, 1.0, 0.0,
+            anchor_gain, False, pool_of, pool_index, pool_starts, pool_run, fractions, 1.0, 0.0,
             no_held, False, out1, kept1, True, published,
         )
         read = np.empty_like(v2)
@@ -1551,7 +1552,7 @@ if njit is not None:
             v2, a2, read, _standing(drive, bias), flat, pairs, flat, apical_pairs, starts,
             pair_pre, pair_post, offset, keep, False, dt, slope, threshold, rest, leak, False,
             strength, True, target, nmask, gid, ngroups, -beta, softmax_t, weight, anchor,
-            anchor_gain, False, pool_of, pool_index, pool_starts, pool_run, 1.0, 1.0, 0.0,
+            anchor_gain, False, pool_of, pool_index, pool_starts, pool_run, fractions, 1.0, 0.0,
             no_held, False, out2, kept2, True, published,
         )
         return (
@@ -1618,7 +1619,7 @@ def lesson_phases(learner: Any, drive: Any, warm: Any, target: np.ndarray) -> An
         fused._compartment(None, layout, flat, None, rows, n)
     )
     tolerance = cfg.tolerance if cfg.tolerance else None  # a tolerance of zero never stops
-    nudged_tolerance = None if cfg.nudged_fixed else tolerance
+    nudged_tolerance = learner._finite_nudge_tolerance(pull)
     out = _phases_kernel(
         warm_v, warm_a, kept_in, has_kept, has_given, drive, graph.bias, flat, pairs,
         apical_pairs, layout.starts, layout.pair_pre, layout.pair_post, layout.offset,
@@ -2159,7 +2160,7 @@ def _lesson_plan(brain: Any) -> tuple[Any, ...] | None:
         pairs, apical_pairs, no_held = compartment[0], compartment[2], compartment[11]
         pool_of, pool_index, pool_starts, pool_run = compartment[4:8]
         tolerance = cfg.tolerance if cfg.tolerance else None  # a tolerance of zero never stops
-        nudged_tolerance = None if cfg.nudged_fixed else tolerance
+        nudged_tolerance = learner._finite_nudge_tolerance(pull)
         group, neuron_group = learner._projections()
         partner = np.full(w.synapses, -1, dtype=np.int64)
         partner[learner._paired] = learner._paired_reverse
@@ -2247,7 +2248,9 @@ def taught_lesson(
 
     plan = _lesson_plan(brain)
     learner = brain.learner
-    if plan is None or learner.synapse_rate is not None or not learner.plastic_synapses.all():
+    if (plan is None or learner.synapse_rate is not None or not learner.plastic_synapses.all()
+            or learner.config.drive_budget or learner.config.credit_window
+            or learner.config.credit_calibration or learner.config.credit_transport):
         return None
     recall = brain.recall
     if recall is not None and recall.slope_maps and not recall._slope_as_bank(

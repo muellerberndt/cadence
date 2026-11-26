@@ -380,9 +380,13 @@ with an implicit-gradient learner on the same network, and the
 
 Teaching is finite by default: the contrast is read after at most `free_steps` and
 `nudged_steps` sweeps. `qualified=True` requires every phase to meet the full potential and
-adaptation residual within `tolerance`, with up to `damping` step halvings inside its budget.
-A failed phase raises `LearningPhaseError` (`phase`, `phases`, `report`, `hint`) and writes
-nothing.
+adaptation residual, with up to `damping` step halvings inside its budget. The free phase uses
+`tolerance`. Each signed phase uses at most one eighth of the weakest nonzero per-row peak
+motor pull at the free state, and never more than `tolerance`. This keeps many motor slots or
+small row weights from making the unchanged free state pass as a taught state. A nonzero
+pull that does not separate the two signed motor potentials is also refused. A failed phase
+raises `LearningPhaseError` (`phase`, `phases`, `report`, `hint`) and writes nothing. The report
+names the effective `nudged_tolerance` and `opposite_tolerance` of the attempted signed phases.
 
 Under `qualified=True` both budgets are settle budgets, and a nudged phase needs about as many
 sweeps as the free one. Raise `nudged_steps` to match `free_steps`: at the composed
@@ -407,6 +411,110 @@ is refused by name with a message saying what to use instead ([CHANGELOG](../CHA
 Qualification certifies the equations at those states; the gradient reading also needs the
 assumptions above. `contrast`, `update` and `apply` act on supplied states. Answers follow
 [qualification and refusal](life.md#qualification-and-refusal).
+
+In finite teaching, if the largest possible first-sweep movement from the per-slot
+motor force is at or below the movement tolerance, both signed solves run the full configured
+`nudged_steps`. Otherwise the phase could stop before a hidden neuron even sees the motor
+movement. The learner uses the activation slope bound, the integration step and the row weights
+for this test. Dividing the pull among many slots is one way this can happen. It does not
+increase the nudge, spend beyond the finite budget or certify a
+finite phase. A budget shorter than the available return path still cannot transmit the force.
+
+#### Measuring credit and limiting taught drive
+
+`learning_credit_window=15` reports mean absolute signed-phase activation contrast at the
+motor and in each trainable hidden population that can influence it. For each population, use
+`credit_<name>_slope` and `credit_<name>_voltage_contrast` to distinguish a received potential
+change that barely moves activation from a correction that never arrives. Read
+`credit_<name>_return_share` and `credit_<name>_max_return_hops` to check which units have a
+directed path from a motor through nonzero contacts. The maximum is over reachable units and
+is −1 if no unit in the measured population is reachable. Topology by itself says nothing
+about the effective gain, stability or direction of an update. `Brain.last_learning` puts
+these fields under `demonstration_credit_*`. A population below 0.1% of the motor contrast for that many
+taught batches with nonzero motor movement warns once per streak. This is a credit diagnostic,
+not a test of what that population learned. The streak is not saved.
+
+`learning_drive_budget=4.0` is an experimental constraint on contrastive teaching updates.
+It reads each incoming learned projection's proposed drive on the lesson's free activations.
+Each receiving hidden range divides the budget between its incoming projections. The bound
+is in activation-logit units, so it is divided by the neuron slope to obtain potential units.
+For apical brains the constraint budgets basal inputs and leaves room for the apical RMS
+share. It does not cap raw apical feedback independently of the corresponding readout.
+Tied projections share the tighter scale and frozen weights are left alone. In a composed
+brain the report includes `demonstration_drive_limited_projections`.
+
+There are no hidden targets. The constraint leaves the state equations unchanged and does
+not claim a drive bound on unseen activity, on held current or on the settling loop's
+incremental gain. It applies to teaching, not reward eligibility or independently learned
+memory. Both options are off by default. A diagnostic lesson uses the observable path in
+place of the one-call teaching shortcut. The experimental projection constraint reads its
+tables on the host on every backend.
+
+#### Automatic deep-credit calibration
+
+Set `brain.retune(learning_credit_calibration=64)` on a composed brain to try calibration
+after every 64 contrastive updates. This works with or without an apical compartment, and
+does not require setting per-region gains. Each
+attempt samples up to three rows of the current teaching drive, holding the memory read fixed. It
+applies a small pair of opposite additive motor probes with fixed, label-free control
+directions. The paired phases run together so different stop times do not register false
+contrast. A stage names trainable populations that can affect the motor but lack a return path.
+
+The search compares bounded gain alternatives at existing apical receiving pools if the graph
+has them. It then tries small, local bias adjustments in the two weakest reachable hidden
+regions where biases can move. Every candidate must settle at the current integration step,
+retain motor response, and avoid large free-activity shifts or more than one extra probe
+chunk of work. It must also preserve all greedy motor choices on the probed rows.
+An accepted change improves the absolute response of the weakest measured regions on those
+inputs. If none qualifies, nothing is installed. Both free play and later teaching use the
+accepted bias or RMS share. Calibration changes no synapse efficacy, wiring, hidden target
+or recorded action.
+
+`brain.learner.last_credit_calibration` reports the tried and selected adjustments, free-state
+drift, slopes, signed feedback and basal drive at apical pools, and sweeps and residual checks.
+`Learner.calibrate_credit(drive, apply=False)` performs the same search without installing
+anything. The feedback gains and schedule are saved, but the report is observational and is
+not saved. The adaptive fractions currently take the ordinary device kernels instead of the
+fixed-fraction Triton and Metal shortcuts. The option is experimental and off by default.
+Calibration checks a bounded set of inputs and perturbations. It does not guarantee global
+settling stability or that transmitting a perturbation improves the task.
+
+#### Transporting a correction without amplifying ordinary return
+
+An apical circuit can settle with a strong ordinary return but transmit a much smaller
+change. Turning up the ordinary return can shift a free answer or pin the receiver against
+its activation limit. In the experimental teaching mode
+`brain.retune(learning_credit_transport=3.0)`, Cadence changes the incremental feedback
+used by a lesson while keeping ordinary act and reward eligibility unchanged.
+
+Let `a(s)` be the apical current at activation `s` with the ordinary free gain held.
+For a moment with free activation `s0`, the paired signed solves use
+`a(s) + (k - 1) * (a(s) - a(s0))`. The extra current is zero at the free reference.
+The ordinary state is therefore still a solution at zero motor force. The mode adds no
+connections or hidden labels. It is a new teaching contrast on the same coupled graph,
+not a claim that the resulting update is the gradient of the ordinary free network.
+
+Only apical graphs have a transport branch. The setting is a maximum factor between
+`1.0` and `6.0`, or `0.0` to leave the feature off. `1.0` is the matched
+qualification control with no amplification. Cadence refines the free reference, then
+tries the requested factor, half that factor (at least one), and one. It checks both signs
+together. It discards an unqualified candidate, one that did not resolve a motor force,
+or one where activation moved too far from the refined free reference. If no candidate is
+admitted it uses the ordinary signed equations, starting from that reference if one was
+qualified. This need not produce the same lesson as having the mode off. Missing return paths
+still require a wiring change.
+The reference uses up to 160 sweeps of `learning_free_steps`, and each candidate uses up to
+160 sweeps of `learning_nudged_steps`. A zero signed budget skips transport entirely.
+
+`credit_transport_factor` records the admitted factor or zero. The
+`credit_transport_reference_*` and `credit_transport_*` work fields count the extra
+reference and candidate solves, including attempts that did not qualify. Candidate work
+counts the chosen signed solve too, so don't add it again to that solve's work. Candidate
+phases use the ordinary numerical backend with their held inputs and gains. The extra
+buffer preparation currently reads state on the host.
+
+Check actual held-out acquisition and free-running behavior before adopting this mode.
+Increasing a signed response can fix a measurement failure without improving a task.
 
 #### Finite free phases that run out of budget
 
@@ -572,6 +680,9 @@ Select rates on development data and freeze them.
 | `normalize`, `normalize_floor` | `LearnerConfig` | forgetting factor in `[0, 1)` of a running RMS that divides each step, plus a floor ([below](teach.md#rates-under-normalization)) | 0.0 (off), 1e-3 |
 | `normalize_relative` | `LearnerConfig` | above zero, in place of `normalize_floor`, that share of the RMS of the synapse's projection (a bias: its range) ([rates](teach.md#rates-under-normalization)) | 0.0 (off) |
 | `nudged_fixed` | `LearnerConfig` | nudged phases run their whole `nudged_steps` budget instead of stopping at the movement `tolerance` ([why](#5-why-the-contrast-is-a-gradient)); `teaching="deep"` sets it | `False` |
+| `drive_budget`, `credit_window` | `LearnerConfig` | experimental projection-drive limit and sustained low-contrast diagnostics ([credit and drive](#measuring-credit-and-limiting-taught-drive)) | 0, 0 |
+| `credit_calibration` | `LearnerConfig` | teaching updates between [experimental credit calibration](#automatic-deep-credit-calibration) attempts in a composed brain | 0 (off) |
+| `credit_transport` | `LearnerConfig` | maximum factor for [experimental teaching-only apical transport](#transporting-a-correction-without-amplifying-ordinary-return) | 0.0 (off) |
 | `scale_cap` | `LearnerConfig` | largest plastic efficacy magnitude; smaller keeps readouts out of saturation | 8.0 |
 | `qualified`, `damping` | `LearnerConfig` | require full-equation phases; most `dt` halvings per phase | `False`, 3 |
 | `surprise` | `LearnerConfig` | [teach only differing rows](teach.md#lessons-only-where-the-answer-differs) | `False` |

@@ -5,10 +5,9 @@
 
 ``save`` writes every brain of the released-files panel (``tests/fixtures/released/panel.py``)
 after its life, with each brain's continuation after a load in this version. ``load`` reads
-them under the previous release: each brain loads and continues with the same actions and the
-same weights to the bit. This version adds no option a file can need, so the panel holds no
-brain the previous release refuses; a release that adds one saves such a brain here and checks
-that it is refused by its feature's name. CI runs both on one machine on the NumPy loop
+them under the previous release: each brain of the panel loads and continues with the same
+actions and weights to the bit. Brains that use unit recall keys or optional learning credit
+controls are refused by feature name. CI runs both on one machine on the NumPy loop
 (``CADENCE_FUSED=0``).
 """
 
@@ -43,6 +42,11 @@ def save(directory: Path) -> None:
             "acts": panel.continuation(loaded, name),
             "learned": panel.learned(loaded),
         }
+    unit_keys = cd.Brain.compose(8, 3, modules=(8,), recall_key_norm=True, backend="cpu", seed=1)
+    unit_keys.save(directory / "recall_key_norm.npz")
+    credit = cd.Brain.compose(8, 3, modules=(8,), learning_drive_budget=4, backend="cpu", seed=1)
+    credit.save(directory / "learning_credit.npz")
+    credit.learner.save(directory / "credit_learner.npz")
     (directory / "saved.json").write_text(json.dumps(table, indent=1))
     print(f"cadence {cd.__version__} saved {len(table['brains'])} brains")
 
@@ -65,6 +69,21 @@ def load(directory: Path) -> None:
             failures.append(f"{name}: acts {acts} against {expected['acts']}")
         elif learned != expected["learned"]:
             failures.append(f"{name}: the weights after the continuation differ")
+    for feature in ("recall_key_norm", "learning_credit"):
+        try:
+            cd.Brain.load(directory / f"{feature}.npz")
+        except ValueError as error:
+            if f"feature '{feature}'" not in str(error):
+                failures.append(f"{feature}: not refused by feature name: {error}")
+        else:
+            failures.append(f"{feature}: previous release silently loaded an unsupported feature")
+    try:
+        cd.Learner.load(directory / "credit_learner.npz")
+    except ValueError as error:
+        if "cadence-checkpoint/6" not in str(error):
+            failures.append(f"credit learner: not refused by format: {error}")
+    else:
+        failures.append("credit learner: previous release silently dropped learning settings")
     if failures:
         raise SystemExit("\n".join(failures))
     print(

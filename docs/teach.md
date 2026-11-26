@@ -220,6 +220,28 @@ each step its symbol. Started from an even split, the path converges on the true
 true timing. A label that depends on the brain's own sampled act does not work: the same input
 then takes both a symbol's lesson and blank's.
 
+### When a deep brain's motor learns but its hidden regions do not
+
+Start with motor labels only. For a composed brain that stalls, use
+`brain.retune(learning_credit_calibration=64, learning_credit_window=15)` before resuming
+the same lessons. The first setting periodically probes the brain's existing return paths
+and attempts a bounded correction without labels. The second is optional and logs which
+regions see the teaching signal. Neither requires a list of regions or their gains.
+
+If a region has no return path, revisit the wiring. If calibration reports no safe
+improvement, it leaves the circuit as it was. Check the actual lesson contrasts, then
+compare held-out behavior with and without calibration. A recovered signal shows that a
+region can respond, not that it took over a useful function.
+[Calibration and diagnostics](settling.md#automatic-deep-credit-calibration).
+
+With an apical graph, `learning_credit_transport=3.0` is an experimental way to strengthen
+the correction without raising ordinary return during play. Leave recall and working
+context intact. Compare against `1.0`, which gives the paired solves the same precision
+but doesn't amplify them, and against an unmodified brain. In a modular brain, also freeze
+hidden plasticity during training or mute the coordinator's branch outputs at evaluation.
+That separates responding to a correction from learning useful downstream control.
+[Teaching-only transport](settling.md#transporting-a-correction-without-amplifying-ordinary-return).
+
 ## Learning from outcomes
 
 `step(observations, reward=...)` learns from every outcome it is given. `live(observation,

@@ -5,7 +5,7 @@ Short answers to the problems builders meet first, each linking the page that ow
 
 ## Install and run
 
-**`pip install cadence-net==0.103.2`, then `import cadence`.** Python 3.11 or newer and NumPy are
+**`pip install cadence-net==0.104.0`, then `import cadence`.** Python 3.11 or newer and NumPy are
 the only requirements.
 
 **Do I need a GPU?** No. A new brain runs on the CPU unless its size makes a GPU faster and one
@@ -55,6 +55,25 @@ sensed as a moment of its own
 
 **`predict` answers right, `act` answers wrong, and lessons do not help.** Teach inside the stream
 the brain acts in ([a deep brain whose lessons do not reach its act](teach.md#a-deep-brain-whose-lessons-do-not-reach-its-act)).
+
+**The motor learns but a hidden region stays unchanged.** Set `learning_credit_window=15` and
+compare the motor's reported contrast with the region's voltage and activation contrasts.
+A missing return path is a wiring problem. If a region receives voltage contrast but its
+activation hardly moves and its slope is low, inspect its ordinary input and bias. If its
+slope is healthy but it receives little voltage contrast, inspect the returning projections
+and the finite teaching budget. Do not treat a larger motor force as a fix for all three.
+[How to read the fields](settling.md#measuring-credit-and-limiting-taught-drive).
+
+**A high feedback gain changes free answers, or better credit fails to improve the task.**
+Do not promote the setting on the contrast alone. Compare free answers on untrained
+inputs and record the cost and refusals of both signs. Raising return around a fixed
+operating point can be useful for the lesson, while raising its standing current can
+change the act or saturate the receiver. Keep recall and learned context in the ordinary
+play path. For a delayed decision, compare two histories with the same recent inputs
+and different older cues. If changing the old cue barely changes what reaches the deciding
+region, test the trace and recall read before trying more teaching gain. Making a lesson
+louder cannot supply missing context.
+[Teaching-only apical transport](settling.md#transporting-a-correction-without-amplifying-ordinary-return).
 
 **A `RuntimeWarning` about a lesson on the observations the brain just acted on.** Teach first,
 then act ([supervised lessons](teach.md#supervised-lessons)).

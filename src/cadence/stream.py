@@ -35,6 +35,7 @@ from . import _moment
 from ._configuration import real
 from .brain import _MLX_MAP_ENTRIES, BrainState, _MlxMatrix, _resident
 from .brain import Brain as NeuralGraph
+from .brain import _on_host as _phase_on_host
 from .connectome import Connectome
 from .learning import LearnedState
 from .resident import (
@@ -160,6 +161,14 @@ def columns(index: np.ndarray) -> slice | np.ndarray:
     if len(index) and np.array_equal(index, np.arange(index[0], index[0] + len(index))):
         return slice(int(index[0]), int(index[0]) + len(index))
     return np.asarray(index, dtype=np.int64)
+
+
+def _unit_key(key: np.ndarray) -> np.ndarray:
+    """Normalize one key per row, leaving silent keys zero without squaring large inputs."""
+    peak = np.max(np.abs(key), axis=-1, keepdims=True)
+    scaled = np.divide(key, peak, out=np.zeros_like(key), where=peak > 0)
+    norm = np.linalg.norm(scaled, axis=-1, keepdims=True)
+    return np.asarray(np.divide(scaled, norm, out=np.zeros_like(key), where=norm > 0))
 
 
 # what rounding leaves of a slot the heads read whole, in shares of the slot: nothing
@@ -1449,6 +1458,8 @@ class Recall:
     # on every port and ``trace`` keeps what the ports held at the latest read, at amplitude one
     drive_gain: bool = False
     hearing: float = 1.0
+    # Unit key geometry leaves every value and successor in the original event coordinates.
+    key_norm: bool = False
     # every map reads the cortex of the moment before at unit norm per stream, the event's
     # energy, so a lesson's step on its columns weighs no more than the step on the event's rows
     cortex_norm: bool = False
@@ -1494,11 +1505,11 @@ class Recall:
         "address_reward", "position_reward", "window", "heads", "position",
         "position_rate", "boundary", "tokens", "action", "anchor",
         "relative", "slope", "when", "gain", "grid", "drive_gain", "cortex_norm",
-        "gain_after", "gain_next", "strength", "again", "kept",
+        "gain_after", "gain_next", "strength", "again", "kept", "key_norm",
     )
     CONSTRUCTION_OPTIONS = ("window", "heads", "position", "tokens", "action", "anchor",
                             "relative", "slope", "when", "gain", "grid", "drive_gain",
-                            "cortex_norm", "gain_after", "gain_next", "strength")
+                            "cortex_norm", "gain_after", "gain_next", "strength", "key_norm")
     # what ``Brain.compose(..., recall=True)`` gives a new brain's memory over the founders above,
     # ordinary settings a caller's value overrides. The founder stays what a saved memory without
     # the setting means, so a saved brain keeps the values it was saved with
@@ -1616,7 +1627,7 @@ class Recall:
             return number
         if name in (
             "next", "boundary", "action", "anchor", "relative", "when", "drive_gain",
-            "cortex_norm", "strength",
+            "cortex_norm", "strength", "key_norm",
         ):
             if not isinstance(value, bool):
                 raise ValueError(f"{name} must be boolean")
@@ -1795,6 +1806,8 @@ class Recall:
         for name in (*self.RUNTIME, *self.CONSTRUCTION, *self.OPTIONS):
             setattr(self, name, self.setting(name, getattr(self, name)))
         self._law(self.strength, self.again, self.kept)
+        if self.key_norm and self.action:
+            raise ValueError("key_norm reads observations and their windows without recall_action")
         for name, given in (("heads", self.heads > 1), ("window", self.window > 1),
                             ("action", self.action), ("when", self.when)):
             if self.strength and given:
@@ -1874,6 +1887,19 @@ class Recall:
             self._heads.append((recall, following))
         self._head_columns = [(columns(r), columns(n)) for r, n in self._heads]
         self._head_synapses = [(self._synapses(r), self._synapses(n)) for r, n in self._heads]
+        # The address map still takes the previous association as its query context.
+        # Credit, however, returns through the projections the read actually drives.
+        # Keep the standard association-only execution path and its arithmetic intact.
+        pre, post = np.asarray(self.connectome.pre), np.asarray(self.connectome.post)
+        source = np.concatenate([region for pair in self._heads for region in pair])
+        other = np.setdiff1d(post[np.isin(pre, source)], self.association)
+        self._address_receivers = np.concatenate((self.association, other))
+        self._local_address_routes = bool(len(other))
+        self._learning_synapses = (
+            [(self._synapses(r, self._address_receivers),
+              self._synapses(n, self._address_receivers))
+             for r, n in self._heads] if self._local_address_routes else self._head_synapses
+        )
         # with ``when`` every head's when region: its neurons, columns and synapses into the
         # association
         self._whens: list[tuple[np.ndarray, Any, tuple[np.ndarray, np.ndarray, np.ndarray]]] = []
@@ -1973,7 +1999,8 @@ class Recall:
         return (
             self.heads == 1 and self.window == 1 and not self.action and not self.when
             and not self.gain and self.tokens is None and self.target == "recall"
-            and not self.cortex_norm and not self.strength
+            and not self.cortex_norm and not self.strength and not self.key_norm
+            and not self._local_address_routes
         )
 
     def reside(self, kernel: Any) -> None:
@@ -2591,6 +2618,8 @@ class Recall:
             past = _of(self.past, n)
             scale = self.heard * self.window_decay ** np.arange(1, self.window)
             key = np.concatenate([key, (scale[None, :, None] * past).reshape(n, -1)], axis=1)
+        if self.key_norm:
+            key = _unit_key(key)
         inputs = x
         if self.action:
             # the command coordinates of the key are the slot's own command, written after the
@@ -2755,7 +2784,7 @@ class Recall:
             return False
         if (
             self.heads != 1 or self.window != 1 or self.action or self._whens or self.gain
-            or self.strength
+            or self.strength or self.key_norm or self._local_address_routes
             or (begun and (not self.slots or self.streams != rows))
             or not isinstance(self.head_maps[0][0], np.ndarray)
         ):
@@ -3307,15 +3336,18 @@ class Recall:
 
     # -- the address lesson
 
-    def _synapses(self, region: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """The synapses from ``region`` into the association region: their indices, and the
-        source and association coordinate of each."""
+    def _synapses(
+        self, region: np.ndarray, receivers: np.ndarray | None = None,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """The synapses from ``region`` to its named receivers, in the two ranges' order."""
         connectome = self.connectome
         pre, post = np.asarray(connectome.pre), np.asarray(connectome.post)
         local_source = -np.ones(connectome.n, dtype=np.int64)
         local_source[region] = np.arange(len(region))
         local_cortex = -np.ones(connectome.n, dtype=np.int64)
-        local_cortex[self.association] = np.arange(len(self.association))
+        if receivers is None:
+            receivers = self.association
+        local_cortex[receivers] = np.arange(len(receivers))
         synapses = np.flatnonzero((local_source[pre] >= 0) & (local_cortex[post] >= 0))
         return synapses, local_source[pre[synapses]], local_cortex[post[synapses]]
 
@@ -3327,15 +3359,21 @@ class Recall:
         sum over its synapses of effective weight times the movement of its association
         neuron."""
         recall_synapses, next_synapses = self._head_synapses[head]
-        synapses, rows, cols = recall_synapses if region == "recall" else next_synapses
+        wiring = recall_synapses if region == "recall" else next_synapses
         width = len(self._heads[head][0 if region == "recall" else 1])
+        return self._routed_back(graph, wiring, width, len(self.association), movement)
+
+    @staticmethod
+    def _routed_back(
+        graph: NeuralGraph, wiring: tuple[np.ndarray, np.ndarray, np.ndarray], width: int,
+        receivers: int, movement: np.ndarray,
+    ) -> np.ndarray:
+        synapses, rows, cols = wiring
         if graph.layout.parallel_synapses:
-            w = np.zeros((width, len(self.association)))
+            w = np.zeros((width, receivers))
             np.add.at(w, (rows, cols), graph._weights[synapses])
         else:  # one synapse per entry: the sum with zero that np.add.at would make, in one pass
-            w = _route_matrix(
-                graph, synapses, rows * len(self.association) + cols, (width, len(self.association))
-            )
+            w = _route_matrix(graph, synapses, rows * receivers + cols, (width, receivers))
             w += 0.0
         return np.asarray(movement @ w.T)
 
@@ -3345,18 +3383,30 @@ class Recall:
         """Head ``head``'s two ``readback`` reads: on the blocks where the synapses rest on the
         MLX device, in one launch."""
         kernel = graph._mlx
-        if kernel is not None and graph._efficacy is None:
+        if kernel is not None and graph._efficacy is None and not self._local_address_routes:
             ports = [
                 (*synapses, len(neurons)) for synapses, neurons in zip(
-                    self._head_synapses[head], self._heads[head], strict=True
+                    self._learning_synapses[head], self._heads[head], strict=True
                 )
             ]
             read = kernel.read_back(ports if self.next else ports[:1], movement)
             if read is not None:
                 return read[0], read[1] if self.next else None
-        d_value = self.readback(graph, "recall", movement, head)
-        d_next = self.readback(graph, "next", movement, head) if self.next else None
+        v, n = self._learning_synapses[head]
+        value, following = self._heads[head]
+        receivers = len(self._address_receivers)
+        d_value = self._routed_back(graph, v, len(value), receivers, movement)
+        d_next = (
+            self._routed_back(graph, n, len(following), receivers, movement) if self.next else None
+        )
         return d_value, d_next
+
+    def _local_address_movement(self, plus: BrainState, minus: BrainState) -> np.ndarray:
+        """The signed response at all receiving neurons of a custom recall layout."""
+        cols = columns(self._address_receivers)
+        pos = np.atleast_2d(_phase_on_host(plus, "activation"))
+        neg = np.atleast_2d(_phase_on_host(minus, "activation"))
+        return np.asarray(pos[:, cols] - neg[:, cols])
 
     def learn(
         self, graph: NeuralGraph, learned: LearnedState, content: np.ndarray | None = None
@@ -3400,11 +3450,13 @@ class Recall:
             rows = rows[np.asarray(content, dtype=bool)[rows]]
         if not self.slots or not len(rows) or self.streams != len(moment.address):
             return quiet
-        plus = np.atleast_2d(learned.nudged.activation)
-        minus = np.atleast_2d(
-            learned.free.activation if learned.opposite is None else learned.opposite.activation
-        )
-        movement = (plus - minus)[:, self.association]
+        reference = learned.free if learned.opposite is None else learned.opposite
+        if self._local_address_routes:
+            movement = self._local_address_movement(learned.nudged, reference)
+        else:
+            plus = np.atleast_2d(learned.nudged.activation)
+            minus = np.atleast_2d(reference.activation)
+            movement = (plus - minus)[:, self.association]
         if (
             self._compiles(len(moment.address)) and graph._efficacy is not None
             and (not self.slope_maps or self._slope_as_bank(rows))
@@ -3707,7 +3759,8 @@ class Recall:
         positions = bool(self.position_reward) and bool(self.position_maps)
         if not (self.address_reward or positions or self.gain):
             return None
-        movement = self.activity(plus) - self.activity(minus)
+        movement = (self._local_address_movement(plus, minus) if self._local_address_routes
+                    else self.activity(plus) - self.activity(minus))
         batch, width, columns_ = len(movement), self.map_width, self.address_width
         count = self.position_buckets
         if self.address_reward:

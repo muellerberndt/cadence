@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.104.0 - 2026-11-26
+
+Deep teaching resolves small motor corrections, and recall heads now receive credit from the
+regions they actually drive. Both fixes use motor labels only and add no memory-to-motor route.
+
+### Fixed
+
+- **Small signed teaching phases no longer stop before responding to the motor force.** A
+  qualified lesson checks its signed phases relative to the per-slot force and refuses a
+  nonzero correction that the phases did not resolve. Finite teaching uses the configured
+  signed phase budgets when a movement tolerance could hide that first response. The mean
+  motor loss and its `beta` are unchanged.
+- **Recall addresses learn through custom read projections.** A head routed to an instrument
+  plan or another hidden region reads the signed movement of those receivers for teaching and
+  sampled-action eligibility. The previous association still supplies query context. Standard
+  association-only recall keeps its existing path. Existing checkpoints need no migration.
+- **Browser settling uses the same per-pool apical gains as the CPU paths.** Use this release's
+  `cadence_kernel.wasm` (ABI 2). An older module falls back to the NumPy loop rather than
+  running with an incompatible signature.
+
+### New opt-in tools
+
+- **`recall_key_norm=True`** compares unit-normalized ordered observation keys without changing
+  recalled values or successors. This is a setting for a fresh brain and is saved with the
+  memory. It leaves the default geometry unchanged and does not compose with `recall_action`.
+- **`learning_credit_window`** measures regional activation and voltage contrast, free-state
+  slope, and return-path reach. It can warn when a trainable hidden region consistently sees
+  almost none of a measured motor correction.
+- **`learning_drive_budget` and `learning_credit_calibration`** are optional controls. The
+  budget bounds learned basal projections on observed activations. Calibration tests bounded
+  changes to bias and apical gain and keeps candidates only when the measured response improves
+  and sampled free choices are preserved. Neither guarantees behavior on unseen inputs.
+- **`learning_credit_transport`** is experimental. It amplifies the change in apical feedback
+  around the free state during paired teaching phases, checks both signs, and falls back when
+  the candidate fails. It honors the configured signed sweep budget and does not change
+  ordinary acting or reward eligibility.
+
+Checkpoints that opt into unit recall keys or the new learning-credit settings name those
+features so an older Cadence does not silently resume them with a different rule.
+
+The [teaching](docs/teach.md), [settling](docs/settling.md), [memory](docs/memory.md),
+[evaluation](docs/evaluate.md), and [troubleshooting](docs/troubleshooting.md) guides explain how
+to distinguish a missing return path, saturation, an under-resolved correction and a context
+that the brain did not retrieve. Controlled four-instrument tests demonstrate motor-only
+coordination when the older cue is accessible. Held-out music tests are mixed. This release
+does not claim that the composer has solved long-form planning or that all deep architectures
+learn without calibration.
+
 ## 0.103.2 - 2026-11-25
 
 A fix for the learned value path (`recall_gain`) in a brain of several motor slots, and a new
