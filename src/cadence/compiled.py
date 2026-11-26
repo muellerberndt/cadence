@@ -56,7 +56,7 @@ if fused.njit is not None:
         starts: np.ndarray, pair_pre: np.ndarray, pair_post: np.ndarray, offset: np.ndarray,
         freezable: np.ndarray, bias: np.ndarray, dt: float, slope: float, threshold: float,
         rest: float, leak: float, has_apical: bool, pool_of: np.ndarray,
-        pool_index: np.ndarray, pool_starts: np.ndarray, pool_run: np.ndarray, fraction: float,
+        pool_index: np.ndarray, pool_starts: np.ndarray, pool_run: np.ndarray, fraction: np.ndarray,
         floor2: float, tiny: float, potential: np.ndarray, carried: np.ndarray,
         has_carried: bool, write: np.ndarray, has_write: bool, clock: np.ndarray,
         lost: np.ndarray, doubt: np.ndarray, fresh: np.ndarray, has_fresh: bool,

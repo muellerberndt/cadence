@@ -6414,6 +6414,8 @@ class Brain:
         if self.longterm is not None and self.longterm.attended is not None:
             # the heads' lesson: each head's choice of record scored against the movement
             teaching.update(self.longterm.attended.learn(self.learner.brain, lesson))
+        if lesson.opposite is not None:
+            teaching.update(self.learner._scheduled_credit(drive))
         # a row of several motor slots agrees only where every slot does, so beside the rows
         # the report counts the slots: zero where the lesson does not judge its rows
         teaching["agreed_slots"] = matched
@@ -9291,6 +9293,16 @@ def _grown_checkpoint(
         if name in meta_old:
             meta[name] = meta_old[name]
     # a limit no smaller than the graph's own follows the blocks that grew, as compose takes it
+    apical = meta.get("apical")
+    if apical is not None and "pool_fractions" in apical:
+        old_groups = np.asarray(old["apical_groups"])
+        new_groups = np.asarray(data["apical_groups"])
+        fractions = dict(zip(np.unique(old_groups[old_groups >= 0]), apical["pool_fractions"],
+                             strict=True))
+        seen_groups = np.unique(new_groups[new_groups >= 0])
+        meta["apical"] = {**apical, "pool_fractions": [
+            fractions.get(group, apical["fraction"]) for group in seen_groups
+        ]}
     if meta_old.get("dense_limit", 0) >= 2048:
         meta["dense_limit"] = max(meta_old["dense_limit"], meta_new.get("dense_limit", 0))
     data["meta"] = np.array(canonical_json(meta))

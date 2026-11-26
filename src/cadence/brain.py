@@ -464,7 +464,9 @@ class Apical:
     groups: np.ndarray
     fraction: float
     floor: float = APICAL_FLOOR
+    pool_fractions: tuple[float, ...] | None = None  # ordered by the nonnegative groups
     members: tuple[Any, ...] = field(init=False, repr=False)
+    fractions: np.ndarray = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         synapses = np.asarray(self.synapses)
@@ -504,6 +506,17 @@ class Apical:
             else:
                 members.append(index)
         object.__setattr__(self, "members", tuple(members))
+        if self.pool_fractions is None:
+            fractions = np.full(len(members), self.fraction)
+        else:
+            fractions = np.asarray(self.pool_fractions, dtype=float)
+            if (fractions.shape != (len(members),) or not np.isfinite(fractions).all()
+                    or (fractions <= 0).any()):
+                raise ValueError("apical pool_fractions needs one positive finite value per pool")
+            object.__setattr__(self, "pool_fractions", tuple(map(float, fractions)))
+            fractions = fractions.copy()
+        fractions.setflags(write=False)
+        object.__setattr__(self, "fractions", fractions)
 
     def check(self, synapses: int, neurons: int, post: np.ndarray) -> None:
         """Refuse a spec that does not fit a connectome of these sizes and post neurons."""
@@ -515,14 +528,15 @@ class Apical:
     def gain(self, basal: np.ndarray, raw: np.ndarray) -> np.ndarray:
         """The normalization's gain ``(batch, pools)``: ``fraction * rms(b) / sqrt(rms(u)^2 +
         (floor * rms(b))^2)`` per row and pool."""
-        fraction, floor2 = self.fraction, self.floor * self.floor
+        floor2 = self.floor * self.floor
         out = np.empty((len(basal), len(self.members)))
         for k, members in enumerate(self.members):
             b = basal[:, members]
             u = raw[:, members]
             basal2 = np.mean(b * b, axis=1)
             raw2 = np.mean(u * u, axis=1)
-            out[:, k] = fraction * np.sqrt(basal2) / np.sqrt(raw2 + floor2 * basal2 + _APICAL_TINY)
+            out[:, k] = (self.fractions[k] * np.sqrt(basal2)
+                         / np.sqrt(raw2 + floor2 * basal2 + _APICAL_TINY))
         return out
 
     def drive(
@@ -544,6 +558,7 @@ class Apical:
             "pools": len(self.members),
             "fraction": self.fraction,
             "floor": self.floor,
+            **({"pool_fractions": list(self.pool_fractions)} if self.pool_fractions else {}),
         }
 
 
@@ -1350,6 +1365,22 @@ class Brain:
             device=str(self._torch.device) if self._torch is not None else None,
             dense_limit=self.dense_limit, layout=self.layout, precision=self.precision,
             apical=self.apical,
+        )
+
+    def _with_apical(self, apical: Apical) -> Brain:
+        """Independent numerical candidate, with the same learned parameters and topology."""
+        # The packed CPU products are independent of gains. The compartment's
+        # own pooling state is immutable, and a new device kernel owns its gains.
+        if self.backend == "cpu" and self.apical is not None:
+            new = copy.copy(self)
+            new.apical = apical
+            return new
+        return Brain(
+            self.connectome, self.neuron_model, backend=self.backend,
+            efficacy=self.efficacy, log_gain=self.log_gain, bias=self.bias,
+            device=str(self._torch.device) if self._torch is not None else None,
+            dense_limit=self.dense_limit, layout=self.layout, precision=self.precision,
+            apical=apical,
         )
 
     def equilibrate(
@@ -3584,7 +3615,11 @@ class _TorchKernel:
             self.pool_count = torch.from_numpy(
                 np.maximum(indicator.sum(axis=0), 1.0)[:, None]
             ).to(self.device, self.dtype)
-            if self.device.type == "cuda" and _triton_apical() is not None:
+            self.pool_fractions = torch.tensor(
+                apical.fractions[:, None].copy(), dtype=self.dtype, device=self.device
+            )
+            if (apical.pool_fractions is None and self.device.type == "cuda"
+                    and _triton_apical() is not None):
                 # the members of every pool in order; per tile of them where it starts, its
                 # count and its pool; per pool its first tile and tile count
                 ordered = [np.arange(connectome.n)[m] for m in apical.members]
@@ -3825,7 +3860,7 @@ class _TorchKernel:
         basal2 = torch.mm(self.pool_rows, basal * basal) / self.pool_count
         raw2 = torch.mm(self.pool_rows, raw * raw) / self.pool_count
         spread = (raw2 + (apical.floor * apical.floor) * basal2 + _APICAL_TINY).sqrt()
-        return apical.fraction * basal2.sqrt() / spread
+        return self.pool_fractions * basal2.sqrt() / spread
 
     def _pool_gains_launch(self, ws: Any, basal: Any, raw: Any) -> None:
         """``Apical.gain`` per pool and row into ``ws.pool_gain``, in two Triton launches (CUDA):
@@ -5350,7 +5385,8 @@ class _MlxPlan:
             basal, up = _apical_blocks(apical, layout)
             tops = set(up)
             self.takes_compartment = (
-                not (set(basal) & tops)  # no block holds synapses of both
+                apical.pool_fractions is None
+                and not (set(basal) & tops)  # no block holds synapses of both
                 and not (tops & set(self.outer))
                 and self.m <= _MLX_COMPARTMENT_NEURONS
             )
@@ -5880,7 +5916,8 @@ class _MlxKernel:
             if held is None:
                 b, u = basal[:, members], raw[:, members]
                 b2, u2 = mx.mean(b * b, axis=1), mx.mean(u * u, axis=1)
-                one = apical.fraction * mx.sqrt(b2) / mx.sqrt(u2 + floor2 * b2 + _APICAL_TINY)
+                one = float(apical.fractions[k]) * mx.sqrt(b2) / mx.sqrt(
+                    u2 + floor2 * b2 + _APICAL_TINY)
             else:
                 one = held[:, k]
             gain[:, members] = one[:, None]

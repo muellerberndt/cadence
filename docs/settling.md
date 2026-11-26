@@ -437,6 +437,32 @@ memory. Both options are off by default. A diagnostic lesson uses the observable
 place of the one-call teaching shortcut. The experimental projection constraint reads its
 tables on the host on every backend.
 
+#### Automatic apical credit calibration
+
+On a brain composed with `apical=0.25`, `learning_credit_calibration=64` tries calibration
+after every 64 contrastive updates. There are no gain settings per region. Each attempt
+samples up to three rows of the current teaching drive, holding the memory read fixed. It
+applies a small pair of opposite additive motor probes with fixed, label-free control
+directions. The paired phases run together so different stop times do not register false
+contrast. A stage names trainable populations that can affect the motor but lack a return path.
+
+The search compares the current gains with a bounded set of alternatives at existing apical
+receiving pools. A candidate must settle at the current integration step, retain the motor
+response, and avoid a large shift of free activity or an increase in work beyond one probe
+chunk. It must improve the absolute response of the weakest measured hidden populations on
+those inputs. Where no candidate meets the checks, the brain keeps its gains. An admitted
+adjustment changes the receiving pool's RMS share in *both* free play and teaching. No synapse
+efficacy, topology, hidden target or recorded action is changed by calibration itself.
+
+`brain.learner.last_credit_calibration` reports the tested and selected gains, free-state
+drift, signed feedback and basal drive at each pool, and extra sweeps and residual checks.
+`Learner.calibrate_credit(drive, apply=False)` performs the same search without installing
+anything. The feedback gains and schedule are saved, but the report is observational and is
+not saved. The adaptive fractions currently take the ordinary device kernels instead of the
+fixed-fraction Triton and Metal shortcuts. The option is experimental and off by default.
+Calibration checks a bounded set of inputs and perturbations. It does not guarantee global
+settling stability or that transmitting a perturbation improves the task.
+
 #### Finite free phases that run out of budget
 
 Finite teaching updates from whatever state the budgets reached. When a free phase uses all of
@@ -602,6 +628,7 @@ Select rates on development data and freeze them.
 | `normalize_relative` | `LearnerConfig` | above zero, in place of `normalize_floor`, that share of the RMS of the synapse's projection (a bias: its range) ([rates](teach.md#rates-under-normalization)) | 0.0 (off) |
 | `nudged_fixed` | `LearnerConfig` | nudged phases run their whole `nudged_steps` budget instead of stopping at the movement `tolerance` ([why](#5-why-the-contrast-is-a-gradient)); `teaching="deep"` sets it | `False` |
 | `drive_budget`, `credit_window` | `LearnerConfig` | experimental projection-drive limit and sustained low-contrast diagnostics ([credit and drive](#measuring-credit-and-limiting-taught-drive)) | 0, 0 |
+| `credit_calibration` | `LearnerConfig` | teaching updates between [experimental apical calibration](#automatic-apical-credit-calibration) attempts in a composed brain | 0 (off) |
 | `scale_cap` | `LearnerConfig` | largest plastic efficacy magnitude; smaller keeps readouts out of saturation | 8.0 |
 | `qualified`, `damping` | `LearnerConfig` | require full-equation phases; most `dt` halvings per phase | `False`, 3 |
 | `surprise` | `LearnerConfig` | [teach only differing rows](teach.md#lessons-only-where-the-answer-differs) | `False` |

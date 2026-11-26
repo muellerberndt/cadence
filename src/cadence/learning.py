@@ -48,7 +48,7 @@ from typing import Any, cast
 
 import numpy as np
 
-from ._credit import CreditPlan, limit_projections, projection_groups
+from ._credit import CreditPlan, calibrate_feedback, limit_projections, projection_groups
 from .blocks import block_contrast
 from .brain import (
     Backend,
@@ -57,6 +57,7 @@ from .brain import (
     Equilibrium,
     Nudge,
     _drive_finite,
+    _host_copy,
     _MlxState,
     _on_host,
     _resident,
@@ -143,6 +144,7 @@ class LearnerConfig:
     # Optional projected teaching update. Zero leaves the original rule unchanged.
     drive_budget: float = 0.0  # summed learned projection drive in activation-logit units
     credit_window: int = 0  # opt-in regional reports and sustained low-contrast warnings
+    credit_calibration: int = 0  # composed lessons between optional feedback calibration probes
     # opt-in (#238), a composed brain's: after each lesson this many times its rows (at least one
     # row), drawn from a reservoir of the lessons' rows kept over the life, each with the moments
     # its stream heard in its episode, are replayed on fresh streams and taught again under the
@@ -233,6 +235,10 @@ class LearnerConfig:
         if (isinstance(self.credit_window, bool) or not isinstance(self.credit_window, int)
                 or self.credit_window < 0):
             raise ValueError("credit_window must be a nonnegative integer")
+        if (isinstance(self.credit_calibration, bool)
+                or not isinstance(self.credit_calibration, int)
+                or self.credit_calibration < 0):
+            raise ValueError("credit_calibration must be a nonnegative integer")
         if not isinstance(self.fast_settle, bool):
             raise ValueError("fast_settle must be boolean")
         if not isinstance(self.compiled_moment, bool):
@@ -308,7 +314,7 @@ OPEN = -1
 _NEUTRAL: dict[str, Any] = {
     "normalize_relative": 0.0, "nudged_fixed": False, "rehearsal": 0.0, "rehearsal_capacity": 512,
     "surprise_share": False, "fast_settle": False, "compiled_moment": False,
-    "drive_budget": 0.0, "credit_window": 0,
+    "drive_budget": 0.0, "credit_window": 0, "credit_calibration": 0,
 }
 
 
@@ -563,6 +569,7 @@ class Learner:
     second_moment: np.ndarray = field(init=False, repr=False)
     second_moment_bias: np.ndarray = field(init=False, repr=False)
     last_calibration: dict[str, Any] = field(default_factory=dict, init=False, repr=False)
+    last_credit_calibration: dict[str, Any] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
         outputs = np.asarray(list(self.outputs))
@@ -1141,14 +1148,21 @@ class Learner:
         measured = np.zeros(layout.pairs, dtype=bool)
         monitored = adjustable & plan.hidden[brain.connectome.post]
         gain = brain._gain_pre
-        voltage = self.config.drive_budget / brain.neuron_model.slope
+        voltage = np.full(layout.ranges, self.config.drive_budget / brain.neuron_model.slope)
         if brain.apical is not None:
             # Apical RMS is already bounded relative to the basal RMS. Budget
             # basal drive separately and leave room for that extra contribution.
             # Capping raw apical weights here can choke a tied motor readout.
             monitored &= ~brain.apical.synapses
             gain = np.where(brain.apical.synapses, 0.0, gain)
-            voltage /= 1.0 + brain.apical.fraction
+            if brain.apical.pool_fractions is None:
+                voltage /= 1.0 + brain.apical.fraction
+            else:
+                fraction = np.zeros(brain.connectome.n)
+                pools = zip(brain.apical.fractions, brain.apical.members, strict=True)
+                for value, members in pools:
+                    fraction[members] = value
+                voltage /= 1.0 + np.maximum.reduceat(fraction, layout.starts[:-1])
         measured[layout.block_of_edge[monitored]] = True
         return limit_projections(
             layout, scale, gain, _on_host(free, "activation"), adjustable, measured,
@@ -1192,6 +1206,42 @@ class Learner:
                 f"over {window} lessons with motor movement", RuntimeWarning, stacklevel=3,
             )
         return report
+
+    def calibrate_credit(
+        self, drive: np.ndarray, *, budget: int = 96, apply: bool = True
+    ) -> dict[str, Any]:
+        """Probe existing apical feedback on held drives, without labels or weight updates.
+
+        An admitted adjustment affects both subsequent action and teaching. Candidate
+        probes qualify on the original equations at the graph's live time step.
+        Use ``apply=False`` to inspect the same search without changing the graph.
+        """
+        if isinstance(budget, bool) or not isinstance(budget, int) or budget < 16:
+            raise ValueError("credit calibration budget must be an integer of at least 16")
+        inputs = np.atleast_2d(_host_copy(drive) if _resident(drive) else np.asarray(drive, float))
+        if inputs.ndim != 2 or not len(inputs) or inputs.shape[1] != self.brain.connectome.n:
+            raise ValueError("credit calibration needs held drives with one column per neuron")
+        if not np.isfinite(inputs).all():
+            raise ValueError("credit calibration drives must be finite")
+        graph, report = calibrate_feedback(self, inputs, budget)
+        report["applied"] = bool(apply and graph is not self.brain)
+        if report["applied"]:
+            self.brain = graph
+        self.last_credit_calibration = report
+        return report
+
+    def _scheduled_credit(self, drive: Any) -> dict[str, float]:
+        """Optional composed trigger after successful teaching on the current memory read."""
+        interval = self.config.credit_calibration
+        if not interval or not self.contrast_updates or self.contrast_updates % interval:
+            return {}
+        rows = np.zeros(int(drive.shape[0]), dtype=bool)
+        rows[np.linspace(0, len(rows) - 1, min(len(rows), 3), dtype=int)] = True
+        report = self.calibrate_credit(_taken_rows(drive, rows))
+        report["contrast_updates"] = self.contrast_updates
+        return {"credit_calibration_applied": float(report["applied"]),
+                "credit_calibration_sweeps": float(report["sweeps"]),
+                "credit_calibration_residual_checks": float(report["residual_checks"])}
 
     def _compiled_apply(self, delta_scale: np.ndarray, delta_bias: np.ndarray) -> dict[str, float]:
         """``apply`` for an all-plastic learner without per-synapse rates or tied groups: the

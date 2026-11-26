@@ -661,7 +661,7 @@ if njit is not None:
         pool_index: np.ndarray,
         pool_starts: np.ndarray,
         pool_run: np.ndarray,
-        fraction: float,
+        fraction: np.ndarray,
         floor2: float,
         tiny: float,
         held: np.ndarray,
@@ -692,7 +692,7 @@ if njit is not None:
                 for j in range(m):
                     values[j] = raw[pool_index[lo + j]]
                 raw2 = _square_sum(values, 0, m, frames, left) / m
-            gain[k] = fraction * np.sqrt(basal2) / np.sqrt(raw2 + floor2 * basal2 + tiny)
+            gain[k] = fraction[k] * np.sqrt(basal2) / np.sqrt(raw2 + floor2 * basal2 + tiny)
 
     # -- one sweep of one row
 
@@ -907,7 +907,7 @@ if njit is not None:
         pool_index: np.ndarray,
         pool_starts: np.ndarray,
         pool_run: np.ndarray,
-        fraction: float,
+        fraction: np.ndarray,
         floor2: float,
         tiny: float,
         held: np.ndarray,
@@ -1093,7 +1093,7 @@ if njit is not None:
         pool_index: np.ndarray,
         pool_starts: np.ndarray,
         pool_run: np.ndarray,
-        fraction: float,
+        fraction: np.ndarray,
         floor2: float,
         tiny: float,
         held: np.ndarray,
@@ -1321,7 +1321,7 @@ if njit is not None:
         pool_index: np.ndarray,
         pool_starts: np.ndarray,
         pool_run: np.ndarray,
-        fraction: float,
+        fraction: np.ndarray,
         floor2: float,
         tiny: float,
         held: np.ndarray,
@@ -1417,7 +1417,7 @@ if njit is not None:
         pool_index: np.ndarray,
         pool_starts: np.ndarray,
         pool_run: np.ndarray,
-        fraction: float,
+        fraction: np.ndarray,
         floor2: float,
         tiny: float,
         held: np.ndarray,
@@ -1553,7 +1553,7 @@ if njit is not None:
         has_given: bool,
         in_place: bool,
         has_apical: bool,
-        fraction: float,
+        fraction: np.ndarray,
         floor2: float,
         tiny: float,
     ) -> tuple[int, int, int, np.ndarray, np.ndarray]:
@@ -2029,12 +2029,14 @@ def _compartment(
                 n, np.arange(layout.pairs, dtype=np.int64), np.zeros(0, dtype=np.int64),
                 np.full(n, -1, dtype=np.int64), np.zeros(0, dtype=np.int64),
                 np.zeros(1, dtype=np.int64), np.zeros(0, dtype=np.int64), np.zeros((1, 1)),
+                np.ones(1),
             )
             layout.__dict__["_plain_compartment"] = plain
-        _, pairs, apical_pairs, pool_of, pool_index, pool_starts, pool_run, no_held = plain
+        (_, pairs, apical_pairs, pool_of, pool_index, pool_starts,
+         pool_run, no_held, fractions) = plain
         return (
             pairs, flat, apical_pairs, False, pool_of, pool_index, pool_starts, pool_run,
-            1.0, 1.0, 0.0, no_held, False,
+            fractions, 1.0, 0.0, no_held, False,
         )
     from .brain import _APICAL_TINY
 
@@ -2063,7 +2065,7 @@ def _compartment(
     return (
         np.asarray(basal_pairs, dtype=np.int64), np.ascontiguousarray(flat_apical, dtype=float),
         np.asarray(apical_pairs, dtype=np.int64), True, pool_of, pool_index, pool_starts, pool_run,
-        compartment.fraction, compartment.floor * compartment.floor, _APICAL_TINY,
+        compartment.fractions, compartment.floor * compartment.floor, _APICAL_TINY,
         np.zeros((1, 1)) if held is None else np.ascontiguousarray(held, dtype=float),
         held is not None,
     )

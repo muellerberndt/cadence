@@ -67,7 +67,10 @@ def _learner_data(learner: Learner) -> dict[str, np.ndarray]:
         meta["format"] = APICAL_FORMAT
     if brain.apical is not None:
         meta["format"] = APICAL_FORMAT
-        meta["apical"] = {"fraction": brain.apical.fraction, "floor": brain.apical.floor}
+        spec: dict[str, Any] = {"fraction": brain.apical.fraction, "floor": brain.apical.floor}
+        if brain.apical.pool_fractions is not None:
+            spec["pool_fractions"] = list(brain.apical.pool_fractions)
+        meta["apical"] = spec
         compartment = {
             "apical_synapses": brain.apical.synapses,
             "apical_groups": brain.apical.groups,
@@ -219,13 +222,16 @@ def load(
         apical = None
         if "apical" in meta:
             spec = meta["apical"]
-            if not isinstance(spec, dict) or set(spec) != {"fraction", "floor"}:
+            if not isinstance(spec, dict) or set(spec) not in (
+                {"fraction", "floor"}, {"fraction", "floor", "pool_fractions"},
+            ):
                 raise ValueError("invalid checkpoint apical compartment")
             apical = Apical(
                 np.asarray(data["apical_synapses"]),
                 np.asarray(data["apical_groups"]),
                 spec["fraction"],
                 spec["floor"],
+                spec.get("pool_fractions"),
             )
         brain = Brain(
             connectome,
