@@ -10,6 +10,10 @@
   bias and apical gains without hidden labels or manual per-region settings. It keeps
   a candidate only if its observed response improves and its sampled free choices
   are preserved. The separate experimental learned projection budget remains opt-in.
+- Experimental `learning_credit_transport` amplifies changes in apical return around
+  the observed free state during paired teaching phases. It preserves the zero-force
+  equation, keeps the act and reward rules intact, and checks both signed states before
+  using the new contrast.
 
 ## 0.103.2 - 2026-11-25
 

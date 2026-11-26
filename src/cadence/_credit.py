@@ -11,7 +11,7 @@ from .blocks import Layout
 from .connectome import Connectome
 
 if TYPE_CHECKING:
-    from .brain import Brain, BrainState
+    from .brain import Brain, BrainState, Equilibrium, Nudge
     from .learning import Learner
 
 
@@ -146,6 +146,74 @@ class _Probe:
     responses: np.ndarray
     sweeps: int
     residual_checks: int
+
+
+def transport_contrast(
+    brain: Brain, drive: np.ndarray, free: BrainState, pull: Nudge, limit: float,
+    budget: int,
+) -> tuple[tuple[Equilibrium, Equilibrium] | None, dict[str, float]]:
+    """Transport a small motor contrast without amplifying the standing return.
+
+    With the free apical gain held, add (factor-1) times the existing return
+    of (s-s_free). At zero motor force the modified phase still has the same
+    free equilibrium. Both signs use identical feedback and are solved together.
+    """
+    from .brain import BrainState, _host_copy, _on_host, _resident
+
+    work = {"credit_transport_factor": 0., "credit_transport_trials": 0.,
+            "credit_transport_row_sweeps": 0., "credit_transport_checks": 0.}
+    apical = brain.apical
+    if apical is None or pull.apical_gain is None or pull.anchor_gain is not None or budget < 1:
+        return None, work
+    held = _host_copy(pull.apical_gain) if _resident(pull.apical_gain) else pull.apical_gain
+    voltage, activity, adaptation = (
+        _on_host(free, key) for key in ("v", "activation", "adaptation")
+    )
+    force = np.max(np.abs(pull.drive(activity)), axis=1)
+    if not (force > 0).any():
+        return None, work
+    tolerance = min(1e-6, float(force[force > 0].min()) / 128.)
+    inputs = _host_copy(drive) if _resident(drive) else drive
+    _, raw = brain._split_input(activity, *brain._apical_transports())
+    expected = apical.drive(raw, raw, held)
+
+    def both(value: np.ndarray) -> np.ndarray:
+        return np.concatenate((value, value), axis=0)
+
+    warm = BrainState(both(voltage), both(activity), both(adaptation), steps=0)
+    rows = len(activity)
+    weights = np.ones(rows) if pull.weight is None else pull.weight
+    for factor in dict.fromkeys((limit, max(1., limit * .5), 1.)):
+        pair = replace(
+            pull, target=both(np.broadcast_to(pull.target, activity.shape)),
+            weight=np.concatenate((weights, -weights)), apical_gain=factor * both(held),
+        )
+        result = brain.equilibrate(
+            both(inputs - (factor - 1.) * expected), state=warm,
+            nudge=pair, budget=budget, tolerance=tolerance, chunk=16,
+        )
+        work["credit_transport_trials"] += 1.
+        sweeps = result.row_sweeps if result.row_sweeps is not None else 2 * rows * result.steps
+        work["credit_transport_row_sweeps"] += float(sweeps)
+        work["credit_transport_checks"] += float(result.residual_checks)
+        if not result.qualified.all():
+            continue
+        sv, sa, sd = (_on_host(result.state, name) for name in ("v", "activation", "adaptation"))
+        if np.max(np.abs(sa - warm.activation)) >= .01:
+            continue
+        motor = pull.mask != 0
+        moved = np.any(sv[:rows, motor] != sv[rows:, motor], axis=1)
+        if ((force > 0) & ~moved).any():
+            continue
+        slices = (slice(0, rows), slice(rows, None))
+        phases = []
+        for window in slices:
+            state = BrainState(sv[window], sa[window], sd[window], steps=result.steps)
+            phases.append(replace(result, state=state, residual=result.residual[window],
+                                  row_sweeps=rows * result.steps))
+        work["credit_transport_factor"] = factor
+        return (phases[0], phases[1]), work
+    return None, work
 
 
 def _signed_probe(

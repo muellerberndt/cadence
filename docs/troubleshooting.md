@@ -64,6 +64,13 @@ slope is healthy but it receives little voltage contrast, inspect the returning 
 and the finite teaching budget. Do not treat a larger motor force as a fix for all three.
 [How to read the fields](settling.md#measuring-credit-and-limiting-taught-drive).
 
+**A high feedback gain changes free answers, or better credit fails to improve the task.**
+Do not promote the setting on the contrast alone. Compare free answers on untrained
+inputs and record the cost and refusals of both signs. Raising return around a fixed
+operating point can be useful for the lesson, while raising its standing current can
+change the act or saturate the receiver. Keep recall and learned context in the ordinary
+play path. [Teaching-only apical transport](settling.md#transporting-a-correction-without-amplifying-ordinary-return).
+
 **A `RuntimeWarning` about a lesson on the observations the brain just acted on.** Teach first,
 then act ([supervised lessons](teach.md#supervised-lessons)).
 

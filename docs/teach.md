@@ -234,6 +234,14 @@ compare held-out behavior with and without calibration. A recovered signal shows
 region can respond, not that it took over a useful function.
 [Calibration and diagnostics](settling.md#automatic-deep-credit-calibration).
 
+With an apical graph, `learning_credit_transport=3.0` is an experimental way to strengthen
+the correction without raising ordinary return during play. Leave recall and working
+context intact. Compare against `1.0`, which gives the paired solves the same precision
+but doesn't amplify them, and against an unmodified brain. In a modular brain, also freeze
+hidden plasticity during training or mute the coordinator's branch outputs at evaluation.
+That separates responding to a correction from learning useful downstream control.
+[Teaching-only transport](settling.md#transporting-a-correction-without-amplifying-ordinary-return).
+
 ## Learning from outcomes
 
 `step(observations, reward=...)` learns from every outcome it is given. `live(observation,

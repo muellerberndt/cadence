@@ -479,6 +479,39 @@ fixed-fraction Triton and Metal shortcuts. The option is experimental and off by
 Calibration checks a bounded set of inputs and perturbations. It does not guarantee global
 settling stability or that transmitting a perturbation improves the task.
 
+#### Transporting a correction without amplifying ordinary return
+
+An apical circuit can settle with a strong ordinary return but transmit a much smaller
+change. Turning up the ordinary return can shift a free answer or pin the receiver against
+its activation limit. In the experimental teaching mode
+`brain.retune(learning_credit_transport=3.0)`, Cadence changes the incremental feedback
+used by a lesson while keeping ordinary act and reward eligibility unchanged.
+
+Let `a(s)` be the apical current at activation `s` with the ordinary free gain held.
+For a moment with free activation `s0`, the paired signed solves use
+`a(s) + (k - 1) * (a(s) - a(s0))`. The extra current is zero at the free reference.
+The ordinary state is therefore still a solution at zero motor force. The mode adds no
+connections or hidden labels. It is a new teaching contrast on the same coupled graph,
+not a claim that the resulting update is the gradient of the ordinary free network.
+
+Only apical graphs have a transport branch. The setting is a maximum factor between
+`1.0` and `6.0`, or `0.0` to leave the feature off. `1.0` is the matched
+qualification control with no amplification. Cadence refines the free reference, then
+tries the requested factor, half that factor (at least one), and one. It checks both signs
+together. It discards an unqualified candidate, one that did not resolve a motor force,
+or one where activation moved too far from the ordinary free state. If no candidate is
+admitted it uses the ordinary lesson. Missing return paths still require a wiring change.
+
+`credit_transport_factor` records the admitted factor or zero. The
+`credit_transport_reference_*` and `credit_transport_*` work fields count the extra
+reference and candidate solves, including attempts that did not qualify. Candidate work
+counts the chosen signed solve too, so don't add it again to that solve's work. Candidate
+phases use the ordinary numerical backend with their held inputs and gains. The extra
+buffer preparation currently reads state on the host.
+
+Check actual held-out acquisition and free-running behavior before adopting this mode.
+Increasing a signed response can fix a measurement failure without improving a task.
+
 #### Finite free phases that run out of budget
 
 Finite teaching updates from whatever state the budgets reached. When a free phase uses all of
@@ -645,6 +678,7 @@ Select rates on development data and freeze them.
 | `nudged_fixed` | `LearnerConfig` | nudged phases run their whole `nudged_steps` budget instead of stopping at the movement `tolerance` ([why](#5-why-the-contrast-is-a-gradient)); `teaching="deep"` sets it | `False` |
 | `drive_budget`, `credit_window` | `LearnerConfig` | experimental projection-drive limit and sustained low-contrast diagnostics ([credit and drive](#measuring-credit-and-limiting-taught-drive)) | 0, 0 |
 | `credit_calibration` | `LearnerConfig` | teaching updates between [experimental credit calibration](#automatic-deep-credit-calibration) attempts in a composed brain | 0 (off) |
+| `credit_transport` | `LearnerConfig` | maximum factor for [experimental teaching-only apical transport](#transporting-a-correction-without-amplifying-ordinary-return) | 0.0 (off) |
 | `scale_cap` | `LearnerConfig` | largest plastic efficacy magnitude; smaller keeps readouts out of saturation | 8.0 |
 | `qualified`, `damping` | `LearnerConfig` | require full-equation phases; most `dt` halvings per phase | `False`, 3 |
 | `surprise` | `LearnerConfig` | [teach only differing rows](teach.md#lessons-only-where-the-answer-differs) | `False` |

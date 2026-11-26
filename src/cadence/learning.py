@@ -53,6 +53,7 @@ from ._credit import (
     calibrate_feedback,
     limit_projections,
     projection_groups,
+    transport_contrast,
 )
 from .blocks import block_contrast
 from .brain import (
@@ -151,6 +152,7 @@ class LearnerConfig:
     drive_budget: float = 0.0  # summed learned projection drive in activation-logit units
     credit_window: int = 0  # opt-in regional reports and sustained low-contrast warnings
     credit_calibration: int = 0  # composed lessons between optional feedback calibration probes
+    credit_transport: float = 0.0  # highest teaching-only gain for a change in apical return
     # opt-in (#238), a composed brain's: after each lesson this many times its rows (at least one
     # row), drawn from a reservoir of the lessons' rows kept over the life, each with the moments
     # its stream heard in its episode, are replayed on fresh streams and taught again under the
@@ -245,6 +247,10 @@ class LearnerConfig:
                 or not isinstance(self.credit_calibration, int)
                 or self.credit_calibration < 0):
             raise ValueError("credit_calibration must be a nonnegative integer")
+        if isinstance(self.credit_transport, (bool, np.bool_)) or not (
+            self.credit_transport == 0 or 1 <= self.credit_transport <= 6
+        ):
+            raise ValueError("credit_transport must be zero or a gain in [1, 6]")
         if not isinstance(self.fast_settle, bool):
             raise ValueError("fast_settle must be boolean")
         if not isinstance(self.compiled_moment, bool):
@@ -320,7 +326,7 @@ OPEN = -1
 _NEUTRAL: dict[str, Any] = {
     "normalize_relative": 0.0, "nudged_fixed": False, "rehearsal": 0.0, "rehearsal_capacity": 512,
     "surprise_share": False, "fast_settle": False, "compiled_moment": False,
-    "drive_budget": 0.0, "credit_window": 0, "credit_calibration": 0,
+    "drive_budget": 0.0, "credit_window": 0, "credit_calibration": 0, "credit_transport": 0.0,
 }
 
 
@@ -843,6 +849,40 @@ class Learner:
         return self.brain.equilibrate(
             drive, state=state, budget=budget, tolerance=tolerance,
             nudge=nudge, damping=cfg.damping,
+        )
+
+    def _transport_reference(
+        self, drive: np.ndarray, ordinary: BrainState,
+    ) -> tuple[BrainState, Equilibrium | None, dict[str, float]]:
+        """Seek a precise zero-force reference without changing ordinary play."""
+        if not self.config.credit_transport:
+            return ordinary, None, {}
+        budget = min(self.config.free_steps, 160)
+        if self.brain.apical is None or budget < 1:
+            return ordinary, None, {
+                "credit_transport_reference_sweeps": 0.,
+                "credit_transport_no_apical": float(self.brain.apical is None),
+            }
+        result = self.brain.equilibrate(
+            drive, state=ordinary, budget=budget, tolerance=2e-7, chunk=16,
+        )
+        sweeps = result.row_sweeps if result.row_sweeps is not None else len(drive) * result.steps
+        report = {"credit_transport_reference_sweeps": float(sweeps),
+                  "credit_transport_reference_checks": float(result.residual_checks),
+                  "credit_transport_reference_residual": float(result.residual.max())}
+        if not result.qualified.all():
+            report["credit_transport_reference_refused"] = 1.
+            return ordinary, None, report
+        return result.state, result, report
+
+    def _transport_signs(
+        self, drive: np.ndarray, free: BrainState, pull: Nudge, reference: Equilibrium | None,
+    ) -> tuple[tuple[Equilibrium, Equilibrium] | None, dict[str, float]]:
+        if reference is None:
+            return None, {"credit_transport_factor": 0.} if self.config.credit_transport else {}
+        return transport_contrast(
+            self.brain, drive, free, pull, self.config.credit_transport,
+            min(160, self.config.free_steps),
         )
 
     def _pull_size(self, nudge: Nudge, free: BrainState) -> np.ndarray:
@@ -1918,6 +1958,7 @@ class Learner:
             if not np.all(phases["free"].qualified):
                 raise LearningPhaseError("free", phases)
             free = replace(phases["free"].state, steps=phases["free"].steps)
+            free, transport_reference, transport = self._transport_reference(drive, free)
             taught = judged if judged is not None else self._taught(free, labels)
             if taught is not None and not taught.any():
                 return self._agreed(free, phases, taught)
@@ -1931,13 +1972,18 @@ class Learner:
             target = self._open_targets(target, free, open_slots)
             held = self.brain.apical_gain(drive, free, own_precision=True)
             pull = self.nudge_for(target, cfg.beta, weight, held)
-            for name, sign in (("nudged", 1.0), ("opposite", -1.0)):
-                phases[name] = self._qualified_phase(
-                    drive, free, cfg.nudged_steps,
-                    pull if sign > 0 else self.nudge_for(target, sign * cfg.beta, weight, held),
-                )
-                if not np.all(phases[name].qualified):
-                    raise LearningPhaseError(name, phases, self._nudged_budget_hint())
+            boosted, work = self._transport_signs(drive, free, pull, transport_reference)
+            transport.update(work)
+            if boosted is not None:
+                phases["nudged"], phases["opposite"] = boosted
+            else:
+                for name, sign in (("nudged", 1.0), ("opposite", -1.0)):
+                    phases[name] = self._qualified_phase(
+                        drive, free, cfg.nudged_steps,
+                        pull if sign > 0 else self.nudge_for(target, sign * cfg.beta, weight, held),
+                    )
+                    if not np.all(phases[name].qualified):
+                        raise LearningPhaseError(name, phases, self._nudged_budget_hint())
             nudged = replace(phases["nudged"].state, steps=phases["nudged"].steps)
             opposite = replace(phases["opposite"].state, steps=phases["opposite"].steps)
             # At backend rounding, two equation checks can still pass without
@@ -1952,8 +1998,10 @@ class Learner:
             report = self.update(free, nudged, opposite, share=self._share(taught))
             report.update(_phase_report(phases, accepted=True, qualified=True))
             report.update(_taught_report(taught, batch))
+            report.update(transport)
             return LearnedState(free, nudged, opposite, taught), report
-        if judged is not None and weight is None and cfg.compiled_moment and open_slots is None:
+        if (judged is not None and weight is None and cfg.compiled_moment
+                and open_slots is None and not cfg.credit_transport):
             # the compiled moment's lesson: the three phases and their checks in one call
             found = self._phases_compiled(drive, warm, target)
             if found is not None:
@@ -1978,6 +2026,7 @@ class Learner:
         # stop; the lesson was then learned from a state that may not have
         # settled. The report counts it and a warning says so.
         exhausted = cfg.tolerance is not None and free.steps >= cfg.free_steps > 0
+        free, transport_reference, transport = self._transport_reference(drive, free)
         taught = judged if judged is not None else self._taught(free, labels)
         if judged is None and self._silent(weight, taught):
             taught = np.zeros(batch, dtype=bool)  # the taught rows pull nothing
@@ -1996,21 +2045,28 @@ class Learner:
         # one nudge per phase, read by the phase and by its diagnostic check
         pull = self.nudge_for(target, cfg.beta, weight, held)
         push = self.nudge_for(target, -cfg.beta, weight, held)
-        nudged = self._nudged(drive, free, pull, "nudged")
-        opposite = self._nudged(drive, free, push, "opposite")
-        phases["nudged"] = Equilibrium(
-            nudged, self._diagnostic(drive, nudged, pull),
-            nudged.steps, cfg.tolerance if cfg.tolerance is not None else 0.0,
-            residual_checks=1,
-        )
-        phases["opposite"] = Equilibrium(
-            opposite, self._diagnostic(drive, opposite, push),
-            opposite.steps, cfg.tolerance if cfg.tolerance is not None else 0.0,
-            residual_checks=1,
-        )
+        boosted, work = self._transport_signs(drive, free, pull, transport_reference)
+        transport.update(work)
+        if boosted is not None:
+            phases["nudged"], phases["opposite"] = boosted
+            nudged, opposite = boosted[0].state, boosted[1].state
+        else:
+            nudged = self._nudged(drive, free, pull, "nudged")
+            opposite = self._nudged(drive, free, push, "opposite")
+            phases["nudged"] = Equilibrium(
+                nudged, self._diagnostic(drive, nudged, pull),
+                nudged.steps, cfg.tolerance if cfg.tolerance is not None else 0.0,
+                residual_checks=1,
+            )
+            phases["opposite"] = Equilibrium(
+                opposite, self._diagnostic(drive, opposite, push),
+                opposite.steps, cfg.tolerance if cfg.tolerance is not None else 0.0,
+                residual_checks=1,
+            )
         report = self.update(free, nudged, opposite, share=self._share(taught))
         report.update(_phase_report(phases, accepted=True, qualified=False))
         report.update(_taught_report(taught, batch))
+        report.update(transport)
         report["free_budget_exhausted"] = float(exhausted)
         self._warn_exhausted(exhausted)
         return LearnedState(free, nudged, opposite, taught), report
