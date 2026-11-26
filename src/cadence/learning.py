@@ -48,6 +48,7 @@ from typing import Any, cast
 
 import numpy as np
 
+from ._credit import CreditPlan, limit_projections, projection_groups
 from .blocks import block_contrast
 from .brain import (
     Backend,
@@ -57,6 +58,7 @@ from .brain import (
     Nudge,
     _drive_finite,
     _MlxState,
+    _on_host,
     _resident,
     _trusted,
 )
@@ -83,6 +85,9 @@ SCALE_CAP = 8.0  # the default of LearnerConfig.scale_cap: the magnitude a synap
 # added to a relative floor's divisor: a projection whose synapses never moved divides its
 # zero step by this rather than by zero
 _RELATIVE_TINY = 1e-12
+# The equation error of a taught phase must be small compared with the force that
+# distinguishes it from the free phase. Keep the mean-slot loss and its beta unchanged.
+_NUDGE_RESIDUAL_SHARE = 0.125
 
 
 def _compiled_passes() -> bool:
@@ -135,6 +140,9 @@ class LearnerConfig:
     # moves less than a coarse tolerance in a sweep, and the opposite phases' common drift
     # cancels in the contrast, so the free phase may stay coarse
     nudged_fixed: bool = False
+    # Optional projected teaching update. Zero leaves the original rule unchanged.
+    drive_budget: float = 0.0  # summed learned projection drive in activation-logit units
+    credit_window: int = 0  # opt-in regional reports and sustained low-contrast warnings
     # opt-in (#238), a composed brain's: after each lesson this many times its rows (at least one
     # row), drawn from a reservoir of the lessons' rows kept over the life, each with the moments
     # its stream heard in its episode, are replayed on fresh streams and taught again under the
@@ -218,6 +226,13 @@ class LearnerConfig:
             raise ValueError("normalize_relative needs normalize above zero")
         if not isinstance(self.nudged_fixed, bool):
             raise ValueError("nudged_fixed must be boolean")
+        if isinstance(self.drive_budget, (bool, np.bool_)) or not (
+            np.isfinite(self.drive_budget) and self.drive_budget >= 0
+        ):
+            raise ValueError("drive_budget must be finite and nonnegative")
+        if (isinstance(self.credit_window, bool) or not isinstance(self.credit_window, int)
+                or self.credit_window < 0):
+            raise ValueError("credit_window must be a nonnegative integer")
         if not isinstance(self.fast_settle, bool):
             raise ValueError("fast_settle must be boolean")
         if not isinstance(self.compiled_moment, bool):
@@ -293,6 +308,7 @@ OPEN = -1
 _NEUTRAL: dict[str, Any] = {
     "normalize_relative": 0.0, "nudged_fixed": False, "rehearsal": 0.0, "rehearsal_capacity": 512,
     "surprise_share": False, "fast_settle": False, "compiled_moment": False,
+    "drive_budget": 0.0, "credit_window": 0,
 }
 
 
@@ -446,6 +462,8 @@ def _phase_report(
         rows = np.size(phase.residual)
         report[f"{name}_steps"] = float(phase.steps)
         report[f"{name}_residual"] = float(np.max(phase.residual))
+        if qualified and name != "free":
+            report[f"{name}_tolerance"] = phase.tolerance
         report[f"{name}_residual_checks"] = float(phase.residual_checks)
         report[f"{name}_damping_halvings"] = float(phase.damping_halvings)
         report[f"{name}_stagnation_checks"] = float(phase.stagnation_checks)
@@ -477,18 +495,23 @@ class LearningPhaseError(RuntimeError):
     """
 
     def __init__(
-        self, phase: str, phases: Mapping[str, Equilibrium], hint: str | None = None
+        self, phase: str, phases: Mapping[str, Equilibrium], hint: str | None = None,
+        *, unresolved: int = 0,
     ) -> None:
         self.phase = phase
         self.phases = dict(phases)
         self.hint = hint
         self.report = _phase_report(phases, accepted=False, qualified=True)
         failed = phases[phase]
-        super().__init__(
-            f"{phase} learning phase did not settle within {failed.steps} steps: "
-            f"residual={float(np.max(failed.residual)):.6g}, tolerance={failed.tolerance:g}; "
-            "no learning update applied" + (f"; {hint}" if hint else "")
-        )
+        if unresolved:
+            self.report["unresolved_nudge_rows"] = float(unresolved)
+            message = f"signed learning phases did not resolve the motor nudge in {unresolved} rows"
+        else:
+            message = (
+                f"{phase} learning phase did not settle within {failed.steps} steps: "
+                f"residual={float(np.max(failed.residual)):.6g}, tolerance={failed.tolerance:g}"
+            )
+        super().__init__(message + "; no learning update applied" + (f"; {hint}" if hint else ""))
 
 
 class GraphHolder:
@@ -767,7 +790,7 @@ class Learner:
             return None
         return (
             f"the nudged budget ({cfg.nudged_steps}) is below the free budget "
-            f"({cfg.free_steps}); qualified nudged phases settle to the same tolerance, "
+            f"({cfg.free_steps}); qualified nudged phases must resolve the motor pull, "
             "see docs/settling.md#qualified-teaching-budgets"
         )
 
@@ -778,10 +801,20 @@ class Learner:
         cfg = self.config
         if cfg.tolerance is None:
             raise ValueError("qualified learning requires a finite residual tolerance")
+        tolerance = cfg.tolerance
+        if nudge is not None and state is not None:
+            pull = self._pull_size(nudge, state)
+            if (pull > 0).any():
+                tolerance = min(tolerance, _NUDGE_RESIDUAL_SHARE * float(pull[pull > 0].min()))
         return self.brain.equilibrate(
-            drive, state=state, budget=budget, tolerance=cfg.tolerance,
+            drive, state=state, budget=budget, tolerance=tolerance,
             nudge=nudge, damping=cfg.damping,
         )
+
+    def _pull_size(self, nudge: Nudge, free: BrainState) -> np.ndarray:
+        """Peak absolute teaching drive per row, including temperature, weights and open slots."""
+        activity = np.atleast_2d(_on_host(free, "activation"))
+        return np.asarray(np.max(np.abs(nudge.drive(activity)), axis=1))
 
     def _labels(self, labels: np.ndarray, open: bool = False) -> np.ndarray:
         """Validated class labels, ``(batch,)`` or with several slots ``(batch, slots)``. With
@@ -1006,6 +1039,11 @@ class Learner:
         three-factor trace, say) hands it here so every learner shares one notion of
         which synapses move, how a tied pair moves, and what bounds hold.
         """
+        return self._apply(delta_scale, delta_bias)
+
+    def _apply(
+        self, delta_scale: np.ndarray, delta_bias: np.ndarray, free: BrainState | None = None
+    ) -> dict[str, float]:
         cfg = self.config
         assert self.plastic_synapses is not None
         all_trainable = bool(self.plastic_synapses.all())
@@ -1019,7 +1057,8 @@ class Learner:
         ):
             raise ValueError("steps must be finite vectors, one per synapse and one per neuron")
         if (all_trainable and self.synapse_rate is None and not len(self._members)
-                and len(delta_scale) and self.brain._torch is None and _compiled_passes()):
+                and free is None and len(delta_scale) and self.brain._torch is None
+                and _compiled_passes()):
             return self._compiled_apply(delta_scale, delta_bias)  # reads the step, moves nothing
         delta_scale = np.array(delta_scale, dtype=float)  # this update's own copy
         if not all_trainable:
@@ -1038,11 +1077,16 @@ class Learner:
             delta_scale[~self.plastic_synapses] = 0.0
         if not np.isfinite(delta_scale).all():
             raise ValueError("scaled and tied steps must remain finite")
-        scale = self.brain.efficacy + delta_scale
+        prior = self.brain.efficacy
+        scale = prior + delta_scale
         delta_bias = np.where(self._stepping_neurons(), delta_bias, 0.0)
         bias = self.brain.bias + delta_bias
         cap = cfg.scale_cap
         scale = np.where(self.plastic_synapses, np.clip(scale, -cap, cap), scale)
+        limited = 0
+        if free is not None and np.any(delta_scale):
+            scale, limited = self._limit_drive(scale, free)
+            delta_scale = scale - prior
         kernel = self.brain._torch
         if kernel is None:
             self.brain = self.brain.with_parameters(efficacy=scale, bias=bias)
@@ -1056,10 +1100,98 @@ class Learner:
                 torch.from_numpy(np.ascontiguousarray(bias)).to(kernel.device, kernel.param_dtype),
             )
         self.updates += 1
-        return {
+        report = {
             "scale_step": float(np.abs(delta_scale).mean()) if delta_scale.size else 0.0,
             "bias_step": float(np.abs(delta_bias).mean()),
         }
+        if free is not None:
+            report["drive_limited_projections"] = float(limited)
+        return report
+
+    def _credit_plan(self) -> CreditPlan:
+        graph = self.brain.connectome
+        held = self.__dict__.get("_credit_anatomy")
+        if held is None or held[0] is not graph:
+            held = (graph, CreditPlan.build(graph, self.output_index))
+            self.__dict__["_credit_anatomy"] = held
+        return cast(CreditPlan, held[1])
+
+    def _limit_drive(self, scale: np.ndarray, free: BrainState) -> tuple[np.ndarray, int]:
+        brain = self.brain
+        layout = brain.layout
+        plan = self._credit_plan()
+        assert self.plastic_synapses is not None
+        adjustable = self.plastic_synapses.copy()
+        held = self.held()[0]
+        if held is not None:
+            adjustable &= ~held
+        # A projection constraint must not move a frozen tied partner or undo a tie.
+        adjustable[self._paired] &= adjustable[self._paired_reverse]
+        if len(self._members):
+            complete = np.ones(len(self._member_count), dtype=bool)
+            np.logical_and.at(complete, self._member_groups, adjustable[self._members])
+            adjustable[self._members] &= complete[self._member_groups]
+        kept = self.__dict__.get("_credit_projection_groups")
+        if kept is None or kept[0] is not layout:
+            kept = (layout, projection_groups(
+                layout, self._paired, self._paired_reverse, self._members,
+                self._member_groups, len(self._member_count),
+            ))
+            self.__dict__["_credit_projection_groups"] = kept
+        measured = np.zeros(layout.pairs, dtype=bool)
+        monitored = adjustable & plan.hidden[brain.connectome.post]
+        gain = brain._gain_pre
+        voltage = self.config.drive_budget / brain.neuron_model.slope
+        if brain.apical is not None:
+            # Apical RMS is already bounded relative to the basal RMS. Budget
+            # basal drive separately and leave room for that extra contribution.
+            # Capping raw apical weights here can choke a tied motor readout.
+            monitored &= ~brain.apical.synapses
+            gain = np.where(brain.apical.synapses, 0.0, gain)
+            voltage /= 1.0 + brain.apical.fraction
+        measured[layout.block_of_edge[monitored]] = True
+        return limit_projections(
+            layout, scale, gain, _on_host(free, "activation"), adjustable, measured,
+            kept[1], voltage,
+        )
+
+    def _report_credit(
+        self, free: BrainState, nudged: BrainState, opposite: BrainState
+    ) -> dict[str, float]:
+        window = self.config.credit_window
+        if not window:
+            return {}
+        movement = np.abs(_on_host(nudged, "activation") - _on_host(opposite, "activation"))
+        with np.errstate(over="ignore"):
+            slope = self.brain.neuron_model.slope_at(_on_host(free, "v"))
+        motor = float(movement[:, self.output_index].mean())
+        report = {"credit_motor_contrast": motor}
+        assert self.plastic_synapses is not None
+        graph = self.brain.connectome
+        edges = self.plastic_synapses
+        if self.synapse_rate is not None:
+            edges = edges & (self.synapse_rate > 0)
+        plastic = np.bincount(graph.post[edges], minlength=graph.n) > 0
+        streaks = self.__dict__.setdefault("_credit_streaks", {})
+        stalled = []
+        for name, index in self._credit_plan().regions:
+            index = index[plastic[index]]
+            if not len(index):
+                streaks.pop(name, None)
+                continue
+            region = float(movement[:, index].mean())
+            report[f"credit_{name}_contrast"] = region
+            report[f"credit_{name}_slope"] = float(slope[:, index].mean())
+            if motor > 0.0:
+                streaks[name] = streaks.get(name, 0) + 1 if region <= 1e-3 * motor else 0
+                if streaks[name] == window:
+                    stalled.append(name)
+        if stalled:
+            warnings.warn(
+                f"motor teaching contrast has not measurably reached {', '.join(stalled)} "
+                f"over {window} lessons with motor movement", RuntimeWarning, stacklevel=3,
+            )
+        return report
 
     def _compiled_apply(self, delta_scale: np.ndarray, delta_bias: np.ndarray) -> dict[str, float]:
         """``apply`` for an all-plastic learner without per-synapse rates or tied groups: the
@@ -1531,11 +1663,13 @@ class Learner:
         moments = {"_" + name: self.__dict__.get("_" + name) for name in _MOMENTS}
         held = self.__dict__.get("_device_moments")
         try:
-            return self._update(free, nudged, opposite, share)
+            report = self._update(free, nudged, opposite, share)
         except Exception:
             self.__dict__.update(moments)
             self.__dict__["_device_moments"] = held
             raise
+        report.update(self._report_credit(free, nudged, free if opposite is None else opposite))
+        return report
 
     def _update(
         self,
@@ -1548,7 +1682,7 @@ class Learner:
         cfg = self.config
         assert cfg.eta_bias is not None  # resolved at construction
         minus_state, span = (free, cfg.beta) if opposite is None else (opposite, 2.0 * cfg.beta)
-        tables = self._mlx_update_tables(nudged, minus_state)
+        tables = None if cfg.drive_budget else self._mlx_update_tables(nudged, minus_state)
         if tables is not None:
             report = self._update_on_mlx(nudged, minus_state, span, share, tables)
             return report
@@ -1557,8 +1691,10 @@ class Learner:
             edges, neurons = kernel.contrast_tensors(nudged.device["s"], minus_state.device["s"])
             norm = float(nudged.device["s"].shape[0]) * span
             edges, neurons = self._adaptive_device(kernel, edges / norm, neurons / norm)
-            report = self._apply_device(
-                kernel, share * cfg.eta * edges, share * cfg.eta_bias * neurons
+            edge_step, bias_step = share * cfg.eta * edges, share * cfg.eta_bias * neurons
+            report = (
+                self._apply(edge_step.cpu().numpy(), bias_step.cpu().numpy(), free)
+                if cfg.drive_budget else self._apply_device(kernel, edge_step, bias_step)
             )
             self.contrast_updates += 1
             return report
@@ -1573,7 +1709,10 @@ class Learner:
             self._hold_moments(before)
             if not all(np.isfinite(getattr(self, name)).all() for name in _MOMENTS):
                 raise ValueError("optimizer moments must remain finite")
-            report = self.apply(share * delta_scale, share * delta_bias)
+            report = (
+                self._apply(share * delta_scale, share * delta_bias, free)
+                if cfg.drive_budget else self.apply(share * delta_scale, share * delta_bias)
+            )
             self.contrast_updates += 1
             return report
         if cfg.momentum > 0:  # local: a synapse accumulates only its own contrast
@@ -1601,7 +1740,8 @@ class Learner:
         self._hold_moments(before)
         if not all(np.isfinite(getattr(self, name)).all() for name in _MOMENTS):
             raise ValueError("optimizer moments must remain finite")
-        report = self.apply(delta_scale, delta_bias)
+        report = (self._apply(delta_scale, delta_bias, free) if cfg.drive_budget
+                  else self.apply(delta_scale, delta_bias))
         self.contrast_updates += 1
         return report
 
@@ -1705,15 +1845,25 @@ class Learner:
                     open_slots = open_slots[taught]
             target = self._open_targets(target, free, open_slots)
             held = self.brain.apical_gain(drive, free, own_precision=True)
+            pull = self.nudge_for(target, cfg.beta, weight, held)
             for name, sign in (("nudged", 1.0), ("opposite", -1.0)):
                 phases[name] = self._qualified_phase(
                     drive, free, cfg.nudged_steps,
-                    self.nudge_for(target, sign * cfg.beta, weight, held),
+                    pull if sign > 0 else self.nudge_for(target, sign * cfg.beta, weight, held),
                 )
                 if not np.all(phases[name].qualified):
                     raise LearningPhaseError(name, phases, self._nudged_budget_hint())
             nudged = replace(phases["nudged"].state, steps=phases["nudged"].steps)
             opposite = replace(phases["opposite"].state, steps=phases["opposite"].steps)
+            # At backend rounding, two equation checks can still pass without
+            # separating the states. A genuinely zero-force row is not a refusal.
+            moved = np.any(
+                _on_host(nudged, "v")[:, self.output_index]
+                != _on_host(opposite, "v")[:, self.output_index], axis=1,
+            )
+            unresolved = int(np.count_nonzero((self._pull_size(pull, free) > 0) & ~moved))
+            if unresolved:
+                raise LearningPhaseError("opposite", phases, unresolved=unresolved)
             report = self.update(free, nudged, opposite, share=self._share(taught))
             report.update(_phase_report(phases, accepted=True, qualified=True))
             report.update(_taught_report(taught, batch))

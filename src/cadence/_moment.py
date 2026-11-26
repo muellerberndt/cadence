@@ -2247,7 +2247,8 @@ def taught_lesson(
 
     plan = _lesson_plan(brain)
     learner = brain.learner
-    if plan is None or learner.synapse_rate is not None or not learner.plastic_synapses.all():
+    if (plan is None or learner.synapse_rate is not None or not learner.plastic_synapses.all()
+            or learner.config.drive_budget or learner.config.credit_window):
         return None
     recall = brain.recall
     if recall is not None and recall.slope_maps and not recall._slope_as_bank(

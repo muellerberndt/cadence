@@ -380,9 +380,13 @@ with an implicit-gradient learner on the same network, and the
 
 Teaching is finite by default: the contrast is read after at most `free_steps` and
 `nudged_steps` sweeps. `qualified=True` requires every phase to meet the full potential and
-adaptation residual within `tolerance`, with up to `damping` step halvings inside its budget.
-A failed phase raises `LearningPhaseError` (`phase`, `phases`, `report`, `hint`) and writes
-nothing.
+adaptation residual, with up to `damping` step halvings inside its budget. The free phase uses
+`tolerance`. Each signed phase uses at most one eighth of the weakest nonzero per-row peak
+motor pull at the free state, and never more than `tolerance`. This keeps many motor slots or
+small row weights from making the unchanged free state pass as a taught state. A nonzero
+pull that does not separate the two signed motor potentials is also refused. A failed phase
+raises `LearningPhaseError` (`phase`, `phases`, `report`, `hint`) and writes nothing. The report
+names the effective `nudged_tolerance` and `opposite_tolerance` of the attempted signed phases.
 
 Under `qualified=True` both budgets are settle budgets, and a nudged phase needs about as many
 sweeps as the free one. Raise `nudged_steps` to match `free_steps`: at the composed
@@ -407,6 +411,31 @@ is refused by name with a message saying what to use instead ([CHANGELOG](../CHA
 Qualification certifies the equations at those states; the gradient reading also needs the
 assumptions above. `contrast`, `update` and `apply` act on supplied states. Answers follow
 [qualification and refusal](life.md#qualification-and-refusal).
+
+#### Measuring credit and limiting taught drive
+
+`learning_credit_window=15` reports mean absolute signed-phase activation contrast at the
+motor and in each trainable hidden population that can influence it. It also reports each
+population's mean activation slope at the free state. `Brain.last_learning` puts these fields
+under `demonstration_credit_*`. A population below 0.1% of the motor contrast for that many
+taught batches with nonzero motor movement warns once per streak. This is a credit diagnostic,
+not a test of what that population learned. The streak is not saved.
+
+`learning_drive_budget=4.0` is an experimental constraint on contrastive teaching updates.
+It reads each incoming learned projection's proposed drive on the lesson's free activations.
+Each receiving hidden range divides the budget between its incoming projections. The bound
+is in activation-logit units, so it is divided by the neuron slope to obtain potential units.
+For apical brains the constraint budgets basal inputs and leaves room for the apical RMS
+share. It does not cap raw apical feedback independently of the corresponding readout.
+Tied projections share the tighter scale and frozen weights are left alone. In a composed
+brain the report includes `demonstration_drive_limited_projections`.
+
+There are no hidden targets. The constraint leaves the state equations unchanged and does
+not claim a drive bound on unseen activity, on held current or on the settling loop's
+incremental gain. It applies to teaching, not reward eligibility or independently learned
+memory. Both options are off by default. A diagnostic lesson uses the observable path in
+place of the one-call teaching shortcut. The experimental projection constraint reads its
+tables on the host on every backend.
 
 #### Finite free phases that run out of budget
 
@@ -572,6 +601,7 @@ Select rates on development data and freeze them.
 | `normalize`, `normalize_floor` | `LearnerConfig` | forgetting factor in `[0, 1)` of a running RMS that divides each step, plus a floor ([below](teach.md#rates-under-normalization)) | 0.0 (off), 1e-3 |
 | `normalize_relative` | `LearnerConfig` | above zero, in place of `normalize_floor`, that share of the RMS of the synapse's projection (a bias: its range) ([rates](teach.md#rates-under-normalization)) | 0.0 (off) |
 | `nudged_fixed` | `LearnerConfig` | nudged phases run their whole `nudged_steps` budget instead of stopping at the movement `tolerance` ([why](#5-why-the-contrast-is-a-gradient)); `teaching="deep"` sets it | `False` |
+| `drive_budget`, `credit_window` | `LearnerConfig` | experimental projection-drive limit and sustained low-contrast diagnostics ([credit and drive](#measuring-credit-and-limiting-taught-drive)) | 0, 0 |
 | `scale_cap` | `LearnerConfig` | largest plastic efficacy magnitude; smaller keeps readouts out of saturation | 8.0 |
 | `qualified`, `damping` | `LearnerConfig` | require full-equation phases; most `dt` halvings per phase | `False`, 3 |
 | `surprise` | `LearnerConfig` | [teach only differing rows](teach.md#lessons-only-where-the-answer-differs) | `False` |
