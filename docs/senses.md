@@ -603,9 +603,13 @@ At the founder standing gain of 2, the code's slope-weighted lateral coupling is
 but a synchronous sweep at the model's step can oscillate when units with overlapping
 columns are active together. After each phase the region reports the step's halvings for
 those negative modes (`LearnedCode.stability`), and its next phase runs at that step with its
-budget scaled by the same power of two. Whether the halvings hold is settled by Cholesky
-factorizations at their bounds, a fraction of an eigenvalue solve's cost; the eigenvalues decide
-when they change, and the answer is the same integer. A phase that does not qualify is settled once more at
+budget scaled by the same power of two. Whether the halvings hold, or change by one, is settled
+by Cholesky factorizations at their bounds, a fraction of an eigenvalue solve's cost; the
+eigenvalues decide where the step changes by more or lies a hair from a bound, and the answer is
+the same integer. A step that changes keeps the sub-network's layout, and on the host the
+dictionary's Gram matrix is made once per dictionary: it is kept with a copy of the dictionary
+it was made from, which costs one more copy of the dictionary, and is made again where the
+dictionary reads otherwise. A phase that does not qualify is settled once more at
 the step the dictionary's negative modes allow over every state (`LearnedCode.rest_stability`).
 If it does not qualify there either, the moment is refused with `RuntimeError` before anything
 changes, as a refused free solve is. A world of one input needs this from its first moment.

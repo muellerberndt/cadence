@@ -436,17 +436,21 @@ def test_a_device_that_fails_in_the_steps_tests_leaves_the_step_to_the_host(
 
     monkeypatch.setattr(torch.linalg, failing, fails)
     region = placed.learned_code
-    for held in (0, 1, 4):  # a held step asks the factorizations, another one the eigenvalues
+    asked = 0
+    # a step held or one halving from it asks the factorizations, another one the eigenvalues
+    for held in (0, 1, 4, 9):
         region.restep(held)
         reference.learned_code.restep(held)
         v = rng.normal(region.model.threshold, 3.0, (4, region.units))
         expected = reference.learned_code.stability(v)
-        if failing == "eigvalsh" and expected == held:
+        if failing == "eigvalsh" and abs(expected - held) <= 1:
             assert region.stability(v) == expected  # the factorizations settled it
             continue
+        asked += 1
         with pytest.warns(RuntimeWarning, match="read on the host: the device failed "
                                                 r"\(cusolver error: CUSOLVER_STATUS_EXECUTION_FAILED\)"):
             assert region.stability(v) == expected
+    assert asked  # some step read went past the factorizations
     for brain in (reference, placed):
         brain.learned_code.restep(reference.learned_code.halvings)
     with warnings.catch_warnings():

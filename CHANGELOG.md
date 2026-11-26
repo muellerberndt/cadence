@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **A learned code whose step changes does less work, with the same results.** Three parts of a
+  code phase repeated work at a change of the step's halvings. A restep built the sub-network
+  anew and laid its synapses out again, three passes over every lateral synapse; it now keeps
+  the layout. A step that changed went to an eigenvalue solve of the coupling; the two Cholesky
+  tests that settle a held step are now asked for one halving fewer and one more first, and the
+  eigenvalues decide only where the step changes by more or lies a hair from a bound. And on
+  the host the dictionary's Gram matrix was made at every test, install and restep; it is now
+  made once per dictionary and kept with a copy of the dictionary it is checked against, at the
+  cost of that copy. On a brain whose code reads 8,608 inputs into 1,792 units a moment in which
+  the step changes took 8.6 s and takes 2.0 s, and a moment without a change 2.7 s and 2.3 s.
+  Efficacies, tables, acts and reports are the same bits on the NumPy loop, the compiled
+  kernels and torch.
+
 ## 0.104.0 - 2026-11-26
 
 Deep teaching resolves small motor corrections, and recall heads now receive credit from the

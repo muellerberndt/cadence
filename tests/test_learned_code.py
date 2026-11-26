@@ -930,10 +930,17 @@ def test_a_step_a_hair_from_its_bound_goes_to_the_eigenvalues():
     coupling = np.diag(np.full(code.units, bound))[None, :, :]
     assert code._held_halvings(coupling) is None
     assert code._held_halvings(coupling + 1e-6 * np.eye(code.units)) == 1
+    # a step one halving from the one held is settled by the same two tests, asked for it
     code.restep(0)
-    assert code._held_halvings(coupling + 1e-6 * np.eye(code.units)) is None
+    assert code._held_halvings(coupling + 1e-6 * np.eye(code.units)) == 1
     code.restep(2)
     assert code._held_halvings(coupling - 1e-6 * np.eye(code.units)) == 2
+    assert code._held_halvings(coupling + 1e-6 * np.eye(code.units)) == 1
+    # two halvings away no test is asked, and a hair from the neighbour's bound none is clear
+    code.restep(3)
+    assert code._held_halvings(coupling + 1e-6 * np.eye(code.units)) is None
+    code.restep(2)
+    assert code._held_halvings(coupling) is None
 
 
 def test_a_state_that_is_not_finite_goes_to_the_eigenvalues():
