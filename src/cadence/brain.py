@@ -1374,6 +1374,8 @@ class Brain:
         if self.backend == "cpu" and self.apical is not None:
             new = copy.copy(self)
             new.apical = apical
+            # Compiled map arguments include the old compartment's gain array.
+            new.__dict__.pop("_map_kernel", None)
             return new
         return Brain(
             self.connectome, self.neuron_model, backend=self.backend,

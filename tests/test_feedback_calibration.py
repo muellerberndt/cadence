@@ -104,6 +104,23 @@ def test_distinct_pool_gains_affect_actual_equations_and_roundtrip(backend, tmp_
     np.testing.assert_array_equal(restored.brain.weights, reference.brain.weights)
 
 
+def test_apical_candidate_refreshes_prepared_compiled_map_arguments():
+    from cadence.compiled import _graph_arrays
+
+    graph = cd.Brain.compose(4, 2, modules=(12, 8, 6), apical=0.25, backend="cpu").brain
+    apical = graph.apical
+    assert apical is not None and len(apical.members) > 1
+    old = _graph_arrays(graph)
+    fractions = tuple(np.linspace(0.12, 0.33, len(apical.members)))
+    candidate = graph._with_apical(replace(apical, pool_fractions=fractions))
+    new = _graph_arrays(candidate)
+    # The weights remain shared. The compiled map packet must not retain the old gains.
+    assert new[0] is old[0]
+    np.testing.assert_array_equal(new[20], fractions)
+    assert _graph_arrays(graph) is old
+    np.testing.assert_array_equal(old[20], apical.fractions)
+
+
 def test_composed_teaching_rechecks_at_the_interval(tmp_path):
     b = cd.Brain.compose(8, 6, modules=(12, 8, 6), slots=(3, 3), apical=0.25,
                          seed=1, backend="cpu", learning_credit_calibration=2,
