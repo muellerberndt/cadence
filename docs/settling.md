@@ -506,7 +506,15 @@ still require a wiring change.
 The reference uses up to 160 sweeps of `learning_free_steps`, and each candidate uses up to
 160 sweeps of `learning_nudged_steps`. A zero signed budget skips transport entirely.
 
-`credit_transport_factor` records the admitted factor or zero. The
+`credit_transport_factor` records the admitted factor or zero, and `credit_transport_refused`
+is one for a lesson that admitted no factor and ran the ordinary signed phases. A run of
+`learning_credit_window` such lessons (15 where no window is set) warns once and names what
+refused the latest one: a reference that did not qualify, with its residual against the
+reference's tolerance of 2e-7, candidates that were not admitted, a graph without an apical
+compartment, or a signed budget of no sweeps. An admitted factor ends the run. The run's
+length is a diagnostic and is not saved. On a float32 backend the reference's residual has a
+rounding floor that grows with the brain, so a wide brain can be refused at every lesson there
+while float64 qualifies it: read the field before comparing arms. The
 `credit_transport_reference_*` and `credit_transport_*` work fields count the extra
 reference and candidate solves, including attempts that did not qualify. Candidate work
 counts the chosen signed solve too, so don't add it again to that solve's work. Candidate

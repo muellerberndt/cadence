@@ -96,6 +96,9 @@ _RELATIVE_TINY = 1e-12
 # The equation error of a taught phase must be small compared with the force that
 # distinguishes it from the free phase. Keep the mean-slot loss and its beta unchanged.
 _NUDGE_RESIDUAL_SHARE = 0.125
+# Lessons in a row without an admitted transport factor before the learner says so, where no
+# ``credit_window`` sets the run (the window the guides name).
+_TRANSPORT_WINDOW = 15
 
 
 def _compiled_passes() -> bool:
@@ -883,6 +886,48 @@ class Learner:
         return transport_contrast(
             self.brain, drive, free, pull, self.config.credit_transport,
             min(160, self.config.nudged_steps),
+        )
+
+    def _transport_outcome(self, transport: dict[str, float]) -> None:
+        """Say where ``credit_transport`` admitted no factor and the lesson ran the ordinary
+        signed phases: ``credit_transport_refused`` joins the lesson's report, one for such a
+        lesson and zero where a factor was admitted. A run of ``credit_window`` such lessons
+        (15 where no window is set) warns once, with what refused the latest; an admitted
+        factor ends the run. The run's length is a diagnostic and is not saved, so a report
+        stays a function of its lesson."""
+        if not self.config.credit_transport or "credit_transport_factor" not in transport:
+            return
+        refused = not transport["credit_transport_factor"] > 0.0
+        transport["credit_transport_refused"] = float(refused)
+        run = self.__dict__["_transport_refusals"] = (
+            self.__dict__.get("_transport_refusals", 0) + 1 if refused else 0
+        )
+        if run != (self.config.credit_window or _TRANSPORT_WINDOW):
+            return
+        cfg = self.config
+        if transport.get("credit_transport_no_apical"):
+            why = "the graph has no apical compartment, and only an apical graph has a branch"
+        elif not cfg.nudged_steps:
+            why = "the signed phases have a budget of no sweeps"
+        elif transport.get("credit_transport_reference_refused"):
+            why = (
+                "the zero-force reference did not qualify (residual "
+                f"{transport.get('credit_transport_reference_residual', float('nan')):.3g} "
+                f"against 2e-07 within {min(cfg.free_steps, 160)} sweeps)"
+            )
+        else:
+            why = (
+                f"none of the {int(transport.get('credit_transport_trials', 0.0))} candidate "
+                f"solves of the latest lesson was admitted within {min(160, cfg.nudged_steps)} "
+                "signed sweeps"
+            )
+        warnings.warn(
+            f"credit_transport admitted no factor in {run} lessons in a row, which ran "
+            f"the ordinary signed phases: {why}. The lesson reports hold credit_transport_factor "
+            "and the credit_transport_reference_* fields; see "
+            "docs/settling.md#transporting-a-correction-without-amplifying-ordinary-return.",
+            RuntimeWarning,
+            stacklevel=4,
         )
 
     def _pull_size(self, nudge: Nudge, free: BrainState) -> np.ndarray:
@@ -1974,6 +2019,7 @@ class Learner:
             pull = self.nudge_for(target, cfg.beta, weight, held)
             boosted, work = self._transport_signs(drive, free, pull, transport_reference)
             transport.update(work)
+            self._transport_outcome(transport)
             if boosted is not None:
                 phases["nudged"], phases["opposite"] = boosted
             else:
@@ -2047,6 +2093,7 @@ class Learner:
         push = self.nudge_for(target, -cfg.beta, weight, held)
         boosted, work = self._transport_signs(drive, free, pull, transport_reference)
         transport.update(work)
+        self._transport_outcome(transport)
         if boosted is not None:
             phases["nudged"], phases["opposite"] = boosted
             nudged, opposite = boosted[0].state, boosted[1].state

@@ -116,3 +116,105 @@ def test_transport_cannot_override_a_zero_signed_sweep_budget(qualified):
         assert report["credit_transport_factor"] == 0.
         assert "credit_transport_reference_sweeps" not in report
     np.testing.assert_array_equal(learner.brain.efficacy, starting)
+
+
+def _refusals(caught) -> list[str]:
+    return [str(w.message) for w in caught if "credit_transport admitted no factor" in str(w.message)]
+
+
+def test_a_run_of_lessons_without_a_factor_is_reported_and_said_once():
+    import warnings
+
+    learner, x = chain("cpu", 3.)
+    labels = np.array([0, 1])
+    refusing = replace(learner.config, beta=.5, credit_window=3)  # movement too large to admit
+    learner.config = refusing
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        reports = [learner.step(x, labels)[1] for _ in range(5)]
+    assert [r["credit_transport_factor"] for r in reports] == [0.] * 5
+    assert [r["credit_transport_refused"] for r in reports] == [1.] * 5
+    said = _refusals(caught)
+    assert len(said) == 1  # at the third lesson of the run, and not again while it lasts
+    assert "in 3 lessons in a row" in said[0] and "none of the 3 candidate solves" in said[0]
+    assert "within 160 signed sweeps" in said[0]
+    # an admitted factor ends the run
+    learner.config = replace(refusing, beta=1e-3)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _, admitted = learner.step(x, labels)
+    assert admitted["credit_transport_factor"] > 0. and admitted["credit_transport_refused"] == 0.
+    assert not _refusals(caught)
+    # and the next run of the window's length is said again
+    learner.config = refusing
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        again = [learner.step(x, labels)[1] for _ in range(3)]
+    assert [r["credit_transport_refused"] for r in again] == [1.] * 3 and len(_refusals(caught)) == 1
+
+
+def test_a_report_is_a_function_of_its_lesson_and_a_learner_without_transport_holds_no_field():
+    import warnings
+
+    # two learners at different points of a run report the same lesson alike: the run's
+    # length is not in the report, so a loaded brain's reports are its saver's
+    late, x = chain("cpu", 3.)
+    early, _ = chain("cpu", 3.)
+    for learner in (late, early):
+        learner.config = replace(learner.config, beta=.5, credit_window=30)
+    labels = np.array([0, 1])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for _ in range(3):
+            late.step(x, labels)
+        early.brain = late.brain  # the same parameters, a run of none behind it
+        early.velocity, early.velocity_bias = late.velocity.copy(), late.velocity_bias.copy()
+        early.contrast_updates, early.updates = late.contrast_updates, late.updates
+        after_three, after_none = late.step(x, labels)[1], early.step(x, labels)[1]
+    assert after_three.keys() == after_none.keys()
+    assert after_three["credit_transport_refused"] == after_none["credit_transport_refused"] == 1.
+    assert after_three == pytest.approx(after_none, rel=1e-9, abs=1e-12)
+    admitting, x = chain("cpu", 3.)
+    admitting.config = replace(admitting.config, credit_window=2)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        reports = [admitting.step(x, labels)[1] for _ in range(4)]
+    assert all(r["credit_transport_factor"] == 3. for r in reports)
+    assert all(r["credit_transport_refused"] == 0. for r in reports) and not _refusals(caught)
+    plain, x = chain("cpu", 0.)
+    _, report = plain.step(x, labels)
+    assert not any(name.startswith("credit_transport") for name in report)
+
+
+def test_the_warning_names_a_reference_that_did_not_qualify_and_a_graph_without_a_branch():
+    import warnings
+
+    # a reference budget of two sweeps cannot reach the reference's tolerance
+    learner, x = chain("cpu", 3.)
+    learner.config = replace(learner.config, free_steps=2, credit_window=2)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        reports = [learner.step(x, np.array([0, 1]))[1] for _ in range(2)]
+    assert all(r["credit_transport_reference_refused"] == 1. for r in reports)
+    assert all(r["credit_transport_refused"] == 1. for r in reports)
+    said = _refusals(caught)
+    assert len(said) == 1 and "the zero-force reference did not qualify" in said[0]
+    assert "against 2e-07 within 2 sweeps" in said[0]
+    # without an apical compartment the setting has no branch to act on; the run is the
+    # founder window of 15 lessons where no credit window is set
+    cn = cd.Connectome.from_synapses(
+        4, pre=[0, 1, 2, 3], post=[1, 2, 1, 1], sign=[.8, .6, .6, -.3],
+        populations={"sensory": [0], "deep": [1], "motor": [2, 3]},
+    )
+    flat = cd.Learner(
+        cd.NeuralGraph(cn, cd.learning_neuron_model()), [2, 3],
+        cd.LearnerConfig(beta=1e-3, credit_transport=3., free_steps=160, nudged_steps=160),
+    )
+    drive = np.array([[.7, 0., 0., 0.]])
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        reports = [flat.step(drive, np.array([0]))[1] for _ in range(16)]
+    assert all(r["credit_transport_refused"] == 1. for r in reports)
+    said = _refusals(caught)
+    assert len(said) == 1 and "in 15 lessons in a row" in said[0]
+    assert "no apical compartment" in said[0]

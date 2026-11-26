@@ -65,7 +65,8 @@ credit beyond the sweep budget. Re-run your old failure before changing settings
 - **Weak apical correction**. Compare `learning_credit_transport=3.0` with `1.0` and `0.0`.
   Factor one controls for the more precise paired solve without amplification. This mode
   amplifies the change from a free reference in teaching only. Check the admitted factor
-  and extra work, not just the requested factor. It does not change ordinary act or reward
+  and extra work, not just the requested factor: `credit_transport_refused` marks a lesson
+  that admitted none, and a run of them warns once. It does not change ordinary act or reward
   eligibility. [Teaching-only transport](settling.md#transporting-a-correction-without-amplifying-ordinary-return)
 - **Recall favors high-norm recent keys**. For a fresh brain, compare the opt-in
   `recall_key_norm=True` with ordinary matching. This normalizes nonzero stored keys, not
