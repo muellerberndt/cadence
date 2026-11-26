@@ -855,7 +855,7 @@ class Learner:
         self, drive: np.ndarray, ordinary: BrainState,
     ) -> tuple[BrainState, Equilibrium | None, dict[str, float]]:
         """Seek a precise zero-force reference without changing ordinary play."""
-        if not self.config.credit_transport:
+        if not self.config.credit_transport or not self.config.nudged_steps:
             return ordinary, None, {}
         budget = min(self.config.free_steps, 160)
         if self.brain.apical is None or budget < 1:
@@ -882,7 +882,7 @@ class Learner:
             return None, {"credit_transport_factor": 0.} if self.config.credit_transport else {}
         return transport_contrast(
             self.brain, drive, free, pull, self.config.credit_transport,
-            min(160, self.config.free_steps),
+            min(160, self.config.nudged_steps),
         )
 
     def _pull_size(self, nudge: Nudge, free: BrainState) -> np.ndarray:

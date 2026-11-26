@@ -99,3 +99,20 @@ def test_transport_refuses_large_movements_and_runs_the_ordinary_lesson():
     assert report["credit_transport_factor"] == 0.
     assert report["accepted"] == 1.
     assert learner.contrast_updates == 1
+
+
+@pytest.mark.parametrize("qualified", [False, True])
+def test_transport_cannot_override_a_zero_signed_sweep_budget(qualified):
+    learner, x = chain("cpu", 3., qualified)
+    learner.config = replace(learner.config, nudged_steps=0)
+    starting = learner.brain.efficacy.copy()
+    if qualified:
+        with pytest.raises(cd.LearningPhaseError):
+            learner.step(x, np.array([0, 1]))
+        assert learner.contrast_updates == 0
+    else:
+        _, report = learner.step(x, np.array([0, 1]))
+        assert report["nudged_steps"] == report["opposite_steps"] == 0
+        assert report["credit_transport_factor"] == 0.
+        assert "credit_transport_reference_sweeps" not in report
+    np.testing.assert_array_equal(learner.brain.efficacy, starting)

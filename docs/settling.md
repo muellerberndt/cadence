@@ -499,8 +499,12 @@ Only apical graphs have a transport branch. The setting is a maximum factor betw
 qualification control with no amplification. Cadence refines the free reference, then
 tries the requested factor, half that factor (at least one), and one. It checks both signs
 together. It discards an unqualified candidate, one that did not resolve a motor force,
-or one where activation moved too far from the ordinary free state. If no candidate is
-admitted it uses the ordinary lesson. Missing return paths still require a wiring change.
+or one where activation moved too far from the refined free reference. If no candidate is
+admitted it uses the ordinary signed equations, starting from that reference if one was
+qualified. This need not produce the same lesson as having the mode off. Missing return paths
+still require a wiring change.
+The reference uses up to 160 sweeps of `learning_free_steps`, and each candidate uses up to
+160 sweeps of `learning_nudged_steps`. A zero signed budget skips transport entirely.
 
 `credit_transport_factor` records the admitted factor or zero. The
 `credit_transport_reference_*` and `credit_transport_*` work fields count the extra

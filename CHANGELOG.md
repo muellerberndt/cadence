@@ -31,7 +31,11 @@ regions they actually drive. Both fixes use motor labels only and add no memory-
   and sampled free choices are preserved. Neither guarantees behavior on unseen inputs.
 - **`learning_credit_transport`** is experimental. It amplifies the change in apical feedback
   around the free state during paired teaching phases, checks both signs, and falls back when
-  the candidate fails. It does not change ordinary acting or reward eligibility.
+  the candidate fails. It honors the configured signed sweep budget and does not change
+  ordinary acting or reward eligibility.
+
+Checkpoints that opt into unit recall keys or the new learning-credit settings name those
+features so an older Cadence does not silently resume them with a different rule.
 
 The [teaching](docs/teach.md), [settling](docs/settling.md), [memory](docs/memory.md),
 [evaluation](docs/evaluate.md), and [troubleshooting](docs/troubleshooting.md) guides explain how
