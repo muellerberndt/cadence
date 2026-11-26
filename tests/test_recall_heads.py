@@ -27,6 +27,56 @@ def witnessed(brain, moments=STREAM):
     return brain
 
 
+def test_address_lesson_reads_the_hidden_region_the_head_actually_drives(tmp_path):
+    from dataclasses import replace
+
+    from cadence.brain import BrainState
+    from cadence.learning import LearnedState
+
+    genome = cd.Genome.composed(4, 2, modules=(8, 6), recall=True, recall_heads=2)
+    # Only the second head sees this region, and only its current-value port drives it.
+    genome = replace(genome, projections=tuple(
+        replace(edge, post="module_0") if edge.pre == "recall_1" else edge
+        for edge in genome.projections
+    ))
+    brain = cd.Brain.compose(4, 2, connectome=cd.develop(genome, seed=3), seed=3,
+                             recall=True, recall_heads=2, recall_founder=True, episodic=False,
+                             recall_address_reward=0.5, backend="cpu")
+    brain = witnessed(brain)
+    path = tmp_path / "distributed-recall.npz"
+    brain.save(path)
+    resumed = cd.Brain.load(path, backend="cpu")
+    cn = brain.connectome
+    port, receiver = cn.populations["recall_1"], cn.populations["module_0"]
+    before = np.zeros((1, cn.n))
+    after = before.copy()
+    after[0, receiver] = np.linspace(0.01, 0.03, len(receiver))
+    free, plus = (BrainState(values.copy(), values.copy(), before.copy(), steps=0)
+                  for values in (before, after))
+    for copy in (brain, resumed):
+        copy.stimulus(STREAM[-1])
+        recall = copy.recall
+        # Check the local readback against the signed phase on the actual receiving neurons.
+        expected = np.zeros((1, len(port)))
+        rows = np.flatnonzero(np.isin(cn.pre, port) & np.isin(cn.post, receiver))
+        for edge in rows:
+            col = int(np.flatnonzero(port == cn.pre[edge])[0])
+            expected[0, col] += copy.brain.weights[edge] * after[0, cn.post[edge]]
+        local = recall._local_address_movement(plus, free)
+        current, _ = recall._read_backs(copy.brain, local, head=1)
+        np.testing.assert_allclose(current, expected, atol=1e-14)
+        trace = recall.contrast_rows(copy.brain, plus, free)
+        columns = recall.address_width
+        assert not trace[:, :, :columns].any()
+        assert trace[:, :, columns:2 * columns].any()
+        result = recall.learn(copy.brain, LearnedState(free, plus, free))
+        assert result["address_rows"] == 1.0
+        assert not any(np.any(a) for a in recall.head_map(0))
+        assert any(np.any(a) for a in recall.head_map(1))
+    for saved, fresh in zip(brain.recall.head_map(1), resumed.recall.head_map(1), strict=True):
+        np.testing.assert_array_equal(saved, fresh)
+
+
 def synapse_rows(connectome):
     return {
         (int(p), int(q), int(c), float(s))
