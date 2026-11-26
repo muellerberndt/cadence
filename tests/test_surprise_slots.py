@@ -279,7 +279,8 @@ def record(path) -> tuple[dict, dict]:
 
 
 def test_a_saved_brain_names_the_setting_and_continues(tmp_path, monkeypatch):
-    brain = composed(learning_surprise_slots=True, recall=True, recall_heads=2, modules=(24, 16))
+    brain = composed(learning_surprise_slots=True, recall=True, recall_heads=2, modules=(24, 16),
+                     backend="cpu")
     lived(brain, 2)
     path = brain.save(tmp_path / "brain.npz")
     saved, learner = record(path)
@@ -287,11 +288,16 @@ def test_a_saved_brain_names_the_setting_and_continues(tmp_path, monkeypatch):
     assert saved["format"] == "cadence-brain/5" and saved["learning_surprise_slots"] is True
     assert "learning_surprise_slots" in saved["features"]
     assert learner["format"] == "cadence-checkpoint/7" and learner["config"]["surprise_slots"]
-    loaded = cd.Brain.load(path)
+    loaded = cd.Brain.load(path, backend="cpu")
     assert loaded.learner.config.surprise_slots is True
+    # the same lessons by slot from the same state: the counts to the unit, the sizes to
+    # rounding (a loaded brain's arrays rest elsewhere, which a BLAS product can round by)
     for report, other in zip(lived(brain, 2), lived(loaded, 2), strict=True):
-        assert report == other
-    np.testing.assert_array_equal(loaded.brain.efficacy, brain.brain.efficacy)
+        assert report.keys() == other.keys()
+        for name in ("taught_slots", "agreed_slots", "accepted_presentations", "address_rows"):
+            assert report[name] == other[name], name
+        assert report == pytest.approx(other, rel=1e-9, abs=1e-12)
+    np.testing.assert_allclose(loaded.brain.efficacy, brain.brain.efficacy, rtol=0, atol=1e-12)
     # a reader that does not hold the feature refuses the file by its name
     from cadence import generic
 
