@@ -152,11 +152,12 @@ LONGTERM_FORMAT = "cadence-brain/4"
 # values or reads surprise, which a reader of 0.99.1 cannot build), ``bound`` (records of
 # bound moments, ``compose(bound=records)``, 0.101) and ``cortex_reads`` (a cortex that reads the
 # observation itself beside or in place of its fixed code, ``compose(cortex_reads=...)``, 0.102.0),
-# and ``recall_key_norm`` (unit-normalized recall keys, 0.104.0).
+# ``recall_key_norm`` (unit-normalized recall keys) and ``learning_credit`` (optional lesson
+# controls and reports, 0.104.0).
 FEATURES_FORMAT = "cadence-brain/5"
 FEATURES = frozenset(
     {"strength", "heads", "recall_strength", "surprise", "map", "bound", "cortex_reads",
-     "recall_key_norm"}
+     "recall_key_norm", "learning_credit"}
 )
 # A memory's group in BRAIN_FORMAT and the prefix the reader validates its arrays under; the
 # episodic memory's arrays are the context store's and the stream's (``_flat_layout``).
@@ -2128,6 +2129,8 @@ def _saved_features(saved: Mapping[str, Any]) -> list[str]:
         out.append("bound")
     if "cortex_reads" in saved:
         out.append("cortex_reads")
+    if saved.get("learning_credit") is True:
+        out.append("learning_credit")
     memories = saved.get("memories")
     if not isinstance(memories, dict):
         return sorted(out)
@@ -8011,7 +8014,7 @@ class Brain:
         ``compressed=False`` writes a plain archive, as ``cadence.checkpoint.save`` does: larger
         on disk, and a large brain's is written in a small part of the time deflating takes.
         """
-        from .checkpoint import _learner_data, _write
+        from .checkpoint import _has_learning_credit, _learner_data, _write
         from .receipts import canonical_json
 
         if self._senses is not None and int(self._senses["space"]):
@@ -8024,6 +8027,9 @@ class Brain:
         store = self.hippocampus
         fading = isinstance(store, SynapticMemory) and bool(store.fade)
         features = []  # what a reader must hold beyond 0.99.1's (``FEATURES_FORMAT``)
+        credit = _has_learning_credit(self.learner.config)
+        if credit:
+            features.append("learning_credit")
         held_map = self.space
         if held_map is not None and (
                 getattr(held_map, "values", None) or getattr(held_map, "surprise", None)
@@ -8069,6 +8075,8 @@ class Brain:
         }
         if features:
             metadata["features"] = features
+        if credit:
+            metadata["learning_credit"] = True
         if reads is not None:
             metadata["cortex_reads"] = reads
         # what it ran on, where that is not the CPU by name: such a file keeps its bytes
@@ -8278,8 +8286,8 @@ class Brain:
             strong = saved["format"] == FEATURES_FORMAT
             if named != _saved_features(saved) or strong != bool(named):
                 raise ValueError(
-                    "memories that grow strong and the learned heads belong to checkpoint "
-                    f"format {FEATURES_FORMAT}, which names them as its features"
+                    f"the features of checkpoint format {FEATURES_FORMAT} must be named "
+                    "and match the saved settings"
                 )
             if not strong and (saved["format"] == LONGTERM_FORMAT) != with_records:
                 raise ValueError(
@@ -8311,6 +8319,11 @@ class Brain:
             learner = Learner.load(
                 path, backend=cast(Backend, asked), device=device, precision=precision
             )
+            if "learning_credit" in named:
+                from .checkpoint import _has_learning_credit
+
+                if not _has_learning_credit(learner.config):
+                    raise ValueError("the checkpoint named learning_credit without its settings")
             if learner.config.nudge != "cross_entropy":
                 raise ValueError(
                     removed_on_load("learner", "nudge", learner.config.nudge, "learning_nudge")
