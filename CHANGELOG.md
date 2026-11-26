@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Qualified lessons resolve per-slot motor forces before certifying the signed phases.
+  Finite lessons use both full configured signed budgets when a movement
+  tolerance could hide the first motor response. Neither fix adds hidden targets.
+- Optional teaching-credit reports distinguish potential from activation contrast and
+  name missing return paths and path depth. Opt-in calibration tries bounded hidden
+  bias and apical gains without hidden labels or manual per-region settings. It keeps
+  a candidate only if its observed response improves and its sampled free choices
+  are preserved. The separate experimental learned projection budget remains opt-in.
+
 ## 0.103.2 - 2026-11-25
 
 A fix for the learned value path (`recall_gain`) in a brain of several motor slots, and a new

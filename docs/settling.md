@@ -412,12 +412,25 @@ Qualification certifies the equations at those states; the gradient reading also
 assumptions above. `contrast`, `update` and `apply` act on supplied states. Answers follow
 [qualification and refusal](life.md#qualification-and-refusal).
 
+In finite teaching, if the largest possible first-sweep movement from the per-slot
+motor force is at or below the movement tolerance, both signed solves run the full configured
+`nudged_steps`. Otherwise the phase could stop before a hidden neuron even sees the motor
+movement. The learner uses the activation slope bound, the integration step and the row weights
+for this test. Dividing the pull among many slots is one way this can happen. It does not
+increase the nudge, spend beyond the finite budget or certify a
+finite phase. A budget shorter than the available return path still cannot transmit the force.
+
 #### Measuring credit and limiting taught drive
 
 `learning_credit_window=15` reports mean absolute signed-phase activation contrast at the
-motor and in each trainable hidden population that can influence it. It also reports each
-population's mean activation slope at the free state. `Brain.last_learning` puts these fields
-under `demonstration_credit_*`. A population below 0.1% of the motor contrast for that many
+motor and in each trainable hidden population that can influence it. For each population, use
+`credit_<name>_slope` and `credit_<name>_voltage_contrast` to distinguish a received potential
+change that barely moves activation from a correction that never arrives. Read
+`credit_<name>_return_share` and `credit_<name>_max_return_hops` to check which units have a
+directed path from a motor through nonzero contacts. The maximum is over reachable units and
+is −1 if no unit in the measured population is reachable. Topology by itself says nothing
+about the effective gain, stability or direction of an update. `Brain.last_learning` puts
+these fields under `demonstration_credit_*`. A population below 0.1% of the motor contrast for that many
 taught batches with nonzero motor movement warns once per streak. This is a credit diagnostic,
 not a test of what that population learned. The streak is not saved.
 
@@ -437,25 +450,28 @@ memory. Both options are off by default. A diagnostic lesson uses the observable
 place of the one-call teaching shortcut. The experimental projection constraint reads its
 tables on the host on every backend.
 
-#### Automatic apical credit calibration
+#### Automatic deep-credit calibration
 
-On a brain composed with `apical=0.25`, `learning_credit_calibration=64` tries calibration
-after every 64 contrastive updates. There are no gain settings per region. Each attempt
-samples up to three rows of the current teaching drive, holding the memory read fixed. It
+Set `brain.retune(learning_credit_calibration=64)` on a composed brain to try calibration
+after every 64 contrastive updates. This works with or without an apical compartment, and
+does not require setting per-region gains. Each
+attempt samples up to three rows of the current teaching drive, holding the memory read fixed. It
 applies a small pair of opposite additive motor probes with fixed, label-free control
 directions. The paired phases run together so different stop times do not register false
 contrast. A stage names trainable populations that can affect the motor but lack a return path.
 
-The search compares the current gains with a bounded set of alternatives at existing apical
-receiving pools. A candidate must settle at the current integration step, retain the motor
-response, and avoid a large shift of free activity or an increase in work beyond one probe
-chunk. It must improve the absolute response of the weakest measured hidden populations on
-those inputs. Where no candidate meets the checks, the brain keeps its gains. An admitted
-adjustment changes the receiving pool's RMS share in *both* free play and teaching. No synapse
-efficacy, topology, hidden target or recorded action is changed by calibration itself.
+The search compares bounded gain alternatives at existing apical receiving pools if the graph
+has them. It then tries small, local bias adjustments in the two weakest reachable hidden
+regions where biases can move. Every candidate must settle at the current integration step,
+retain motor response, and avoid large free-activity shifts or more than one extra probe
+chunk of work. It must also preserve all greedy motor choices on the probed rows.
+An accepted change improves the absolute response of the weakest measured regions on those
+inputs. If none qualifies, nothing is installed. Both free play and later teaching use the
+accepted bias or RMS share. Calibration changes no synapse efficacy, wiring, hidden target
+or recorded action.
 
-`brain.learner.last_credit_calibration` reports the tested and selected gains, free-state
-drift, signed feedback and basal drive at each pool, and extra sweeps and residual checks.
+`brain.learner.last_credit_calibration` reports the tried and selected adjustments, free-state
+drift, slopes, signed feedback and basal drive at apical pools, and sweeps and residual checks.
 `Learner.calibrate_credit(drive, apply=False)` performs the same search without installing
 anything. The feedback gains and schedule are saved, but the report is observational and is
 not saved. The adaptive fractions currently take the ordinary device kernels instead of the
@@ -628,7 +644,7 @@ Select rates on development data and freeze them.
 | `normalize_relative` | `LearnerConfig` | above zero, in place of `normalize_floor`, that share of the RMS of the synapse's projection (a bias: its range) ([rates](teach.md#rates-under-normalization)) | 0.0 (off) |
 | `nudged_fixed` | `LearnerConfig` | nudged phases run their whole `nudged_steps` budget instead of stopping at the movement `tolerance` ([why](#5-why-the-contrast-is-a-gradient)); `teaching="deep"` sets it | `False` |
 | `drive_budget`, `credit_window` | `LearnerConfig` | experimental projection-drive limit and sustained low-contrast diagnostics ([credit and drive](#measuring-credit-and-limiting-taught-drive)) | 0, 0 |
-| `credit_calibration` | `LearnerConfig` | teaching updates between [experimental apical calibration](#automatic-apical-credit-calibration) attempts in a composed brain | 0 (off) |
+| `credit_calibration` | `LearnerConfig` | teaching updates between [experimental credit calibration](#automatic-deep-credit-calibration) attempts in a composed brain | 0 (off) |
 | `scale_cap` | `LearnerConfig` | largest plastic efficacy magnitude; smaller keeps readouts out of saturation | 8.0 |
 | `qualified`, `damping` | `LearnerConfig` | require full-equation phases; most `dt` halvings per phase | `False`, 3 |
 | `surprise` | `LearnerConfig` | [teach only differing rows](teach.md#lessons-only-where-the-answer-differs) | `False` |

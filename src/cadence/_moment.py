@@ -1619,7 +1619,7 @@ def lesson_phases(learner: Any, drive: Any, warm: Any, target: np.ndarray) -> An
         fused._compartment(None, layout, flat, None, rows, n)
     )
     tolerance = cfg.tolerance if cfg.tolerance else None  # a tolerance of zero never stops
-    nudged_tolerance = None if cfg.nudged_fixed else tolerance
+    nudged_tolerance = learner._finite_nudge_tolerance(pull)
     out = _phases_kernel(
         warm_v, warm_a, kept_in, has_kept, has_given, drive, graph.bias, flat, pairs,
         apical_pairs, layout.starts, layout.pair_pre, layout.pair_post, layout.offset,
@@ -2160,7 +2160,7 @@ def _lesson_plan(brain: Any) -> tuple[Any, ...] | None:
         pairs, apical_pairs, no_held = compartment[0], compartment[2], compartment[11]
         pool_of, pool_index, pool_starts, pool_run = compartment[4:8]
         tolerance = cfg.tolerance if cfg.tolerance else None  # a tolerance of zero never stops
-        nudged_tolerance = None if cfg.nudged_fixed else tolerance
+        nudged_tolerance = learner._finite_nudge_tolerance(pull)
         group, neuron_group = learner._projections()
         partner = np.full(w.synapses, -1, dtype=np.int64)
         partner[learner._paired] = learner._paired_reverse

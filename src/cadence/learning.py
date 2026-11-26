@@ -48,7 +48,12 @@ from typing import Any, cast
 
 import numpy as np
 
-from ._credit import CreditPlan, calibrate_feedback, limit_projections, projection_groups
+from ._credit import (
+    CreditPlan,
+    calibrate_feedback,
+    limit_projections,
+    projection_groups,
+)
 from .blocks import block_contrast
 from .brain import (
     Backend,
@@ -63,6 +68,7 @@ from .brain import (
     _resident,
     _trusted,
 )
+from .certificate import lipschitz_constant
 from .connectome import Connectome
 from .neuron import NeuronModel
 
@@ -787,8 +793,29 @@ class Learner:
             steps=cfg.nudged_steps,
             state=free,
             nudge=nudge,
-            tolerance=None if cfg.nudged_fixed else cfg.tolerance,
+            tolerance=self._finite_nudge_tolerance(nudge),
         )
+
+    def _finite_nudge_tolerance(self, nudge: Nudge) -> float | None:
+        """Do not stop at a movement threshold too coarse to see a small motor pull.
+
+        From a fixed point, the first sweep can move a directly taught output
+        by at most dt times the force times the activation's Lipschitz bound.
+        Hidden units have not received that movement yet. In this case run
+        both signs for the caller's whole finite budget, like nudged_fixed.
+        """
+        cfg = self.config
+        tolerance = cfg.tolerance
+        if cfg.nudged_fixed or not tolerance:
+            return None
+        if nudge.anchor_gain is None:
+            rule = self.brain.neuron_model
+            weight = 1.0 if nudge.weight is None else float(np.max(np.abs(nudge.weight)))
+            span = 1.0 if cfg.nudge == "cross_entropy" else 1.0 + rule.leak
+            move = abs(nudge.beta) * weight * span * rule.dt * lipschitz_constant(rule)
+            if move <= tolerance:
+                return None
+        return tolerance
 
     def _nudged_budget_hint(self) -> str | None:
         """Name the budget mismatch when a refused nudged phase had less room than the free one."""
@@ -1176,30 +1203,38 @@ class Learner:
         if not window:
             return {}
         movement = np.abs(_on_host(nudged, "activation") - _on_host(opposite, "activation"))
+        voltage = np.abs(_on_host(nudged, "v") - _on_host(opposite, "v"))
         with np.errstate(over="ignore"):
             slope = self.brain.neuron_model.slope_at(_on_host(free, "v"))
         motor = float(movement[:, self.output_index].mean())
-        report = {"credit_motor_contrast": motor}
+        report = {"credit_motor_contrast": motor,
+                  "credit_motor_voltage_contrast": float(voltage[:, self.output_index].mean())}
         assert self.plastic_synapses is not None
         graph = self.brain.connectome
         edges = self.plastic_synapses
         if self.synapse_rate is not None:
             edges = edges & (self.synapse_rate > 0)
-        plastic = np.bincount(graph.post[edges], minlength=graph.n) > 0
+        plastic = (np.bincount(graph.post[edges], minlength=graph.n) > 0) | self._stepping_neurons()
         streaks = self.__dict__.setdefault("_credit_streaks", {})
         stalled = []
-        for name, index in self._credit_plan().regions:
+        plan = self._credit_plan()
+        for name, index in plan.regions:
             index = index[plastic[index]]
             if not len(index):
                 streaks.pop(name, None)
                 continue
             region = float(movement[:, index].mean())
+            distances = plan.motor_distance[index]
+            reachable = distances >= 0
             report[f"credit_{name}_contrast"] = region
+            report[f"credit_{name}_voltage_contrast"] = float(voltage[:, index].mean())
             report[f"credit_{name}_slope"] = float(slope[:, index].mean())
+            report[f"credit_{name}_return_share"] = float(reachable.mean())
+            report[f"credit_{name}_max_return_hops"] = float(distances.max())
             if motor > 0.0:
                 streaks[name] = streaks.get(name, 0) + 1 if region <= 1e-3 * motor else 0
                 if streaks[name] == window:
-                    stalled.append(name)
+                    stalled.append(name if reachable.all() else f"{name} (incomplete return path)")
         if stalled:
             warnings.warn(
                 f"motor teaching contrast has not measurably reached {', '.join(stalled)} "
@@ -1210,7 +1245,7 @@ class Learner:
     def calibrate_credit(
         self, drive: np.ndarray, *, budget: int = 96, apply: bool = True
     ) -> dict[str, Any]:
-        """Probe existing apical feedback on held drives, without labels or weight updates.
+        """Calibrate existing feedback and hidden bias on held drives, without labels.
 
         An admitted adjustment affects both subsequent action and teaching. Candidate
         probes qualify on the original equations at the graph's live time step.

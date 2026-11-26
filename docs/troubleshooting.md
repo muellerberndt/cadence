@@ -56,6 +56,14 @@ sensed as a moment of its own
 **`predict` answers right, `act` answers wrong, and lessons do not help.** Teach inside the stream
 the brain acts in ([a deep brain whose lessons do not reach its act](teach.md#a-deep-brain-whose-lessons-do-not-reach-its-act)).
 
+**The motor learns but a hidden region stays unchanged.** Set `learning_credit_window=15` and
+compare the motor's reported contrast with the region's voltage and activation contrasts.
+A missing return path is a wiring problem. If a region receives voltage contrast but its
+activation hardly moves and its slope is low, inspect its ordinary input and bias. If its
+slope is healthy but it receives little voltage contrast, inspect the returning projections
+and the finite teaching budget. Do not treat a larger motor force as a fix for all three.
+[How to read the fields](settling.md#measuring-credit-and-limiting-taught-drive).
+
 **A `RuntimeWarning` about a lesson on the observations the brain just acted on.** Teach first,
 then act ([supervised lessons](teach.md#supervised-lessons)).
 

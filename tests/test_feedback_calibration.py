@@ -56,6 +56,34 @@ def test_unsettled_probe_does_not_modify_the_live_brain():
 
 
 @pytest.mark.parametrize("backend", ["cpu", "torch", "mlx"])
+def test_calibration_can_center_a_saturated_plain_graph_without_changing_choices(backend, tmp_path):
+    if backend != "cpu":
+        pytest.importorskip("mlx.core" if backend == "mlx" else backend)
+    learner, drive = chain(backend)
+    original = cd.NeuralGraph(
+        learner.brain.connectome, learner.brain.neuron_model,
+        bias=np.array([0, 8.0, 0.4, 0.2, 0.2, 0.2]), backend=backend,
+        device="cpu" if backend == "torch" else None,
+    )
+    learner.brain = original
+    answer = learner.predict(drive)
+    report = learner.calibrate_credit(drive, apply=False)
+    assert report["selected_edit"] == "center_bias" and not report["applied"]
+    assert report["selected"]["regions"]["deep"] > 1.25 * report["baseline"]["regions"]["deep"]
+    assert learner.brain is original
+    assert learner.calibrate_credit(drive)["applied"]
+    assert learner.brain.bias[1] < original.bias[1]
+    np.testing.assert_array_equal(learner.brain.bias[[0, 3, 4, 5]], original.bias[[0, 3, 4, 5]])
+    np.testing.assert_array_equal(learner.brain.efficacy, original.efficacy)
+    np.testing.assert_array_equal(learner.predict(drive), answer)
+    assert learner.contrast_updates == 0
+    saved = tmp_path / "centered.npz"
+    learner.save(saved)
+    restored = cd.Learner.load(saved, backend="cpu")
+    np.testing.assert_array_equal(restored.brain.bias, learner.brain.bias)
+
+
+@pytest.mark.parametrize("backend", ["cpu", "torch", "mlx"])
 def test_distinct_pool_gains_affect_actual_equations_and_roundtrip(backend, tmp_path):
     if backend != "cpu":
         pytest.importorskip("mlx.core" if backend == "mlx" else backend)
@@ -92,3 +120,18 @@ def test_composed_teaching_rechecks_at_the_interval(tmp_path):
     assert b.learner.last_credit_calibration["contrast_updates"] == 2
     assert b.learner.contrast_updates == 2
     assert restored.brain.apical.pool_fractions == b.brain.apical.pool_fractions
+
+
+def test_credit_calibration_does_not_run_in_a_reward_only_life():
+    args = dict(modules=(8, 6, 4), arousal={"youth": 10}, seed=4, backend="cpu")
+    control = cd.Brain.compose(4, 2, **args)
+    scheduled = cd.Brain.compose(4, 2, learning_credit_calibration=1, **args)
+    for step in range(10):
+        cue = np.eye(4)[[step % 4]]
+        kwargs = {} if not step else {"reward": [float(step % 2)]}
+        np.testing.assert_array_equal(control.live(cue, **kwargs), scheduled.live(cue, **kwargs))
+        assert control.last_learning == scheduled.last_learning
+        assert scheduled.learner.last_credit_calibration == {}
+    assert scheduled.basal_ganglia.updates > 0
+    np.testing.assert_array_equal(control.brain.efficacy, scheduled.brain.efficacy)
+    np.testing.assert_array_equal(control.brain.bias, scheduled.brain.bias)
