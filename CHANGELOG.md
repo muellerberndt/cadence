@@ -5,6 +5,9 @@
 - Recall address lessons and sampled eligibility follow each head's actual read projections
   when a custom graph routes recall into a different hidden region. Ordinary association-only
   recall keeps its existing path. This requires no checkpoint migration or extra labels.
+- `recall_key_norm=True` is an opt-in recall geometry for a new brain. It normalizes the
+  ordered observation keys without rescaling what the reads deliver. The choice is saved with
+  the memory. The existing recall recipe is unchanged.
 - Qualified lessons resolve per-slot motor forces before certifying the signed phases.
   Finite lessons use both full configured signed budgets when a movement
   tolerance could hide the first motor response. Neither fix adds hidden targets.

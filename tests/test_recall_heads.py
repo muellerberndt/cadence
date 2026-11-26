@@ -77,6 +77,46 @@ def test_address_lesson_reads_the_hidden_region_the_head_actually_drives(tmp_pat
         np.testing.assert_array_equal(saved, fresh)
 
 
+def test_normalized_keys_keep_direction_but_values_keep_their_own_scale(tmp_path):
+    x = np.eye(4)
+    brain = composed(recall_key_norm=True, recall_window=2, recall_recency=0.)
+    louder = composed(recall_key_norm=True, recall_window=2, recall_recency=0.)
+    for event in x[:3]:
+        brain.act(event[None], greedy=True)
+        louder.act((19. * event)[None], greedy=True)
+    np.testing.assert_array_equal(brain.recall.keys, louder.recall.keys)
+    np.testing.assert_allclose(np.linalg.norm(brain.recall.keys, axis=2), 1.)
+    np.testing.assert_array_equal(louder.recall.values, 19. * brain.recall.values)
+    np.testing.assert_array_equal(louder.recall.nexts, 19. * brain.recall.nexts)
+    # Normalization is over the complete ordered window, not each individual event.
+    np.testing.assert_allclose(brain.recall.keys[0, 1], np.r_[x[1], x[0]] / np.sqrt(2.))
+    brain.stimulus(x[[3]])
+    louder.stimulus(19. * x[[3]])
+    for ordinary, scaled in zip(brain.recall.attended_heads, louder.recall.attended_heads, strict=True):
+        np.testing.assert_array_equal(ordinary, scaled)
+
+    path = tmp_path / "unit-keys.npz"
+    brain.save(path)
+    restored = cd.Brain.load(path, backend="cpu")
+    assert restored.describe()["genes"]["recall_key_norm"] is True
+    np.testing.assert_array_equal(brain.recall.keys, restored.recall.keys)
+    assert brain.lesson(x[[3]], [1]) == restored.lesson(x[[3]], [1])
+    np.testing.assert_array_equal(brain.act(x[[3]], greedy=True), restored.act(x[[3]], greedy=True))
+    for head in range(restored.recall.heads):
+        for a, b in zip(brain.recall.head_map(head), restored.recall.head_map(head), strict=True):
+            np.testing.assert_array_equal(a, b)
+
+
+def test_key_normalization_leaves_silent_events_zero_and_is_a_birth_setting():
+    brain = composed(recall_key_norm=True)
+    brain.act(np.zeros((1, 4)), greedy=True)
+    assert not brain.recall.keys.any()
+    with pytest.raises(ValueError, match="construction"):
+        brain.retune(recall_key_norm=False)
+    with pytest.raises(ValueError, match="without recall_action"):
+        composed(recall_key_norm=True, recall_action=True)
+
+
 def synapse_rows(connectome):
     return {
         (int(p), int(q), int(c), float(s))

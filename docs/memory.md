@@ -369,6 +369,21 @@ the settle as a sensory drive is: the settle answers on the mixture the address 
 cannot revise the choice. Both regions reach the association region through one-way plastic
 synapses of initial magnitude 1.2 (a constant).
 
+**When input energy swamps a relevant match.** Start a new brain with `recall_key_norm=True`
+to compare directions in the order-sensitive recall keys. Use it as a separate trial if dense
+observations, a learned code, or a clock alongside it make newer keys much larger than old ones.
+Each nonzero stored key and the key used as the fixed part of the query have unit Euclidean
+norm. For a window this is one normalization of the entire ordered window. A silent key
+stays zero. Values, successors, learned address terms and the inputs to their maps are unchanged.
+After learning, the full address is not itself forced to have unit norm. Key normalization
+does not force equal attention by age and is not a distinct memory bank or a value path into
+the motor. It does not compose with `recall_action`. The read, map lesson and bank run on the
+host for this option, though the graph can use its usual device.
+
+This choice changes the coordinate scale of the learned attention. An existing checkpoint
+continues with the geometry it saved. Compare fresh brains and held-out earlier-cue swaps before
+adopting it, and keep the baseline's attention temperature and data fixed in the first comparison.
+
 ### How it writes and how the address learns
 
 After each act, and after each moment `wait` senses, every stream writes one slot and the
@@ -515,6 +530,7 @@ only where they differ from their founder. A saved brain keeps its genes, slots 
 | `recall_gain_after` | `0` | construction | With `recall_gain`, the gains drive nothing and learn nothing through the memory's first this many lessons, and start then ([the value path released late](#the-value-path-released-once-the-read-has-formed-opt-in)) |
 | `recall_gain_next` | `0.0` | construction | With `recall_gain`, every next port's gain starts at this value when the gains start, every recall port's at zero ([the value path released late](#the-value-path-released-once-the-read-has-formed-opt-in)) |
 | `recall_cortex_norm` | `False` | construction | Every map reads the cortex of the moment before at unit norm per stream, so what every moment shares cannot outweigh the event in the address lesson ([the cortex at the event's weight](#the-cortex-at-the-events-weight-opt-in)) |
+| `recall_key_norm` | `False` | construction | Normalize nonzero observation keys and windows to unit norm. Keep the original values and successors. |
 | `recall_anchor` | `False` | construction | Every head's position term also reads each slot's place in its episode, so "the first told" holds at every story length ([the anchor](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
 | `recall_boundary` | `False` | retune | Each stream that begins holds a silent boundary slot whose next the first event teaches ([the episode's boundary](#episodes-keys-and-windows)); a retune applies from the next stream that begins |
 | `recall_tokens` | `None` | construction | Per action the observation coordinate of the same token (`-1` for none). No synapse is added: a lesson whose answer has no token leaves the read's maps as they are, and `recall_gain` reads the tokens ([declared tokens](#declared-tokens)) |

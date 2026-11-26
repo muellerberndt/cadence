@@ -163,6 +163,14 @@ def columns(index: np.ndarray) -> slice | np.ndarray:
     return np.asarray(index, dtype=np.int64)
 
 
+def _unit_key(key: np.ndarray) -> np.ndarray:
+    """Normalize one key per row, leaving silent keys zero without squaring large inputs."""
+    peak = np.max(np.abs(key), axis=-1, keepdims=True)
+    scaled = np.divide(key, peak, out=np.zeros_like(key), where=peak > 0)
+    norm = np.linalg.norm(scaled, axis=-1, keepdims=True)
+    return np.divide(scaled, norm, out=np.zeros_like(key), where=norm > 0)
+
+
 # what rounding leaves of a slot the heads read whole, in shares of the slot: nothing
 _TAKEN = 1e-12
 
@@ -1450,6 +1458,8 @@ class Recall:
     # on every port and ``trace`` keeps what the ports held at the latest read, at amplitude one
     drive_gain: bool = False
     hearing: float = 1.0
+    # Unit key geometry leaves every value and successor in the original event coordinates.
+    key_norm: bool = False
     # every map reads the cortex of the moment before at unit norm per stream, the event's
     # energy, so a lesson's step on its columns weighs no more than the step on the event's rows
     cortex_norm: bool = False
@@ -1495,11 +1505,11 @@ class Recall:
         "address_reward", "position_reward", "window", "heads", "position",
         "position_rate", "boundary", "tokens", "action", "anchor",
         "relative", "slope", "when", "gain", "grid", "drive_gain", "cortex_norm",
-        "gain_after", "gain_next", "strength", "again", "kept",
+        "gain_after", "gain_next", "strength", "again", "kept", "key_norm",
     )
     CONSTRUCTION_OPTIONS = ("window", "heads", "position", "tokens", "action", "anchor",
                             "relative", "slope", "when", "gain", "grid", "drive_gain",
-                            "cortex_norm", "gain_after", "gain_next", "strength")
+                            "cortex_norm", "gain_after", "gain_next", "strength", "key_norm")
     # what ``Brain.compose(..., recall=True)`` gives a new brain's memory over the founders above,
     # ordinary settings a caller's value overrides. The founder stays what a saved memory without
     # the setting means, so a saved brain keeps the values it was saved with
@@ -1617,7 +1627,7 @@ class Recall:
             return number
         if name in (
             "next", "boundary", "action", "anchor", "relative", "when", "drive_gain",
-            "cortex_norm", "strength",
+            "cortex_norm", "strength", "key_norm",
         ):
             if not isinstance(value, bool):
                 raise ValueError(f"{name} must be boolean")
@@ -1796,6 +1806,8 @@ class Recall:
         for name in (*self.RUNTIME, *self.CONSTRUCTION, *self.OPTIONS):
             setattr(self, name, self.setting(name, getattr(self, name)))
         self._law(self.strength, self.again, self.kept)
+        if self.key_norm and self.action:
+            raise ValueError("key_norm reads observations and their windows without recall_action")
         for name, given in (("heads", self.heads > 1), ("window", self.window > 1),
                             ("action", self.action), ("when", self.when)):
             if self.strength and given:
@@ -1987,7 +1999,7 @@ class Recall:
         return (
             self.heads == 1 and self.window == 1 and not self.action and not self.when
             and not self.gain and self.tokens is None and self.target == "recall"
-            and not self.cortex_norm and not self.strength
+            and not self.cortex_norm and not self.strength and not self.key_norm
             and not self._local_address_routes
         )
 
@@ -2606,6 +2618,8 @@ class Recall:
             past = _of(self.past, n)
             scale = self.heard * self.window_decay ** np.arange(1, self.window)
             key = np.concatenate([key, (scale[None, :, None] * past).reshape(n, -1)], axis=1)
+        if self.key_norm:
+            key = _unit_key(key)
         inputs = x
         if self.action:
             # the command coordinates of the key are the slot's own command, written after the
@@ -2770,7 +2784,7 @@ class Recall:
             return False
         if (
             self.heads != 1 or self.window != 1 or self.action or self._whens or self.gain
-            or self.strength or self._local_address_routes
+            or self.strength or self.key_norm or self._local_address_routes
             or (begun and (not self.slots or self.streams != rows))
             or not isinstance(self.head_maps[0][0], np.ndarray)
         ):
