@@ -141,7 +141,7 @@ Then, as your brain needs them:
 | A signal for what a moment brought that the brain did not carry, and one focus drawn by it | `surprise=True` (opt-in): `brain.surprise`, `brain.focus`, `Map(surprise=True)` | [Surprise, and the focus it draws](life.md#surprise-and-the-focus-it-draws-opt-in) |
 | A sound that stands for a thing: a sound heard alone brings the thing back, a voice says what a thing was named, a reward makes a said sound the answer, a heard name draws the focus | `bound=records`, `voice="ear"`, `complete`, `say`, `cadence.senses.Things`, `Ear` (opt-in) | [Records of bound moments](memory.md#records-of-bound-moments-opt-in), [a sense for things and an ear](senses.md#a-sense-for-things-and-an-ear) |
 | To read or change a living brain | `describe`, `retune`, `last_settlement` | [Tune and read a living brain](tune.md) |
-| A deep or wide brain | `modules=(64, 32, 32)`, `apical=0.25`, `teaching="deep"` | [Larger brains](tune.md#larger-brains) |
+| A deep or wide brain | `modules=(64, 32, 32)`, `apical=0.25`, `teaching="deep"` | [Build and test a deep brain](deep-brains.md), [larger brains](tune.md#larger-brains) |
 | A GPU, another device or precision | `backend`, `device`, `precision` | [Backends](backends.md) |
 | A brain in a web page, on the compiled path | Pyodide with `cadence_kernel.wasm` named in `CADENCE_WASM` | [In a browser](backends.md#in-a-browser) |
 | A brain that keeps learning after it has acquired a skill | `maturity=True` | [Maturity](reward.md#maturity-opt-in) |

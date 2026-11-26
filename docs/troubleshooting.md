@@ -62,7 +62,7 @@ A missing return path is a wiring problem. If a region receives voltage contrast
 activation hardly moves and its slope is low, inspect its ordinary input and bias. If its
 slope is healthy but it receives little voltage contrast, inspect the returning projections
 and the finite teaching budget. Do not treat a larger motor force as a fix for all three.
-[How to read the fields](settling.md#measuring-credit-and-limiting-taught-drive).
+[Deep-brain checklist](deep-brains.md) · [How to read the fields](settling.md#measuring-credit-and-limiting-taught-drive)
 
 **A high feedback gain changes free answers, or better credit fails to improve the task.**
 Do not promote the setting on the contrast alone. Compare free answers on untrained

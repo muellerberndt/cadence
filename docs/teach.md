@@ -222,7 +222,30 @@ then takes both a symbol's lesson and blank's.
 
 ### When a deep brain's motor learns but its hidden regions do not
 
-Start with motor labels only. For a composed brain that stalls, use
+Start with motor labels only and make the signal visible before tuning. This small smoke
+check presents one past observation, then teaches only the three motor slots of the next
+decision. The reported movement confirms that this lesson reaches a hidden population.
+It does not test acquisition of a useful hidden function.
+
+```python
+import numpy as np
+from cadence import Brain
+
+deep_brain = Brain.compose(
+    inputs=8, actions=6, slots=(2, 2, 2), modules=(16, 12, 8),
+    apical=0.25, teaching="deep", learned_code=16, attention=True,
+    recall_heads=4, recall_key_norm=True, learning_credit_window=15, seed=1, backend="cpu",
+)
+past, present = np.eye(8)[0:1], np.eye(8)[1:2]
+deep_brain.act(past, greedy=True)
+deep_brain.step(present, teacher=np.array([[0, 1, 0]]))
+credit = deep_brain.last_learning
+assert credit["demonstration_credit_motor_contrast"] > 0
+assert credit["demonstration_credit_module_0_return_share"] == 1
+assert credit["demonstration_credit_module_0_contrast"] > 0
+```
+
+For a composed brain that stalls, use
 `brain.retune(learning_credit_calibration=64, learning_credit_window=15)` before resuming
 the same lessons. The first setting periodically probes the brain's existing return paths
 and attempts a bounded correction without labels. The second is optional and logs which
@@ -241,6 +264,7 @@ but doesn't amplify them, and against an unmodified brain. In a modular brain, a
 hidden plasticity during training or mute the coordinator's branch outputs at evaluation.
 That separates responding to a correction from learning useful downstream control.
 [Teaching-only transport](settling.md#transporting-a-correction-without-amplifying-ordinary-return).
+See [Build and test a deep brain](deep-brains.md) for a symptom-by-symptom checklist.
 
 ## Learning from outcomes
 
