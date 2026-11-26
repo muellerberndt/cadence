@@ -69,7 +69,11 @@ Do not promote the setting on the contrast alone. Compare free answers on untrai
 inputs and record the cost and refusals of both signs. Raising return around a fixed
 operating point can be useful for the lesson, while raising its standing current can
 change the act or saturate the receiver. Keep recall and learned context in the ordinary
-play path. [Teaching-only apical transport](settling.md#transporting-a-correction-without-amplifying-ordinary-return).
+play path. For a delayed decision, compare two histories with the same recent inputs
+and different older cues. If changing the old cue barely changes what reaches the deciding
+region, test the trace and recall read before trying more teaching gain. Making a lesson
+louder cannot supply missing context.
+[Teaching-only apical transport](settling.md#transporting-a-correction-without-amplifying-ordinary-return).
 
 **A `RuntimeWarning` about a lesson on the observations the brain just acted on.** Teach first,
 then act ([supervised lessons](teach.md#supervised-lessons)).
