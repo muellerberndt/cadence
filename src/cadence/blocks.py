@@ -22,6 +22,7 @@ Gram product per block instead of one over the whole net.
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import cached_property
@@ -51,6 +52,9 @@ class Layout:
     pair_post: np.ndarray  # (pairs,) range id of the postsynaptic side
     offset: np.ndarray  # (pairs + 1,) offsets of each block in the flat block array
     edge_index: np.ndarray  # (edges,) flat index of each synapse's entry
+    # the blocks the connectome's populations cut it into where they were more than ``layout``
+    # takes and this layout is one block in their place (it holds no projections); 0 otherwise
+    fragments: int = 0
 
     @property
     def ranges(self) -> int:
@@ -141,6 +145,8 @@ def layout(connectome: Connectome, *, max_pairs: int = 256) -> Layout:
 
     A connectome with no contiguous sets, or one whose sets fragment it into more than
     ``max_pairs`` blocks, gets one range and, when it has synapses, one block over the full matrix.
+    The second case warns with the block count and keeps it as ``Layout.fragments``: the one
+    block has ``n * n`` entries, and whatever reads a layout's projections finds one.
     """
     n = connectome.n
     cuts = {0, n}
@@ -153,7 +159,19 @@ def layout(connectome: Connectome, *, max_pairs: int = 256) -> Layout:
     range_of = np.searchsorted(starts, np.arange(n), side="right") - 1
     rp, rq = range_of[connectome.pre], range_of[connectome.post]
     uniq, inverse = np.unique(rp * ranges + rq, return_inverse=True)
+    fragments = 0
     if len(uniq) > max_pairs:
+        fragments = int(len(uniq))
+        warnings.warn(
+            f"the connectome's contiguous populations cut it into {fragments} blocks, more than "
+            f"max_pairs={max_pairs}: it is laid out as one block of {n} by {n} entries. A graph "
+            "past dense_limit then settles on the sparse path, and what reads projections "
+            "(per-projection steps, a drive budget) finds one over the whole graph. For a block "
+            "layout name fewer contiguous populations: drop the ones that only wired the "
+            "connectome.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
         starts = np.array([0, n], dtype=np.int64)
         ranges = 1
         uniq = np.zeros(1 if connectome.synapses else 0, dtype=np.int64)
@@ -170,7 +188,7 @@ def layout(connectome: Connectome, *, max_pairs: int = 256) -> Layout:
         edge_index = offset[inverse] + (connectome.pre - a0) * nb + (connectome.post - b0)
     else:
         edge_index = np.zeros(0, dtype=np.int64)
-    return Layout(starts, pair_pre, pair_post, offset, edge_index.astype(np.int64))
+    return Layout(starts, pair_pre, pair_post, offset, edge_index.astype(np.int64), fragments)
 
 
 class BlockTransport:

@@ -97,14 +97,33 @@ def test_layout_ignores_scattered_populations_and_every_transport_matches_the_re
 
 def test_max_pairs_fallback_is_one_block_and_still_exact() -> None:
     c = _random_connectome({f"p{i}": [i] for i in range(60)})
-    lay = layout(c)
+    with pytest.warns(RuntimeWarning, match="more than max_pairs=256") as caught:
+        lay = layout(c)
     assert lay.ranges == 1 and lay.pairs == 1 and lay.size == 60 * 60
     assert lay.edge_index.max() < lay.size
+    # the warning names the blocks the populations cut and the one block laid out in their place
+    assert lay.fragments > 256 and len(caught) == 1
+    assert f"into {lay.fragments} blocks" in str(caught[0].message)
+    assert "one block of 60 by 60 entries" in str(caught[0].message)
     model = cd.NeuronModel(gain=0.05, leak=0.1)
     drive = np.random.default_rng(0).random((2, c.n))
-    state = cd.NeuralGraph(c, model).settle_batch(drive, steps=40)
+    with pytest.warns(RuntimeWarning, match="more than max_pairs=256"):
+        state = cd.NeuralGraph(c, model).settle_batch(drive, steps=40)
     reference, _ = settle_neuron_by_neuron(c, model, drive[0], steps=40)
     assert np.abs(state.activation[0] - reference[-1]).max() < 1e-12
+
+
+def test_a_layout_as_cut_and_a_connectome_without_populations_do_not_warn() -> None:
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        cut = layout(_random_connectome({"a": list(range(20)), "b": list(range(20, 60))}))
+        whole = layout(_random_connectome({}))
+        asked = layout(_random_connectome({f"p{i}": [i] for i in range(60)}), max_pairs=3600)
+    assert cut.ranges == 2 and cut.fragments == 0
+    assert whole.ranges == 1 and whole.fragments == 0  # one range by its own layout
+    assert asked.ranges == 60 and asked.fragments == 0
 
 
 def test_dense_limit_bounds_the_block_entries_not_the_neuron_count() -> None:

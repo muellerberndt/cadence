@@ -1193,6 +1193,17 @@ class Learner:
     def _limit_drive(self, scale: np.ndarray, free: BrainState) -> tuple[np.ndarray, int]:
         brain = self.brain
         layout = brain.layout
+        if layout.fragments:
+            # one block over the whole matrix in place of the projections: the budget would
+            # read the whole graph as one projection, from a dense array of n by n entries
+            raise ValueError(
+                "drive_budget gives each projection into a hidden region a share of that "
+                "region's budget, and this connectome's layout holds none: its contiguous "
+                f"populations cut it into {layout.fragments} blocks, more than the layout "
+                "takes, so it is one block over the whole matrix. Name fewer contiguous "
+                "populations (drop the ones that only wired the connectome), or set the "
+                "budget to 0 (learning_drive_budget=0)"
+            )
         plan = self._credit_plan()
         assert self.plastic_synapses is not None
         adjustable = self.plastic_synapses.copy()
