@@ -16,6 +16,9 @@ regions they actually drive. Both fixes use motor labels only and add no memory-
   plan or another hidden region reads the signed movement of those receivers for teaching and
   sampled-action eligibility. The previous association still supplies query context. Standard
   association-only recall keeps its existing path. Existing checkpoints need no migration.
+- **Browser settling uses the same per-pool apical gains as the CPU paths.** Use this release's
+  `cadence_kernel.wasm` (ABI 2). An older module falls back to the NumPy loop rather than
+  running with an incompatible signature.
 
 ### New opt-in tools
 

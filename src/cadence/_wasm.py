@@ -37,7 +37,7 @@ import numpy as np
 __all__ = ["available", "load"]
 
 # the version of the kernels' argument lists this file speaks (``kernel_version``)
-VERSION = 1
+VERSION = 2
 
 _EXPORTS: Any = None
 
@@ -142,10 +142,10 @@ _PARTS = ("map_settle", "bound_recall", "map_pieces", "map_moves", "map_write_va
           "map_report")
 
 _KINDS = {
-    "settle_rows": "wwwddqdqqqqq?dbfffffbffbddqnfddddbqqqqfffdbnfbdbww",
-    "settle_lives": "wwwddqdqqqqq?dbfffffbffbddqnfddddbqqqqfffdbnfbdbww",
-    "residual_rows": "wwwddqdqqqqqdbfffffbfbddqnfddddbqqqqfffdbwwbbw",
-    "solve_rows": "wwwddqdqqqqq?dfffffffddqnfddddqqqqdnnfwwbbbfffwwwq",
+    "settle_rows": "wwwddqdqqqqq?dbfffffbffbddqnfddddbqqqqdffdbnfbdbww",
+    "settle_lives": "wwwddqdqqqqq?dbfffffbffbddqnfddddbqqqqdffdbnfbdbww",
+    "residual_rows": "wwwddqdqqqqqdbfffffbfbddqnfddddbqqqqdffdbwwbbw",
+    "solve_rows": "wwwddqdqqqqq?dfffffffddqnfddddqqqqdnnfwwbbbdffwwwq",
     "fast_solve": "wwwdqqqqffffnnffwqw",
     "publish_rows": "dwwbffff",
     "kept_length": "qqqqnn",
@@ -162,7 +162,7 @@ _KINDS = {
     "tied": "diddfwwwq",
     "add_episode_terms": "wddbbiiinnnn",
     "clear_choice": "dfq",
-    "map_settle": "dqdqqqqq?dfffffbqqqqfffd?bdbddd?b?b?bdbqnw",
+    "map_settle": "dqdqqqqq?dfffffbqqqqdffd?bdbddd?b?b?bdbqnw",
     "bound_recall": "qddd?b?bdbnnd?qnffnfffwq",
     "map_pieces": "?nnqq",
     "map_moves": "ddddfffnnw",

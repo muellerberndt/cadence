@@ -168,7 +168,7 @@ def _unit_key(key: np.ndarray) -> np.ndarray:
     peak = np.max(np.abs(key), axis=-1, keepdims=True)
     scaled = np.divide(key, peak, out=np.zeros_like(key), where=peak > 0)
     norm = np.linalg.norm(scaled, axis=-1, keepdims=True)
-    return np.divide(scaled, norm, out=np.zeros_like(key), where=norm > 0)
+    return np.asarray(np.divide(scaled, norm, out=np.zeros_like(key), where=norm > 0))
 
 
 # what rounding leaves of a slot the heads read whole, in shares of the slot: nothing
