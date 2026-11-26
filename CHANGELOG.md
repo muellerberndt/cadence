@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **A custom anatomy may project the sensory neurons one way beside a learned code.** A
+  connectome with `learned_code=units` was refused when a sensory neuron projected anywhere but
+  to the code region. A one-way projection to a region that does not read the code, such as a
+  reflex arc from the observation onto the motor region, is now built: its synapses are ordinary
+  plastic synapses of the whole graph, driven by the sensory neurons as in a brain without the
+  region, and the code's phase, tables and own synapses are unchanged. Still refused: a sensory
+  projection onto the neurons that read the code, and any synapse into the sensory neurons.
+  `Brain.compose` builds no such projection, so composed brains and existing checkpoints are
+  unchanged. A checkpoint of a brain with such a projection names no new feature: 0.104.0 and
+  earlier refuse it when they rebuild the connectome. No chamber measures what such a projection
+  does for a brain.
+
 ## 0.104.0 - 2026-11-26
 
 Deep teaching resolves small motor corrections, and recall heads now receive credit from the
