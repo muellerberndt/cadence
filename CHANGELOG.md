@@ -1,25 +1,45 @@
 # Changelog
 
-## Unreleased
+## 0.104.0 - 2026-11-26
 
-- Recall address lessons and sampled eligibility follow each head's actual read projections
-  when a custom graph routes recall into a different hidden region. Ordinary association-only
-  recall keeps its existing path. This requires no checkpoint migration or extra labels.
-- `recall_key_norm=True` is an opt-in recall geometry for a new brain. It normalizes the
-  ordered observation keys without rescaling what the reads deliver. The choice is saved with
-  the memory. The existing recall recipe is unchanged.
-- Qualified lessons resolve per-slot motor forces before certifying the signed phases.
-  Finite lessons use both full configured signed budgets when a movement
-  tolerance could hide the first motor response. Neither fix adds hidden targets.
-- Optional teaching-credit reports distinguish potential from activation contrast and
-  name missing return paths and path depth. Opt-in calibration tries bounded hidden
-  bias and apical gains without hidden labels or manual per-region settings. It keeps
-  a candidate only if its observed response improves and its sampled free choices
-  are preserved. The separate experimental learned projection budget remains opt-in.
-- Experimental `learning_credit_transport` amplifies changes in apical return around
-  the observed free state during paired teaching phases. It preserves the zero-force
-  equation, keeps the act and reward rules intact, and checks both signed states before
-  using the new contrast.
+Deep teaching resolves small motor corrections, and recall heads now receive credit from the
+regions they actually drive. Both fixes use motor labels only and add no memory-to-motor route.
+
+### Fixed
+
+- **Small signed teaching phases no longer stop before responding to the motor force.** A
+  qualified lesson checks its signed phases relative to the per-slot force and refuses a
+  nonzero correction that the phases did not resolve. Finite teaching uses the configured
+  signed phase budgets when a movement tolerance could hide that first response. The mean
+  motor loss and its `beta` are unchanged.
+- **Recall addresses learn through custom read projections.** A head routed to an instrument
+  plan or another hidden region reads the signed movement of those receivers for teaching and
+  sampled-action eligibility. The previous association still supplies query context. Standard
+  association-only recall keeps its existing path. Existing checkpoints need no migration.
+
+### New opt-in tools
+
+- **`recall_key_norm=True`** compares unit-normalized ordered observation keys without changing
+  recalled values or successors. This is a setting for a fresh brain and is saved with the
+  memory. It leaves the default geometry unchanged and does not compose with `recall_action`.
+- **`learning_credit_window`** measures regional activation and voltage contrast, free-state
+  slope, and return-path reach. It can warn when a trainable hidden region consistently sees
+  almost none of a measured motor correction.
+- **`learning_drive_budget` and `learning_credit_calibration`** are optional controls. The
+  budget bounds learned basal projections on observed activations. Calibration tests bounded
+  changes to bias and apical gain and keeps candidates only when the measured response improves
+  and sampled free choices are preserved. Neither guarantees behavior on unseen inputs.
+- **`learning_credit_transport`** is experimental. It amplifies the change in apical feedback
+  around the free state during paired teaching phases, checks both signs, and falls back when
+  the candidate fails. It does not change ordinary acting or reward eligibility.
+
+The [teaching](docs/teach.md), [settling](docs/settling.md), [memory](docs/memory.md),
+[evaluation](docs/evaluate.md), and [troubleshooting](docs/troubleshooting.md) guides explain how
+to distinguish a missing return path, saturation, an under-resolved correction and a context
+that the brain did not retrieve. Controlled four-instrument tests demonstrate motor-only
+coordination when the older cue is accessible. Held-out music tests are mixed. This release
+does not claim that the composer has solved long-form planning or that all deep architectures
+learn without calibration.
 
 ## 0.103.2 - 2026-11-25
 

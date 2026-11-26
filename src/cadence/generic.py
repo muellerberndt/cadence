@@ -151,10 +151,12 @@ LONGTERM_FORMAT = "cadence-brain/4"
 # surprise and the focus it draws, #337), ``map`` (a held map of things whose sheet carries
 # values or reads surprise, which a reader of 0.99.1 cannot build), ``bound`` (records of
 # bound moments, ``compose(bound=records)``, 0.101) and ``cortex_reads`` (a cortex that reads the
-# observation itself beside or in place of its fixed code, ``compose(cortex_reads=...)``, 0.102.0).
+# observation itself beside or in place of its fixed code, ``compose(cortex_reads=...)``, 0.102.0),
+# and ``recall_key_norm`` (unit-normalized recall keys, 0.104.0).
 FEATURES_FORMAT = "cadence-brain/5"
 FEATURES = frozenset(
-    {"strength", "heads", "recall_strength", "surprise", "map", "bound", "cortex_reads"}
+    {"strength", "heads", "recall_strength", "surprise", "map", "bound", "cortex_reads",
+     "recall_key_norm"}
 )
 # A memory's group in BRAIN_FORMAT and the prefix the reader validates its arrays under; the
 # episodic memory's arrays are the context store's and the stream's (``_flat_layout``).
@@ -2136,6 +2138,8 @@ def _saved_features(saved: Mapping[str, Any]) -> list[str]:
         out.append("heads")
     if isinstance(recalled, dict) and bool(recalled.get("strength")):
         out.append("recall_strength")
+    if isinstance(recalled, dict) and bool(recalled.get("key_norm")):
+        out.append("recall_key_norm")
     if (isinstance(records, dict) and bool(records.get("strength"))) or (
             isinstance(store, dict) and bool(store.get("fade_keep"))):
         out.append("strength")
@@ -8041,6 +8045,8 @@ class Brain:
             features.append("heads")
         if self.recall is not None and self.recall.strength:
             features.append("recall_strength")
+        if self.recall is not None and self.recall.key_norm:
+            features.append("recall_key_norm")
         if (self.longterm is not None and self.longterm.strength) or (
                 isinstance(store, SynapticMemory) and bool(store.fade_keep)):
             features.append("strength")
