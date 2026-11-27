@@ -305,6 +305,9 @@ class LearnedCode:
         if self.mask is not None:
             draw = draw * self.mask
         self.dictionary = _unit_columns(draw)
+        # on the host: the dictionary's Gram matrix with a copy of the dictionary it was made
+        # from, kept while the dictionary reads the same (``_gram``)
+        self._kept_gram: tuple[np.ndarray, np.ndarray] | None = None
         self.weights = np.zeros((self.units, self.context))
         self.thresholds = np.full(self.units, float(self.threshold))
         # the sub-network: the units with every ordered pair of lateral synapses
@@ -360,7 +363,7 @@ class LearnedCode:
                     model = model.replace(dt=float(np.ldexp(self.model.dt, -self.halvings)))
                 graph = NeuralGraph(
                     self.connectome, model, efficacy=self.lateral_efficacy(),
-                    bias=-self.thresholds,
+                    bias=-self.thresholds, layout=self.graph.layout,
                 )
                 self._device, self._base, self._coupled = None, None, None
                 self.graph, self._rest = graph, None
@@ -379,7 +382,7 @@ class LearnedCode:
         )
         graph = self._stepped(base)
         self._device, self._base, self._coupled = device, base, None
-        self.graph, self._rest = graph, None
+        self.graph, self._rest, self._kept_gram = graph, None, None
 
     def _stepped(self, base: NeuralGraph | None = None) -> NeuralGraph:
         """On a device: the sub-network at the present step, of ``base`` where a placement is
@@ -465,23 +468,27 @@ class LearnedCode:
         def bound(h: int) -> float:  # the least smallest eigenvalue h halvings allow
             return 1.0 - margin * float(np.ldexp(1.0, h)) / dt
 
-        held = False
+        def holds(h: int) -> bool:  # the tests of ``_held_halvings`` for ``h`` halvings
+            clear = self.BOUND_MARGIN * max(1.0, abs(bound(h)))
+            allowed = bound(h) + clear
+            if not np.isfinite(allowed):  # a step halved past what the bound can state
+                return False
+            doubtful = np.flatnonzero(floors < allowed)
+            if len(doubtful) and not above(doubtful, allowed):
+                return False
+            if not h:
+                return True
+            fewer = bound(h - 1) - clear
+            # some row clear below the bound one halving fewer would need: the rows with the
+            # lowest floors are tried first, one at a time
+            return not all(
+                above(np.array([row]), fewer) for row in np.argsort(floors, kind="stable")
+            )
+
         if np.isfinite(floors).all():
-            clear = self.BOUND_MARGIN * max(1.0, abs(bound(halvings)))
-            allowed = bound(halvings) + clear
-            if np.isfinite(allowed):  # else a step halved past what the bound can state
-                doubtful = np.flatnonzero(floors < allowed)
-                held = not len(doubtful) or above(doubtful, allowed)
-                if held and halvings:
-                    fewer = bound(halvings - 1) - clear
-                    # some row clear below the bound one halving fewer would need: the rows
-                    # with the lowest floors are tried first, one at a time
-                    held = not all(
-                        above(np.array([row]), fewer)
-                        for row in np.argsort(floors, kind="stable")
-                    )
-        if held:
-            return halvings
+            for candidate in self._step_candidates(halvings):
+                if holds(candidate):
+                    return candidate
         least = []
         for start in range(0, rows, fewer_rows):
             block = coupling(slice(start, start + fewer_rows))
@@ -534,15 +541,18 @@ class LearnedCode:
         return 0 if need <= 1.0 else int(np.ceil(np.log2(need)))
 
     def _held_halvings(self, coupling: np.ndarray) -> int | None:
-        """The step's present halvings when Cholesky factorizations settle them: every row's
-        smallest eigenvalue clear above the bound those halvings allow, and some row's clear
-        below the bound one halving fewer would need. ``coupling - t I`` factorizes exactly
+        """The step's halvings when Cholesky factorizations settle them: the present ones, or
+        one fewer or one more (``_step_candidates``). ``h`` halvings are the answer where every
+        row's smallest eigenvalue lies clear above the bound they allow, and some row's clear
+        below the bound one halving fewer would need: then ``h`` is the least step the
+        eigenvalues admit, whatever step the region holds. ``coupling - t I`` factorizes exactly
         when its every eigenvalue lies above ``t``, a factorization holding where it raises
         nothing and its factor is finite; a row whose Gershgorin floor already lies
         above it needs no factorization, and the rows with the lowest floors are tried first
         for the second test. ``BOUND_MARGIN`` keeps every test far from rounding, so the answer
-        is the one the eigenvalues give; None where a test is not clear or the halvings change,
-        and the eigenvalues decide."""
+        is the one the eigenvalues give; None where no candidate's tests are clear (a step a
+        hair from a bound, or one that changes by more than one halving), and the eigenvalues
+        decide."""
         dt, margin, halvings = self.model.dt, self.STEP_MARGIN, self.halvings
         index = np.arange(coupling.shape[-1])
         eye = np.eye(len(index))
@@ -564,18 +574,33 @@ class LearnedCode:
                 return False
             return bool(np.isfinite(factor).all())
 
-        clear = self.BOUND_MARGIN * max(1.0, abs(bound(halvings)))
-        allowed = bound(halvings) + clear
-        if not np.isfinite(allowed):  # a step halved past what the bound can state
-            return None
-        doubtful = np.flatnonzero(floors < allowed)
-        if len(doubtful) and not above(doubtful, allowed):
-            return None
-        if halvings:
-            fewer = bound(halvings - 1) - clear
-            if all(above(np.array([row]), fewer) for row in np.argsort(floors, kind="stable")):
-                return None
-        return halvings
+        def holds(h: int) -> bool:  # both tests for ``h`` halvings, each clear of its bound
+            clear = self.BOUND_MARGIN * max(1.0, abs(bound(h)))
+            allowed = bound(h) + clear
+            if not np.isfinite(allowed):  # a step halved past what the bound can state
+                return False
+            doubtful = np.flatnonzero(floors < allowed)
+            if len(doubtful) and not above(doubtful, allowed):
+                return False
+            if not h:
+                return True
+            fewer = bound(h - 1) - clear
+            return not all(
+                above(np.array([row]), fewer) for row in np.argsort(floors, kind="stable")
+            )
+
+        for candidate in self._step_candidates(halvings):
+            if holds(candidate):
+                return candidate
+        return None
+
+    @staticmethod
+    def _step_candidates(halvings: int) -> tuple[int, ...]:
+        """The halvings the factorization tests are asked for, in turn: the present ones, then
+        one fewer and one more. A step that changes most often changes by one, and the two
+        tests settle a neighbour as they settle the present step; one fewer is asked first,
+        since a step too long fails its first factorization early."""
+        return (halvings, halvings - 1, halvings + 1) if halvings else (0, 1)
 
     def rest_stability(self) -> int:
         """The negative-mode step bound of ``stability`` over every state, from the
@@ -591,7 +616,7 @@ class LearnedCode:
             self.model.leak * self.model.slope * negative_peak * (1.0 - negative_peak) / rest
         )
         s_max = max(positive, negative)
-        largest = float(np.linalg.eigvalsh(self.gram())[-1])
+        largest = float(np.linalg.eigvalsh(self._gram())[-1])
         mu = s_max * (self.model.gain * (1.0 - largest) - self.top_down)
         need = self.model.dt * (1.0 - mu) / self.STEP_MARGIN
         return 0 if need <= 1.0 else int(np.ceil(np.log2(need)))
@@ -664,23 +689,44 @@ class LearnedCode:
                 self.halvings = held
                 raise
             return
+        # the connectome is the one the present graph was laid out for: the new graph takes
+        # that layout, with what it has found of it (whether synapses share an entry, the
+        # entries' order), in place of laying the same synapses out again
         graph = NeuralGraph(
             self.connectome,
             self.model.replace(dt=float(np.ldexp(self.model.dt, -halvings))),
-            efficacy=self.lateral_efficacy(), bias=-self.thresholds,
+            efficacy=self.lateral_efficacy(), bias=-self.thresholds, layout=self.graph.layout,
         )
         self.halvings, self.graph = halvings, graph
 
     # -- the tables as synapses
 
     def gram(self) -> np.ndarray:
+        """The dictionary's Gram matrix, ``Phi^T Phi``, an array of the caller's own."""
+        return np.array(self._gram(), dtype=float, copy=True)
+
+    def _gram(self) -> np.ndarray:
+        """The Gram matrix as the region reads it, not to be written. On the host it is kept
+        while the dictionary reads the same: the step's tests, an install and a restep read it
+        at one dictionary, and it is made once for them. It is kept with a copy of the
+        dictionary it was made from and returned only where the dictionary equals that copy,
+        entry for entry, so a dictionary replaced or written in place is read anew. On a
+        device the kernel holds the lateral weights (``_coupled``) and nothing is kept here."""
+        if self.__dict__.get("_device") is not None:
+            return self._gram_product()
+        kept = self._kept_gram
+        if kept is None or not np.array_equal(kept[0], self.dictionary):
+            kept = self._kept_gram = (self.dictionary.copy(), self._gram_product())
+        return kept[1]
+
+    def _gram_product(self) -> np.ndarray:
         return np.asarray(self.dictionary.T @ self.dictionary)
 
     def lateral(self) -> np.ndarray:
         """The lateral weight from unit ``j`` to unit ``k``, ``-(Phi_j . Phi_k)``, as a
         ``(units, units)`` matrix whose diagonal is zero (a neuron has no synapse onto
         itself)."""
-        out = -self.gram()
+        out = -self._gram()
         np.fill_diagonal(out, 0.0)
         return np.asarray(out)
 
