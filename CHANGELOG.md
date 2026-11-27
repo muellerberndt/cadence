@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.104.2 - 2026-11-27
+
+### Fixed
+
+- Opt-in teaching-only credit transport no longer skips the viable 1.5× fallback when
+  a 6× limit cannot admit either 6× or 3×. It halves while above one, then tries the
+  unamplified control. The limit of six bounds the search to four candidates. Each
+  candidate still has to qualify both signed phases and stay near the free reference.
+  Transport remains off by default. Ordinary acting, reward-only learning and checkpoint
+  formats are unchanged. An existing transport-enabled checkpoint can admit a different
+  factor in a subsequent lesson under the repaired search.
+
 ## 0.104.1 - 2026-11-27
 
 Five changes from building a composer brain of several hundred motor slots. A surprise lesson

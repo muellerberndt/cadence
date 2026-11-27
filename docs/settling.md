@@ -501,7 +501,8 @@ not a claim that the resulting update is the gradient of the ordinary free netwo
 Only apical graphs have a transport branch. The setting is a maximum factor between
 `1.0` and `6.0`, or `0.0` to leave the feature off. `1.0` is the matched
 qualification control with no amplification. Cadence refines the free reference, then
-tries the requested factor, half that factor (at least one), and one. It checks both signs
+tries the requested factor and successively halves it while it remains above one, before
+trying one. The maximum of six thus tries 6, 3, 1.5, and 1 if needed. It checks both signs
 together. It discards an unqualified candidate, one that did not resolve a motor force,
 or one where activation moved too far from the refined free reference. If no candidate is
 admitted it uses the ordinary signed equations, starting from that reference if one was

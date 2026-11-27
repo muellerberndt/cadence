@@ -79,6 +79,36 @@ def test_zero_force_centered_feedback_keeps_the_original_equilibrium():
     assert centered.qualified.all() and centered.steps == 0
 
 
+@pytest.mark.parametrize("qualified", [False, True])
+def test_high_transport_limit_keeps_the_working_intermediate_fallback(qualified):
+    learners = [chain("cpu", factor, qualified)[0] for factor in (1., 1.5, 6.)]
+    _, x = chain("cpu", 6.)
+    labels = np.array([0, 1])
+    for learner in learners:
+        learner.config = replace(learner.config, beta=.022, nudged_steps=16)
+    ordinary, intermediate, high = [learner.step(x, labels) for learner in learners]
+    assert ordinary[1]["credit_transport_factor"] == 1.
+    assert intermediate[1]["credit_transport_factor"] == 1.5
+    assert high[1]["credit_transport_factor"] == 1.5
+    assert high[1]["credit_transport_trials"] == 3.
+    assert high[1]["credit_transport_refused"] == 0.
+    assert high[1]["credit_transport_row_sweeps"] > intermediate[1]["credit_transport_row_sweeps"]
+    np.testing.assert_array_equal(high[0].free.activation, ordinary[0].free.activation)
+    np.testing.assert_array_equal(high[0].nudged.activation, intermediate[0].nudged.activation)
+    np.testing.assert_array_equal(high[0].opposite.activation, intermediate[0].opposite.activation)
+    np.testing.assert_array_equal(learners[2].brain.efficacy, learners[1].brain.efficacy)
+    np.testing.assert_array_equal(learners[2].brain.bias, learners[1].brain.bias)
+
+
+def test_transport_backoff_does_not_mutate_a_numpy_limit():
+    learner, x = chain("cpu", 6.)
+    limit = np.array(6.)  # the config accepts this scalar-like value
+    learner.config = replace(learner.config, beta=.022, nudged_steps=16, credit_transport=limit)
+    _, report = learner.step(x, np.array([0, 1]))
+    assert report["credit_transport_factor"] == 1.5
+    assert limit.item() == 6.
+
+
 def test_transport_never_runs_during_reward_only_live():
     args = dict(apical=.2, modules=(8, 6), arousal={"youth": 8}, backend="cpu", seed=3)
     original = cd.Brain.compose(4, 2, **args)
@@ -91,11 +121,12 @@ def test_transport_never_runs_during_reward_only_live():
     np.testing.assert_array_equal(original.brain.weights, transport.brain.weights)
 
 
-def test_transport_refuses_large_movements_and_runs_the_ordinary_lesson():
-    learner, x = chain("cpu", 3.)
+@pytest.mark.parametrize(("limit", "attempts"), [(3., 3.), (6., 4.)])
+def test_transport_refuses_large_movements_and_runs_the_ordinary_lesson(limit, attempts):
+    learner, x = chain("cpu", limit)
     learner.config = replace(learner.config, beta=.5)
     _, report = learner.step(x, np.array([0, 1]))
-    assert report["credit_transport_trials"] == 3.
+    assert report["credit_transport_trials"] == attempts
     assert report["credit_transport_factor"] == 0.
     assert report["accepted"] == 1.
     assert learner.contrast_updates == 1
