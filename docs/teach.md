@@ -638,9 +638,51 @@ taught at every lesson and counts no agreed slot). `agreed_slots / (attempted_pr
 is the share of the answer that is right. It reads zero where the lesson judges no row: under
 `learning_surprise=False` and for `targets`.
 
-Select it where a readout saturates under lessons it answers correctly, or where streams are
-shown row by row for many passes; [benchmarks/stream_words](../benchmarks/stream_words/README.md)
-uses it with every-row lessons as the control.
+**By slot, opt-in: `learning_surprise_slots=True`** (with `learning_surprise=True`;
+`LearnerConfig(surprise=True, surprise_slots=True)` for a learner). By rows, a row that is wrong
+in one slot is taught in every slot: a brain of two hundred slots that answers nine in ten of them
+as shown skips no row and pulls every slot of every row, the ones it had right too. By slot, a
+taught row pulls only the slots whose answer differs from their label. A labelled slot the answer
+already gives as shown is left open at that row, as
+[a slot the lesson leaves open](#a-slot-the-lesson-leaves-open) is: its target is what the slot
+says in the lesson's own free phase, the pull on it is zero, and no synapse learns that answer
+again from the row. A row that agrees in every slot stays untaught.
+
+```python
+import numpy as np
+from cadence import Brain
+
+by_slot = Brain.compose(8, 12, slots=(3, 3, 3, 3), seed=0, recall=False,
+                        learning_surprise=True, learning_surprise_slots=True)
+rows = np.eye(8)[[2, 5]]
+shown = np.array([[0, 1, 2, 0], [2, 2, 1, 0]])        # one label per slot
+report = by_slot.lesson(rows, shown)
+# the slots pulled: the labelled slots of the lesson less the ones the answer gave as shown
+assert report["taught_slots"] == 2 * 4 - report["agreed_slots"]
+assert by_slot.describe()["genes"]["learning_surprise_slots"] is True
+```
+
+- The report adds `taught_slots`, the slots the lesson pulled. `agreed_slots` counts as before.
+- The slots are judged by the answer the rows are judged by: the act the composed brain would
+  issue, a caller's `answer`, or the lesson's free phase. With `recall_tokens`, a row whose answer
+  is no token is taught in every slot. `targets` are not judged and teach every slot. A slot the
+  caller leaves open stays open.
+- With `learning_surprise_share=True` the step is scaled by the share of the lesson's labelled
+  slots it taught, in place of the share of its rows.
+- `retune` switches it in a living brain. A brain of one slot is unchanged: its row is its slot.
+  A lesson of several slots runs its phases in turn; the lesson in one compiled call
+  (`learning_compiled_moment`) is a lesson of one slot.
+- A saved brain names the feature `learning_surprise_slots`, and its learner's checkpoint the
+  format `cadence-checkpoint/7`: a library without the setting refuses the file by name where it
+  would otherwise teach every slot. `Lives` refuses the setting by name.
+
+No chamber of the library has read it. It is for lessons of many slots in which most slots of a
+row are already right, where the row rule keeps teaching what the brain holds.
+
+Select surprise lessons where a readout saturates under lessons it answers correctly, or where
+streams are shown row by row for many passes;
+[benchmarks/stream_words](../benchmarks/stream_words/README.md) uses it with every-row lessons as
+the control.
 
 Under the [normalized point](#many-lessons-the-normalized-point-for-imitation), select it from the
 first lesson of a long curriculum. Normalized steps do not shrink as an answer becomes right, so

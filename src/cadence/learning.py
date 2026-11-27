@@ -96,6 +96,9 @@ _RELATIVE_TINY = 1e-12
 # The equation error of a taught phase must be small compared with the force that
 # distinguishes it from the free phase. Keep the mean-slot loss and its beta unchanged.
 _NUDGE_RESIDUAL_SHARE = 0.125
+# Lessons in a row without an admitted transport factor before the learner says so, where no
+# ``credit_window`` sets the run (the window the guides name).
+_TRANSPORT_WINDOW = 15
 
 
 def _compiled_passes() -> bool:
@@ -169,6 +172,12 @@ class LearnerConfig:
     # kernels of a moment (the recall memory's read, write and address lesson, the place store's
     # read, the carried gains' contrast) in compiled passes; the same equations, other bits
     compiled_moment: bool = False
+    # with ``surprise``, opt-in, a learner of several slots: a taught row pulls only the slots
+    # whose answer differs from their label. A labelled slot the answer already gives as shown is
+    # left open at that row (``OPEN``): its target is what the slot says in the lesson's own
+    # free phase, so no synapse learns that answer again from the row. With ``surprise_share``
+    # the step is scaled by the share of the lesson's labelled slots it taught
+    surprise_slots: bool = False
 
     # Fields this library no longer takes, each with the release that retired it, the one
     # value at which a saved config still loads (the law of this version) and what the learner
@@ -290,6 +299,13 @@ class LearnerConfig:
                 RuntimeWarning,
                 stacklevel=3,
             )
+        if not isinstance(self.surprise_slots, bool):
+            raise ValueError("surprise_slots must be boolean")
+        if self.surprise_slots and not self.surprise:
+            raise ValueError(
+                "surprise_slots leaves the slots a surprise lesson's answer already gives as "
+                "shown open: it needs surprise=True (learning_surprise)"
+            )
         if self.surprise_share and not self.surprise:
             warnings.warn(
                 "LearnerConfig with surprise_share=True and surprise=False: the share scales "
@@ -327,6 +343,7 @@ _NEUTRAL: dict[str, Any] = {
     "normalize_relative": 0.0, "nudged_fixed": False, "rehearsal": 0.0, "rehearsal_capacity": 512,
     "surprise_share": False, "fast_settle": False, "compiled_moment": False,
     "drive_budget": 0.0, "credit_window": 0, "credit_calibration": 0, "credit_transport": 0.0,
+    "surprise_slots": False,
 }
 
 
@@ -885,6 +902,48 @@ class Learner:
             min(160, self.config.nudged_steps),
         )
 
+    def _transport_outcome(self, transport: dict[str, float]) -> None:
+        """Say where ``credit_transport`` admitted no factor and the lesson ran the ordinary
+        signed phases: ``credit_transport_refused`` joins the lesson's report, one for such a
+        lesson and zero where a factor was admitted. A run of ``credit_window`` such lessons
+        (15 where no window is set) warns once, with what refused the latest; an admitted
+        factor ends the run. The run's length is a diagnostic and is not saved, so a report
+        stays a function of its lesson."""
+        if not self.config.credit_transport or "credit_transport_factor" not in transport:
+            return
+        refused = not transport["credit_transport_factor"] > 0.0
+        transport["credit_transport_refused"] = float(refused)
+        run = self.__dict__["_transport_refusals"] = (
+            self.__dict__.get("_transport_refusals", 0) + 1 if refused else 0
+        )
+        if run != (self.config.credit_window or _TRANSPORT_WINDOW):
+            return
+        cfg = self.config
+        if transport.get("credit_transport_no_apical"):
+            why = "the graph has no apical compartment, and only an apical graph has a branch"
+        elif not cfg.nudged_steps:
+            why = "the signed phases have a budget of no sweeps"
+        elif transport.get("credit_transport_reference_refused"):
+            why = (
+                "the zero-force reference did not qualify (residual "
+                f"{transport.get('credit_transport_reference_residual', float('nan')):.3g} "
+                f"against 2e-07 within {min(cfg.free_steps, 160)} sweeps)"
+            )
+        else:
+            why = (
+                f"none of the {int(transport.get('credit_transport_trials', 0.0))} candidate "
+                f"solves of the latest lesson was admitted within {min(160, cfg.nudged_steps)} "
+                "signed sweeps"
+            )
+        warnings.warn(
+            f"credit_transport admitted no factor in {run} lessons in a row, which ran "
+            f"the ordinary signed phases: {why}. The lesson reports hold credit_transport_factor "
+            "and the credit_transport_reference_* fields; see "
+            "docs/settling.md#transporting-a-correction-without-amplifying-ordinary-return.",
+            RuntimeWarning,
+            stacklevel=4,
+        )
+
     def _pull_size(self, nudge: Nudge, free: BrainState) -> np.ndarray:
         """Peak absolute teaching drive per row, including temperature, weights and open slots."""
         activity = np.atleast_2d(_on_host(free, "activation"))
@@ -1193,6 +1252,17 @@ class Learner:
     def _limit_drive(self, scale: np.ndarray, free: BrainState) -> tuple[np.ndarray, int]:
         brain = self.brain
         layout = brain.layout
+        if layout.fragments:
+            # one block over the whole matrix in place of the projections: the budget would
+            # read the whole graph as one projection, from a dense array of n by n entries
+            raise ValueError(
+                "drive_budget gives each projection into a hidden region a share of that "
+                "region's budget, and this connectome's layout holds none: its contiguous "
+                f"populations cut it into {layout.fragments} blocks, more than the layout "
+                "takes, so it is one block over the whole matrix. Name fewer contiguous "
+                "populations (drop the ones that only wired the connectome), or set the "
+                "budget to 0 (learning_drive_budget=0)"
+            )
         plan = self._credit_plan()
         assert self.plastic_synapses is not None
         adjustable = self.plastic_synapses.copy()
@@ -1942,11 +2012,17 @@ class Learner:
             return self._untaught(np.zeros(batch, dtype=bool))  # no row pulls: no phase runs
         # the slots the lesson leaves open (labels of ``OPEN``), at the rows the phases run on
         open_slots: np.ndarray | None = None
+        # under ``surprise_slots``: the slots the lesson pulls and the slots it labels
+        slots: tuple[int, int] | None = None
         if target is None:  # the labels' targets, made where a phase reads them
             assert labels is not None
             target = self.targets(labels)
             if self.slot_count > 1 and labels.size and labels.min() < 0:
                 open_slots = labels < 0
+            if judged is not None:
+                assert answer is not None
+                open_slots = self._open_agreed(open_slots, np.asarray(answer), labels)
+                slots = self._taught_slots(open_slots, judged, labels)
         if judged is not None:
             drive, target, weight = self._lesson(judged, drive, target, weight)
             warm = None if warm is None else _restrict(warm, judged)
@@ -1965,6 +2041,9 @@ class Learner:
             if judged is None and self._silent(weight, taught):
                 return self._agreed(free, phases, np.zeros(batch, dtype=bool))
             if judged is None:
+                if taught is not None and labels is not None:  # judged by the free answer
+                    open_slots = self._open_agreed(open_slots, self._answer(free), labels)
+                    slots = self._taught_slots(open_slots, taught, labels)
                 drive, target, weight = self._lesson(taught, drive, target, weight)
                 free = _restrict(free, taught, drive)
                 if open_slots is not None and taught is not None:
@@ -1974,6 +2053,7 @@ class Learner:
             pull = self.nudge_for(target, cfg.beta, weight, held)
             boosted, work = self._transport_signs(drive, free, pull, transport_reference)
             transport.update(work)
+            self._transport_outcome(transport)
             if boosted is not None:
                 phases["nudged"], phases["opposite"] = boosted
             else:
@@ -1995,10 +2075,12 @@ class Learner:
             unresolved = int(np.count_nonzero((self._pull_size(pull, free) > 0) & ~moved))
             if unresolved:
                 raise LearningPhaseError("opposite", phases, unresolved=unresolved)
-            report = self.update(free, nudged, opposite, share=self._share(taught))
+            report = self.update(free, nudged, opposite, share=self._share(taught, slots))
             report.update(_phase_report(phases, accepted=True, qualified=True))
             report.update(_taught_report(taught, batch))
             report.update(transport)
+            if slots is not None:
+                report["taught_slots"] = float(slots[0])
             return LearnedState(free, nudged, opposite, taught), report
         if (judged is not None and weight is None and cfg.compiled_moment
                 and open_slots is None and not cfg.credit_transport):
@@ -2036,6 +2118,9 @@ class Learner:
             self._warn_exhausted(exhausted)
             return state, report
         if judged is None:
+            if taught is not None and labels is not None:  # judged by the free answer
+                open_slots = self._open_agreed(open_slots, self._answer(free), labels)
+                slots = self._taught_slots(open_slots, taught, labels)
             drive, target, weight = self._lesson(taught, drive, target, weight)
             free = _restrict(free, taught, drive)
             if open_slots is not None and taught is not None:
@@ -2047,6 +2132,7 @@ class Learner:
         push = self.nudge_for(target, -cfg.beta, weight, held)
         boosted, work = self._transport_signs(drive, free, pull, transport_reference)
         transport.update(work)
+        self._transport_outcome(transport)
         if boosted is not None:
             phases["nudged"], phases["opposite"] = boosted
             nudged, opposite = boosted[0].state, boosted[1].state
@@ -2063,11 +2149,13 @@ class Learner:
                 opposite.steps, cfg.tolerance if cfg.tolerance is not None else 0.0,
                 residual_checks=1,
             )
-        report = self.update(free, nudged, opposite, share=self._share(taught))
+        report = self.update(free, nudged, opposite, share=self._share(taught, slots))
         report.update(_phase_report(phases, accepted=True, qualified=False))
         report.update(_taught_report(taught, batch))
         report.update(transport)
         report["free_budget_exhausted"] = float(exhausted)
+        if slots is not None:
+            report["taught_slots"] = float(slots[0])
         self._warn_exhausted(exhausted)
         return LearnedState(free, nudged, opposite, taught), report
 
@@ -2139,11 +2227,38 @@ class Learner:
             differs &= labels >= 0
         return np.asarray(differs.any(axis=1)) if differs.ndim == 2 else differs
 
-    def _share(self, taught: np.ndarray | None) -> float:
-        """Under ``surprise_share``, the share of the lesson's rows it taught; else one."""
+    def _share(self, taught: np.ndarray | None, slots: tuple[int, int] | None = None) -> float:
+        """Under ``surprise_share``, the share of the lesson's rows it taught, and with
+        ``surprise_slots`` (``slots``: the slots it pulls, the slots it labels) the share of
+        its labelled slots it taught; else one."""
         if taught is None or not (self.config.surprise and self.config.surprise_share):
             return 1.0
+        if slots is not None:
+            return slots[0] / slots[1] if slots[1] else 0.0
         return float(np.mean(taught))
+
+    def _open_agreed(
+        self, open_slots: np.ndarray | None, answer: np.ndarray, labels: np.ndarray
+    ) -> np.ndarray | None:
+        """Under ``surprise_slots``, the slots a lesson leaves open (``open_slots``, True at a
+        label of ``OPEN``, or None) with every labelled slot ``answer`` gives as shown: such a
+        slot is left open at its row, as a label of ``OPEN`` leaves it. ``open_slots`` as it is
+        without the option, and for a learner of one slot, whose row is its slot."""
+        if not (self.config.surprise and self.config.surprise_slots) or self.slot_count == 1:
+            return open_slots
+        agreed = np.asarray(answer == labels, dtype=bool)
+        return agreed if open_slots is None else np.asarray(open_slots | agreed)
+
+    def _taught_slots(
+        self, open_slots: np.ndarray | None, taught: np.ndarray, labels: np.ndarray
+    ) -> tuple[int, int] | None:
+        """Under ``surprise_slots``, how many slots the lesson pulls (the slots of its taught
+        rows it does not leave open) and how many it labels over every row offered; None
+        without the option."""
+        if (not (self.config.surprise and self.config.surprise_slots) or self.slot_count == 1
+                or open_slots is None):
+            return None
+        return int(np.count_nonzero(~open_slots[taught])), int(np.count_nonzero(labels >= 0))
 
     def _taught(self, free: BrainState, labels: np.ndarray | None) -> np.ndarray | None:
         """Under ``surprise``, True per row where the free answer differs from its label; None
@@ -2189,7 +2304,14 @@ class Learner:
             if not cfg.qualified:
                 report["free_budget_exhausted"] = 0.0
             held = _UNTAUGHT[(len(taught), cfg.qualified)] = report
-        return LearnedState(None, None, None, taught), dict(held)
+        return LearnedState(None, None, None, taught), self._no_slots(dict(held))
+
+    def _no_slots(self, report: dict[str, float]) -> dict[str, float]:
+        """``report`` of a lesson that taught no row, with ``taught_slots`` at zero under
+        ``surprise_slots``; as it is without the option."""
+        if self.config.surprise and self.config.surprise_slots and self.slot_count > 1:
+            report["taught_slots"] = 0.0
+        return report
 
     def _agreed(
         self, free: BrainState, phases: Mapping[str, Equilibrium], taught: np.ndarray
@@ -2203,7 +2325,7 @@ class Learner:
             for key in _PHASE_KEYS:
                 report[f"{name}_{key}"] = 0.0
         report.update(_taught_report(taught, len(taught)))
-        return LearnedState(free, free, None, taught), report
+        return LearnedState(free, free, None, taught), self._no_slots(report)
 
     # finite lessons that ran a free phase, and those whose free phase used its whole budget
     finite_lessons = 0

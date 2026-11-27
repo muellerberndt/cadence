@@ -1,5 +1,92 @@
 # Changelog
 
+## 0.104.1 - 2026-11-27
+
+Five changes from building a composer brain of several hundred motor slots. A surprise lesson
+can teach only the slots that are wrong, a custom anatomy can project the sensory neurons one
+way beside a learned code, two fallbacks that were silent report themselves, and a learned code
+whose step changes does less work. The released panel of 17 brains continues to the bit both
+ways: files saved by 0.104.0 here, and files this version saves without the new option in
+0.104.0. The panel holds no brain with the opt-ins of 0.104.0.
+
+### New opt-in tools
+
+- **`learning_surprise_slots=True` teaches a surprise lesson by slot.** With several motor slots
+  the surprise rule judges rows: a row that is wrong in one slot is taught in every slot, so a
+  brain of many slots skips no row and every lesson pulls the slots it already answers as shown.
+  With the option, a taught row pulls only the slots whose judging answer differs from their
+  label. A labelled slot the answer already gives as shown is left open at that row, as a label
+  of -1 leaves it: zero pull at the lesson's free state. A row that agrees in every slot stays
+  untaught, a row whose answer is no token is taught in every slot, and `targets` are not judged.
+  The report adds `taught_slots`, and `learning_surprise_share` then scales the step by the share
+  of the lesson's labelled slots it taught. It needs `learning_surprise=True`, `retune` switches
+  it, and `Lives` refuses it by name. A saved brain names the feature `learning_surprise_slots`
+  and its learner the checkpoint format `cadence-checkpoint/7`, which earlier releases refuse by
+  name. With the option off, lessons, reports and files are what they were, to the bit. No
+  chamber of the library has read the option.
+
+### Changed
+
+- **A custom anatomy may project the sensory neurons one way beside a learned code.** A
+  connectome with `learned_code=units` was refused when a sensory neuron projected anywhere but
+  to the code region. A one-way projection to a region that does not read the code, such as a
+  reflex arc from the observation onto the motor region, is now built: its synapses are ordinary
+  plastic synapses of the whole graph, driven by the sensory neurons as in a brain without the
+  region, and the code's phase, tables and own synapses are unchanged. Still refused: a sensory
+  projection onto the neurons that read the code, and any synapse into the sensory neurons.
+  `Brain.compose` builds no such projection, so composed brains and existing checkpoints are
+  unchanged. A checkpoint of a brain with such a projection names no new feature: 0.104.0 and
+  earlier refuse it when they rebuild the connectome. No chamber measures what such a projection
+  does for a brain.
+
+- **`learning_credit_transport` says when it does not act.** Transport falls back to the
+  ordinary signed phases where its zero-force reference does not qualify or no candidate is
+  admitted. A brain could run every lesson that way with nothing but `credit_transport_factor`
+  at zero in each report to show it. Every report of a taught lesson with transport on now holds
+  `credit_transport_refused`, one where no factor was admitted, and a run of
+  `learning_credit_window` such lessons (15 where no window is set) warns once with what
+  refused the latest: the reference's residual against its tolerance, the candidates, a graph
+  without an apical compartment or a signed budget of no sweeps. The lessons themselves are
+  unchanged. Whether the reference's tolerance and sweep cap should follow the precision and
+  the size of the brain is open.
+
+- **A learned code whose step changes does less work, with the same results.** Three parts of a
+  code phase repeated work at a change of the step's halvings. A restep built the sub-network
+  anew and laid its synapses out again, three passes over every lateral synapse; it now keeps
+  the layout. A step that changed went to an eigenvalue solve of the coupling; the two Cholesky
+  tests that settle a held step are now asked for one halving fewer and one more first, and the
+  eigenvalues decide only where the step changes by more or lies a hair from a bound. And on
+  the host the dictionary's Gram matrix was made at every test, install and restep; it is now
+  made once per dictionary and kept with a copy of the dictionary it is checked against, at the
+  cost of that copy. On a brain composed for the measurement, a code of 1,792 units reading
+  8,608 inputs on the NumPy host with the compiled kernels of one laptop, a moment in which the
+  step changes took 8.6 s and takes 2.0 s, and a moment without a change 2.7 s and 2.3 s.
+  Efficacies, tables, acts and reports are the same bits on the NumPy loop, the compiled
+  kernels and torch.
+
+### Fixed
+
+- **The block layout reports its fallback, and the drive budget refuses it.** A connectome
+  whose contiguous populations cut it into more than 256 blocks was laid out as one block of
+  `n * n` entries without a word: a graph past `dense_limit` then settled on the sparse path,
+  and `learning_drive_budget` read the whole graph as one projection from a dense `n * n` array
+  built at every lesson (9.7 GB at 34,880 neurons). `blocks.layout` now warns at the fallback
+  with the block count and keeps it as `Layout.fragments`, and an update with a drive budget is
+  refused on such a layout before it changes a parameter or the optimizer's history. Many small
+  populations that only wired a connectome are the usual cause; dropping them from the developed
+  connectome gives the same synapses on a block layout. Composed brains stay far below the
+  limit and are unchanged, and a layout as cut settles and learns as before.
+
+### Documentation
+
+- **A first tutorial, [a minimal techno stream generator](docs/tutorials/minimal-techno.md).**
+  It follows the development of one application with many motor slots and a continuing stream
+  and names what failed on the way: a brain without a copy path, whole-row surprise at many
+  slots, a teacher-forced error read as play, a play-time cap that fed the brain its own
+  replacement. Its readings are those of one application, measured by no chamber of the library.
+- [Deep brains](docs/deep-brains.md) and [troubleshooting](docs/troubleshooting.md) name the two
+  new reports and what to do at each.
+
 ## 0.104.0 - 2026-11-26
 
 Deep teaching resolves small motor corrections, and recall heads now receive credit from the

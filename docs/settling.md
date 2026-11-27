@@ -441,7 +441,11 @@ is in activation-logit units, so it is divided by the neuron slope to obtain pot
 For apical brains the constraint budgets basal inputs and leaves room for the apical RMS
 share. It does not cap raw apical feedback independently of the corresponding readout.
 Tied projections share the tighter scale and frozen weights are left alone. In a composed
-brain the report includes `demonstration_drive_limited_projections`.
+brain the report includes `demonstration_drive_limited_projections`. The projections are the
+blocks of the graph's [layout](api.md#blocks-cadenceblocks). A connectome whose populations
+cut it into more than 256 blocks is laid out as one block over the whole matrix, which holds
+no projection to give a share to: an update with a budget is refused there with `ValueError`
+before it changes a parameter or the optimizer's history.
 
 There are no hidden targets. The constraint leaves the state equations unchanged and does
 not claim a drive bound on unseen activity, on held current or on the settling loop's
@@ -506,7 +510,15 @@ still require a wiring change.
 The reference uses up to 160 sweeps of `learning_free_steps`, and each candidate uses up to
 160 sweeps of `learning_nudged_steps`. A zero signed budget skips transport entirely.
 
-`credit_transport_factor` records the admitted factor or zero. The
+`credit_transport_factor` records the admitted factor or zero, and `credit_transport_refused`
+is one for a lesson that admitted no factor and ran the ordinary signed phases. A run of
+`learning_credit_window` such lessons (15 where no window is set) warns once and names what
+refused the latest one: a reference that did not qualify, with its residual against the
+reference's tolerance of 2e-7, candidates that were not admitted, a graph without an apical
+compartment, or a signed budget of no sweeps. An admitted factor ends the run. The run's
+length is a diagnostic and is not saved. On a float32 backend the reference's residual has a
+rounding floor that grows with the brain, so a wide brain can be refused at every lesson there
+while float64 qualifies it: read the field before comparing arms. The
 `credit_transport_reference_*` and `credit_transport_*` work fields count the extra
 reference and candidate solves, including attempts that did not qualify. Candidate work
 counts the chosen signed solve too, so don't add it again to that solve's work. Candidate
@@ -687,6 +699,7 @@ Select rates on development data and freeze them.
 | `qualified`, `damping` | `LearnerConfig` | require full-equation phases; most `dt` halvings per phase | `False`, 3 |
 | `surprise` | `LearnerConfig` | [teach only differing rows](teach.md#lessons-only-where-the-answer-differs) | `False` |
 | `surprise_share` | `LearnerConfig` | with `surprise`, scale a lesson's step by the share of its rows it taught ([in proportion to the surprise](teach.md#in-proportion-to-the-surprise)) | `False` |
+| `surprise_slots` | `LearnerConfig` | with `surprise` and several slots, a taught row pulls only the slots whose answer differs and leaves the rest open; the share then counts slots ([by slot](teach.md#lessons-only-where-the-answer-differs)) | `False` |
 | `fast_settle` | `LearnerConfig` | a composed brain's free solves on the compiled CPU path: rows that stop apart, the activation in vectorizing arithmetic ([settling](#settling-and-equilibrium)) | `False`; `True` in a new brain with the memory |
 | `compiled_moment` | `LearnerConfig` | a composed brain's work around the solve on the CPU in compiled calls: a greedy act in one (read, solve, choice, write), a lesson's judgment in one and a taught lesson in one more (its phases with their checks, the contrast, the update, the address lesson and the carried gains' step); other bits ([the compiled moment](tune.md#the-compiled-moment-opt-in)) | `False` |
 | `rehearsal`, `rehearsal_capacity` | `LearnerConfig` | in a composed brain, after each lesson replay that many times its rows again, each with its episode, drawn from a reservoir of that many lesson rows ([rehearsal](teach.md#teach-several-types-in-sequence-rehearsal)) | 0.0 (off), 512 |

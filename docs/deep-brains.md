@@ -65,13 +65,19 @@ credit beyond the sweep budget. Re-run your old failure before changing settings
 - **Weak apical correction**. Compare `learning_credit_transport=3.0` with `1.0` and `0.0`.
   Factor one controls for the more precise paired solve without amplification. This mode
   amplifies the change from a free reference in teaching only. Check the admitted factor
-  and extra work, not just the requested factor. It does not change ordinary act or reward
+  and extra work, not just the requested factor: `credit_transport_refused` marks a lesson
+  that admitted none, and a run of them warns once. It does not change ordinary act or reward
   eligibility. [Teaching-only transport](settling.md#transporting-a-correction-without-amplifying-ordinary-return)
 - **Recall favors high-norm recent keys**. For a fresh brain, compare the opt-in
   `recall_key_norm=True` with ordinary matching. This normalizes nonzero stored keys, not
   stored values, and is deliberately separate from `recall_cortex_norm`. It is a saved
   choice of geometry. Do not retrofit it by editing a checkpoint or combine it with
   `recall_action`. [Recall addressing and learning](memory.md#how-it-writes-and-how-the-address-learns)
+
+- **Many motor slots**. With `learning_surprise=True` a row that is wrong in one slot is taught
+  in every slot. Compare the opt-in `learning_surprise_slots=True`, which pulls only the slots
+  answered wrong, and read `taught_slots` beside `accepted_presentations`.
+  [Lessons only where the answer differs](teach.md#lessons-only-where-the-answer-differs)
 
 These are experiments, not settings every deep brain needs. Keep the same examples, seeds,
 and motor force when comparing. Recheck both behavior and cost on the deployment backend.
@@ -93,3 +99,10 @@ possible. The bank can teach a distinction that recent neural state then carries
 the bank at the decision, watching a head's weights move, or inspecting its attention alone
 cannot distinguish those cases. Report the intact and control results over multiple seeds
 before promoting an architecture. [Test memory relevance](evaluate.md#test-learned-memory-relevance)
+
+## A worked case
+
+[The minimal techno tutorial](tutorials/minimal-techno.md) follows one deep brain of a few
+hundred motor slots from its first lessons to a continuing stream: which of these checks
+caught what, and what the checks on this page do not catch, such as a teacher-forced error
+that falls while free play gets worse.

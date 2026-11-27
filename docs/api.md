@@ -1099,7 +1099,8 @@ LearnerConfig(beta=0.1, eta=0.2, eta_bias=None, free_steps=100, nudged_steps=50,
               normalize_floor=1e-3, momentum=0.0, scale_cap=8.0, qualified=False,
               damping=3, surprise=False, normalize_relative=0.0,
               nudged_fixed=False, rehearsal=0.0, rehearsal_capacity=512,
-              surprise_share=False, fast_settle=False, compiled_moment=False)
+              surprise_share=False, fast_settle=False, compiled_moment=False,
+              surprise_slots=False)
 Learner(brain, outputs, config=LearnerConfig(), plastic_synapses=None,
         plastic_neurons=None, reciprocal=True, tie_groups=None,
         synapse_rate=None, slots=1, updates=0, contrast_updates=0)
@@ -1288,7 +1289,13 @@ block_contrast(layout, s_plus, s_minus) -> ndarray
 
 `layout` cuts the neurons at the boundaries of contiguous populations and pairs the ranges
 that carry synapses; with no contiguous populations or more than `max_pairs` blocks it is one
-full block. `Layout` has `starts`, `pair_pre`, `pair_post`, `offset`, `edge_index`, `ranges`,
+full block. Past `max_pairs` it warns (`RuntimeWarning`) with the block count and keeps the
+count as `Layout.fragments` (0 for a layout as cut): the one block has `n * n` entries, a
+graph past `dense_limit` then settles on the sparse path, and what reads the layout's
+projections finds one over the whole graph. Many small populations that only wired a
+connectome reach it: drop them from the developed connectome
+(`Connectome(c.n, c.pre, c.post, c.count, c.sign, kept)`) for the same synapses on a block
+layout. `Layout` has `starts`, `pair_pre`, `pair_post`, `offset`, `edge_index`, `ranges`,
 `pairs`, `size`, `bounds(k)`, `sources()` (ranges receiving no synapses),
 `parallel_synapses` (distinct synapses sharing a matrix entry), `flat(weights)`,
 `blocks(flat)`, `block_of_edge` (the block of each synapse) and `to_dict()`.

@@ -8,7 +8,7 @@ NumPy float64 unless you pick another. Start from the NumPy-only
 [installation](../README.md#get-started) and add an extra:
 
 ```bash
-python -m pip install "cadence-net[fast]==0.104.0"
+python -m pip install "cadence-net[fast]==0.104.1"
 ```
 
 `[fast]` installs Numba and SciPy, `[accel]` PyTorch and `[apple]` MLX (0.21.1 or later); from a checkout, use
@@ -689,8 +689,8 @@ CI built on its tag's commit (about 130 KB, Linux on x86-64) with its SHA-256, a
 `python kernels/wasm/build.py` builds it from [`kernels/wasm`](../kernels/wasm): Rust through
 `rustup`, the compiler pinned in that folder. A build repeats its bytes on one platform, wherever
 the checkout lies, and a build on another platform (macOS on arm64) differs in its bytes. Take
-the module of the library's own version. Cadence 0.104.0 uses kernel ABI 2 for per-pool apical
-gains. An earlier module is rejected and the library uses the NumPy loop. A page opts in by
+the module of the library's own version. From 0.104.0 the library uses kernel ABI 2 for per-pool
+apical gains. An earlier module is rejected and the library uses the NumPy loop. A page opts in by
 writing the file into Pyodide's file system
 and names it in `CADENCE_WASM` before `cadence` is imported.
 

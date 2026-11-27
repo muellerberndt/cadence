@@ -29,13 +29,14 @@ assert _spec is not None and _spec.loader is not None
 panel = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(panel)
 
-# What 0.103.1, the release before this one, reads (its ``Brain.load``)
-PREVIOUS = "0.103.1"
+# What 0.104.0, the release before this one, reads (its ``Brain.load``)
+PREVIOUS = "0.104.0"
 PREVIOUS_FORMATS = frozenset(
     {"cadence-brain/1", "cadence-brain/2", "cadence-brain/3", "cadence-brain/4", "cadence-brain/5"}
 )
 PREVIOUS_FEATURES = frozenset(
-    {"strength", "heads", "recall_strength", "surprise", "map", "bound", "cortex_reads"}
+    {"strength", "heads", "recall_strength", "surprise", "map", "bound", "cortex_reads",
+     "recall_key_norm", "learning_credit"}
 )
 
 FILES = [
@@ -52,8 +53,9 @@ def _load(path: Path) -> cd.Brain:
 
 
 def test_the_fixtures_cover_every_released_version_from_0_99_0():
+    # 0.103.2 has no fixture: its file formats and features are those of 0.103.1
     assert set(RELEASED) == {
-        "0.99.0", "0.99.1", "0.100.0", "0.101.0", "0.102.0", "0.103.0", PREVIOUS
+        "0.99.0", "0.99.1", "0.100.0", "0.101.0", "0.102.0", "0.103.0", "0.103.1", PREVIOUS
     }
     assert set(RELEASED[PREVIOUS]["brains"]) == set(panel.PANEL)
     size = sum(path.stat().st_size for path in HERE.rglob("*") if path.is_file())

@@ -453,8 +453,8 @@ def test_the_constants_and_the_one_setting_and_bad_settings_are_refused():
     beside = develop(Genome(tuple(regions), (*projections, Projection(
         "prefrontal", "code", scale=0.0, reciprocal=False), Projection(
         "sensory", "association", reciprocal=False))), seed=1)
-    with pytest.raises(ValueError, match="project to the code region alone"):
-        cd.Brain(beside, learned_code=6)
+    with pytest.raises(ValueError, match="read the code alone"):
+        cd.Brain(beside, learned_code=6)  # onto the neurons that read the code
     with pytest.raises(ValueError, match="is not the learned code of 5 units"):
         cd.Brain(complete, learned_code=5)
 
@@ -930,10 +930,17 @@ def test_a_step_a_hair_from_its_bound_goes_to_the_eigenvalues():
     coupling = np.diag(np.full(code.units, bound))[None, :, :]
     assert code._held_halvings(coupling) is None
     assert code._held_halvings(coupling + 1e-6 * np.eye(code.units)) == 1
+    # a step one halving from the one held is settled by the same two tests, asked for it
     code.restep(0)
-    assert code._held_halvings(coupling + 1e-6 * np.eye(code.units)) is None
+    assert code._held_halvings(coupling + 1e-6 * np.eye(code.units)) == 1
     code.restep(2)
     assert code._held_halvings(coupling - 1e-6 * np.eye(code.units)) == 2
+    assert code._held_halvings(coupling + 1e-6 * np.eye(code.units)) == 1
+    # two halvings away no test is asked, and a hair from the neighbour's bound none is clear
+    code.restep(3)
+    assert code._held_halvings(coupling + 1e-6 * np.eye(code.units)) is None
+    code.restep(2)
+    assert code._held_halvings(coupling) is None
 
 
 def test_a_state_that_is_not_finite_goes_to_the_eigenvalues():
