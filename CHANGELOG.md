@@ -45,6 +45,17 @@
   name. With the option off, lessons, reports and files are what they were, to the bit. No
   chamber of the library has read the option.
 
+- **`learning_credit_transport` says when it does not act.** Transport falls back to the
+  ordinary signed phases where its zero-force reference does not qualify or no candidate is
+  admitted. A brain could run every lesson that way with nothing but `credit_transport_factor`
+  at zero in each report to show it. Every lesson report with transport on now holds
+  `credit_transport_refused`, one where no factor was admitted, and a run of
+  `learning_credit_window` such lessons (15 where no window is set) warns once with what
+  refused the latest: the reference's residual against its tolerance, the candidates, a graph
+  without an apical compartment or a signed budget of no sweeps. The lessons themselves are
+  unchanged. Whether the reference's tolerance and sweep cap should follow the precision and
+  the size of the brain is open.
+
 ## 0.104.0 - 2026-11-26
 
 Deep teaching resolves small motor corrections, and recall heads now receive credit from the
