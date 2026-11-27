@@ -5,7 +5,7 @@ Short answers to the problems builders meet first, each linking the page that ow
 
 ## Install and run
 
-**`pip install cadence-net==0.104.0`, then `import cadence`.** Python 3.11 or newer and NumPy are
+**`pip install cadence-net==0.104.1`, then `import cadence`.** Python 3.11 or newer and NumPy are
 the only requirements.
 
 **Do I need a GPU?** No. A new brain runs on the CPU unless its size makes a GPU faster and one
@@ -77,6 +77,26 @@ louder cannot supply missing context.
 
 **A `RuntimeWarning` about a lesson on the observations the brain just acted on.** Teach first,
 then act ([supervised lessons](teach.md#supervised-lessons)).
+
+**A brain of many motor slots is taught at every row, and what it already answered wears away.**
+With several slots `learning_surprise=True` judges rows: a row that is wrong in one slot is
+taught in all of them, so at a few hundred slots almost no row is skipped and every lesson pulls
+the slots that were right. `learning_surprise_slots=True` pulls only the slots whose answer
+differs from their label; `taught_slots` in the lesson report counts them
+([lessons only where the answer differs](teach.md#lessons-only-where-the-answer-differs)).
+
+**A `RuntimeWarning` that credit transport admitted no factor.** `learning_credit_transport`
+fell back to the ordinary signed phases in every lesson of the window, and the lessons ran as
+without it. The warning names what refused the latest: the reference's residual against its
+tolerance, the candidates, a graph without an apical compartment or a signed budget of no
+sweeps. Read `credit_transport_refused` in the lesson report before comparing a run with
+transport against one without
+([teaching-only transport](settling.md#transporting-a-correction-without-amplifying-ordinary-return)).
+
+**The error of a stream that mostly repeats stays above repeating the last moment.** Score the
+moments that stay and the moments that change apart. If the ones that stay are wrong, the brain
+lacks a path that carries the observation to the answer; more lessons do not build one
+([a worked case](tutorials/minimal-techno.md#3-give-the-brain-a-copy-path)).
 
 ## Shapes and encodings
 
@@ -182,6 +202,18 @@ them, and `naive_efficacy` removes a naive preference.
 synapse floor; rebuild the fixture keeping that seam.
 
 ## Connectomes
+
+**A `RuntimeWarning` that the connectome is laid out as one block, or a refused update with
+`learning_drive_budget`.** More than 256 contiguous populations cut the graph into too many
+blocks, so it is laid out as one block of `n * n` entries; a drive budget refuses that layout
+before it changes a parameter. Populations that only wired the connectome are the usual cause:
+drop them from the developed connectome and the same synapses lie on a block layout
+([measuring credit and limiting taught drive](settling.md#measuring-credit-and-limiting-taught-drive)).
+
+**`ValueError` on a sensory projection beside a learned code.** A connectome of your own may
+project the sensory neurons one way to a region that does not read the code, such as the motor
+region. A projection onto the neurons that read the code is refused, and so is any synapse into
+the sensory neurons ([what the region is](senses.md#what-the-region-is)).
 
 **A predicate over a large population fails.** `active` asks the mean over every member to reach
 0.5; use `sparse` for a subset and `lateralized` for a left-right pair ([protocols](../benchmarks/instruments/README.md)).

@@ -74,6 +74,11 @@ credit beyond the sweep budget. Re-run your old failure before changing settings
   choice of geometry. Do not retrofit it by editing a checkpoint or combine it with
   `recall_action`. [Recall addressing and learning](memory.md#how-it-writes-and-how-the-address-learns)
 
+- **Many motor slots**. With `learning_surprise=True` a row that is wrong in one slot is taught
+  in every slot. Compare the opt-in `learning_surprise_slots=True`, which pulls only the slots
+  answered wrong, and read `taught_slots` beside `taught`.
+  [Lessons only where the answer differs](teach.md#lessons-only-where-the-answer-differs)
+
 These are experiments, not settings every deep brain needs. Keep the same examples, seeds,
 and motor force when comparing. Recheck both behavior and cost on the deployment backend.
 Custom recall readback can use the host even when the main settle uses an accelerator.
@@ -94,3 +99,10 @@ possible. The bank can teach a distinction that recent neural state then carries
 the bank at the decision, watching a head's weights move, or inspecting its attention alone
 cannot distinguish those cases. Report the intact and control results over multiple seeds
 before promoting an architecture. [Test memory relevance](evaluate.md#test-learned-memory-relevance)
+
+## A worked case
+
+[The minimal techno tutorial](tutorials/minimal-techno.md) follows one deep brain of a few
+hundred motor slots from its first lessons to a continuing stream: which of these checks
+caught what, and what the checks on this page do not catch, such as a teacher-forced error
+that falls while free play gets worse.

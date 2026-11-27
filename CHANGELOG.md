@@ -1,33 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.104.1 - 2026-11-27
 
-### Changed
-
-- **A custom anatomy may project the sensory neurons one way beside a learned code.** A
-  connectome with `learned_code=units` was refused when a sensory neuron projected anywhere but
-  to the code region. A one-way projection to a region that does not read the code, such as a
-  reflex arc from the observation onto the motor region, is now built: its synapses are ordinary
-  plastic synapses of the whole graph, driven by the sensory neurons as in a brain without the
-  region, and the code's phase, tables and own synapses are unchanged. Still refused: a sensory
-  projection onto the neurons that read the code, and any synapse into the sensory neurons.
-  `Brain.compose` builds no such projection, so composed brains and existing checkpoints are
-  unchanged. A checkpoint of a brain with such a projection names no new feature: 0.104.0 and
-  earlier refuse it when they rebuild the connectome. No chamber measures what such a projection
-  does for a brain.
-
-### Fixed
-
-- **The block layout reports its fallback, and the drive budget refuses it.** A connectome
-  whose contiguous populations cut it into more than 256 blocks was laid out as one block of
-  `n * n` entries without a word: a graph past `dense_limit` then settled on the sparse path,
-  and `learning_drive_budget` read the whole graph as one projection from a dense `n * n` array
-  built at every lesson (9.7 GB at 34,880 neurons). `blocks.layout` now warns at the fallback
-  with the block count and keeps it as `Layout.fragments`, and an update with a drive budget is
-  refused on such a layout before it changes a parameter or the optimizer's history. Many small
-  populations that only wired a connectome are the usual cause; dropping them from the developed
-  connectome gives the same synapses on a block layout. Composed brains stay far below the
-  limit and are unchanged, and a layout as cut settles and learns as before.
+Five changes from building a composer brain of several hundred motor slots. A surprise lesson
+can teach only the slots that are wrong, a custom anatomy can project the sensory neurons one
+way beside a learned code, two fallbacks that were silent report themselves, and a learned code
+whose step changes does less work. The released panel continues to the bit both ways: files
+saved by 0.104.0 here, and files this version saves without the new option in 0.104.0.
 
 ### New opt-in tools
 
@@ -44,6 +23,20 @@
   and its learner the checkpoint format `cadence-checkpoint/7`, which earlier releases refuse by
   name. With the option off, lessons, reports and files are what they were, to the bit. No
   chamber of the library has read the option.
+
+### Changed
+
+- **A custom anatomy may project the sensory neurons one way beside a learned code.** A
+  connectome with `learned_code=units` was refused when a sensory neuron projected anywhere but
+  to the code region. A one-way projection to a region that does not read the code, such as a
+  reflex arc from the observation onto the motor region, is now built: its synapses are ordinary
+  plastic synapses of the whole graph, driven by the sensory neurons as in a brain without the
+  region, and the code's phase, tables and own synapses are unchanged. Still refused: a sensory
+  projection onto the neurons that read the code, and any synapse into the sensory neurons.
+  `Brain.compose` builds no such projection, so composed brains and existing checkpoints are
+  unchanged. A checkpoint of a brain with such a projection names no new feature: 0.104.0 and
+  earlier refuse it when they rebuild the connectome. No chamber measures what such a projection
+  does for a brain.
 
 - **`learning_credit_transport` says when it does not act.** Transport falls back to the
   ordinary signed phases where its zero-force reference does not qualify or no candidate is
@@ -68,6 +61,29 @@
   the step changes took 8.6 s and takes 2.0 s, and a moment without a change 2.7 s and 2.3 s.
   Efficacies, tables, acts and reports are the same bits on the NumPy loop, the compiled
   kernels and torch.
+
+### Fixed
+
+- **The block layout reports its fallback, and the drive budget refuses it.** A connectome
+  whose contiguous populations cut it into more than 256 blocks was laid out as one block of
+  `n * n` entries without a word: a graph past `dense_limit` then settled on the sparse path,
+  and `learning_drive_budget` read the whole graph as one projection from a dense `n * n` array
+  built at every lesson (9.7 GB at 34,880 neurons). `blocks.layout` now warns at the fallback
+  with the block count and keeps it as `Layout.fragments`, and an update with a drive budget is
+  refused on such a layout before it changes a parameter or the optimizer's history. Many small
+  populations that only wired a connectome are the usual cause; dropping them from the developed
+  connectome gives the same synapses on a block layout. Composed brains stay far below the
+  limit and are unchanged, and a layout as cut settles and learns as before.
+
+### Documentation
+
+- **A first tutorial, [a minimal techno stream generator](docs/tutorials/minimal-techno.md).**
+  It follows the development of one application with many motor slots and a continuing stream
+  and names what failed on the way: a brain without a copy path, whole-row surprise at many
+  slots, a teacher-forced error read as play, a play-time cap that fed the brain its own
+  replacement. Its readings are those of one application, measured by no chamber of the library.
+- [Deep brains](docs/deep-brains.md) and [troubleshooting](docs/troubleshooting.md) name the two
+  new reports and what to do at each.
 
 ## 0.104.0 - 2026-11-26
 

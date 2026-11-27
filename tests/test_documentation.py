@@ -85,6 +85,7 @@ PAGES = [
     "docs/settling.md",
     "docs/api.md",
     "docs/backends.md",
+    "docs/tutorials/minimal-techno.md",
     "benchmarks/instruments/README.md",
 ]
 

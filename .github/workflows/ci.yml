@@ -37,7 +37,7 @@ jobs:
                        "docs/world-model.md", "docs/teach.md", "docs/reward.md", "docs/memory.md",
                        "docs/senses.md", "docs/modules.md", "docs/space.md", "docs/speech.md",
                        "docs/grow.md", "docs/tune.md", "docs/evaluate.md", "docs/settling.md",
-                       "docs/api.md"):
+                       "docs/api.md", "docs/tutorials/minimal-techno.md"):
               page = Path(name).read_text(encoding="utf-8")
               blocks = re.findall(r"(<!-- not-run[^\n]*-->\n)?```python\n(.*?)```", page, re.S)
               code = "\n\n".join(block for marker, block in blocks if not marker)
@@ -54,7 +54,7 @@ jobs:
     # release before it, and a brain with a new feature is refused there by the feature's name
     runs-on: ubuntu-latest
     env:
-      PREVIOUS_RELEASE: "0.103.2"
+      PREVIOUS_RELEASE: "0.104.0"
       CADENCE_FUSED: "0"
       OMP_NUM_THREADS: "1"
       OPENBLAS_NUM_THREADS: "1"

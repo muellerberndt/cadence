@@ -6,10 +6,10 @@
 ``save`` writes every brain of the released-files panel (``tests/fixtures/released/panel.py``)
 after its life, with each brain's continuation after a load in this version. ``load`` reads
 them under the previous release: each brain of the panel loads and continues with the same
-actions and weights to the bit. Brains that use unit recall keys, optional learning credit
-controls or surprise by slot are refused by feature name, and a brain whose sensory neurons
-project beside its learned code by the connectome the release rebuilds. CI runs both on one
-machine on the NumPy loop (``CADENCE_FUSED=0``).
+actions and weights to the bit. A brain that teaches surprise by slot is refused by feature
+name, its learner by checkpoint format, and a brain whose sensory neurons project beside its
+learned code by the connectome the release rebuilds. CI runs both on one machine on the NumPy
+loop (``CADENCE_FUSED=0``).
 """
 
 from __future__ import annotations
@@ -43,11 +43,6 @@ def save(directory: Path) -> None:
             "acts": panel.continuation(loaded, name),
             "learned": panel.learned(loaded),
         }
-    unit_keys = cd.Brain.compose(8, 3, modules=(8,), recall_key_norm=True, backend="cpu", seed=1)
-    unit_keys.save(directory / "recall_key_norm.npz")
-    credit = cd.Brain.compose(8, 3, modules=(8,), learning_drive_budget=4, backend="cpu", seed=1)
-    credit.save(directory / "learning_credit.npz")
-    credit.learner.save(directory / "credit_learner.npz")
     # a sensory projection beside a learned code names no feature: the file holds its connectome
     layout = cd.Genome.composed(8, 3, modules=(8,), learned_code=8, seed=1)
     arc = cd.Projection("sensory", "motor", reciprocal=False, scale=0.1)
@@ -82,14 +77,13 @@ def load(directory: Path) -> None:
             failures.append(f"{name}: acts {acts} against {expected['acts']}")
         elif learned != expected["learned"]:
             failures.append(f"{name}: the weights after the continuation differ")
-    for feature in ("recall_key_norm", "learning_credit", "learning_surprise_slots"):
-        try:
-            cd.Brain.load(directory / f"{feature}.npz")
-        except ValueError as error:
-            if f"feature '{feature}'" not in str(error):
-                failures.append(f"{feature}: not refused by feature name: {error}")
-        else:
-            failures.append(f"{feature}: previous release silently loaded an unsupported feature")
+    try:
+        cd.Brain.load(directory / "learning_surprise_slots.npz")
+    except ValueError as error:
+        if "feature 'learning_surprise_slots'" not in str(error):
+            failures.append(f"learning_surprise_slots: not refused by feature name: {error}")
+    else:
+        failures.append("learning_surprise_slots: previous release silently loaded the feature")
     try:
         cd.Brain.load(directory / "sensory_projection.npz")
     except ValueError as error:
@@ -97,13 +91,6 @@ def load(directory: Path) -> None:
             failures.append(f"sensory projection: not refused by its connectome: {error}")
     else:
         failures.append("sensory projection: previous release built a connectome it does not hold")
-    try:
-        cd.Learner.load(directory / "credit_learner.npz")
-    except ValueError as error:
-        if "cadence-checkpoint/6" not in str(error):
-            failures.append(f"credit learner: not refused by format: {error}")
-    else:
-        failures.append("credit learner: previous release silently dropped learning settings")
     try:
         cd.Learner.load(directory / "slots_learner.npz")
     except ValueError as error:
