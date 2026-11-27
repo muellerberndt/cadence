@@ -7,8 +7,9 @@
 after its life, with each brain's continuation after a load in this version. ``load`` reads
 them under the previous release: each brain of the panel loads and continues with the same
 actions and weights to the bit. Brains that use unit recall keys or optional learning credit
-controls are refused by feature name. CI runs both on one machine on the NumPy loop
-(``CADENCE_FUSED=0``).
+controls are refused by feature name, and a brain whose sensory neurons project beside its
+learned code by the connectome the release rebuilds. CI runs both on one machine on the NumPy
+loop (``CADENCE_FUSED=0``).
 """
 
 from __future__ import annotations
@@ -47,6 +48,14 @@ def save(directory: Path) -> None:
     credit = cd.Brain.compose(8, 3, modules=(8,), learning_drive_budget=4, backend="cpu", seed=1)
     credit.save(directory / "learning_credit.npz")
     credit.learner.save(directory / "credit_learner.npz")
+    # a sensory projection beside a learned code names no feature: the file holds its connectome
+    layout = cd.Genome.composed(8, 3, modules=(8,), learned_code=8, seed=1)
+    arc = cd.Projection("sensory", "motor", reciprocal=False, scale=0.1)
+    anatomy = cd.develop(cd.Genome(layout.regions, (*layout.projections, arc)), seed=1)
+    beside = cd.Brain.compose(
+        8, 3, connectome=anatomy, learned_code=8, recall=False, backend="cpu", seed=1
+    )
+    beside.save(directory / "sensory_projection.npz")
     (directory / "saved.json").write_text(json.dumps(table, indent=1))
     print(f"cadence {cd.__version__} saved {len(table['brains'])} brains")
 
@@ -77,6 +86,13 @@ def load(directory: Path) -> None:
                 failures.append(f"{feature}: not refused by feature name: {error}")
         else:
             failures.append(f"{feature}: previous release silently loaded an unsupported feature")
+    try:
+        cd.Brain.load(directory / "sensory_projection.npz")
+    except ValueError as error:
+        if "project to the code region alone" not in str(error):
+            failures.append(f"sensory projection: not refused by its connectome: {error}")
+    else:
+        failures.append("sensory projection: previous release built a connectome it does not hold")
     try:
         cd.Learner.load(directory / "credit_learner.npz")
     except ValueError as error:

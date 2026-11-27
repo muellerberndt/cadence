@@ -574,14 +574,44 @@ v_j = Phi_j . (x' - Phi s) + s_j + top_down * (p_j - s_j) - t_j,    s_j = f(v_j)
 ```
 
 the sparse state that reconstructs the sensory activation, as read, through the dictionary
-as far as the thresholds allow, drawn toward what the context predicts. The sensory neurons
-project to the code region alone, and nothing leads back into it.
+as far as the thresholds allow, drawn toward what the context predicts. In a composed brain
+the sensory neurons project to the code region alone, and nothing leads back into it.
 
 The code units project to the first module alone (`module_0`, or the association region in a
 brain of one module). That module reads the rectified code at unit length
 (`LearnedCode.code_of`, the code part of the memories' key), whatever the number of modules:
 the settled activations of the units that are on are a fraction of a sensory neuron's, and
 the unit-length read is the region's output gain, one per stream.
+
+A connectome of your own may project the sensory neurons one way to a region that does not
+read the code, such as a reflex arc from the observation onto the motor region. Those
+synapses are ordinary synapses of the whole graph, as in a brain without the region: the
+sensory neurons hold the observation there as a source, the synapses carry it, and lessons
+and rewards move them by the local rule. The region's phase, its tables and its own synapses
+are the same with and without them. The neurons that read the code still read it alone: a
+sensory projection onto them is refused, and so is any synapse into the sensory neurons, a
+reciprocal projection among them.
+
+```python
+import numpy as np
+from cadence import Brain, Genome, Projection, develop
+
+layout = Genome.composed(12, 6, modules=(16,), learned_code=16, seed=0)
+arc = Projection("sensory", "motor", reciprocal=False, scale=0.1)   # one way, born small
+anatomy = develop(Genome(layout.regions, (*layout.projections, arc)), seed=0)
+reflex = Brain.compose(12, 6, connectome=anatomy, learned_code=16, recall=False, seed=0)
+pre, post = reflex.connectome.pre, reflex.connectome.post
+arc_synapses = np.isin(pre, reflex.sensory_index) & np.isin(post, reflex.motor_index)
+assert arc_synapses.sum() == 12 * 6 and reflex.learner.plastic_synapses[arc_synapses].all()
+born = reflex.brain.efficacy.copy()
+reflex.lesson(np.eye(12)[[0, 5]], np.array([1, 4]))            # a motor lesson teaches the arc
+assert (reflex.brain.efficacy[arc_synapses] != born[arc_synapses]).any()
+```
+
+This is wiring a custom anatomy takes; no chamber has measured what such an arc does for a
+brain. Wire it from few named populations: every contiguous population cuts the
+[block layout](api.md#blocks-cadenceblocks), and past 256 blocks the layout is one block over
+the whole matrix, which a brain of many thousand neurons settles on the sparse path.
 
 ### How a moment settles
 
@@ -689,7 +719,7 @@ Refused with `ValueError`: `learned_code` below 2, `learned_code_fields` without
 fields that do not sum to the inputs or leave a field fewer than two units, `code` beside
 `learned_code`, an image brain, and a custom connectome without a
 `code` population and the complete dictionary, lateral and predictor synapses, or whose
-sensory neurons project anywhere but to the code region.
+sensory neurons project onto the neurons that read the code or receive a synapse.
 
 ### When to declare fields
 

@@ -3104,12 +3104,20 @@ class Brain:
                 self.learned_code.place(kernel.device)
             self._code_synapses = self._learned_code_synapses()
             self._code_forward = self._learned_code_forward()
-            # the first module reads the code alone: the sensory neurons project to the code
-            # region and nowhere else
+            # the neurons that read the code read it alone (``_code_readers``, the first
+            # module): no sensory synapse lands on them beside the code. To any other region an
+            # anatomy of its own may project the sensory neurons one way (a reflex arc to the
+            # motor region): ordinary synapses of the whole graph, plastic as in a brain
+            # without the region, from neurons that hold the observation as a source there.
+            # Nothing leads back into the sensory neurons (``_learned_code_synapses``), so the
+            # region's phase reads the same activation with or without them.
             pre, post = np.asarray(connectome.pre), np.asarray(connectome.post)
-            if (np.isin(pre, self.sensory_index) & ~np.isin(post, self.code_index)).any():
+            beside = np.isin(pre, self.sensory_index) & ~np.isin(post, self.code_index)
+            if beside.any() and np.isin(post[beside], self._code_readers).any():
                 raise ValueError(
-                    "a learned code's sensory neurons project to the code region alone"
+                    "the neurons that read a learned code read the code alone: a sensory "
+                    "projection beside the code goes one way to a region that does not read "
+                    "the code"
                 )
             brain = self._installed(brain)
             plastic_synapses = np.ones(connectome.synapses, dtype=bool)

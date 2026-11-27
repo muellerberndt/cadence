@@ -453,8 +453,8 @@ def test_the_constants_and_the_one_setting_and_bad_settings_are_refused():
     beside = develop(Genome(tuple(regions), (*projections, Projection(
         "prefrontal", "code", scale=0.0, reciprocal=False), Projection(
         "sensory", "association", reciprocal=False))), seed=1)
-    with pytest.raises(ValueError, match="project to the code region alone"):
-        cd.Brain(beside, learned_code=6)
+    with pytest.raises(ValueError, match="read the code alone"):
+        cd.Brain(beside, learned_code=6)  # onto the neurons that read the code
     with pytest.raises(ValueError, match="is not the learned code of 5 units"):
         cd.Brain(complete, learned_code=5)
 
