@@ -29,7 +29,7 @@ assert _spec is not None and _spec.loader is not None
 panel = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(panel)
 
-# What 0.104.0, the release before this one, reads (its ``Brain.load``)
+# What the newest release in this checked-in fixture panel (0.104.0) reads.
 PREVIOUS = "0.104.0"
 PREVIOUS_FORMATS = frozenset(
     {"cadence-brain/1", "cadence-brain/2", "cadence-brain/3", "cadence-brain/4", "cadence-brain/5"}

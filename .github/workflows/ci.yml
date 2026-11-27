@@ -50,11 +50,13 @@ jobs:
         run: |
           python examples/continuing_brain.py
   previous-release:
-    # brains this checkout saves without its new options load and continue, to the bit, in the
-    # release before it, and a brain with a new feature is refused there by the feature's name
+    # Check the previous release and the boundary where 0.104.1 introduced new file features.
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        release: ["0.104.1", "0.104.0"]
     env:
-      PREVIOUS_RELEASE: "0.104.0"
+      PREVIOUS_RELEASE: ${{ matrix.release }}
       CADENCE_FUSED: "0"
       OMP_NUM_THREADS: "1"
       OPENBLAS_NUM_THREADS: "1"

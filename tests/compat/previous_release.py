@@ -6,9 +6,9 @@
 ``save`` writes every brain of the released-files panel (``tests/fixtures/released/panel.py``)
 after its life, with each brain's continuation after a load in this version. ``load`` reads
 them under the previous release: each brain of the panel loads and continues with the same
-actions and weights to the bit. A brain that teaches surprise by slot is refused by feature
-name, its learner by checkpoint format, and a brain whose sensory neurons project beside its
-learned code by the connectome the release rebuilds. CI runs both on one machine on the NumPy
+actions and weights to the bit. 0.104.1 reads the two features it introduced. 0.104.0 refuses a
+brain that teaches surprise by slot by feature name, its learner by checkpoint format, and a
+brain with a sensory projection beside a learned code by its connectome. CI uses the NumPy
 loop (``CADENCE_FUSED=0``).
 """
 
@@ -77,6 +77,23 @@ def load(directory: Path) -> None:
             failures.append(f"{name}: acts {acts} against {expected['acts']}")
         elif learned != expected["learned"]:
             failures.append(f"{name}: the weights after the continuation differ")
+    if panel.version(cd.__version__) >= (0, 104, 1):
+        by_slot = cd.Brain.load(directory / "learning_surprise_slots.npz")
+        assert by_slot.learner.config.surprise_slots
+        assert cd.Learner.load(directory / "slots_learner.npz").config.surprise_slots
+        cd.Brain.load(directory / "sensory_projection.npz")
+    else:
+        failures.extend(older_refusals(directory))
+    if failures:
+        raise SystemExit("\n".join(failures))
+    print(
+        f"cadence {cd.__version__} read {len(table['brains'])} brains of cadence "
+        f"{table['version']}"
+    )
+
+
+def older_refusals(directory: Path) -> list[str]:
+    failures: list[str] = []
     try:
         cd.Brain.load(directory / "learning_surprise_slots.npz")
     except ValueError as error:
@@ -98,12 +115,7 @@ def load(directory: Path) -> None:
             failures.append(f"slots learner: not refused by format: {error}")
     else:
         failures.append("slots learner: previous release silently dropped surprise_slots")
-    if failures:
-        raise SystemExit("\n".join(failures))
-    print(
-        f"cadence {cd.__version__} read {len(table['brains'])} brains of cadence "
-        f"{table['version']}"
-    )
+    return failures
 
 
 if __name__ == "__main__":

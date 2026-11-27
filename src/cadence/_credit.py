@@ -183,7 +183,14 @@ def transport_contrast(
     warm = BrainState(both(voltage), both(activity), both(adaptation), steps=0)
     rows = len(activity)
     weights = np.ones(rows) if pull.weight is None else pull.weight
-    for factor in dict.fromkeys((limit, max(1., limit * .5), 1.)):
+    # Keep halving above the unamplified control. With the maximum supported limit of six,
+    # this tries at most four candidates and no longer skips 1.5 when both six and three fail.
+    factor = limit
+    factors = []
+    while factor > 1.:
+        factors.append(factor)
+        factor *= .5
+    for factor in (*factors, 1.):
         pair = replace(
             pull, target=both(np.broadcast_to(pull.target, activity.shape)),
             weight=np.concatenate((weights, -weights)), apical_gain=factor * both(held),
