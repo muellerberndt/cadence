@@ -16,6 +16,19 @@
   earlier refuse it when they rebuild the connectome. No chamber measures what such a projection
   does for a brain.
 
+### Fixed
+
+- **The block layout reports its fallback, and the drive budget refuses it.** A connectome
+  whose contiguous populations cut it into more than 256 blocks was laid out as one block of
+  `n * n` entries without a word: a graph past `dense_limit` then settled on the sparse path,
+  and `learning_drive_budget` read the whole graph as one projection from a dense `n * n` array
+  built at every lesson (9.7 GB at 34,880 neurons). `blocks.layout` now warns at the fallback
+  with the block count and keeps it as `Layout.fragments`, and an update with a drive budget is
+  refused on such a layout before it changes a parameter or the optimizer's history. Many small
+  populations that only wired a connectome are the usual cause; dropping them from the developed
+  connectome gives the same synapses on a block layout. Composed brains stay far below the
+  limit and are unchanged, and a layout as cut settles and learns as before.
+
 ## 0.104.0 - 2026-11-26
 
 Deep teaching resolves small motor corrections, and recall heads now receive credit from the

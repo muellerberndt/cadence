@@ -441,7 +441,11 @@ is in activation-logit units, so it is divided by the neuron slope to obtain pot
 For apical brains the constraint budgets basal inputs and leaves room for the apical RMS
 share. It does not cap raw apical feedback independently of the corresponding readout.
 Tied projections share the tighter scale and frozen weights are left alone. In a composed
-brain the report includes `demonstration_drive_limited_projections`.
+brain the report includes `demonstration_drive_limited_projections`. The projections are the
+blocks of the graph's [layout](api.md#blocks-cadenceblocks). A connectome whose populations
+cut it into more than 256 blocks is laid out as one block over the whole matrix, which holds
+no projection to give a share to: an update with a budget is refused there with `ValueError`
+before it changes a parameter or the optimizer's history.
 
 There are no hidden targets. The constraint leaves the state equations unchanged and does
 not claim a drive bound on unseen activity, on held current or on the settling loop's

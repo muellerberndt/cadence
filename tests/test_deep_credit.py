@@ -158,6 +158,47 @@ def test_opt_in_budget_limits_each_observed_projection_and_preserves_reciprocity
         assert np.max(np.abs(projected)) <= 0.175 + 1e-14
 
 
+def test_the_budget_refuses_a_layout_that_fell_back_to_one_block():
+    """One population per motor neuron cuts the connectome into more blocks than the layout
+    takes: it is one block over the whole matrix, the budget has no projection to give a share
+    to, and the refused update changes no parameter and no optimizer history."""
+    motor = np.arange(2, 428)
+    populations = {"sensory": [0], "deep": [1], "motor": motor.tolist()}
+    populations.update({f"motor/m{k}": [int(neuron)] for k, neuron in enumerate(motor)})
+    connectome = cd.Connectome.from_synapses(
+        428, pre=np.r_[0, np.full(len(motor), 1), motor],
+        post=np.r_[1, motor, np.full(len(motor), 1)],
+        sign=np.r_[0.5, np.tile([0.10, -0.08], 426)], populations=populations,
+    )
+    with pytest.warns(RuntimeWarning, match="into 853 blocks, more than max_pairs=256"):
+        graph = cd.NeuralGraph(connectome, cd.learning_neuron_model(dt=0.5))
+    assert graph.layout.fragments == 853 and graph.layout.pairs == 1
+    budgeted = cd.LearnerConfig(
+        free_steps=256, nudged_steps=32, tolerance=3e-3, momentum=0.9, drive_budget=0.35
+    )
+    learner = cd.Learner(graph, motor, budgeted, slots=(2,) * 213)
+    drive = np.zeros((1, 428))
+    drive[0, 0] = 0.6
+    labels = np.zeros((1, 213), dtype=int)
+    held = {
+        "efficacy": learner.brain.efficacy.copy(), "bias": learner.brain.bias.copy(),
+        "velocity": learner.velocity.copy(), "updates": learner.updates,
+        "contrast_updates": learner.contrast_updates,
+    }
+    with pytest.raises(ValueError, match="one block over the whole matrix") as refused:
+        learner.step(drive, labels)
+    assert "cut it into 853 blocks" in str(refused.value)
+    np.testing.assert_array_equal(learner.brain.efficacy, held["efficacy"])
+    np.testing.assert_array_equal(learner.brain.bias, held["bias"])
+    np.testing.assert_array_equal(learner.velocity, held["velocity"])
+    assert (learner.updates, learner.contrast_updates) == (held["updates"], 0)
+    # without the budget the same learner teaches on that layout, as before
+    learner.config = replace(budgeted, drive_budget=0.0)
+    _, report = learner.step(drive, labels)
+    assert report["scale_step"] > 0 and "drive_limited_projections" not in report
+    assert learner.contrast_updates == 1
+
+
 def test_warns_once_per_streak_for_hidden_region_without_a_return_path():
     cn = cd.Connectome.from_synapses(
         5, pre=[0, 1, 1], post=[1, 3, 4], sign=[0.4, 0.3, -0.3],
