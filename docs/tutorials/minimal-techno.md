@@ -1,10 +1,11 @@
 # Cadance: a minimal techno stream generator
 
-Cadance is an application built on Cadence. One brain hears the bars it has played and writes
-the next bar, without end, and a player renders the bars as drums, a bass, a lead and a pad. This
-page follows its development in the order the problems appeared: what went wrong, how it was
-measured, and which part of the library answers it. Use it when your own task has many motor
-slots and one continuing stream.
+Cadance (the application's name, spelled with an a) is built on Cadence; its source is at
+[cadance-minimal](https://github.com/muellerberndt/cadance-minimal). One brain hears the bars it
+has played and writes the next bar, without end, and a player renders the bars as drums, a
+bass, a lead and a pad. This page follows its development in the order the problems appeared:
+what went wrong, how it was measured, and which part of the library answers it. Use it when
+your own task has many motor slots and one continuing stream.
 
 The readings are from one application and its material. No chamber of the library measures
 them. The python blocks run on a toy stream defined on this page, with small brains built
@@ -128,8 +129,9 @@ about: the hidden regions then have no work.
 From 0.104.1 a connectome of your own may project the sensory neurons one way onto a region
 that does not read the code ([what the region is](../senses.md#what-the-region-is)). Cadance
 adds such an arc from every heard slot value onto the motor and sets its birth: the synapse from
-a heard value to the same motor value starts at a gain, the rest of the arc at zero. The arc is
-plastic like any synapse, so lessons move it.
+a heard value to the same motor value starts at a gain, the rest of the arc at zero. A brain's
+efficacies start as its connectome's `sign` ([NeuralGraph](../api.md#neuralgraph-cadence)), so
+the birth is written there. The arc is plastic like any synapse, so lessons move it.
 
 ```python
 from cadence import Brain, Connectome, Genome, Projection, develop

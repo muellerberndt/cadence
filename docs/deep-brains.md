@@ -76,7 +76,7 @@ credit beyond the sweep budget. Re-run your old failure before changing settings
 
 - **Many motor slots**. With `learning_surprise=True` a row that is wrong in one slot is taught
   in every slot. Compare the opt-in `learning_surprise_slots=True`, which pulls only the slots
-  answered wrong, and read `taught_slots` beside `taught`.
+  answered wrong, and read `taught_slots` beside `accepted_presentations`.
   [Lessons only where the answer differs](teach.md#lessons-only-where-the-answer-differs)
 
 These are experiments, not settings every deep brain needs. Keep the same examples, seeds,

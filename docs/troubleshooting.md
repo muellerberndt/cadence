@@ -84,13 +84,18 @@ taught in all of them, so at a few hundred slots almost no row is skipped and ev
 the slots that were right. `learning_surprise_slots=True` pulls only the slots whose answer
 differs from their label; `taught_slots` in the lesson report counts them
 ([lessons only where the answer differs](teach.md#lessons-only-where-the-answer-differs)).
+One application measured the wearing away
+([step 5 of the tutorial](tutorials/minimal-techno.md#5-teach-the-slots-that-are-wrong)); no
+chamber of the library has read it.
 
 **A `RuntimeWarning` that credit transport admitted no factor.** `learning_credit_transport`
-fell back to the ordinary signed phases in every lesson of the window, and the lessons ran as
-without it. The warning names what refused the latest: the reference's residual against its
-tolerance, the candidates, a graph without an apical compartment or a signed budget of no
-sweeps. Read `credit_transport_refused` in the lesson report before comparing a run with
-transport against one without
+amplified nothing in any lesson of the window. The warning names what refused the latest: the
+reference's residual against its tolerance, the candidates, a graph without an apical
+compartment or a signed budget of no sweeps. Where the reference did not qualify, the lesson
+is the ordinary one. Where it qualified and no candidate was admitted, the signed phases start
+from that reference, which need not give the lesson of the mode switched off. Read
+`credit_transport_refused` in the lesson report before comparing a run with transport against
+one without
 ([teaching-only transport](settling.md#transporting-a-correction-without-amplifying-ordinary-return)).
 
 **The error of a stream that mostly repeats stays above repeating the last moment.** Score the
@@ -204,10 +209,12 @@ synapse floor; rebuild the fixture keeping that seam.
 ## Connectomes
 
 **A `RuntimeWarning` that the connectome is laid out as one block, or a refused update with
-`learning_drive_budget`.** More than 256 contiguous populations cut the graph into too many
-blocks, so it is laid out as one block of `n * n` entries; a drive budget refuses that layout
-before it changes a parameter. Populations that only wired the connectome are the usual cause:
-drop them from the developed connectome and the same synapses lie on a block layout
+`learning_drive_budget`.** The connectome's contiguous populations cut the graph into more
+than 256 blocks (the pairs of populations that carry synapses, which a few dozen populations
+can reach), so it is laid out as one block of `n * n` entries; a drive budget refuses that
+layout and leaves the parameters as they were. Populations that only wired the connectome are
+the usual cause: drop them from the developed connectome and the same synapses lie on a block
+layout
 ([measuring credit and limiting taught drive](settling.md#measuring-credit-and-limiting-taught-drive)).
 
 **`ValueError` on a sensory projection beside a learned code.** A connectome of your own may

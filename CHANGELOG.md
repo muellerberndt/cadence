@@ -5,8 +5,9 @@
 Five changes from building a composer brain of several hundred motor slots. A surprise lesson
 can teach only the slots that are wrong, a custom anatomy can project the sensory neurons one
 way beside a learned code, two fallbacks that were silent report themselves, and a learned code
-whose step changes does less work. The released panel continues to the bit both ways: files
-saved by 0.104.0 here, and files this version saves without the new option in 0.104.0.
+whose step changes does less work. The released panel of 17 brains continues to the bit both
+ways: files saved by 0.104.0 here, and files this version saves without the new option in
+0.104.0. The panel holds no brain with the opt-ins of 0.104.0.
 
 ### New opt-in tools
 
@@ -41,7 +42,7 @@ saved by 0.104.0 here, and files this version saves without the new option in 0.
 - **`learning_credit_transport` says when it does not act.** Transport falls back to the
   ordinary signed phases where its zero-force reference does not qualify or no candidate is
   admitted. A brain could run every lesson that way with nothing but `credit_transport_factor`
-  at zero in each report to show it. Every lesson report with transport on now holds
+  at zero in each report to show it. Every report of a taught lesson with transport on now holds
   `credit_transport_refused`, one where no factor was admitted, and a run of
   `learning_credit_window` such lessons (15 where no window is set) warns once with what
   refused the latest: the reference's residual against its tolerance, the candidates, a graph
@@ -57,8 +58,9 @@ saved by 0.104.0 here, and files this version saves without the new option in 0.
   eigenvalues decide only where the step changes by more or lies a hair from a bound. And on
   the host the dictionary's Gram matrix was made at every test, install and restep; it is now
   made once per dictionary and kept with a copy of the dictionary it is checked against, at the
-  cost of that copy. On a brain whose code reads 8,608 inputs into 1,792 units a moment in which
-  the step changes took 8.6 s and takes 2.0 s, and a moment without a change 2.7 s and 2.3 s.
+  cost of that copy. On a brain composed for the measurement, a code of 1,792 units reading
+  8,608 inputs on the NumPy host with the compiled kernels of one laptop, a moment in which the
+  step changes took 8.6 s and takes 2.0 s, and a moment without a change 2.7 s and 2.3 s.
   Efficacies, tables, acts and reports are the same bits on the NumPy loop, the compiled
   kernels and torch.
 
