@@ -39,6 +39,11 @@ INITIAL_DAMPING_FORMAT = "cadence-checkpoint/4"
 APICAL_FORMAT = "cadence-checkpoint/5"
 CREDIT_FORMAT = "cadence-checkpoint/6"
 _CREDIT_FIELDS = ("drive_budget", "credit_window", "credit_calibration", "credit_transport")
+# A learner whose surprise lessons leave agreeing slots open (``surprise_slots``): a reader
+# without the setting would drop it and teach every slot of a taught row, so it refuses the
+# name. The file carries an apical compartment and the credit settings as the formats named
+# for them do.
+SLOTS_FORMAT = "cadence-checkpoint/7"
 
 __all__ = ["FORMAT", "load", "save"]
 
@@ -85,6 +90,8 @@ def _learner_data(learner: Learner) -> dict[str, np.ndarray]:
     if _has_learning_credit(learner.config):
         # Older readers ignore unknown optimizer settings in their existing formats.
         meta["format"] = CREDIT_FORMAT
+    if learner.config.surprise_slots:
+        meta["format"] = SLOTS_FORMAT
     assert learner.plastic_synapses is not None and learner.plastic_neurons is not None
     return dict(
         **compartment,
@@ -173,7 +180,7 @@ def load(
     with np.load(Path(path), allow_pickle=False) as data:
         meta: dict[str, Any] = json.loads(str(data["meta"]))
         saved = meta.get("format")
-        apical_format = saved in (APICAL_FORMAT, CREDIT_FORMAT)
+        apical_format = saved in (APICAL_FORMAT, CREDIT_FORMAT, SLOTS_FORMAT)
         if saved == INITIAL_DAMPING_FORMAT or "numerical_policy" in meta:
             policy = meta.get("numerical_policy")
             value = policy.get("initial_damping") if isinstance(policy, dict) else policy
@@ -182,10 +189,11 @@ def load(
                 f"this checkpoint was saved under {INITIAL_DAMPING_FORMAT} with the learner's "
                 f"initial_damping={value!r}, which was retired in {release}: {instead}"
             )
-        if saved not in (FORMAT, APICAL_FORMAT, CREDIT_FORMAT):
+        if saved not in (FORMAT, APICAL_FORMAT, CREDIT_FORMAT, SLOTS_FORMAT):
             raise ValueError(
                 f"not a checkpoint this version reads: {saved!r}; it reads {FORMAT}, "
-                f"{APICAL_FORMAT} and {CREDIT_FORMAT}; cadence 0.94.0 loads cadence-checkpoint/1"
+                f"{APICAL_FORMAT}, {CREDIT_FORMAT} and {SLOTS_FORMAT}; cadence 0.94.0 loads "
+                "cadence-checkpoint/1"
             )
         compartment_arrays = {"apical_synapses", "apical_groups"} & set(data.files)
         if (
@@ -211,6 +219,8 @@ def load(
             )
         if saved == CREDIT_FORMAT and not any(meta["config"].get(name) for name in _CREDIT_FIELDS):
             raise ValueError(f"{CREDIT_FORMAT} requires a learning credit setting")
+        if (saved == SLOTS_FORMAT) != bool(meta["config"].get("surprise_slots")):
+            raise ValueError(f"surprise_slots belongs to checkpoint format {SLOTS_FORMAT}")
         # An ordinary checkpoint keeps the documented complete-config override, including
         # when the saved config contains unsupported old settings.
         effective_config = config or LearnerConfig(**_known_config(meta["config"]))

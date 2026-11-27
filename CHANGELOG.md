@@ -29,6 +29,22 @@
   connectome gives the same synapses on a block layout. Composed brains stay far below the
   limit and are unchanged, and a layout as cut settles and learns as before.
 
+### New opt-in tools
+
+- **`learning_surprise_slots=True` teaches a surprise lesson by slot.** With several motor slots
+  the surprise rule judges rows: a row that is wrong in one slot is taught in every slot, so a
+  brain of many slots skips no row and every lesson pulls the slots it already answers as shown.
+  With the option, a taught row pulls only the slots whose judging answer differs from their
+  label. A labelled slot the answer already gives as shown is left open at that row, as a label
+  of -1 leaves it: zero pull at the lesson's free state. A row that agrees in every slot stays
+  untaught, a row whose answer is no token is taught in every slot, and `targets` are not judged.
+  The report adds `taught_slots`, and `learning_surprise_share` then scales the step by the share
+  of the lesson's labelled slots it taught. It needs `learning_surprise=True`, `retune` switches
+  it, and `Lives` refuses it by name. A saved brain names the feature `learning_surprise_slots`
+  and its learner the checkpoint format `cadence-checkpoint/7`, which earlier releases refuse by
+  name. With the option off, lessons, reports and files are what they were, to the bit. No
+  chamber of the library has read the option.
+
 ## 0.104.0 - 2026-11-26
 
 Deep teaching resolves small motor corrections, and recall heads now receive credit from the
