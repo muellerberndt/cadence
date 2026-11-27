@@ -185,7 +185,7 @@ def transport_contrast(
     weights = np.ones(rows) if pull.weight is None else pull.weight
     # Keep halving above the unamplified control. With the maximum supported limit of six,
     # this tries at most four candidates and no longer skips 1.5 when both six and three fail.
-    factor = limit
+    factor = float(limit)
     factors = []
     while factor > 1.:
         factors.append(factor)

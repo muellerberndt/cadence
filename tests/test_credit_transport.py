@@ -100,6 +100,15 @@ def test_high_transport_limit_keeps_the_working_intermediate_fallback(qualified)
     np.testing.assert_array_equal(learners[2].brain.bias, learners[1].brain.bias)
 
 
+def test_transport_backoff_does_not_mutate_a_numpy_limit():
+    learner, x = chain("cpu", 6.)
+    limit = np.array(6.)  # the config accepts this scalar-like value
+    learner.config = replace(learner.config, beta=.022, nudged_steps=16, credit_transport=limit)
+    _, report = learner.step(x, np.array([0, 1]))
+    assert report["credit_transport_factor"] == 1.5
+    assert limit.item() == 6.
+
+
 def test_transport_never_runs_during_reward_only_live():
     args = dict(apical=.2, modules=(8, 6), arousal={"youth": 8}, backend="cpu", seed=3)
     original = cd.Brain.compose(4, 2, **args)
